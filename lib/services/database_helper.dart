@@ -142,6 +142,40 @@ class DatabaseHelper {
     }
   }
 
+  static Future<void> ensureTodoPlanBlockSchema(Database db) async {
+    try {
+      // 检查表是否存在
+      final tables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='todo_plan_blocks'");
+      if (tables.isEmpty) return;
+
+      final info = await db.rawQuery("PRAGMA table_info(todo_plan_blocks)");
+      final existingColumns = info.map((row) => row['name'] as String).toSet();
+
+      // 直接逐列尝试添加，已存在则忽略
+      final columnsToAdd = [
+        {'name': 'pomodoro_minutes', 'type': 'INTEGER DEFAULT 25'},
+        {'name': 'pomodoro_rounds', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'calendar_event_id', 'type': 'TEXT'},
+      ];
+
+      for (final column in columnsToAdd) {
+        if (!existingColumns.contains(column['name'])) {
+          try {
+            await db.execute(
+                "ALTER TABLE todo_plan_blocks ADD COLUMN ${column['name']} ${column['type']};");
+            debugPrint("✅ Database: 修复字段 todo_plan_blocks.${column['name']}");
+          } catch (e) {
+            debugPrint(
+                "⚠️ Database: 添加 todo_plan_blocks.${column['name']} 失败: $e");
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Database: 检查/修复 todo_plan_blocks 表结构失败: $e");
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
@@ -577,6 +611,9 @@ class DatabaseHelper {
                   source INTEGER,
                   remark TEXT,
                   reminder_minutes INTEGER,
+                  pomodoro_minutes INTEGER DEFAULT 25,
+                  pomodoro_rounds INTEGER DEFAULT 0,
+                  calendar_event_id TEXT,
                   is_deleted INTEGER DEFAULT 0,
                   version INTEGER DEFAULT 1,
                   created_at INTEGER,
@@ -585,9 +622,11 @@ class DatabaseHelper {
                 )
               ''');
                 // 2. 为 pomodoro_records 补全 plan_block_id
-                final info = await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                final info =
+                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
                 if (!info.any((row) => row['name'] == 'plan_block_id')) {
-                  await db.execute("ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;");
+                  await db.execute(
+                      "ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;");
                 }
                 debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
               } catch (e) {
@@ -598,6 +637,7 @@ class DatabaseHelper {
           onOpen: (db) async {
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
+            await ensureTodoPlanBlockSchema(db);
           },
         );
       } catch (e) {
@@ -1090,6 +1130,9 @@ class DatabaseHelper {
         source $integerType DEFAULT 0,
         remark $jsonType,
         reminder_minutes $integerType DEFAULT 5,
+        pomodoro_minutes $integerType DEFAULT 25,
+        pomodoro_rounds $integerType DEFAULT 0,
+        calendar_event_id $textType,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,

@@ -5,7 +5,9 @@ import '../models/ai_todo_action.dart';
 class AiActionParser {
   static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
-      'categorize_todo|plan_todos|create_plan_block|'
+      'categorize_todo|plan_todos|create_plan_block|update_plan_block|'
+      'delete_plan_block|reschedule_plan_blocks|reschedule_plan_block|'
+      'skip_plan_block|start_plan_block_pomodoro|'
       'create_todo_plan_block|schedule_todo_block|split_todo|merge_todos|'
       'create_time_log|update_time_log|delete_time_log|'
       'start_pomodoro|stop_pomodoro|'
@@ -150,6 +152,27 @@ class AiActionParser {
         ).map((block) {
           return AiTodoAction.fromJson({
             ...block,
+            'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
+            'title': block['title'] ?? block['titleSnapshot'],
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'update_plan_block':
+      case 'delete_plan_block':
+      case 'reschedule_plan_blocks':
+      case 'reschedule_plan_block':
+      case 'skip_plan_block':
+      case 'start_plan_block_pomodoro':
+        return _listFromOrSelf(
+          actionData,
+          actionData['blocks'] ?? actionData['updates'],
+        ).map((block) {
+          return AiTodoAction.fromJson({
+            ...block,
+            'planBlockId': block['planBlockId'] ??
+                block['plan_block_id'] ??
+                block['blockId'] ??
+                block['id'],
             'todoId': block['todoId'] ?? block['todo_id'] ?? block['todoUuid'],
             'title': block['title'] ?? block['titleSnapshot'],
             'action': actionData['action'],

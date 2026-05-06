@@ -75,6 +75,9 @@ class StorageService {
           'source',
           'remark',
           'reminder_minutes',
+          'pomodoro_minutes',
+          'pomodoro_rounds',
+          'calendar_event_id',
           'is_deleted'
         ]);
       }

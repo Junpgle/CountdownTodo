@@ -7,6 +7,7 @@ import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
 import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
+import 'todo_chat_screen.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
@@ -86,7 +87,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final now = DateTime.now().millisecondsSinceEpoch;
     final missedBlocks = <TodoPlanBlock>[];
     for (final b in blocks) {
-      if (b.status == TodoPlanStatus.planned &&
+      if ((b.status == TodoPlanStatus.planned ||
+              b.status == TodoPlanStatus.reminded) &&
           b.actualFocusSeconds <= 0 &&
           b.endTime < now) {
         b.status = TodoPlanStatus.missed;
@@ -214,11 +216,12 @@ class _PlanDaySummary extends StatelessWidget {
         .where((b) =>
             b.status == TodoPlanStatus.finished ||
             (b.plannedMinutes > 0 &&
-                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.9))
+                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.8))
         .length;
     final missed = blocks
         .where((b) =>
-            b.status == TodoPlanStatus.planned &&
+            (b.status == TodoPlanStatus.planned ||
+                b.status == TodoPlanStatus.reminded) &&
             b.actualFocusSeconds <= 0 &&
             b.endTime < now)
         .length;
@@ -305,10 +308,15 @@ class _PlanGridView extends StatefulWidget {
 }
 
 class _PlanGridViewState extends State<_PlanGridView> {
-  int? _dragStartBlock; // 15min 为单位
+  int? _dragStartBlock;
   int? _dragEndBlock;
-  final int _blocksPerHour = 4;
-  final int _minutesPerBlock = 15;
+  int _minutesPerBlock = 15;
+  TodoPlanBlock? _movingBlock;
+  DateTime? _movingStart;
+  DateTime? _movingEnd;
+  int _lastMoveDelta = 0;
+
+  int get _blocksPerHour => 60 ~/ _minutesPerBlock;
 
   int? _getIndex(Offset pos, double width, double hourH) {
     if (pos.dy < 0 || pos.dy > 24 * hourH) return null;
@@ -374,67 +382,133 @@ class _PlanGridViewState extends State<_PlanGridView> {
     );
   }
 
+  Future<void> _updateBlockTime(
+    TodoPlanBlock block,
+    DateTime start,
+    DateTime end,
+  ) async {
+    if (!end.isAfter(start)) return;
+    block.startTime = start.millisecondsSinceEpoch;
+    block.endTime = end.millisecondsSinceEpoch;
+    block.plannedMinutes = end.difference(start).inMinutes;
+    block.markAsChanged();
+    await StorageService.savePlanBlocks(widget.username, [block]);
+    widget.onRefresh();
+  }
+
+  int _snapMinutes(double minutes) =>
+      (minutes / _minutesPerBlock).round() * _minutesPerBlock;
+
+  DateTime _dayStart() =>
+      DateTime(widget.date.year, widget.date.month, widget.date.day);
+
+  DateTime _clampToDay(DateTime value) {
+    final start = _dayStart();
+    final end = start.add(const Duration(days: 1));
+    if (value.isBefore(start)) return start;
+    if (value.isAfter(end)) return end;
+    return value;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final totalH = constraints.maxHeight;
-      final hourH = totalH / 24;
-      final gridW = constraints.maxWidth - kTimeAxisW;
+    return Column(
+      children: [
+        _buildGranularityBar(),
+        Expanded(child: LayoutBuilder(builder: (context, constraints) {
+          final totalH = constraints.maxHeight;
+          final hourH = totalH / 24;
+          final gridW = constraints.maxWidth - kTimeAxisW;
 
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 时间轴
-          SizedBox(
-            width: kTimeAxisW,
-            height: totalH,
-            child: Stack(
-              children: List.generate(
-                  24,
-                  (h) => Positioned(
-                        top: h * hourH + 1,
-                        right: 6,
-                        child: Text('${h.toString().padLeft(2, '0')}:00',
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.withValues(alpha: 0.66))),
-                      )),
-            ),
-          ),
-          // 网格
-          Expanded(
-            child: GestureDetector(
-              onPanStart: (d) =>
-                  _handleDragStart(d.localPosition, gridW, hourH),
-              onPanUpdate: (d) =>
-                  _handleDragUpdate(d.localPosition, gridW, hourH),
-              onPanEnd: (d) => _handleDragEnd(),
-              onTapDown: (d) => _handleDragStart(d.localPosition, gridW, hourH),
-              onTapUp: (d) => _handleDragEnd(),
-              child: Container(
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 时间轴
+              SizedBox(
+                width: kTimeAxisW,
                 height: totalH,
-                decoration: BoxDecoration(
-                  border: Border(
-                      left: BorderSide(
-                          color: Colors.grey.withValues(alpha: 0.1))),
-                ),
                 child: Stack(
-                  children: [
-                    ..._buildGridLines(gridW, hourH),
-                    ...widget.blocks.expand(
-                        (block) => _buildBlockItems(block, gridW, hourH)),
-                    if (_dragStartBlock != null && _dragEndBlock != null)
-                      ..._buildDraggingBlocks(gridW, hourH),
-                    _buildNowLine(gridW, hourH),
-                  ],
+                  children: List.generate(
+                      24,
+                      (h) => Positioned(
+                            top: h * hourH + 1,
+                            right: 6,
+                            child: Text('${h.toString().padLeft(2, '0')}:00',
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        Colors.grey.withValues(alpha: 0.66))),
+                          )),
                 ),
               ),
-            ),
+              // 网格
+              Expanded(
+                child: GestureDetector(
+                  onPanStart: (d) =>
+                      _handleDragStart(d.localPosition, gridW, hourH),
+                  onPanUpdate: (d) =>
+                      _handleDragUpdate(d.localPosition, gridW, hourH),
+                  onPanEnd: (d) => _handleDragEnd(),
+                  onTapDown: (d) =>
+                      _handleDragStart(d.localPosition, gridW, hourH),
+                  onTapUp: (d) => _handleDragEnd(),
+                  child: Container(
+                    height: totalH,
+                    decoration: BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: Colors.grey.withValues(alpha: 0.1))),
+                    ),
+                    child: Stack(
+                      children: [
+                        ..._buildGridLines(gridW, hourH),
+                        ...widget.blocks.expand(
+                            (block) => _buildBlockItems(block, gridW, hourH)),
+                        if (_dragStartBlock != null && _dragEndBlock != null)
+                          ..._buildDraggingBlocks(gridW, hourH),
+                        _buildNowLine(gridW, hourH),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        })),
+      ],
+    );
+  }
+
+  Widget _buildGranularityBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+      child: Row(
+        children: [
+          const Text('粒度', style: TextStyle(fontSize: 12)),
+          const SizedBox(width: 8),
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 5, label: Text('5')),
+              ButtonSegment(value: 10, label: Text('10')),
+              ButtonSegment(value: 15, label: Text('15')),
+              ButtonSegment(value: 30, label: Text('30')),
+            ],
+            selected: {_minutesPerBlock},
+            showSelectedIcon: false,
+            onSelectionChanged: (value) {
+              setState(() {
+                _minutesPerBlock = value.first;
+                _dragStartBlock = null;
+                _dragEndBlock = null;
+              });
+            },
           ),
+          const SizedBox(width: 6),
+          Text('分钟', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
         ],
-      );
-    });
+      ),
+    );
   }
 
   List<Widget> _buildGridLines(double width, double hourH) {
@@ -486,6 +560,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
           clippedStart.isAfter(rowStart) ? clippedStart : rowStart;
       final segmentEnd = clippedEnd.isBefore(rowEnd) ? clippedEnd : rowEnd;
       if (!segmentEnd.isAfter(segmentStart) || hour >= 24) continue;
+      final isStartSegment = segmentStart.isAtSameMomentAs(clippedStart);
+      final isEndSegment = segmentEnd.isAtSameMomentAs(clippedEnd);
 
       final left = width * segmentStart.minute / 60;
       final segmentW =
@@ -497,42 +573,163 @@ class _PlanGridViewState extends State<_PlanGridView> {
         height: max(1.0, hourH - 2),
         child: GestureDetector(
           onTap: () => _showEditBlockSheet(block),
-          child: Container(
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: color.withValues(alpha: 0.4)),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            child: Row(
-              children: [
-                Icon(
-                    block.status == TodoPlanStatus.finished
-                        ? Icons.check_circle
-                        : Icons.event_note,
-                    size: 10,
-                    color: color),
-                const SizedBox(width: 3),
-                Expanded(
-                  child: Text(
-                    block.titleSnapshot ?? todo?.title ?? '未知待办',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+          onLongPressStart: (_) {
+            _movingBlock = block;
+            _movingStart = start;
+            _movingEnd = end;
+            _lastMoveDelta = 0;
+          },
+          onLongPressMoveUpdate: (details) {
+            if (_movingBlock?.uuid != block.uuid ||
+                _movingStart == null ||
+                _movingEnd == null) {
+              return;
+            }
+            final deltaMinutes = _snapMinutes(
+              details.offsetFromOrigin.dy / hourH * 60 +
+                  details.offsetFromOrigin.dx / width * 60,
+            );
+            if (deltaMinutes == _lastMoveDelta) return;
+            _lastMoveDelta = deltaMinutes;
+            final nextStart =
+                _clampToDay(_movingStart!.add(Duration(minutes: deltaMinutes)));
+            final duration = _movingEnd!.difference(_movingStart!);
+            var nextEnd = nextStart.add(duration);
+            final dayEnd = _dayStart().add(const Duration(days: 1));
+            if (nextEnd.isAfter(dayEnd)) {
+              nextEnd = dayEnd;
+            }
+            setState(() {
+              block.startTime = nextStart.millisecondsSinceEpoch;
+              block.endTime = nextEnd.millisecondsSinceEpoch;
+              block.plannedMinutes = nextEnd.difference(nextStart).inMinutes;
+            });
+          },
+          onLongPressEnd: (_) async {
+            _movingBlock = null;
+            _movingStart = null;
+            _movingEnd = null;
+            _lastMoveDelta = 0;
+            block.markAsChanged();
+            await StorageService.savePlanBlocks(widget.username, [block]);
+            widget.onRefresh();
+          },
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                child: Row(
+                  children: [
+                    Icon(
+                        block.status == TodoPlanStatus.finished
+                            ? Icons.check_circle
+                            : Icons.event_note,
+                        size: 10,
                         color: color),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        block.titleSnapshot ?? todo?.title ?? '未知待办',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: color),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    if (segmentW > 68)
+                      Text(
+                        '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
+                        style: TextStyle(
+                            fontSize: 8, color: color.withValues(alpha: 0.72)),
+                        maxLines: 1,
+                      ),
+                  ],
+                ),
+              ),
+              if (isStartSegment)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 12,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) {
+                      final delta = _snapMinutes(details.delta.dx / width * 60);
+                      if (delta == 0) return;
+                      final nextStart = _clampToDay(
+                        DateTime.fromMillisecondsSinceEpoch(block.startTime)
+                            .add(Duration(minutes: delta)),
+                      );
+                      final endTime =
+                          DateTime.fromMillisecondsSinceEpoch(block.endTime);
+                      if (!endTime.isAfter(nextStart
+                          .add(Duration(minutes: _minutesPerBlock - 1)))) {
+                        return;
+                      }
+                      setState(() {
+                        block.startTime = nextStart.millisecondsSinceEpoch;
+                        block.plannedMinutes =
+                            endTime.difference(nextStart).inMinutes;
+                      });
+                    },
+                    onHorizontalDragEnd: (_) => _updateBlockTime(
+                      block,
+                      DateTime.fromMillisecondsSinceEpoch(block.startTime),
+                      DateTime.fromMillisecondsSinceEpoch(block.endTime),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(width: 3, color: color),
+                    ),
                   ),
                 ),
-                if (segmentW > 68)
-                  Text(
-                    '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
-                    style: TextStyle(
-                        fontSize: 8, color: color.withValues(alpha: 0.72)),
-                    maxLines: 1,
+              if (isEndSegment)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 12,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) {
+                      final delta = _snapMinutes(details.delta.dx / width * 60);
+                      if (delta == 0) return;
+                      final nextEnd = _clampToDay(
+                        DateTime.fromMillisecondsSinceEpoch(block.endTime)
+                            .add(Duration(minutes: delta)),
+                      );
+                      final startTime =
+                          DateTime.fromMillisecondsSinceEpoch(block.startTime);
+                      if (!nextEnd.isAfter(startTime
+                          .add(Duration(minutes: _minutesPerBlock - 1)))) {
+                        return;
+                      }
+                      setState(() {
+                        block.endTime = nextEnd.millisecondsSinceEpoch;
+                        block.plannedMinutes =
+                            nextEnd.difference(startTime).inMinutes;
+                      });
+                    },
+                    onHorizontalDragEnd: (_) => _updateBlockTime(
+                      block,
+                      DateTime.fromMillisecondsSinceEpoch(block.startTime),
+                      DateTime.fromMillisecondsSinceEpoch(block.endTime),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(width: 3, color: color),
+                    ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
       ));
@@ -660,6 +857,8 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
   late DateTime _start, _end;
   late TextEditingController _remarkCtrl;
   int _reminderMinutes = 5;
+  int _pomodoroMinutes = 25;
+  int _pomodoroRounds = 0;
   late List<_TodoPlanSelectEntry> _todoEntries;
 
   @override
@@ -670,6 +869,8 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     _selectedTodoId = widget.block?.todoId ?? widget.initialTodoId;
     _remarkCtrl = TextEditingController(text: widget.block?.remark);
     _reminderMinutes = widget.block?.reminderMinutes ?? 5;
+    _pomodoroMinutes = widget.block?.pomodoroMinutes ?? 25;
+    _pomodoroRounds = widget.block?.pomodoroRounds ?? 0;
     _todoEntries = _buildTodoEntries(widget.todos, widget.todoGroups);
     final selectedExists =
         _todoEntries.any((entry) => entry.todo?.id == _selectedTodoId);
@@ -825,6 +1026,8 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
           plannedMinutes: _end.difference(_start).inMinutes,
           remark: _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text,
           reminderMinutes: _reminderMinutes,
+          pomodoroMinutes: _pomodoroMinutes,
+          pomodoroRounds: _pomodoroRounds,
         );
 
     if (widget.block != null) {
@@ -835,6 +1038,8 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
       block.plannedMinutes = _end.difference(_start).inMinutes;
       block.remark = _remarkCtrl.text.isEmpty ? null : _remarkCtrl.text;
       block.reminderMinutes = _reminderMinutes;
+      block.pomodoroMinutes = _pomodoroMinutes;
+      block.pomodoroRounds = _pomodoroRounds;
       block.markAsChanged();
     }
 
@@ -855,7 +1060,12 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     await PomodoroControlService.startFocus(
       settings: settings,
       boundTodo: todo,
-      durationMinutes: max(1, block.plannedMinutes),
+      durationMinutes: max(
+        1,
+        block.pomodoroRounds > 0
+            ? block.pomodoroMinutes * block.pomodoroRounds
+            : block.plannedMinutes,
+      ),
       planBlockId: block.uuid,
     );
     widget.onSaved();
@@ -885,6 +1095,19 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     await StorageService.savePlanBlocks(widget.username, [block]);
     widget.onSaved();
     if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _openAiPlanner() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TodoChatScreen(
+          username: widget.username,
+          todos: widget.todos.map((todo) => todo.toJson()).toList(),
+          todoGroups: widget.todoGroups,
+        ),
+      ),
+    );
+    widget.onSaved();
   }
 
   @override
@@ -1030,6 +1253,35 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
           ),
           const SizedBox(height: 20),
           Row(
+            children: [
+              const Text('番茄配置',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              DropdownButton<int>(
+                value: _pomodoroMinutes,
+                items: [15, 20, 25, 30, 45, 60]
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text('${m}min'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _pomodoroMinutes = v ?? 25),
+              ),
+              const SizedBox(width: 10),
+              DropdownButton<int>(
+                value: _pomodoroRounds,
+                items: [0, 1, 2, 3, 4, 5, 6]
+                    .map((round) => DropdownMenuItem(
+                          value: round,
+                          child: Text(round == 0 ? '按规划时长' : 'x$round'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _pomodoroRounds = v ?? 0),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('提前提醒',
@@ -1047,6 +1299,15 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
             ],
           ),
           const SizedBox(height: 30),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openAiPlanner,
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('AI 帮我安排更多'),
+            ),
+          ),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: Row(children: [

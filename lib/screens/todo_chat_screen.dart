@@ -2582,6 +2582,23 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         color = Colors.teal;
         label = '时间块';
         break;
+      case AiTodoActionType.updatePlanBlock:
+      case AiTodoActionType.reschedulePlanBlocks:
+        color = Colors.teal;
+        label = '改规划';
+        break;
+      case AiTodoActionType.deletePlanBlock:
+        color = Colors.red;
+        label = '删规划';
+        break;
+      case AiTodoActionType.skipPlanBlock:
+        color = Colors.orange;
+        label = '跳过';
+        break;
+      case AiTodoActionType.startPlanBlockPomodoro:
+        color = Colors.redAccent;
+        label = '开始规划';
+        break;
       case AiTodoActionType.splitTodo:
         color = Colors.indigo;
         label = '拆分';
@@ -2916,6 +2933,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '生成计划待办';
       case AiTodoActionType.createPlanBlock:
         return '安排到具体时间块';
+      case AiTodoActionType.updatePlanBlock:
+        return '修改规划块';
+      case AiTodoActionType.deletePlanBlock:
+        return '删除规划块';
+      case AiTodoActionType.reschedulePlanBlocks:
+        return '重排规划块';
+      case AiTodoActionType.skipPlanBlock:
+        return '跳过规划块';
+      case AiTodoActionType.startPlanBlockPomodoro:
+        return '开始规划番茄钟';
       case AiTodoActionType.splitTodo:
         return action.sourceTodoIds.isEmpty
             ? '拆分为子任务'
@@ -3067,6 +3094,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         action.type == AiTodoActionType.completeCountdown ||
         action.type == AiTodoActionType.deleteTodoGroup ||
         action.type == AiTodoActionType.deletePomodoroTag ||
+        action.type == AiTodoActionType.deletePlanBlock ||
+        action.type == AiTodoActionType.skipPlanBlock ||
         (action.type == AiTodoActionType.splitTodo &&
             action.deleteSourceTodos) ||
         (action.type == AiTodoActionType.mergeTodos &&
@@ -3093,6 +3122,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '将删除待办分类，执行前请确认';
       case AiTodoActionType.deletePomodoroTag:
         return '将删除番茄标签，执行前请确认';
+      case AiTodoActionType.deletePlanBlock:
+        return '将删除规划块，执行前请确认';
+      case AiTodoActionType.skipPlanBlock:
+        return '将跳过规划块，执行前请确认';
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
@@ -3101,6 +3134,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.categorizeTodo:
       case AiTodoActionType.planTodos:
       case AiTodoActionType.createPlanBlock:
+      case AiTodoActionType.updatePlanBlock:
+      case AiTodoActionType.reschedulePlanBlocks:
+      case AiTodoActionType.startPlanBlockPomodoro:
       case AiTodoActionType.unknown:
       case AiTodoActionType.createTimeLog:
       case AiTodoActionType.updateTimeLog:
@@ -3136,6 +3172,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       existingCountdowns: existingCountdowns,
       existingTodoGroups: widget.todoGroups,
       existingPomodoroTags: existingTags,
+      existingPlanBlocks: _planBlocks,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
 
@@ -3208,15 +3245,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         await PomodoroService.saveTags(merged);
       }
 
-      if (result.newPlanBlocks.isNotEmpty) {
+      if (result.newPlanBlocks.isNotEmpty ||
+          result.updatedPlanBlocks.isNotEmpty) {
         await StorageService.savePlanBlocks(
           widget.username,
-          result.newPlanBlocks,
+          [...result.newPlanBlocks, ...result.updatedPlanBlocks],
           sync: true,
         );
         _planBlocks = [
-          ..._planBlocks,
+          ..._planBlocks.where((existing) => !result.updatedPlanBlocks
+              .any((updated) => updated.uuid == existing.uuid)),
           ...result.newPlanBlocks,
+          ...result.updatedPlanBlocks,
         ];
       }
 
@@ -3231,13 +3271,61 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 规划: ${result.newPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
     }
   }
 
   Future<void> _executePomodoroAction(AiTodoAction action) async {
     switch (action.type) {
+      case AiTodoActionType.startPlanBlockPomodoro:
+        final blockId = action.planBlockId;
+        if (blockId == null || blockId.isEmpty) return;
+        final blocks = _planBlocks.isNotEmpty
+            ? _planBlocks
+            : await StorageService.getPlanBlocks(widget.username);
+        TodoPlanBlock? block;
+        for (final item in blocks) {
+          if (item.uuid == blockId && !item.isDeleted) {
+            block = item;
+            break;
+          }
+        }
+        if (block == null) return;
+        final existing = await PomodoroService.loadRunState();
+        if (existing != null &&
+            existing.phase != PomodoroPhase.idle &&
+            existing.phase != PomodoroPhase.finished) {
+          return;
+        }
+        final settings = await PomodoroService.getSettings();
+        TodoItem? boundTodo;
+        final match = widget.todos.where((t) => t['id'] == block!.todoId);
+        if (match.isNotEmpty) {
+          boundTodo = TodoItem(
+            id: block.todoId,
+            title: match.first['title']?.toString() ??
+                block.titleSnapshot ??
+                '规划任务',
+          );
+        }
+        boundTodo ??= TodoItem(
+          id: block.todoId,
+          title: block.titleSnapshot ?? '规划任务',
+        );
+        block.status = TodoPlanStatus.focusing;
+        block.markAsChanged();
+        await StorageService.savePlanBlocks(widget.username, [block]);
+        await PomodoroControlService.startFocus(
+          settings: settings,
+          boundTodo: boundTodo,
+          durationMinutes: block.pomodoroRounds > 0
+              ? block.pomodoroMinutes * block.pomodoroRounds
+              : math.max(1, block.plannedMinutes),
+          planBlockId: block.uuid,
+          ensureSyncConnection: true,
+        );
+        break;
       case AiTodoActionType.startPomodoro:
         final existing = await PomodoroService.loadRunState();
         if (existing != null &&
@@ -3288,6 +3376,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.categorizeTodo:
       case AiTodoActionType.planTodos:
       case AiTodoActionType.createPlanBlock:
+      case AiTodoActionType.updatePlanBlock:
+      case AiTodoActionType.deletePlanBlock:
+      case AiTodoActionType.reschedulePlanBlocks:
+      case AiTodoActionType.skipPlanBlock:
       case AiTodoActionType.splitTodo:
       case AiTodoActionType.mergeTodos:
       case AiTodoActionType.createTimeLog:

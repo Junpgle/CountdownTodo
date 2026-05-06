@@ -11,6 +11,7 @@ class _DayView extends StatefulWidget {
   final List<PomodoroRecord> pomodoros;
   final List<PomodoroTag> tags;
   final List<TodoItem> todos;
+  final List<TodoGroup> todoGroups;
   final String username;
   final _EntryMode entryMode;
   final VoidCallback onBack;
@@ -30,6 +31,7 @@ class _DayView extends StatefulWidget {
       required this.pomodoros,
       required this.tags,
       required this.todos,
+      required this.todoGroups,
       required this.username,
       required this.entryMode,
       required this.onBack,
@@ -90,6 +92,7 @@ class _DayViewState extends State<_DayView> {
               initialEnd: en,
               username: widget.username,
               todos: widget.todos,
+              todoGroups: widget.todoGroups,
               onSave: (block) {
                 Navigator.pop(context);
                 widget.onSavePlanBlock(block);
@@ -881,6 +884,7 @@ class _PlanEntrySheet extends StatefulWidget {
   final DateTime initialEnd;
   final String username;
   final List<TodoItem> todos;
+  final List<TodoGroup> todoGroups;
   final void Function(TodoPlanBlock) onSave;
 
   const _PlanEntrySheet({
@@ -888,6 +892,7 @@ class _PlanEntrySheet extends StatefulWidget {
     required this.initialEnd,
     required this.username,
     required this.todos,
+    required this.todoGroups,
     required this.onSave,
   });
 
@@ -901,6 +906,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
   late TextEditingController _remarkCtrl;
   String? _todoId;
   int _reminderMinutes = 5;
+  late List<TodoItem> _sortedTodos;
 
   @override
   void initState() {
@@ -908,7 +914,36 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     _start = widget.initialStart;
     _end = widget.initialEnd;
     _remarkCtrl = TextEditingController();
-    if (widget.todos.isNotEmpty) _todoId = widget.todos.first.id;
+    _sortedTodos = _sortTodos(widget.todos, widget.todoGroups);
+    if (_sortedTodos.isNotEmpty) _todoId = _sortedTodos.first.id;
+  }
+
+  static List<TodoItem> _sortTodos(
+      List<TodoItem> todos, List<TodoGroup> groups) {
+    int groupRank(TodoItem todo) {
+      final groupId = todo.groupId;
+      if (groupId == null || groupId.isEmpty) return 1 << 30;
+      final idx = groups.indexWhere((group) => group.id == groupId);
+      return idx == -1 ? (1 << 30) - 1 : idx;
+    }
+
+    int urgencyMs(TodoItem todo) {
+      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
+      if (todo.createdDate != null && todo.createdDate! > 0) {
+        return todo.createdDate!;
+      }
+      return 1 << 62;
+    }
+
+    return List<TodoItem>.from(todos)
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        final groupCompare = groupRank(a).compareTo(groupRank(b));
+        if (groupCompare != 0) return groupCompare;
+        final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
+        if (urgencyCompare != 0) return urgencyCompare;
+        return a.title.compareTo(b.title);
+      });
   }
 
   @override
@@ -1030,7 +1065,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
           DropdownButtonFormField<String>(
             value: _todoId,
             isExpanded: true,
-            items: widget.todos
+            items: _sortedTodos
                 .map((todo) => DropdownMenuItem(
                     value: todo.id,
                     child: Text(

@@ -737,6 +737,9 @@ class TodoPlanBlock {
   TodoPlanSource source;
   String? remark;
   int reminderMinutes;
+  int pomodoroMinutes;
+  int pomodoroRounds;
+  String? calendarEventId;
   List<String> pomodoroRecordIds;
   int version;
   int createdAt;
@@ -759,6 +762,9 @@ class TodoPlanBlock {
     this.source = TodoPlanSource.manual,
     this.remark,
     this.reminderMinutes = 5,
+    this.pomodoroMinutes = 25,
+    this.pomodoroRounds = 0,
+    this.calendarEventId,
     List<String>? pomodoroRecordIds,
     this.version = 1,
     int? createdAt,
@@ -788,6 +794,9 @@ class TodoPlanBlock {
         'source': source.index,
         'remark': remark,
         'reminder_minutes': reminderMinutes,
+        'pomodoro_minutes': pomodoroMinutes,
+        'pomodoro_rounds': pomodoroRounds,
+        'calendar_event_id': calendarEventId,
         'pomodoro_record_ids': pomodoroRecordIds.join(','),
         'version': version,
         'created_at': createdAt,
@@ -813,6 +822,10 @@ class TodoPlanBlock {
             .clamp(0, TodoPlanSource.values.length - 1)],
         remark: j['remark']?.toString(),
         reminderMinutes: (j['reminder_minutes'] as num?)?.toInt() ?? 5,
+        pomodoroMinutes: (j['pomodoro_minutes'] as num?)?.toInt() ?? 25,
+        pomodoroRounds: (j['pomodoro_rounds'] as num?)?.toInt() ?? 0,
+        calendarEventId:
+            (j['calendar_event_id'] ?? j['calendarEventId'])?.toString(),
         pomodoroRecordIds: (j['pomodoro_record_ids'] as String?)
                 ?.split(',')
                 .where((s) => s.isNotEmpty)

@@ -358,3 +358,29 @@ AI 规则：
 - 录入路径要短：选时间、选待办、保存。
 - 实际专注时长来自番茄钟记录，不靠用户手填。
 - 统计以规划块为计划来源，以番茄钟记录为实际来源。
+
+还没完成或不完整
+
+- 规划页粒度切换还没做完整：PLAN_BLOCK.md 要求 5/10/15/30 分钟切换，
+  TodoPlanScreen 当前仍是固定 15 分钟块。
+- 已有规划块长按拖动改期、拖拽边缘调整开始/结束时间还没做。
+- 底部面板缺少 AI 帮我安排更多 按钮。
+- 番茄配置 25min x N 没做，目前是直接使用规划块总时长。
+- 通知点击“携带 todoId 和 planBlockId 直达番茄钟”还不完整：目前调度里主
+  要是通知 ID 映射，首页 appbar 可以直达番茄钟，但系统通知点击链路还没
+  有完整传参到番茄钟。
+- reminded 状态没有真正落地流转：提醒发出后没有看到稳定回写
+  TodoPlanStatus.reminded。
+- “实际专注达到 80% 可建议 done”：当前代码是 90% 自动标记 finished，和
+  计划文档不一致。
+- AI action 只做了 create_plan_block，还没做这些：update_plan_block、
+  delete_plan_block、reschedule_plan_blocks、skip_plan_block、
+  start_plan_block_pomodoro。
+- 日历同步规划块还没做：模型里也还没有 calendarEventId。
+- 统计已有 PlanBlockStatsScreen，但周/月统计、AI 建议、漏做分析这些还不
+  完整。
+- 时间日志里的规划待办选择还没按刚才的文件夹/未完成/截止时间排序同步过
+  去，目前只修了 TodoPlanScreen 的选择器。
+- 后端同步没完整落地：本地有 todo_plan_blocks 和本地 changelog，但
+  aliyun_debug/server.js 没看到规划块专门 API/同步表处理。
+- WebSocket 广播规划块变化还没做。

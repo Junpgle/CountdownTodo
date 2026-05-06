@@ -30,17 +30,14 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   DateTimeRange get _range {
     switch (_dimension) {
       case 0:
-        final start =
-            DateTime(_current.year, _current.month, _current.day);
+        final start = DateTime(_current.year, _current.month, _current.day);
         return DateTimeRange(
             start: start, end: start.add(const Duration(days: 1)));
       case 1:
-        final start =
-            _current.subtract(Duration(days: _current.weekday - 1));
+        final start = _current.subtract(Duration(days: _current.weekday - 1));
         final weekStart = DateTime(start.year, start.month, start.day);
         return DateTimeRange(
-            start: weekStart,
-            end: weekStart.add(const Duration(days: 7)));
+            start: weekStart, end: weekStart.add(const Duration(days: 7)));
       default:
         final start = DateTime(_current.year, _current.month, 1);
         final end = DateTime(_current.year, _current.month + 1, 1);
@@ -53,8 +50,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       case 0:
         return DateFormat('yyyy年MM月dd日').format(_current);
       case 1:
-        final start =
-            _current.subtract(Duration(days: _current.weekday - 1));
+        final start = _current.subtract(Duration(days: _current.weekday - 1));
         final end = start.add(const Duration(days: 6));
         return '${DateFormat('MM.dd').format(start)} - ${DateFormat('MM.dd').format(end)}';
       default:
@@ -102,9 +98,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       StorageService.getTodos(widget.username),
     ]);
     if (!mounted) return;
-    final allBlocks = (results[0] as List<TodoPlanBlock>)
-        .where((b) => !b.isDeleted)
-        .toList();
+    final allBlocks =
+        (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
     final todos =
         (results[1] as List<TodoItem>).where((t) => !t.isDeleted).toList();
 
@@ -124,8 +119,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('规划统计',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title:
+            const Text('规划统计', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: _loading
@@ -146,6 +141,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                   _buildTodoRanking(theme),
                   const SizedBox(height: 20),
                   _buildMissedList(theme),
+                  const SizedBox(height: 20),
+                  _buildAiSuggestionCard(theme),
                   const SizedBox(height: 80),
                 ],
               ),
@@ -174,32 +171,27 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       children: [
         IconButton(icon: const Icon(Icons.chevron_left), onPressed: _prev),
         Text(_rangeLabel,
-            style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w600)),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         IconButton(icon: const Icon(Icons.chevron_right), onPressed: _next),
       ],
     );
   }
 
   Widget _buildOverviewCard(ThemeData theme) {
-    final planned =
-        _allBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
-    final actual = _allBlocks.fold<int>(
-        0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+    final planned = _allBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
+    final actual =
+        _allBlocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
     final done = _allBlocks
         .where((b) =>
             b.status == TodoPlanStatus.finished ||
             (b.plannedMinutes > 0 &&
-                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.9))
+                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.8))
         .length;
-    final missed = _allBlocks
-        .where((b) => b.status == TodoPlanStatus.missed)
-        .length;
-    final skipped = _allBlocks
-        .where((b) => b.status == TodoPlanStatus.skipped)
-        .length;
-    final rate =
-        planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
+    final missed =
+        _allBlocks.where((b) => b.status == TodoPlanStatus.missed).length;
+    final skipped =
+        _allBlocks.where((b) => b.status == TodoPlanStatus.skipped).length;
+    final rate = planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -207,8 +199,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
         gradient: LinearGradient(
           colors: [
             theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-            theme.colorScheme.surfaceContainerHighest
-                .withValues(alpha: 0.3),
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -234,8 +225,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
           ),
           Text('达成率',
               style: TextStyle(
-                  fontSize: 14,
-                  color: theme.colorScheme.onSurfaceVariant)),
+                  fontSize: 14, color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -246,8 +236,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                   '完成', '$done', Colors.blue, Icons.check_circle_outline),
               _overviewChip(
                   '漏做', '$missed', Colors.redAccent, Icons.cancel_outlined),
-              _overviewChip(
-                  '跳过', '$skipped', Colors.orange, Icons.skip_next),
+              _overviewChip('跳过', '$skipped', Colors.orange, Icons.skip_next),
             ],
           ),
         ],
@@ -266,13 +255,10 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
         const SizedBox(height: 4),
         Text(value,
             style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: color)),
+                fontSize: 16, fontWeight: FontWeight.bold, color: color)),
         Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                color: color.withValues(alpha: 0.7))),
+            style:
+                TextStyle(fontSize: 11, color: color.withValues(alpha: 0.7))),
       ],
     );
   }
@@ -288,8 +274,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
           day = DateTime(_current.year, _current.month, _current.day);
           break;
         case 1:
-          final weekStart = _current
-              .subtract(Duration(days: _current.weekday - 1));
+          final weekStart =
+              _current.subtract(Duration(days: _current.weekday - 1));
           day = DateTime(weekStart.year, weekStart.month, weekStart.day)
               .add(Duration(days: i));
           break;
@@ -298,32 +284,27 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       }
       final dayBlocks = _allBlocks.where((b) {
         final s = DateTime.fromMillisecondsSinceEpoch(b.startTime);
-        return s.year == day.year &&
-            s.month == day.month &&
-            s.day == day.day;
+        return s.year == day.year && s.month == day.month && s.day == day.day;
       }).toList();
-      final planned =
-          dayBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
-      final actual = dayBlocks.fold<int>(
-          0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+      final planned = dayBlocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
+      final actual =
+          dayBlocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
       chartData.add(_ChartPoint(
-        label: DateFormat(_dimension == 2 ? 'dd' : 'E', 'zh_CN')
-            .format(day),
+        label: DateFormat(_dimension == 2 ? 'dd' : 'E', 'zh_CN').format(day),
         planned: planned,
         actual: actual,
       ));
     }
 
-    final maxVal = chartData
-        .map((d) => max(d.planned, d.actual))
-        .fold<int>(0, max);
+    final maxVal =
+        chartData.map((d) => max(d.planned, d.actual)).fold<int>(0, max);
     if (maxVal <= 0) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest
-            .withValues(alpha: 0.15),
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -345,8 +326,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
             const SizedBox(width: 4),
             Text('计划',
                 style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurfaceVariant)),
+                    fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(width: 12),
             Container(
                 width: 10,
@@ -357,8 +337,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
             const SizedBox(width: 4),
             Text('实际',
                 style: TextStyle(
-                    fontSize: 11,
-                    color: theme.colorScheme.onSurfaceVariant)),
+                    fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
           ]),
           const SizedBox(height: 12),
           SizedBox(
@@ -378,31 +357,19 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                           children: [
                             Container(
                               width: 10,
-                              height: max(
-                                  2,
-                                  110 *
-                                      d.planned /
-                                      maxVal),
+                              height: max(2, 110 * d.planned / maxVal),
                               decoration: BoxDecoration(
-                                color: Colors.deepPurple
-                                    .withValues(alpha: 0.4),
-                                borderRadius:
-                                    BorderRadius.circular(3),
+                                color: Colors.deepPurple.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(3),
                               ),
                             ),
                             const SizedBox(width: 2),
                             Container(
                               width: 10,
-                              height: max(
-                                  2,
-                                  110 *
-                                      d.actual /
-                                      maxVal),
+                              height: max(2, 110 * d.actual / maxVal),
                               decoration: BoxDecoration(
-                                color:
-                                    Colors.green.withValues(alpha: 0.6),
-                                borderRadius:
-                                    BorderRadius.circular(3),
+                                color: Colors.green.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(3),
                               ),
                             ),
                           ],
@@ -411,8 +378,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                         Text(d.label,
                             style: TextStyle(
                                 fontSize: 9,
-                                color: theme
-                                    .colorScheme.onSurfaceVariant)),
+                                color: theme.colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ),
@@ -445,8 +411,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest
-            .withValues(alpha: 0.15),
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -461,8 +427,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
           ...sorted.take(8).map((e) {
             final todo = _todos
                 .cast<TodoItem?>()
-                .firstWhere((t) => t?.id == e.key,
-                    orElse: () => null);
+                .firstWhere((t) => t?.id == e.key, orElse: () => null);
             final title = todo?.title ?? e.key;
             final planned = todoPlannedMap[e.key] ?? 0;
             return Padding(
@@ -483,8 +448,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                       Text('${e.value}m / ${planned}m',
                           style: TextStyle(
                               fontSize: 12,
-                              color:
-                                  theme.colorScheme.onSurfaceVariant)),
+                              color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -493,10 +457,10 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                     child: LinearProgressIndicator(
                       value: maxVal > 0 ? e.value / maxVal : 0,
                       minHeight: 6,
-                      backgroundColor: theme
-                          .colorScheme.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation(
-                          theme.colorScheme.primary),
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
+                      valueColor:
+                          AlwaysStoppedAnimation(theme.colorScheme.primary),
                     ),
                   ),
                 ],
@@ -518,8 +482,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest
-            .withValues(alpha: 0.15),
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -545,8 +509,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                 .format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
             final todo = _todos
                 .cast<TodoItem?>()
-                .firstWhere((t) => t?.id == b.todoId,
-                    orElse: () => null);
+                .firstWhere((t) => t?.id == b.todoId, orElse: () => null);
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
@@ -560,8 +523,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurface)),
+                            fontSize: 13, color: theme.colorScheme.onSurface)),
                   ),
                   Text('${b.plannedMinutes}m',
                       style: TextStyle(
@@ -587,6 +549,60 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     if (rate >= 0.8) return Colors.green;
     if (rate >= 0.5) return Colors.orange;
     return Colors.redAccent;
+  }
+
+  Widget _buildAiSuggestionCard(ThemeData theme) {
+    if (_allBlocks.isEmpty) return const SizedBox.shrink();
+    final missedOrEmpty = _allBlocks
+        .where((b) =>
+            b.status == TodoPlanStatus.missed ||
+            (b.plannedMinutes > 0 && b.actualFocusSeconds <= 0))
+        .length;
+    final lowCompletion = _allBlocks.where((b) {
+      if (b.plannedMinutes <= 0 || b.actualFocusSeconds <= 0) return false;
+      final ratio = b.actualFocusSeconds / (b.plannedMinutes * 60);
+      return ratio < 0.8;
+    }).length;
+    final totalPlanned =
+        _allBlocks.fold<int>(0, (sum, block) => sum + block.plannedMinutes);
+    final suggestions = <String>[
+      if (missedOrEmpty >= 3) '漏做块较多，建议顺延未开始的规划，并减少同一天的连续安排。',
+      if (lowCompletion >= 2) '多个规划未达到 80%，下次可把长规划拆成 25min x N 的番茄块。',
+      if (totalPlanned >= 480) '计划总量偏满，建议保留课程和休息缓冲，避免把空闲时间排满。',
+      if (missedOrEmpty < 3 && lowCompletion < 2 && totalPlanned < 480)
+        '当前规划达成情况稳定，可以继续按这个节奏排期。',
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.auto_awesome,
+                size: 18, color: theme.colorScheme.secondary),
+            const SizedBox(width: 6),
+            Text('AI 建议',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface)),
+          ]),
+          const SizedBox(height: 10),
+          ...suggestions.map((text) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(text,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurfaceVariant)),
+              )),
+        ],
+      ),
+    );
   }
 }
 

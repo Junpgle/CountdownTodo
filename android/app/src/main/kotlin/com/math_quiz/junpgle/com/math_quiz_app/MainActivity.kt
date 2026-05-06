@@ -114,6 +114,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingAnalysisImagePath: String? = null
     // 保存待处理的规划块通知 ID（在methodChannel初始化前）
     private var pendingPlanBlockNotifId: Int? = null
+    private var pendingPlanBlockId: String? = null
+    private var pendingPlanBlockTodoId: String? = null
     private val pendingCalendarPermissionResults = mutableListOf<MethodChannel.Result>()
     // 手环通信插件，全局可访问
     private var bandPlugin: BandCommunicationPlugin? = null
@@ -230,18 +232,28 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private fun handlePlanBlockFromIntent(intent: Intent?) {
         if (intent?.getBooleanExtra("open_plan_block", false) != true) return
         val notifId = intent.getIntExtra("plan_block_notif_id", -1)
+        val planBlockId = intent.getStringExtra("plan_block_id")
+        val todoId = intent.getStringExtra("todo_id")
         if (notifId < 0) return
-        Log.d(TAG, "📅 handlePlanBlockFromIntent: notifId=$notifId")
+        Log.d(TAG, "📅 handlePlanBlockFromIntent: notifId=$notifId, planBlockId=$planBlockId")
         // 清除 extra，防止重复处理
         intent.removeExtra("open_plan_block")
         intent.removeExtra("plan_block_notif_id")
+        intent.removeExtra("plan_block_id")
+        intent.removeExtra("todo_id")
+
+        val payload = mutableMapOf<String, Any>("notifId" to notifId)
+        if (!planBlockId.isNullOrBlank()) payload["planBlockId"] = planBlockId
+        if (!todoId.isNullOrBlank()) payload["todoId"] = todoId
 
         if (methodChannel != null) {
-            methodChannel?.invokeMethod("openPlanBlock", mapOf("notifId" to notifId))
-            Log.d(TAG, "📅 Invoked openPlanBlock to Flutter with notifId: $notifId")
+            methodChannel?.invokeMethod("openPlanBlock", payload)
+            Log.d(TAG, "📅 Invoked openPlanBlock to Flutter with payload: $payload")
         } else {
             pendingPlanBlockNotifId = notifId
-            Log.d(TAG, "📅 Saved pending plan block notifId: $notifId")
+            pendingPlanBlockId = planBlockId
+            pendingPlanBlockTodoId = todoId
+            Log.d(TAG, "📅 Saved pending plan block payload: $payload")
         }
     }
 
@@ -657,8 +669,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         // 处理待处理的规划块通知
         pendingPlanBlockNotifId?.let { notifId ->
             Log.d(TAG, "📅 Processing pending plan block notifId: $notifId")
-            methodChannel?.invokeMethod("openPlanBlock", mapOf("notifId" to notifId))
+            val payload = mutableMapOf<String, Any>("notifId" to notifId)
+            pendingPlanBlockId?.let { payload["planBlockId"] = it }
+            pendingPlanBlockTodoId?.let { payload["todoId"] = it }
+            methodChannel?.invokeMethod("openPlanBlock", payload)
             pendingPlanBlockNotifId = null
+            pendingPlanBlockId = null
+            pendingPlanBlockTodoId = null
         }
 
         // 处理待处理的 Shortcut 导航

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import 'pomodoro_service.dart';
@@ -16,6 +18,7 @@ class AiTodoActionExecutionResult {
     this.newPomodoroTags = const [],
     this.updatedPomodoroTags = const [],
     this.newPlanBlocks = const [],
+    this.updatedPlanBlocks = const [],
   });
 
   final List<TodoItem> newTodos;
@@ -30,6 +33,7 @@ class AiTodoActionExecutionResult {
   final List<PomodoroTag> newPomodoroTags;
   final List<PomodoroTag> updatedPomodoroTags;
   final List<TodoPlanBlock> newPlanBlocks;
+  final List<TodoPlanBlock> updatedPlanBlocks;
 
   bool get hasChanges =>
       newTodos.isNotEmpty ||
@@ -43,7 +47,8 @@ class AiTodoActionExecutionResult {
       updatedTodoGroups.isNotEmpty ||
       newPomodoroTags.isNotEmpty ||
       updatedPomodoroTags.isNotEmpty ||
-      newPlanBlocks.isNotEmpty;
+      newPlanBlocks.isNotEmpty ||
+      updatedPlanBlocks.isNotEmpty;
 }
 
 class AiTodoActionExecutor {
@@ -54,6 +59,7 @@ class AiTodoActionExecutor {
     List<CountdownItem> existingCountdowns = const [],
     List<TodoGroup> existingTodoGroups = const [],
     List<PomodoroTag> existingPomodoroTags = const [],
+    List<TodoPlanBlock> existingPlanBlocks = const [],
     Map<String, int> categoryReminderDefaults = const {},
     DateTime? now,
   }) {
@@ -69,6 +75,7 @@ class AiTodoActionExecutor {
     final newPomodoroTags = <PomodoroTag>[];
     final updatedPomodoroTags = <PomodoroTag>[];
     final newPlanBlocks = <TodoPlanBlock>[];
+    final updatedPlanBlocks = <TodoPlanBlock>[];
     final selectedActions = actions.where(
       (action) => action.isSelected && !action.isAdded && !action.isIgnored,
     );
@@ -95,9 +102,17 @@ class AiTodoActionExecutor {
       }
 
       if (action.isPlanBlockAction) {
-        final block = _buildPlanBlock(action, existingTodos);
+        final block = _buildPlanBlock(
+          action,
+          existingTodos,
+          existingPlanBlocks,
+        );
         if (block != null) {
-          newPlanBlocks.add(block);
+          if (action.type == AiTodoActionType.createPlanBlock) {
+            newPlanBlocks.add(block);
+          } else {
+            updatedPlanBlocks.add(block);
+          }
           action.isAdded = true;
         }
         continue;
@@ -173,13 +188,66 @@ class AiTodoActionExecutor {
       newPomodoroTags: newPomodoroTags,
       updatedPomodoroTags: updatedPomodoroTags,
       newPlanBlocks: newPlanBlocks,
+      updatedPlanBlocks: updatedPlanBlocks,
     );
   }
 
   static TodoPlanBlock? _buildPlanBlock(
     AiTodoAction action,
     List<Map<String, dynamic>> existingTodos,
+    List<TodoPlanBlock> existingPlanBlocks,
   ) {
+    if (action.type != AiTodoActionType.createPlanBlock) {
+      final blockId = action.planBlockId;
+      if (blockId == null || blockId.isEmpty) return null;
+      TodoPlanBlock? existing;
+      for (final block in existingPlanBlocks) {
+        if (block.uuid == blockId) {
+          existing = block;
+          break;
+        }
+      }
+      if (existing == null) return null;
+      final updated = TodoPlanBlock.fromJson(existing.toJson());
+      if (action.type == AiTodoActionType.deletePlanBlock) {
+        updated.isDeleted = true;
+      } else if (action.type == AiTodoActionType.skipPlanBlock) {
+        updated.status = TodoPlanStatus.skipped;
+      } else {
+        if (action.todoId?.isNotEmpty == true) updated.todoId = action.todoId!;
+        if (action.title?.trim().isNotEmpty == true) {
+          updated.titleSnapshot = action.title!.trim();
+        }
+        final start = action.startTime != null
+            ? DateTime.tryParse(action.startTime!)
+            : null;
+        final end = action.dueDate != null
+            ? DateTime.tryParse(action.dueDate!)
+            : (start != null && action.durationMinutes != null
+                ? start.add(Duration(minutes: action.durationMinutes!))
+                : null);
+        if (start != null) updated.startTime = start.millisecondsSinceEpoch;
+        if (end != null &&
+            end.isAfter(
+                DateTime.fromMillisecondsSinceEpoch(updated.startTime))) {
+          updated.endTime = end.millisecondsSinceEpoch;
+        }
+        updated.plannedMinutes = max(
+          1,
+          DateTime.fromMillisecondsSinceEpoch(updated.endTime)
+              .difference(
+                  DateTime.fromMillisecondsSinceEpoch(updated.startTime))
+              .inMinutes,
+        );
+        if (action.remark != null) updated.remark = action.remark;
+        if (action.reminderMinutes != null) {
+          updated.reminderMinutes = action.reminderMinutes!;
+        }
+      }
+      updated.markAsChanged();
+      return updated;
+    }
+
     final todoId = action.todoId;
     if (todoId == null || todoId.isEmpty || action.startTime == null) {
       return null;

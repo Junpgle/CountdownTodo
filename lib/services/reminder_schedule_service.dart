@@ -206,6 +206,7 @@ class ReminderScheduleService {
 
     // ── 规划块提醒 ──────────────────────────────────────────────────
     final planBlocks = await StorageService.getPlanBlocks(username);
+    final remindedBlocks = <TodoPlanBlock>[];
     for (int i = 0; i < planBlocks.length && i < 999; i++) {
       final pb = planBlocks[i];
       if (pb.isDeleted ||
@@ -222,6 +223,16 @@ class ReminderScheduleService {
       }
       final triggerAt = startTime.subtract(Duration(minutes: advance));
 
+      if ((pb.status == TodoPlanStatus.planned ||
+              pb.status == TodoPlanStatus.reminded) &&
+          !triggerAt.isAfter(now) &&
+          startTime.isAfter(now) &&
+          pb.status != TodoPlanStatus.reminded) {
+        pb.status = TodoPlanStatus.reminded;
+        pb.markAsChanged();
+        remindedBlocks.add(pb);
+      }
+
       if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
         reminders.add({
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
@@ -229,8 +240,15 @@ class ReminderScheduleService {
           'text':
               '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
+          'type': 'plan_block',
+          'planBlockId': pb.uuid,
+          'todoId': pb.todoId,
         });
       }
+    }
+
+    if (remindedBlocks.isNotEmpty) {
+      await StorageService.savePlanBlocks(username, remindedBlocks);
     }
 
     if (reminders.isEmpty) {

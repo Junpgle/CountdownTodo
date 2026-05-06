@@ -136,6 +136,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _allPomodoros = [];
   List<TodoItem> _allTodos = [];
+  List<TodoGroup> _allTodoGroups = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
   _EntryMode _entryMode = _EntryMode.log;
 
@@ -189,6 +190,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       PomodoroService.getRecords(),
       StorageService.getTodos(widget.username),
       StorageService.getPlanBlocks(widget.username),
+      StorageService.getTodoGroups(widget.username),
     ]);
 
     if (!mounted) return;
@@ -203,6 +205,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       _allPlanBlocks = (results[4] as List<TodoPlanBlock>)
           .where((p) => !p.isDeleted)
           .toList();
+      _allTodoGroups =
+          (results[5] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
       _isLoading = false;
     });
 
@@ -454,6 +458,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                         pomodoros: _allPomodoros,
                         tags: _tags,
                         todos: _allTodos,
+                        todoGroups: _allTodoGroups,
                         username: widget.username,
                         entryMode: _entryMode,
                         onEntryModeChanged: (mode) =>

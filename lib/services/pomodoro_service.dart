@@ -788,10 +788,10 @@ class PomodoroService {
           if (!pb.pomodoroRecordIds.contains(record.uuid)) {
             pb.pomodoroRecordIds.add(record.uuid);
           }
-          // 3. 状态自动机：如果时长达标（超过计划时长的 90%），标记为已完成
+          // 3. 状态自动机：如果时长达标（超过计划时长的 80%），标记为已完成
           if (pb.status == TodoPlanStatus.planned ||
               pb.status == TodoPlanStatus.focusing) {
-            if (pb.actualFocusSeconds >= pb.plannedMinutes * 60 * 0.9) {
+            if (pb.actualFocusSeconds >= pb.plannedMinutes * 60 * 0.8) {
               pb.status = TodoPlanStatus.finished;
             } else {
               pb.status = TodoPlanStatus.planned;

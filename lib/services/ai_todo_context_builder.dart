@@ -67,6 +67,7 @@ JSON操作块必须且只能使用以下协议：
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
 - plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
 - create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
+- update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}

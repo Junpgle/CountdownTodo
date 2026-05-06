@@ -462,6 +462,8 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         return Icons.school_outlined;
       case CalendarSyncEntryType.countdown:
         return Icons.event_outlined;
+      case CalendarSyncEntryType.planBlock:
+        return Icons.event_note_outlined;
     }
   }
 
@@ -473,6 +475,8 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         return Colors.indigo;
       case CalendarSyncEntryType.countdown:
         return Colors.orange;
+      case CalendarSyncEntryType.planBlock:
+        return Colors.teal;
     }
   }
 
