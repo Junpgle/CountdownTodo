@@ -66,7 +66,7 @@ JSON操作块必须且只能使用以下协议：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
 - plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
-- create_plan_block: {“action”:”create_plan_block”,”blocks”:[{“todoId”:”已有待办ID”,”title”:”标题快照”,”startTime”:”YYYY-MM-DD HH:mm”,”dueDate”:”YYYY-MM-DD HH:mm”,”durationMinutes”:60,”remark”:”备注”,”reminderMinutes”:5}]}，用于把已有待办安排到具体时间块；用户说”规划今天/明天/本周时间””安排到几点到几点”时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
+- create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
 - complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
 - delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
@@ -102,7 +102,8 @@ JSON操作块必须且只能使用以下协议：
 3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
 5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整
-6. 规划完整性：当用户要求规划时间（今天/明天/本周等），文本中提到的每一个时间段如果对应已有待办，都必须在[ACTION_START]中生成create_plan_block，不能只生成部分。如果文本中规划了5个时间段对应5个已有待办，action中必须有5个blocks''';
+6. 规划完整性：当用户要求规划时间（今天/明天/本周等），文本中提到的每一个时间段如果对应已有待办，都必须在[ACTION_START]中生成create_plan_block，不能只生成部分。如果文本中规划了5个时间段对应5个已有待办，action中必须有5个blocks
+7. 规划避让：如果上下文提供课程表、已有规划或专注记录，生成create_plan_block时必须避开这些已占用时间；不要把待办规划到课程时间内''';
   }
 
   /// 根据用户消息关键词，返回需要注入的上下文片段。无匹配返回 null。
@@ -120,7 +121,7 @@ JSON操作块必须且只能使用以下协议：
     final nowValue = now ?? DateTime.now();
     final sections = <String>[];
 
-    if (_matchesAny(userMessage, _courseKeywords) && courses.isNotEmpty) {
+    if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
       sections.add(_formatCourses(courses, userMessage, nowValue));
     }
     if (_matchesAny(userMessage, _timeLogKeywords) &&
@@ -154,6 +155,12 @@ JSON操作块必须且只能使用以下协议：
     return keywords.any((k) => text.contains(k));
   }
 
+  static bool _shouldInjectCourseContext(String text) {
+    if (_matchesAny(text, _courseKeywords)) return true;
+    return _matchesAny(text, _planningKeywords) &&
+        _matchesAny(text, _planningTimeKeywords);
+  }
+
   static const _courseKeywords = [
     '课',
     '课程',
@@ -167,6 +174,37 @@ JSON操作块必须且只能使用以下协议：
     '排课',
     '选课',
     '调课',
+  ];
+  static const _planningKeywords = [
+    '规划',
+    '安排',
+    '计划',
+    '排一下',
+    '排时间',
+    '待办规划',
+    '今日计划',
+    '日程',
+  ];
+  static const _planningTimeKeywords = [
+    '今天',
+    '今日',
+    '明天',
+    '明日',
+    '后天',
+    '本周',
+    '这周',
+    '下周',
+    '本月',
+    '这个月',
+    '时间',
+    '上午',
+    '下午',
+    '晚上',
+    '早上',
+    '中午',
+    '点',
+    '分钟',
+    '小时',
   ];
   static const _timeLogKeywords = [
     '专注',
@@ -215,6 +253,24 @@ JSON操作块必须且只能使用以下协议：
     return basePrompt
         .replaceAll('{now}', nowText)
         .replaceAll('{todos}', _formatTodos(todos, todoGroups));
+  }
+
+  static String buildManualCopyPrompt(List<Map<String, String>> messages) {
+    final buffer = StringBuffer()
+      ..writeln('请按下面的对话内容扮演待办助手，只回复 assistant 的最终内容。')
+      ..writeln(
+          '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除数据，必须输出可被应用识别的 [ACTION_START] JSON 操作块。')
+      ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。');
+
+    for (final message in messages) {
+      final role = (message['role'] ?? 'user').toUpperCase();
+      final content = message['content'] ?? '';
+      buffer
+        ..writeln()
+        ..writeln('===== $role =====')
+        ..writeln(content);
+    }
+    return buffer.toString().trim();
   }
 
   static String _formatTodos(

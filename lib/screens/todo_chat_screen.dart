@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
@@ -76,8 +77,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _chatApiUrl = '';
   String _globalModelName = '';
   String _lastRequestSmartContext = '';
+  String _pendingManualOriginalText = '';
+  String _pendingManualSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
+  bool _inputHasText = false;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
@@ -111,6 +115,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   @override
   void initState() {
     super.initState();
+    _inputCtrl.addListener(_handleInputChanged);
     _initSessions();
     _loadPromptSettings();
     _loadChatConfig();
@@ -139,9 +144,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   @override
   void dispose() {
+    _inputCtrl.removeListener(_handleInputChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _handleInputChanged() {
+    final hasText = _inputCtrl.text.trim().isNotEmpty;
+    if (hasText == _inputHasText) return;
+    setState(() => _inputHasText = hasText);
   }
 
   Future<void> _initSessions() async {
@@ -296,22 +308,28 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   static const int _maxContextMessages = 15;
 
-  List<Map<String, String>> _buildApiMessages() {
+  List<Map<String, String>> _buildApiMessages({String? pendingUserText}) {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
     ];
 
-    if (_messages.length <= _maxContextMessages) {
-      for (final msg in _messages) {
+    final sourceMessages = <ChatMessage>[
+      ..._messages,
+      if (pendingUserText != null && pendingUserText.trim().isNotEmpty)
+        ChatMessage(role: ChatRole.user, content: pendingUserText.trim()),
+    ];
+
+    if (sourceMessages.length <= _maxContextMessages) {
+      for (final msg in sourceMessages) {
         apiMessages.add({
           'role': msg.role == ChatRole.user ? 'user' : 'assistant',
           'content': msg.content,
         });
       }
     } else {
-      final firstUserMsg = _messages.firstWhere(
+      final firstUserMsg = sourceMessages.firstWhere(
         (m) => m.role == ChatRole.user,
-        orElse: () => _messages.first,
+        orElse: () => sourceMessages.first,
       );
       apiMessages.add({
         'role': 'user',
@@ -327,8 +345,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       }
 
       final recentCount = _maxContextMessages - 2;
-      final startIndex = _messages.length - recentCount;
-      final recentMessages = _messages.sublist(startIndex > 0 ? startIndex : 0);
+      final startIndex = sourceMessages.length - recentCount;
+      final recentMessages =
+          sourceMessages.sublist(startIndex > 0 ? startIndex : 0);
       for (final msg in recentMessages) {
         if (msg.content == firstUserMsg.content) continue;
         apiMessages.add({
@@ -413,11 +432,29 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('未配置大模型'),
-            content: const Text('使用AI助手需要先配置API地址和密钥，是否前往设置？'),
+            content: const Text(
+              '可以先配置API地址和密钥，也可以复制完整提示词到外部AI，稍后把回复粘贴回来识别。',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('取消'),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx, false);
+                  _copyManualPromptFromInput();
+                },
+                icon: const Icon(Icons.content_copy_rounded, size: 16),
+                label: const Text('复制提示词'),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx, false);
+                  _pasteManualReplyFromClipboard();
+                },
+                icon: const Icon(Icons.assignment_rounded, size: 16),
+                label: const Text('粘贴识别'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
@@ -580,6 +617,127 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         );
       }
     }
+  }
+
+  Future<void> _copyManualPromptFromInput() async {
+    final text = _inputCtrl.text.trim();
+    if (text.isEmpty) return;
+
+    final apiMessages = _buildApiMessages(pendingUserText: text);
+    final manualPrompt =
+        AiTodoContextBuilder.buildManualCopyPrompt(apiMessages);
+    _pendingManualOriginalText = text;
+    _pendingManualSmartContext = _lastRequestSmartContext;
+    await Clipboard.setData(ClipboardData(text: manualPrompt));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已复制完整提示词，可粘贴到外部AI')),
+    );
+  }
+
+  Future<void> _pasteManualReplyFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final replyCtrl = TextEditingController(text: data?.text?.trim() ?? '');
+
+    final reply = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('粘贴AI回复并识别'),
+        content: SizedBox(
+          width: MediaQuery.of(ctx).size.width * 0.86,
+          child: TextField(
+            controller: replyCtrl,
+            maxLines: 12,
+            minLines: 6,
+            decoration: const InputDecoration(
+              hintText: '粘贴外部AI返回的完整内容，包含正文和 ACTION 操作块',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, replyCtrl.text),
+            icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+            label: const Text('识别'),
+          ),
+        ],
+      ),
+    );
+    replyCtrl.dispose();
+
+    if (reply == null || reply.trim().isEmpty) return;
+    await _importManualAiReply(reply.trim());
+  }
+
+  Future<void> _importManualAiReply(String fullContent) async {
+    final originalText = _pendingManualOriginalText.isNotEmpty
+        ? _pendingManualOriginalText
+        : (_inputCtrl.text.trim().isNotEmpty
+            ? _inputCtrl.text.trim()
+            : _lastUserContent());
+    final smartContext = _pendingManualSmartContext;
+    final existingTodoTitles = {
+      for (final todo in widget.todos)
+        if (todo['id'] != null) todo['id'].toString(): '${todo['title'] ?? ''}',
+    };
+    final todoActions = AiActionParser.extractTodoActions(
+      fullContent,
+      originalText: originalText,
+      existingTodoTitles: existingTodoTitles,
+    );
+    final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
+    final cleanContent = AiActionParser.cleanActionContent(fullContent);
+
+    final newMessages = <ChatMessage>[];
+    if (originalText.isNotEmpty && _lastUserContent() != originalText) {
+      newMessages.add(ChatMessage(role: ChatRole.user, content: originalText));
+    }
+    final assistantMsg = ChatMessage(
+      role: ChatRole.assistant,
+      content: cleanContent.isEmpty ? fullContent : cleanContent,
+      rawContent: fullContent,
+      smartContext: smartContext,
+      todoActions: todoActions.isNotEmpty ? todoActions : null,
+    );
+    newMessages.add(assistantMsg);
+
+    setState(() {
+      _messages.addAll(newMessages);
+      _streamingContent = '';
+      _streamingReasoning = '';
+      _isLoading = false;
+      _cancelGeneration = null;
+      _suggestions = inlineSuggestions.isNotEmpty
+          ? inlineSuggestions
+          : _getDefaultSuggestions();
+      if (todoActions.isNotEmpty) {
+        _actionRailCollapsed = false;
+      }
+      if (_inputCtrl.text.trim() == originalText) {
+        _inputCtrl.clear();
+      }
+      _pendingManualOriginalText = '';
+      _pendingManualSmartContext = '';
+    });
+    for (final message in newMessages) {
+      await ChatStorageService.addMessage(message);
+    }
+    _scrollToBottom();
+    _generateSessionTitle();
+  }
+
+  String _lastUserContent() {
+    for (final message in _messages.reversed) {
+      if (message.role == ChatRole.user) return message.content;
+    }
+    return '';
   }
 
   void _stopGeneration() {
@@ -3589,7 +3747,39 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildModelSelector(),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _buildModelSelector(),
+                  ),
+                ),
+                if (!_isLoading && _inputHasText)
+                  TextButton.icon(
+                    icon: const Icon(Icons.content_copy_rounded, size: 16),
+                    label: const Text('复制提示词'),
+                    onPressed: _copyManualPromptFromInput,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (!_isLoading)
+                  IconButton(
+                    icon: Icon(
+                      Icons.assignment_rounded,
+                      size: 17,
+                      color: colorScheme.onSurface.withValues(alpha: 0.58),
+                    ),
+                    onPressed: _pasteManualReplyFromClipboard,
+                    tooltip: '粘贴AI回复识别',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(8),
+                  ),
                 IconButton(
                   icon: Icon(
                     Icons.delete_sweep_rounded,
