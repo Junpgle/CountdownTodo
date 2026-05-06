@@ -33,6 +33,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   bool _isLoading = true;
   List<TodoPlanBlock> _planBlocks = [];
   List<TodoItem> _todos = [];
+  List<TodoGroup> _todoGroups = [];
   List<PomodoroTag> _tags = [];
 
   @override
@@ -40,7 +41,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final now = DateTime.now();
-    _focusedDate = widget.initialDate ?? DateTime(now.year, now.month, now.day);
+    final initial = widget.initialDate ?? now;
+    _focusedDate = DateTime(initial.year, initial.month, initial.day);
     StorageService.dataRefreshNotifier.addListener(_onDataRefresh);
     _loadData();
   }
@@ -66,17 +68,19 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final results = await Future.wait([
       StorageService.getPlanBlocksByDay(widget.username, _focusedDate),
       StorageService.getTodos(widget.username),
+      StorageService.getTodoGroups(widget.username),
       PomodoroService.getTags(),
     ]);
 
     if (!mounted) return;
 
-    final blocks = (results[0] as List<TodoPlanBlock>)
-        .where((b) => !b.isDeleted)
-        .toList();
+    final blocks =
+        (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
     final todos =
         (results[1] as List<TodoItem>).where((t) => !t.isDeleted).toList();
-    final tags = results[2] as List<PomodoroTag>;
+    final todoGroups =
+        (results[2] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
+    final tags = results[3] as List<PomodoroTag>;
 
     // 自动标记过期未完成的规划块为 missed
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -97,6 +101,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     setState(() {
       _planBlocks = blocks;
       _todos = todos;
+      _todoGroups = todoGroups;
       _tags = tags;
       _isLoading = false;
     });
@@ -104,14 +109,16 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
 
   void _prevDay() {
     setState(() {
-      _focusedDate = _focusedDate.subtract(const Duration(days: 1));
+      final date = _focusedDate.subtract(const Duration(days: 1));
+      _focusedDate = DateTime(date.year, date.month, date.day);
       _loadData();
     });
   }
 
   void _nextDay() {
     setState(() {
-      _focusedDate = _focusedDate.add(const Duration(days: 1));
+      final date = _focusedDate.add(const Duration(days: 1));
+      _focusedDate = DateTime(date.year, date.month, date.day);
       _loadData();
     });
   }
@@ -159,8 +166,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
             tooltip: '规划统计',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) =>
-                    PlanBlockStatsScreen(username: widget.username),
+                builder: (_) => PlanBlockStatsScreen(username: widget.username),
               ),
             ),
           ),
@@ -180,6 +186,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                     date: _focusedDate,
                     blocks: _planBlocks,
                     todos: _todos,
+                    todoGroups: _todoGroups,
                     tags: _tags,
                     username: widget.username,
                     initialTodoId: widget.initialTodoId,
@@ -276,6 +283,7 @@ class _PlanGridView extends StatefulWidget {
   final DateTime date;
   final List<TodoPlanBlock> blocks;
   final List<TodoItem> todos;
+  final List<TodoGroup> todoGroups;
   final List<PomodoroTag> tags;
   final String username;
   final String? initialTodoId;
@@ -285,6 +293,7 @@ class _PlanGridView extends StatefulWidget {
     required this.date,
     required this.blocks,
     required this.todos,
+    required this.todoGroups,
     required this.tags,
     required this.username,
     this.initialTodoId,
@@ -357,6 +366,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         startTime: startTime,
         endTime: endTime,
         todos: widget.todos,
+        todoGroups: widget.todoGroups,
         username: widget.username,
         initialTodoId: widget.initialTodoId,
         onSaved: widget.onRefresh,
@@ -593,6 +603,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         startTime: DateTime.fromMillisecondsSinceEpoch(block.startTime),
         endTime: DateTime.fromMillisecondsSinceEpoch(block.endTime),
         todos: widget.todos,
+        todoGroups: widget.todoGroups,
         username: widget.username,
         initialTodoId: block.todoId,
         onSaved: widget.onRefresh,
@@ -601,11 +612,30 @@ class _PlanGridViewState extends State<_PlanGridView> {
   }
 }
 
+class _TodoPlanSelectEntry {
+  const _TodoPlanSelectEntry._({
+    required this.value,
+    this.header,
+    this.todo,
+  });
+
+  factory _TodoPlanSelectEntry.header(String header, int index) =>
+      _TodoPlanSelectEntry._(value: '__todo_header_$index', header: header);
+
+  factory _TodoPlanSelectEntry.todo(TodoItem todo) =>
+      _TodoPlanSelectEntry._(value: todo.id, todo: todo);
+
+  final String value;
+  final String? header;
+  final TodoItem? todo;
+}
+
 class _AddPlanBlockSheet extends StatefulWidget {
   final TodoPlanBlock? block;
   final DateTime startTime;
   final DateTime endTime;
   final List<TodoItem> todos;
+  final List<TodoGroup> todoGroups;
   final String username;
   final String? initialTodoId;
   final VoidCallback onSaved;
@@ -615,6 +645,7 @@ class _AddPlanBlockSheet extends StatefulWidget {
     required this.startTime,
     required this.endTime,
     required this.todos,
+    required this.todoGroups,
     required this.username,
     this.initialTodoId,
     required this.onSaved,
@@ -629,6 +660,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
   late DateTime _start, _end;
   late TextEditingController _remarkCtrl;
   int _reminderMinutes = 5;
+  late List<_TodoPlanSelectEntry> _todoEntries;
 
   @override
   void initState() {
@@ -638,8 +670,20 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     _selectedTodoId = widget.block?.todoId ?? widget.initialTodoId;
     _remarkCtrl = TextEditingController(text: widget.block?.remark);
     _reminderMinutes = widget.block?.reminderMinutes ?? 5;
-    if (_selectedTodoId == null && widget.todos.isNotEmpty) {
-      _selectedTodoId = widget.todos.first.id;
+    _todoEntries = _buildTodoEntries(widget.todos, widget.todoGroups);
+    final selectedExists =
+        _todoEntries.any((entry) => entry.todo?.id == _selectedTodoId);
+    if (!selectedExists) {
+      _selectedTodoId = null;
+    }
+    if (_selectedTodoId == null) {
+      for (final entry in _todoEntries) {
+        final todo = entry.todo;
+        if (todo != null) {
+          _selectedTodoId = todo.id;
+          break;
+        }
+      }
     }
   }
 
@@ -652,6 +696,117 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
   TodoItem? get _selectedTodo => widget.todos
       .cast<TodoItem?>()
       .firstWhere((t) => t?.id == _selectedTodoId, orElse: () => null);
+
+  static List<_TodoPlanSelectEntry> _buildTodoEntries(
+    List<TodoItem> todos,
+    List<TodoGroup> groups,
+  ) {
+    final groupNameById = {
+      for (final group in groups) group.id: group.name,
+    };
+    int urgencyMs(TodoItem todo) {
+      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
+      if (todo.createdDate != null && todo.createdDate! > 0) {
+        return todo.createdDate!;
+      }
+      return 1 << 62;
+    }
+
+    String groupName(TodoItem todo) {
+      final groupId = todo.groupId;
+      if (groupId == null || groupId.isEmpty) return '未分类';
+      return groupNameById[groupId] ?? '未知分类';
+    }
+
+    int groupRank(TodoItem todo) {
+      final groupId = todo.groupId;
+      if (groupId == null || groupId.isEmpty) return 1 << 30;
+      final idx = groups.indexWhere((group) => group.id == groupId);
+      return idx == -1 ? (1 << 30) - 1 : idx;
+    }
+
+    final sorted = List<TodoItem>.from(todos)
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        final groupRankCompare = groupRank(a).compareTo(groupRank(b));
+        if (groupRankCompare != 0) return groupRankCompare;
+        final groupCompare = groupName(a).compareTo(groupName(b));
+        if (groupCompare != 0) return groupCompare;
+        final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
+        if (urgencyCompare != 0) return urgencyCompare;
+        return a.title.compareTo(b.title);
+      });
+
+    final entries = <_TodoPlanSelectEntry>[];
+    String? currentHeader;
+    var headerIndex = 0;
+    for (final todo in sorted) {
+      final header = '${todo.isDone ? "已完成" : "未完成"} · ${groupName(todo)}';
+      if (header != currentHeader) {
+        currentHeader = header;
+        entries.add(_TodoPlanSelectEntry.header(header, headerIndex++));
+      }
+      entries.add(_TodoPlanSelectEntry.todo(todo));
+    }
+    return entries;
+  }
+
+  String _todoGroupLabel(TodoItem todo) {
+    final groupId = todo.groupId;
+    if (groupId == null || groupId.isEmpty) return '未分类';
+    return widget.todoGroups
+            .cast<TodoGroup?>()
+            .firstWhere((group) => group?.id == groupId, orElse: () => null)
+            ?.name ??
+        '未知分类';
+  }
+
+  String _todoUrgencyLabel(TodoItem todo) {
+    final target = todo.dueDate ??
+        (todo.createdDate != null && todo.createdDate! > 0
+            ? DateTime.fromMillisecondsSinceEpoch(todo.createdDate!)
+            : null);
+    if (target == null) return '无时间';
+    return DateFormat('MM-dd HH:mm').format(target);
+  }
+
+  Widget _buildTodoDropdownRow(TodoItem todo) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 86),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            _todoGroupLabel(todo),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            todo.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              decoration: todo.isDone ? TextDecoration.lineThrough : null,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          todo.isDone ? '已完成' : _todoUrgencyLabel(todo),
+          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
 
   Future<TodoPlanBlock?> _save({bool closeSheet = true}) async {
     if (_selectedTodoId == null || !_end.isAfter(_start)) {
@@ -770,19 +925,40 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: _selectedTodoId,
+            initialValue: _selectedTodoId,
             isExpanded: true,
-            items: widget.todos
-                .map((t) => DropdownMenuItem(
-                      value: t.id,
-                      child: Text(
-                        t.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+            items: _todoEntries
+                .map((entry) => DropdownMenuItem(
+                      value: entry.value,
+                      enabled: entry.todo != null,
+                      child: entry.todo == null
+                          ? Text(
+                              entry.header!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            )
+                          : _buildTodoDropdownRow(entry.todo!),
                     ))
                 .toList(),
-            onChanged: (v) => setState(() => _selectedTodoId = v),
+            selectedItemBuilder: (context) => _todoEntries.map((entry) {
+              final todo = entry.todo;
+              if (todo == null) return const SizedBox.shrink();
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  todo.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            }).toList(),
+            onChanged: (v) {
+              if (v == null || v.startsWith('__todo_header_')) return;
+              setState(() => _selectedTodoId = v);
+            },
             decoration: InputDecoration(
               border:
                   OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -803,9 +979,10 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
                         final t = await showTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(_start));
-                        if (t != null)
+                        if (t != null) {
                           setState(() => _start = DateTime(_start.year,
                               _start.month, _start.day, t.hour, t.minute));
+                        }
                       },
                       child: Text(DateFormat('HH:mm').format(_start),
                           style: const TextStyle(fontSize: 16)),
@@ -825,9 +1002,10 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
                         final t = await showTimePicker(
                             context: context,
                             initialTime: TimeOfDay.fromDateTime(_end));
-                        if (t != null)
+                        if (t != null) {
                           setState(() => _end = DateTime(_end.year, _end.month,
                               _end.day, t.hour, t.minute));
+                        }
                       },
                       child: Text(DateFormat('HH:mm').format(_end),
                           style: const TextStyle(fontSize: 16)),
