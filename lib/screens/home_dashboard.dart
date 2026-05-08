@@ -197,12 +197,13 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();
   final GlobalKey _teamsButtonKey = GlobalKey();
+  final GlobalKey _aiButtonKey = GlobalKey();
   final GlobalKey _courseCenterKey = GlobalKey();
 
   Future<void> _openAiAssistantFromAppBar() async {
     final todoState = _todoSectionKey.currentState;
     if (todoState != null) {
-      await todoState.openAiAssistant();
+      await todoState.openAiAssistant(sourceKey: _aiButtonKey);
       return;
     }
 
@@ -231,6 +232,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       await AiTodoChatLauncher.open(
         context,
         username: widget.username,
+        sourceKey: _aiButtonKey,
         todos: _todos.where((t) => !t.isDone && !t.isDeleted).toList(),
         todoGroups: _todoGroups,
         courses: courses,
@@ -3430,6 +3432,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     onAiAssistant: _openAiAssistantFromAppBar,
                     searchKey: _searchButtonKey,
                     teamsKey: _teamsButtonKey,
+                    aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,

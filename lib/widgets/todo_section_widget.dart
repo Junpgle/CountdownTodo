@@ -179,13 +179,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
   }
 
-  Future<void> openAiAssistant() async {
+  Future<void> openAiAssistant({GlobalKey? sourceKey}) async {
     final aiContext = await _loadAiAssistantContext();
     if (!mounted) return;
 
     AiTodoChatLauncher.open(
       context,
       username: widget.username,
+      sourceKey: sourceKey,
       todos: widget.todos.where((t) => !t.isDone && !_isHistoricalTodo(t)).toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,
@@ -2421,40 +2422,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     return [...undone, ...done];
   }
 
-  String _folderDisplayModeLabel(_TodoFolderDisplayMode mode) {
-    switch (mode) {
-      case _TodoFolderDisplayMode.inline:
-        return '时间线内展示文件夹';
-      case _TodoFolderDisplayMode.separate:
-        return '文件夹单独展示';
-      case _TodoFolderDisplayMode.urgentFirst:
-        return '每个文件夹只展开最紧急待办';
-      case _TodoFolderDisplayMode.hidden:
-        return '不展示文件夹';
-    }
-  }
-
-  IconData _folderDisplayModeIcon(_TodoFolderDisplayMode mode) {
-    switch (mode) {
-      case _TodoFolderDisplayMode.inline:
-        return Icons.view_agenda_outlined;
-      case _TodoFolderDisplayMode.separate:
-        return Icons.folder_copy_outlined;
-      case _TodoFolderDisplayMode.urgentFirst:
-        return Icons.priority_high_rounded;
-      case _TodoFolderDisplayMode.hidden:
-        return Icons.folder_off_outlined;
-    }
-  }
-
-  Future<void> _setFolderDisplayMode(_TodoFolderDisplayMode mode) async {
-    setState(() {
-      _folderDisplayMode = mode;
-      _inlineFolders = mode != _TodoFolderDisplayMode.separate;
-    });
-    await StorageService.setTodoFolderDisplayMode(mode.name);
-  }
-
   Widget _buildTodoList() {
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
@@ -3299,38 +3266,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                PopupMenuButton<_TodoFolderDisplayMode>(
-                  tooltip: '文件夹展示模式',
-                  initialValue: _folderDisplayMode,
-                  icon: Icon(
-                    _folderDisplayModeIcon(_folderDisplayMode),
-                    size: 20,
-                    color: useDarkUI ? Colors.white70 : Colors.grey,
-                  ),
-                  onSelected: _setFolderDisplayMode,
-                  itemBuilder: (context) => _TodoFolderDisplayMode.values
-                      .map(
-                        (mode) => PopupMenuItem<_TodoFolderDisplayMode>(
-                          value: mode,
-                          child: Row(
-                            children: [
-                              Icon(
-                                _folderDisplayModeIcon(mode),
-                                size: 18,
-                                color: mode == _folderDisplayMode
-                                    ? Theme.of(context).colorScheme.primary
-                                    : null,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(_folderDisplayModeLabel(mode)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
