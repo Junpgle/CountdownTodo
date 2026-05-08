@@ -724,7 +724,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _cancelGeneration = null;
         _suggestions = inlineSuggestions.isNotEmpty
             ? inlineSuggestions
-            : _getDefaultSuggestions();
+            : _getSmartSuggestions();
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
@@ -843,7 +843,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _cancelGeneration = null;
       _suggestions = inlineSuggestions.isNotEmpty
           ? inlineSuggestions
-          : _getDefaultSuggestions();
+          : _getSmartSuggestions();
       if (todoActions.isNotEmpty) {
         _actionRailCollapsed = false;
       }
@@ -1209,11 +1209,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
           tooltip: '提示词设置',
-        ),
-        IconButton(
-          icon: const Icon(Icons.menu_book_rounded, size: 22),
-          onPressed: _openTutorialPage,
-          tooltip: '使用教程',
         ),
         const SizedBox(width: 4),
       ],
@@ -1660,14 +1655,37 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               ),
               const SizedBox(height: 28),
               _StaggeredFadeSlide(
-                delay: const Duration(milliseconds: 230),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _getDefaultSuggestions()
-                      .map(_buildQuickQuestion)
-                      .toList(),
+                delay: const Duration(milliseconds: 200),
+                child: OutlinedButton.icon(
+                  onPressed: _openTutorialPage,
+                  icon: const Icon(Icons.menu_book_rounded, size: 18),
+                  label: const Text('查看使用教程'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(
+                      color: colorScheme.primary.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              _StaggeredFadeSlide(
+                child: SizedBox(
+                  height: _isWide ? 180 : 140,
+                  width: double.infinity,
+                  child: _DanmakuSuggestions(
+                    suggestions: _getSmartSuggestions(),
+                    onTap: (text) {
+                      _inputCtrl.text = text;
+                      _sendMessage();
+                    },
+                  ),
                 ),
               ),
             ],
@@ -1922,7 +1940,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _sessions = [];
         _messages = [];
         _activeSessionId = '';
-        _suggestions = _getDefaultSuggestions();
+        _suggestions = _getSmartSuggestions();
       });
       // 关闭侧边栏
       Navigator.pop(sidebarCtx);
@@ -2216,14 +2234,69 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  List<String> _getDefaultSuggestions() {
-    return [
+  List<String> _getSmartSuggestions() {
+    final List<String> suggestions = [];
+
+    // 1. 基础引导 (恒定)
+    suggestions.addAll([
       '帮我规划今天的待办',
-      '明天有什么课？',
-      '我今天专注了多久？',
-      '帮我整理一下待办分类',
-      '哪些待办最紧急？',
-    ];
+      '怎么使用深度规划？',
+      '分析一下我最近的效率',
+      '有哪些紧急任务需要处理？',
+    ]);
+
+    // 2. 基于课程数据
+    if (widget.courses.isNotEmpty) {
+      suggestions.add('明天的课程表是什么？');
+      suggestions.add('这周我还有多少节课？');
+      suggestions.add('帮我把课程同步到待办');
+    }
+
+    // 3. 基于待办状态
+    if (widget.todos.isNotEmpty) {
+      final highPriority =
+          widget.todos.where((t) => (t['priority'] ?? 0) >= 2).length;
+      if (highPriority > 0) suggestions.add('列出所有高优先级任务');
+
+      final overdue = widget.todos.where((t) {
+        final dueDate = t['dueDate'] as String?;
+        if (dueDate == null || dueDate.isEmpty) return false;
+        final date = DateTime.tryParse(dueDate);
+        return date != null && date.isBefore(DateTime.now());
+      }).length;
+      if (overdue > 0) suggestions.add('有哪些任务已经逾期了？');
+
+      suggestions.add('帮我给这些待办分个类');
+      suggestions.add('预测一下我完成所有任务需要多久');
+    }
+
+    // 4. 基于专注记录
+    if (widget.pomodoroRecords.isNotEmpty) {
+      suggestions.add('我这周专注时长达标了吗？');
+      suggestions.add('分析我的专注分布情况');
+    }
+
+    // 5. 基于倒计时/目标
+    if (widget.countdowns.isNotEmpty) {
+      suggestions.add('最近的考试/目标还有多久？');
+    }
+
+    // 6. 基于规划冲突
+    if (widget.conflicts.isNotEmpty) {
+      suggestions.add('帮我解决目前的规划冲突');
+    }
+
+    // 7. 通用高级技巧
+    suggestions.addAll([
+      '帮我整理番茄标签',
+      '如何提高我的专注力？',
+      '整理一下我的时间日志',
+      '帮我制定一个复习计划',
+      '有哪些建议能让我更自律？',
+      '备份我的所有数据',
+    ]);
+
+    return suggestions.toSet().toList();
   }
 
   String _formatTodoTimeRange(
@@ -4770,6 +4843,166 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DanmakuSuggestions extends StatefulWidget {
+  final List<String> suggestions;
+  final Function(String) onTap;
+
+  const _DanmakuSuggestions({
+    required this.suggestions,
+    required this.onTap,
+  });
+
+  @override
+  State<_DanmakuSuggestions> createState() => _DanmakuSuggestionsState();
+}
+
+class _DanmakuSuggestionsState extends State<_DanmakuSuggestions> {
+  late ScrollController _scrollCtrl1;
+  late ScrollController _scrollCtrl2;
+  late ScrollController _scrollCtrl3;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl1 = ScrollController();
+    _scrollCtrl2 = ScrollController();
+    _scrollCtrl3 = ScrollController();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startScrolling();
+    });
+  }
+
+  void _startScrolling() {
+    _timer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      if (!mounted) return;
+      _autoScroll(_scrollCtrl1, 0.35);
+      _autoScroll(_scrollCtrl2, 0.55);
+      _autoScroll(_scrollCtrl3, 0.45);
+    });
+  }
+
+  void _autoScroll(ScrollController ctrl, double speed) {
+    if (ctrl.hasClients) {
+      final max = ctrl.position.maxScrollExtent;
+      if (max > 0) {
+        final next = ctrl.offset + speed;
+        if (next >= max) {
+          ctrl.jumpTo(0);
+        } else {
+          ctrl.jumpTo(next);
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scrollCtrl1.dispose();
+    _scrollCtrl2.dispose();
+    _scrollCtrl3.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.suggestions.isEmpty) return const SizedBox.shrink();
+
+    // 分成三行
+    final row1 = <String>[];
+    final row2 = <String>[];
+    final row3 = <String>[];
+
+    for (int i = 0; i < widget.suggestions.length; i++) {
+      if (i % 3 == 0) {
+        row1.add(widget.suggestions[i]);
+      } else if (i % 3 == 1) {
+        row2.add(widget.suggestions[i]);
+      } else {
+        row3.add(widget.suggestions[i]);
+      }
+    }
+
+    // 为了实现无缝循环，每行内容加倍
+    final items1 = [...row1, ...row1, ...row1];
+    final items2 = [...row2, ...row2, ...row2];
+    final items3 = [...row3, ...row3, ...row3];
+
+    return Column(
+      children: [
+        if (row1.isNotEmpty) _buildRow(_scrollCtrl1, items1),
+        if (row2.isNotEmpty) const SizedBox(height: 10),
+        if (row2.isNotEmpty) _buildRow(_scrollCtrl2, items2),
+        if (row3.isNotEmpty) const SizedBox(height: 10),
+        if (row3.isNotEmpty) _buildRow(_scrollCtrl3, items3),
+      ],
+    );
+  }
+
+  Widget _buildRow(ScrollController ctrl, List<String> items) {
+    return Expanded(
+      child: ListView.builder(
+        controller: ctrl,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _DanmakuItem(
+              text: items[index],
+              onTap: () => widget.onTap(items[index]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DanmakuItem extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+
+  const _DanmakuItem({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: isDark ? colorScheme.surfaceContainerHigh : colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.1),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
       ),
     );
   }

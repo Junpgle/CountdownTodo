@@ -15,7 +15,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1500),
     );
     _controller.forward();
   }
@@ -37,58 +37,67 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       _sectionTitle(context, '✨ 核心能力'),
       _capabilityItem(
         context,
-        icon: Icons.checklist_rtl_rounded,
-        title: '待办管理',
-        detail: '新建、修改、完成、删除、改期、批量改期、分类、拆分、合并。',
+        icon: Icons.auto_fix_high_rounded,
+        title: '待办规划',
+        detail: '根据目标自动生成待办，或将已有待办精准排入“规划块”中，构建日程。',
         color: colorScheme.primary,
       ),
       _capabilityItem(
         context,
         icon: Icons.view_timeline_rounded,
-        title: '规划块与专注',
-        detail: '新建/调整规划块，跳过规划块，启动或停止番茄钟，维护专注记录。',
+        title: '任务拆合',
+        detail: '将复杂大任务智能拆解为子任务，或将琐碎待办合并。',
         color: colorScheme.secondary,
       ),
       _capabilityItem(
         context,
         icon: Icons.timer_outlined,
-        title: '倒计时与标签',
-        detail: '管理倒计时、待办分类（文件夹）、番茄标签。',
+        title: '专注协同',
+        detail: '通过 AI 启停番茄钟、补录专注记录，并自动同步规划进度。',
         color: colorScheme.tertiary,
       ),
       _capabilityItem(
         context,
         icon: Icons.hub_rounded,
-        title: '智能上下文',
-        detail: '可结合课程、专注记录、团队等上下文回答（开启智能上下文时）。',
+        title: '多维管理',
+        detail: '管理倒计时、分类文件夹及番茄标签，全方位梳理工作流。',
         color: colorScheme.error,
       ),
+      const SizedBox(height: 16),
+      _sectionTitle(context, '📅 深度规划与同步'),
+      _planningHighlight(context),
       const SizedBox(height: 16),
       _sectionTitle(context, '🚀 快速上手'),
       _howToItem(
         context,
         step: '01',
         title: '输入任务目标',
-        detail: '一句话说清楚：做什么 + 时间 + 数量。\n例：把今天待办按优先级重排，并给3个建议。',
+        detail: '例：“规划一下今天下午，避开3点的课，把剩下的待办排满。”',
       ),
       _howToItem(
         context,
         step: '02',
-        title: '查看AI回复',
-        detail: 'AI可能给普通建议，也可能生成“待执行操作”清单。',
+        title: '预览操作清单',
+        detail: 'AI 会生成 [ACTION] 动作块，在界面下方或侧边栏显示预览。',
       ),
       _howToItem(
         context,
         step: '03',
-        title: '确认并执行',
-        detail: '在清单里勾选/编辑，点“执行所选操作”才会真正写入。',
+        title: '确认并一键执行',
+        detail: '勾选需要执行的项。只有你点下“执行所选操作”，数据才会被真正修改。',
       ),
+      const SizedBox(height: 16),
+      _sectionTitle(context, '🧩 外部 AI 协作'),
+      _externalAiNote(context),
       const SizedBox(height: 16),
       _sectionTitle(context, '🛠️ 界面指南'),
       _guideGrid(context),
       const SizedBox(height: 24),
       _sectionTitle(context, '🔍 智能上下文详解'),
       _smartContextDetails(context),
+      const SizedBox(height: 24),
+      _sectionTitle(context, '💡 高级技巧'),
+      _proTips(context),
       const SizedBox(height: 24),
       _securityNote(context),
       const SizedBox(height: 32),
@@ -116,15 +125,20 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
                   return AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) {
-                      final delay = index * 0.05;
+                      const stagger = 0.03;
+                      final startTime = index * stagger;
+                      const animationDuration = 0.6;
                       final value = Curves.easeOutQuart.transform(
-                        (_controller.value - delay).clamp(0.0, 1.0),
+                        ((_controller.value - startTime) / animationDuration).clamp(0.0, 1.0),
                       );
-                      return Opacity(
-                        opacity: value,
-                        child: Transform.translate(
-                          offset: Offset(0, 40 * (1 - value)),
-                          child: child,
+                      return IgnorePointer(
+                        ignoring: value == 0,
+                        child: Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 40 * (1 - value)),
+                            child: child,
+                          ),
                         ),
                       );
                     },
@@ -307,48 +321,58 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
   }
 
   Widget _guideGrid(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.5,
+    return Column(
       children: [
-        _gridItem(context, Icons.history_rounded, '历史会话', '管理往期对话记录'),
-        _gridItem(context, Icons.add_comment_rounded, '开启新篇', '随时开启全新话题'),
-        _gridItem(context, Icons.psychology_rounded, '深度思考', '应对复杂逻辑推理'),
-        _gridItem(context, Icons.auto_awesome_rounded, '智能注入', '自动获取应用上下文'),
+        Row(
+          children: [
+            Expanded(child: _gridItem(context, Icons.history_rounded, '历史会话', '管理往期对话记录')),
+            const SizedBox(width: 12),
+            Expanded(child: _gridItem(context, Icons.add_comment_rounded, '开启新篇', '随时开启全新话题')),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _gridItem(context, Icons.psychology_rounded, '深度思考', '应对复杂逻辑推理')),
+            const SizedBox(width: 12),
+            Expanded(child: _gridItem(context, Icons.auto_awesome_rounded, '智能注入', '自动获取应用上下文')),
+          ],
+        ),
       ],
     );
   }
 
   Widget _gridItem(BuildContext context, IconData icon, String title, String desc) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: colorScheme.primary),
-          const Spacer(),
-          Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            desc,
-            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+    return AspectRatio(
+      aspectRatio: 1.6,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: colorScheme.primary),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 2),
+            Expanded(
+              child: Text(
+                desc,
+                style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -476,6 +500,125 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
                     color: colorScheme.onErrorContainer.withValues(alpha: 0.8),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _planningHighlight(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.secondaryContainer.withValues(alpha: 0.2),
+            colorScheme.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.secondary.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        children: [
+          _planningRow(context, Icons.event_note_rounded, '自动避让', 'AI 规划时会自动避开课程表中的已有课程。'),
+          const SizedBox(height: 12),
+          _planningRow(context, Icons.sync_rounded, '多端同步', '规划块支持远端与本地同步，确保日程在所有设备一致。'),
+          const SizedBox(height: 12),
+          _planningRow(context, Icons.auto_graph_rounded, '进度追踪', 'AI 可根据番茄钟实际专注时长自动更新规划进度。'),
+        ],
+      ),
+    );
+  }
+
+  Widget _planningRow(BuildContext context, IconData icon, String title, String desc) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.secondary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface, height: 1.4),
+              children: [
+                TextSpan(text: '$title：', style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(text: desc),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _externalAiNote(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.tertiaryContainer.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.tertiary.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.extension_rounded, size: 20, color: colorScheme.tertiary),
+              const SizedBox(width: 8),
+              const Text('不依赖内置 API 也能用', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '你可以通过“复制提示词”将当前上下文带入 ChatGPT 或 Claude，再通过“粘贴 AI 回复识别”功能将结果带回应用执行。',
+            style: TextStyle(fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '适合：内置 API 不稳定或需要使用更高版本模型时。',
+            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _proTips(BuildContext context) {
+    return Column(
+      children: [
+        _tipItem(context, '深度思考', '开启“深度思考”模式（如使用 R1/O1 模型），AI 会展示推理过程，适合处理复杂的日程重排任务。'),
+        _tipItem(context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
+        _tipItem(context, '课程组件入口', '在课程表组件中长按或点击菜单，可直接发起针对该课程时间段的 AI 规划。'),
+      ],
+    );
+  }
+
+  Widget _tipItem(BuildContext context, String title, String desc) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('•', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(desc, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, height: 1.4)),
               ],
             ),
           ),
