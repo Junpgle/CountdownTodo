@@ -82,6 +82,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _pendingManualSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
+  bool _injectMoreContext = false;
   bool _inputHasText = false;
   String _liveSmartContextPreview = '';
   int _liveEstimatedTokens = 0;
@@ -172,8 +173,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   String _buildSmartContextPreview(String userText) {
     if (!_smartContext || userText.isEmpty) return '';
+    final contextQueryText = _buildContextQueryText(userText);
     return AiTodoContextBuilder.buildContextInjectionSummary(
-          userMessage: userText,
+          userMessage: contextQueryText,
           courses: widget.courses,
           timeLogs: widget.timeLogs,
           todoGroups: widget.todoGroups,
@@ -187,6 +189,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           now: DateTime.now(),
         ) ??
         '';
+  }
+
+  String _buildContextQueryText(String userText) {
+    if (!_injectMoreContext) return userText;
+    if (userText.contains('未来30天')) return userText;
+    return '$userText，并扩大到未来30天范围';
   }
 
   int _estimateTokensForPendingInput(String text) {
@@ -450,8 +458,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (lastUserIdx == -1) return '';
 
     final userText = apiMessages[lastUserIdx]['content'] ?? '';
+    final contextQueryText = _buildContextQueryText(userText);
     final injection = AiTodoContextBuilder.buildContextInjection(
-      userMessage: userText,
+      userMessage: contextQueryText,
       courses: widget.courses,
       timeLogs: widget.timeLogs,
       todoGroups: widget.todoGroups,
@@ -3986,14 +3995,54 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '发送预览',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.primary,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '发送预览',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _injectMoreContext = !_injectMoreContext;
+                              _liveSmartContextPreview =
+                                  _buildSmartContextPreview(
+                                      _inputCtrl.text.trim());
+                              _liveEstimatedTokens = _estimateTokensForPendingInput(
+                                  _inputCtrl.text.trim());
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 22),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                          ),
+                          child: Text(
+                            _injectMoreContext ? '注入更多: 开' : '注入更多',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (_injectMoreContext)
+                      Text(
+                        '已扩大到未来30天范围',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
                     const SizedBox(height: 6),
                     if (_liveSmartContextPreview.isNotEmpty)
                       SelectableText(
