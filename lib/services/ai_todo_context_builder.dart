@@ -5,6 +5,70 @@ import 'chat_storage_service.dart';
 import 'pomodoro_service.dart';
 
 class AiTodoContextBuilder {
+  static String buildLeanSystemPrompt({
+    required String customPrompt,
+    required bool promptEnabled,
+    DateTime? now,
+  }) {
+    final nowValue = now ?? DateTime.now();
+    final nowText =
+        '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
+    final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
+        ? customPrompt
+        : ChatStorageService.defaultPrompt;
+    final resolvedBasePrompt = basePrompt
+        .replaceAll('{now}', nowText)
+        .replaceAll('{todos}', '待办将按需通过智能上下文注入');
+    return '''$resolvedBasePrompt
+
+【时间规则】
+所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
+
+【动作输出规则】
+当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或管理专注记录/番茄钟/倒计时/标签时，回复末尾必须附 [ACTION_START]...[ACTION_END] JSON 数组。
+每个操作对象必须包含 action 字段；禁止旧标记与 Markdown 代码块。
+具体可用动作与字段约束会按当前问题动态提供。''';
+  }
+
+  static String buildActionProtocolPrompt(String userMessage) {
+    final actions = <String>[];
+    void add(String line) {
+      if (!actions.contains(line)) actions.add(line);
+    }
+
+    if (_shouldInjectTodoContext(userMessage)) {
+      add('- create_todo / update_todo / complete_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo');
+      add('- split_todo / merge_todos / plan_todos');
+    }
+    if (_matchesAny(userMessage, _planKeywords) ||
+        _matchesAny(userMessage, _planningKeywords)) {
+      add('- create_plan_block / update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro');
+    }
+    if (_matchesAny(userMessage, _timeLogKeywords)) {
+      add('- create_time_log / update_time_log / delete_time_log / start_pomodoro / stop_pomodoro');
+    }
+    if (_matchesAny(userMessage, _countdownKeywords)) {
+      add('- create_countdown / update_countdown / complete_countdown / delete_countdown');
+    }
+    if (_matchesAny(userMessage, _groupKeywords)) {
+      add('- create_todo_group / update_todo_group / delete_todo_group');
+    }
+    if (_matchesAny(userMessage, _tagKeywords)) {
+      add('- create_pomodoro_tag / update_pomodoro_tag / delete_pomodoro_tag');
+    }
+    if (actions.isEmpty) {
+      add('- create_todo / update_todo / complete_todo / delete_todo');
+    }
+
+    return '''【本轮可用动作（按需精简）】
+${actions.join('\n')}
+
+动作块格式（必须）：
+[ACTION_START]
+[{"action":"..."}]
+[ACTION_END]''';
+  }
+
   static String buildSystemPrompt({
     required String customPrompt,
     required bool promptEnabled,

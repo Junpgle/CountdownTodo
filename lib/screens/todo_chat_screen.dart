@@ -412,14 +412,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _buildSystemPrompt() {
-    return AiTodoContextBuilder.buildSystemPrompt(
+    return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
-      todos: const [],
-      todoGroups: const [],
-      countdowns: const [],
-      pomodoroTags: const [],
-      planBlocks: const [],
     );
   }
 
@@ -432,6 +427,17 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
     ];
+    final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
+        ? pendingUserText!.trim()
+        : _latestUserTextFromHistory();
+    if (protocolSourceText.isNotEmpty) {
+      apiMessages.add({
+        'role': 'system',
+        'content': AiTodoContextBuilder.buildActionProtocolPrompt(
+          protocolSourceText,
+        ),
+      });
+    }
 
     final sourceMessages = <ChatMessage>[
       ..._messages,
@@ -482,6 +488,16 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _lastRequestSmartContext = smartContext;
     }
     return apiMessages;
+  }
+
+  String _latestUserTextFromHistory() {
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].role == ChatRole.user &&
+          _messages[i].content.trim().isNotEmpty) {
+        return _messages[i].content.trim();
+      }
+    }
+    return '';
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
