@@ -152,6 +152,59 @@ JSON操作块必须且只能使用以下协议：
     return '【相关上下文】\n${sections.join('\n')}';
   }
 
+  /// 返回用于输入区提示的注入摘要，不包含完整上下文正文。
+  static String? buildContextInjectionSummary({
+    required String userMessage,
+    required List<CourseItem> courses,
+    required List<TimeLogItem> timeLogs,
+    List<PomodoroRecord> pomodoroRecords = const [],
+    List<TodoPlanBlock> planBlocks = const [],
+    required List<ConflictInfo> conflicts,
+    required List<Team> teams,
+    DateTime? now,
+  }) {
+    final nowValue = now ?? DateTime.now();
+    final parts = <String>[];
+
+    if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
+      final period = _resolveCoursePeriod(userMessage, nowValue);
+      if (period != null) {
+        parts.add(
+          '课程${_formatCompactDate(period.start)}-${_formatCompactDate(period.end.subtract(const Duration(days: 1)))}',
+        );
+      } else {
+        parts.add('课程今日起');
+      }
+    }
+
+    if (_matchesAny(userMessage, _timeLogKeywords) &&
+        (timeLogs.isNotEmpty ||
+            pomodoroRecords.isNotEmpty ||
+            planBlocks.isNotEmpty)) {
+      final period = _resolveTimeLogPeriod(userMessage, nowValue);
+      if (period != null) {
+        final start = _formatCompactDate(period.start);
+        final end = _formatCompactDate(period.end.subtract(const Duration(days: 1)));
+        parts.add(start == end ? '专注记录$start' : '专注记录$start-$end');
+      } else {
+        parts.add('专注记录最近30条');
+      }
+      if (planBlocks.isNotEmpty) {
+        parts.add('规划块');
+      }
+    }
+
+    if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
+      parts.add('冲突信息');
+    }
+    if (_matchesAny(userMessage, _teamKeywords) && teams.isNotEmpty) {
+      parts.add('团队信息');
+    }
+
+    if (parts.isEmpty) return null;
+    return '将注入：${parts.join('、')}';
+  }
+
   static bool _matchesAny(String text, List<String> keywords) {
     return keywords.any((k) => text.contains(k));
   }
@@ -687,6 +740,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
 
   static String _formatDate(DateTime value) {
     return DateFormat('yyyy-MM-dd').format(value.toLocal());
+  }
+
+  static String _formatCompactDate(DateTime value) {
+    return DateFormat('yyyyMMdd').format(value.toLocal());
   }
 
   static String _formatDuration(int minutes) {

@@ -83,7 +83,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   bool _inputHasText = false;
+  String _liveFixedContextPreview = '';
   String _liveSmartContextPreview = '';
+  int _liveEstimatedTokens = 0;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
@@ -155,30 +157,68 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   void _handleInputChanged() {
     final text = _inputCtrl.text.trim();
     final hasText = text.isNotEmpty;
+    final fixedPreview = _buildFixedContextPreview();
     final preview = _buildSmartContextPreview(text);
-    if (hasText == _inputHasText && preview == _liveSmartContextPreview) {
+    final estimatedTokens = _estimateTokensForPendingInput(text);
+    if (hasText == _inputHasText &&
+        preview == _liveSmartContextPreview &&
+        fixedPreview == _liveFixedContextPreview &&
+        estimatedTokens == _liveEstimatedTokens) {
       return;
     }
     setState(() {
       _inputHasText = hasText;
+      _liveFixedContextPreview = fixedPreview;
       _liveSmartContextPreview = preview;
+      _liveEstimatedTokens = estimatedTokens;
     });
+  }
+
+  String _buildFixedContextPreview() {
+    return '固定发送：待办${widget.todos.length}条、分类${widget.todoGroups.length}个、倒计时${widget.countdowns.length}个、番茄标签${widget.pomodoroTags.length}个、规划块${_planBlocks.length}个';
   }
 
   String _buildSmartContextPreview(String userText) {
     if (!_smartContext || userText.isEmpty) return '';
-    return AiTodoContextBuilder.buildContextInjection(
+    return AiTodoContextBuilder.buildContextInjectionSummary(
           userMessage: userText,
           courses: widget.courses,
           timeLogs: widget.timeLogs,
           pomodoroRecords: widget.pomodoroRecords,
           planBlocks: _planBlocks,
-          todos: widget.todos,
           conflicts: widget.conflicts,
           teams: widget.teams,
           now: DateTime.now(),
         ) ??
         '';
+  }
+
+  int _estimateTokensForPendingInput(String text) {
+    if (text.isEmpty) return 0;
+    final messages = _buildApiMessages(
+      pendingUserText: text,
+      trackSmartContext: false,
+    );
+    return _estimateRequestTokens(messages);
+  }
+
+  int _estimateRequestTokens(List<Map<String, String>> messages) {
+    var total = 2;
+    for (final msg in messages) {
+      total += 4;
+      total += _estimateTextTokens(msg['role'] ?? '');
+      total += _estimateTextTokens(msg['content'] ?? '');
+    }
+    return total;
+  }
+
+  int _estimateTextTokens(String text) {
+    if (text.isEmpty) return 0;
+    final cjk = RegExp(r'[\u4E00-\u9FFF]').allMatches(text).length;
+    final other = text.length - cjk;
+    final cjkTokens = (cjk / 1.6).ceil();
+    final otherTokens = (other / 4).ceil();
+    return cjkTokens + otherTokens;
   }
 
   Future<void> _initSessions() async {
@@ -341,7 +381,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   static const int _maxContextMessages = 15;
 
-  List<Map<String, String>> _buildApiMessages({String? pendingUserText}) {
+  List<Map<String, String>> _buildApiMessages({
+    String? pendingUserText,
+    bool trackSmartContext = true,
+  }) {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
     ];
@@ -390,7 +433,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       }
     }
 
-    _lastRequestSmartContext = _injectContext(apiMessages);
+    final smartContext = _injectContext(apiMessages);
+    if (trackSmartContext) {
+      _lastRequestSmartContext = smartContext;
+    }
     return apiMessages;
   }
 
@@ -3923,6 +3969,68 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ),
               ],
             ),
+            if (_inputHasText &&
+                (_liveSmartContextPreview.isNotEmpty ||
+                    _liveFixedContextPreview.isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : colorScheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '发送预览',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (_liveFixedContextPreview.isNotEmpty)
+                      SelectableText(
+                        _liveFixedContextPreview,
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    if (_liveSmartContextPreview.isNotEmpty)
+                      SelectableText(
+                        _liveSmartContextPreview,
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    SelectableText(
+                      '预计Token：~$_liveEstimatedTokens',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: colorScheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: isDark
@@ -3953,8 +4061,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     tooltip: '智能上下文',
                     onTap: (val) => setState(() {
                       _smartContext = val;
+                      _liveFixedContextPreview = _buildFixedContextPreview();
                       _liveSmartContextPreview =
                           _buildSmartContextPreview(_inputCtrl.text.trim());
+                      _liveEstimatedTokens =
+                          _estimateTokensForPendingInput(_inputCtrl.text.trim());
                     }),
                   ),
                   const SizedBox(width: 4),
@@ -4033,48 +4144,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ],
               ),
             ),
-            if (_smartContext &&
-                _inputHasText &&
-                _liveSmartContextPreview.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.04)
-                      : colorScheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.22),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '智能注入预览（发送时将自动附加）',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    SelectableText(
-                      _liveSmartContextPreview,
-                      maxLines: 8,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.35,
-                        color: colorScheme.onSurface.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
