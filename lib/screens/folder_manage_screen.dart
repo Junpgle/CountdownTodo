@@ -26,7 +26,7 @@ class FolderManageScreen extends StatefulWidget {
 }
 
 class _FolderManageScreenState extends State<FolderManageScreen> {
-  bool _inlineFolders = true;
+  String _folderDisplayMode = 'inline';
   late List<TodoGroup> _groups;
   late List<TodoItem> _todos;
 
@@ -39,19 +39,49 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final inline = await StorageService.getTodoFoldersInline();
+    final mode = await StorageService.getTodoFolderDisplayMode();
     setState(() {
-      _inlineFolders = inline;
+      _folderDisplayMode = mode;
     });
   }
 
-  Future<void> _toggleInline(bool val) async {
-    await StorageService.setTodoFoldersInline(val);
+  Future<void> _setFolderDisplayMode(String mode) async {
+    await StorageService.setTodoFolderDisplayMode(mode);
+    await StorageService.setTodoFoldersInline(mode != 'separate');
     setState(() {
-      _inlineFolders = val;
+      _folderDisplayMode = mode;
     });
-    // Call onGroupsChanged to trigger UI rebuild in parent
     widget.onGroupsChanged(_groups);
+  }
+
+  String _folderModeLabel(String mode) {
+    switch (mode) {
+      case 'inline':
+        return '时间线内展开文件夹';
+      case 'separate':
+        return '文件夹单独显示';
+      case 'urgentFirst':
+        return '每个文件夹只展开最紧急待办';
+      case 'hidden':
+        return '不展示文件夹';
+      default:
+        return mode;
+    }
+  }
+
+  String _folderModeSubtitle(String mode) {
+    switch (mode) {
+      case 'inline':
+        return '文件夹与独立待办在主时间线一起排序展示';
+      case 'separate':
+        return '等同于原来的“文件夹与待办在一起混合排序”关闭状态';
+      case 'urgentFirst':
+        return '文件夹卡片只展开 1 条最紧急未完成待办';
+      case 'hidden':
+        return '首页待办清单隐藏所有文件夹内容';
+      default:
+        return '';
+    }
   }
 
   void _showCreateOrEditDialog([TodoGroup? existing]) {
@@ -298,19 +328,43 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       ),
       body: ListView(
         children: [
-          // Setting Toggle
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: Container(
               decoration: BoxDecoration(
                 color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: SwitchListTile(
-                title: const Text('文件夹与待办在一起混合排序', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('关闭后，文件夹将被提取出主列表并置顶独立排列。'),
-                value: _inlineFolders,
-                onChanged: _toggleInline,
+              child: Column(
+                children: const [
+                  ListTile(
+                    dense: true,
+                    title: Text('文件夹展示模式', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: ['inline', 'separate', 'urgentFirst', 'hidden'].map((mode) {
+                  return RadioListTile<String>(
+                    value: mode,
+                    groupValue: _folderDisplayMode,
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _setFolderDisplayMode(value);
+                    },
+                    title: Text(_folderModeLabel(mode), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(_folderModeSubtitle(mode)),
+                  );
+                }).toList(),
               ),
             ),
           ),
