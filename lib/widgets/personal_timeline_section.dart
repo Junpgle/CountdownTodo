@@ -25,6 +25,7 @@ class PersonalTimelineSection extends StatefulWidget {
 class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
   TimelineSummary? _summary;
   bool _isLoading = true;
+  int _loadingEpoch = 0;
   final GlobalKey _cardKey = GlobalKey();
 
   @override
@@ -43,7 +44,10 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadingEpoch++;
+    });
     final summary =
         await TimelineService.instance.getTodaySummary(widget.username);
     if (mounted) {
@@ -140,7 +144,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                   duration: const Duration(milliseconds: 400),
                   child: _isLoading
                       ? Center(
-                          key: const ValueKey('loading'),
+                          key: ValueKey('loading_$_loadingEpoch'),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             child: CircularProgressIndicator(
