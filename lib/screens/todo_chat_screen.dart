@@ -83,6 +83,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   bool _inputHasText = false;
+  String _liveSmartContextPreview = '';
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
@@ -152,9 +153,32 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   void _handleInputChanged() {
-    final hasText = _inputCtrl.text.trim().isNotEmpty;
-    if (hasText == _inputHasText) return;
-    setState(() => _inputHasText = hasText);
+    final text = _inputCtrl.text.trim();
+    final hasText = text.isNotEmpty;
+    final preview = _buildSmartContextPreview(text);
+    if (hasText == _inputHasText && preview == _liveSmartContextPreview) {
+      return;
+    }
+    setState(() {
+      _inputHasText = hasText;
+      _liveSmartContextPreview = preview;
+    });
+  }
+
+  String _buildSmartContextPreview(String userText) {
+    if (!_smartContext || userText.isEmpty) return '';
+    return AiTodoContextBuilder.buildContextInjection(
+          userMessage: userText,
+          courses: widget.courses,
+          timeLogs: widget.timeLogs,
+          pomodoroRecords: widget.pomodoroRecords,
+          planBlocks: _planBlocks,
+          todos: widget.todos,
+          conflicts: widget.conflicts,
+          teams: widget.teams,
+          now: DateTime.now(),
+        ) ??
+        '';
   }
 
   Future<void> _initSessions() async {
@@ -3927,7 +3951,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     icon: Icons.auto_awesome_rounded,
                     isSelected: _smartContext,
                     tooltip: '智能上下文',
-                    onTap: (val) => setState(() => _smartContext = val),
+                    onTap: (val) => setState(() {
+                      _smartContext = val;
+                      _liveSmartContextPreview =
+                          _buildSmartContextPreview(_inputCtrl.text.trim());
+                    }),
                   ),
                   const SizedBox(width: 4),
                   Container(
@@ -4005,6 +4033,48 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ],
               ),
             ),
+            if (_smartContext &&
+                _inputHasText &&
+                _liveSmartContextPreview.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : colorScheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '智能注入预览（发送时将自动附加）',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      _liveSmartContextPreview,
+                      maxLines: 8,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: colorScheme.onSurface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

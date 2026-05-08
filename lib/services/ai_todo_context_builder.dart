@@ -187,6 +187,11 @@ JSON操作块必须且只能使用以下协议：
     '日程',
   ];
   static const _planningTimeKeywords = [
+    '未来',
+    '接下来',
+    '一周',
+    '七天',
+    '7天',
     '今天',
     '今日',
     '明天',
@@ -414,6 +419,26 @@ JSON操作块必须且只能使用以下协议：
 
   static _DateRange? _resolveCoursePeriod(String text, DateTime now) {
     final todayStart = DateTime(now.year, now.month, now.day);
+    final futureDays = _parseFutureDays(text);
+    if (futureDays != null) {
+      return _DateRange(
+        label: '未来$futureDays天',
+        start: todayStart,
+        end: todayStart.add(Duration(days: futureDays)),
+      );
+    }
+    if (text.contains('未来一周') ||
+        text.contains('接下来一周') ||
+        text.contains('未来7天') ||
+        text.contains('未来七天') ||
+        text.contains('接下来7天') ||
+        text.contains('接下来七天')) {
+      return _DateRange(
+        label: '未来一周',
+        start: todayStart,
+        end: todayStart.add(const Duration(days: 7)),
+      );
+    }
     if (text.contains('今天') || text.contains('今日')) {
       return _DateRange(
         label: '今日',
@@ -463,6 +488,58 @@ JSON操作块必须且只能使用以下协议：
       );
     }
     return null;
+  }
+
+  static int? _parseFutureDays(String text) {
+    final digitMatch =
+        RegExp(r'(?:未来|接下来)\s*(\d{1,2})\s*(?:天|日)').firstMatch(text);
+    if (digitMatch != null) {
+      final parsed = int.tryParse(digitMatch.group(1)!);
+      if (parsed != null && parsed > 0) {
+        return parsed.clamp(1, 30);
+      }
+    }
+
+    final hanMatch = RegExp(r'(?:未来|接下来)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)')
+        .firstMatch(text);
+    if (hanMatch != null) {
+      final parsed = _parseSimpleChineseNumber(hanMatch.group(1)!);
+      if (parsed != null && parsed > 0) {
+        return parsed.clamp(1, 30);
+      }
+    }
+    return null;
+  }
+
+  static int? _parseSimpleChineseNumber(String text) {
+    const digits = {
+      '一': 1,
+      '二': 2,
+      '两': 2,
+      '三': 3,
+      '四': 4,
+      '五': 5,
+      '六': 6,
+      '七': 7,
+      '八': 8,
+      '九': 9,
+    };
+    if (text == '十') return 10;
+    if (text.startsWith('十')) {
+      final unit = digits[text.substring(1)];
+      return unit == null ? null : 10 + unit;
+    }
+    if (text.endsWith('十')) {
+      final tens = digits[text.substring(0, text.length - 1)];
+      return tens == null ? null : tens * 10;
+    }
+    final tenIdx = text.indexOf('十');
+    if (tenIdx > 0 && tenIdx < text.length - 1) {
+      final tens = digits[text.substring(0, tenIdx)];
+      final units = digits[text.substring(tenIdx + 1)];
+      if (tens != null && units != null) return tens * 10 + units;
+    }
+    return digits[text];
   }
 
   static String _formatFocusRecords(
