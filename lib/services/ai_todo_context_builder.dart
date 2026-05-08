@@ -595,6 +595,8 @@ JSON操作块必须且只能使用以下协议：
   }
 
   static _DateRange? _resolveCoursePeriod(String text, DateTime now) {
+    final explicit = _resolveExplicitDateRange(text);
+    if (explicit != null) return explicit;
     final todayStart = DateTime(now.year, now.month, now.day);
     final futureDays = _parseFutureDays(text);
     if (futureDays != null) {
@@ -803,6 +805,14 @@ ${lines.isEmpty ? '暂无' : lines}''';
   }
 
   static _TimeLogPeriod? _resolveTimeLogPeriod(String text, DateTime now) {
+    final explicit = _resolveExplicitDateRange(text);
+    if (explicit != null) {
+      return _TimeLogPeriod(
+        label: explicit.label,
+        start: explicit.start,
+        end: explicit.end,
+      );
+    }
     final todayStart = DateTime(now.year, now.month, now.day);
     if (text.contains('今天') || text.contains('今日')) {
       return _TimeLogPeriod(
@@ -868,6 +878,24 @@ ${lines.isEmpty ? '暂无' : lines}''';
 
   static String _formatCompactDate(DateTime value) {
     return DateFormat('yyyyMMdd').format(value.toLocal());
+  }
+
+  static _DateRange? _resolveExplicitDateRange(String text) {
+    final match = RegExp(
+      r'(\d{4}-\d{2}-\d{2})\s*(?:至|到|-|~)\s*(\d{4}-\d{2}-\d{2})',
+    ).firstMatch(text);
+    if (match == null) return null;
+    final start = DateTime.tryParse(match.group(1)!);
+    final end = DateTime.tryParse(match.group(2)!);
+    if (start == null || end == null) return null;
+    final s = DateTime(start.year, start.month, start.day);
+    final e = DateTime(end.year, end.month, end.day);
+    if (e.isBefore(s)) return null;
+    return _DateRange(
+      label: '自定义',
+      start: s,
+      end: e.add(const Duration(days: 1)),
+    );
   }
 
   static String _formatDuration(int minutes) {

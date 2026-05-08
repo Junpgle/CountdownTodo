@@ -83,6 +83,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   bool _injectMoreContext = false;
+  bool _useCustomInjectRange = false;
+  DateTime? _customInjectStart;
+  DateTime? _customInjectEnd;
   bool _inputHasText = false;
   String _liveSmartContextPreview = '';
   int _liveEstimatedTokens = 0;
@@ -192,9 +195,46 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _buildContextQueryText(String userText) {
+    if (_useCustomInjectRange &&
+        _customInjectStart != null &&
+        _customInjectEnd != null) {
+      final start = DateFormat('yyyy-MM-dd').format(_customInjectStart!);
+      final end = DateFormat('yyyy-MM-dd').format(_customInjectEnd!);
+      return '$userText，并使用自定义注入范围 $start 至 $end';
+    }
     if (!_injectMoreContext) return userText;
     if (userText.contains('未来30天')) return userText;
     return '$userText，并扩大到未来30天范围';
+  }
+
+  Future<void> _pickCustomInjectRange() async {
+    final now = DateTime.now();
+    final first = DateTime(now.year - 2, 1, 1);
+    final last = DateTime(now.year + 2, 12, 31);
+    final start = await showDatePicker(
+      context: context,
+      initialDate: _customInjectStart ?? now,
+      firstDate: first,
+      lastDate: last,
+      helpText: '选择注入开始日期',
+    );
+    if (start == null || !mounted) return;
+    final end = await showDatePicker(
+      context: context,
+      initialDate: _customInjectEnd ?? start,
+      firstDate: start,
+      lastDate: last,
+      helpText: '选择注入结束日期',
+    );
+    if (end == null || !mounted) return;
+    setState(() {
+      _useCustomInjectRange = true;
+      _customInjectStart = DateTime(start.year, start.month, start.day);
+      _customInjectEnd = DateTime(end.year, end.month, end.day);
+      _injectMoreContext = false;
+      _liveSmartContextPreview = _buildSmartContextPreview(_inputCtrl.text.trim());
+      _liveEstimatedTokens = _estimateTokensForPendingInput(_inputCtrl.text.trim());
+    });
   }
 
   int _estimateTokensForPendingInput(String text) {
@@ -4010,6 +4050,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           onPressed: () {
                             setState(() {
                               _injectMoreContext = !_injectMoreContext;
+                              if (_injectMoreContext) {
+                                _useCustomInjectRange = false;
+                              }
                               _liveSmartContextPreview =
                                   _buildSmartContextPreview(
                                       _inputCtrl.text.trim());
@@ -4033,11 +4076,39 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                             ),
                           ),
                         ),
+                        TextButton(
+                          onPressed: _pickCustomInjectRange,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 22),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                          ),
+                          child: Text(
+                            _useCustomInjectRange ? '自定义注入: 开' : '自定义注入',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     if (_injectMoreContext)
                       Text(
                         '已扩大到未来30天范围',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    if (_useCustomInjectRange &&
+                        _customInjectStart != null &&
+                        _customInjectEnd != null)
+                      Text(
+                        '自定义范围: ${DateFormat('yyyy-MM-dd').format(_customInjectStart!)} 至 ${DateFormat('yyyy-MM-dd').format(_customInjectEnd!)}',
                         style: TextStyle(
                           fontSize: 11,
                           color: colorScheme.onSurface.withValues(alpha: 0.6),
