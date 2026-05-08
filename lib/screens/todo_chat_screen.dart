@@ -17,6 +17,7 @@ import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 
@@ -280,6 +281,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (mounted) {
       setState(() => _deepThinking = enabled);
     }
+  }
+
+  Future<void> _openTutorialPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AiAssistantTutorialScreen(),
+      ),
+    );
   }
 
   void _scrollToBottom() {
@@ -1082,6 +1091,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
           tooltip: '提示词设置',
+        ),
+        IconButton(
+          icon: const Icon(Icons.menu_book_rounded, size: 22),
+          onPressed: _openTutorialPage,
+          tooltip: '使用教程',
         ),
         const SizedBox(width: 4),
       ],
