@@ -1015,13 +1015,45 @@ class PomodoroService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final db = await DatabaseHelper.instance.database;
       final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
       final lastUpload = prefs.getInt(lastUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
-      final dirty = forceFullSync
+
+      final Map<String, PomodoroRecord> dedup = {};
+
+      if (!forceFullSync) {
+        final pendingOps = await db.query(
+          'op_logs',
+          where: 'is_synced = 0 AND target_table = ?',
+          whereArgs: ['pomodoro_records'],
+          orderBy: 'timestamp ASC',
+        );
+        for (final op in pendingOps) {
+          final raw = op['data_json']?.toString();
+          if (raw == null || raw.isEmpty) continue;
+          try {
+            final j = jsonDecode(raw);
+            if (j is Map<String, dynamic>) {
+              final r = PomodoroRecord.fromJson(j);
+              dedup[r.uuid] = r;
+            } else if (j is Map) {
+              final r = PomodoroRecord.fromJson(j.cast<String, dynamic>());
+              dedup[r.uuid] = r;
+            }
+          } catch (_) {}
+        }
+      }
+
+      final timeWindowRecords = forceFullSync
           ? all
           : all.where((r) => r.updatedAt > lastUpload).toList();
+      for (final r in timeWindowRecords) {
+        dedup[r.uuid] = r;
+      }
+      final dirty = dedup.values.toList();
+
       debugPrint(
         '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
       );
@@ -1029,6 +1061,12 @@ class PomodoroService {
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
       if (ok) {
+        await db.update(
+          'op_logs',
+          {'is_synced': 1, 'sync_error': ''},
+          where: 'is_synced = 0 AND target_table = ?',
+          whereArgs: ['pomodoro_records'],
+        );
         await prefs.setInt(
             lastUploadKey, DateTime.now().millisecondsSinceEpoch);
       }
@@ -1131,11 +1169,27 @@ class PomodoroService {
     final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == updated.uuid);
     if (idx != -1) {
-      all[idx] = updated;
-      await _saveRecords(all); // 本地保存完成，立即返回
-      // 后台异步上传，不阻塞调用方
-      ApiService.uploadPomodoroRecord(updated.toJson())
-          .catchError((_) => false);
+      final old = all[idx];
+      final merged = PomodoroRecord(
+        uuid: old.uuid,
+        todoUuid: updated.todoUuid ?? old.todoUuid,
+        todoTitle: updated.todoTitle ?? old.todoTitle,
+        tagUuids: updated.tagUuids,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+        plannedDuration: updated.plannedDuration,
+        actualDuration: updated.actualDuration,
+        status: updated.status,
+        deviceId: updated.deviceId ?? old.deviceId,
+        planBlockId: updated.planBlockId ?? old.planBlockId,
+        isDeleted: updated.isDeleted,
+        version: (updated.version <= old.version)
+            ? (old.version + 1)
+            : updated.version,
+        createdAt: old.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      await addRecord(merged);
     }
   }
 
@@ -1145,7 +1199,7 @@ class PomodoroService {
     final idx = all.indexWhere((r) => r.uuid == uuid);
     if (idx != -1) {
       final old = all[idx];
-      all[idx] = PomodoroRecord(
+      final deleted = PomodoroRecord(
         uuid: old.uuid,
         todoUuid: old.todoUuid,
         todoTitle: old.todoTitle,
@@ -1161,9 +1215,7 @@ class PomodoroService {
         createdAt: old.createdAt,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       );
-      await _saveRecords(all);
-      ApiService.uploadPomodoroRecord(all[idx].toJson())
-          .catchError((_) => false);
+      await addRecord(deleted);
     }
   }
 
