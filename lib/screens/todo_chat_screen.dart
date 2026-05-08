@@ -83,7 +83,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
   bool _inputHasText = false;
-  String _liveFixedContextPreview = '';
   String _liveSmartContextPreview = '';
   int _liveEstimatedTokens = 0;
   String? _activeSessionId;
@@ -157,25 +156,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   void _handleInputChanged() {
     final text = _inputCtrl.text.trim();
     final hasText = text.isNotEmpty;
-    final fixedPreview = _buildFixedContextPreview();
     final preview = _buildSmartContextPreview(text);
     final estimatedTokens = _estimateTokensForPendingInput(text);
     if (hasText == _inputHasText &&
         preview == _liveSmartContextPreview &&
-        fixedPreview == _liveFixedContextPreview &&
         estimatedTokens == _liveEstimatedTokens) {
       return;
     }
     setState(() {
       _inputHasText = hasText;
-      _liveFixedContextPreview = fixedPreview;
       _liveSmartContextPreview = preview;
       _liveEstimatedTokens = estimatedTokens;
     });
-  }
-
-  String _buildFixedContextPreview() {
-    return '固定发送：待办${widget.todos.length}条、分类${widget.todoGroups.length}个、倒计时${widget.countdowns.length}个、番茄标签${widget.pomodoroTags.length}个、规划块${_planBlocks.length}个';
   }
 
   String _buildSmartContextPreview(String userText) {
@@ -184,8 +176,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           userMessage: userText,
           courses: widget.courses,
           timeLogs: widget.timeLogs,
+          todoGroups: widget.todoGroups,
           pomodoroRecords: widget.pomodoroRecords,
           planBlocks: _planBlocks,
+          todos: widget.todos,
+          countdowns: widget.countdowns,
+          pomodoroTags: widget.pomodoroTags,
           conflicts: widget.conflicts,
           teams: widget.teams,
           now: DateTime.now(),
@@ -371,11 +367,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     return AiTodoContextBuilder.buildSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
-      todos: widget.todos,
-      todoGroups: widget.todoGroups,
-      countdowns: widget.countdowns,
-      pomodoroTags: widget.pomodoroTags,
-      planBlocks: _planBlocks,
+      todos: const [],
+      todoGroups: const [],
+      countdowns: const [],
+      pomodoroTags: const [],
+      planBlocks: const [],
     );
   }
 
@@ -458,9 +454,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       userMessage: userText,
       courses: widget.courses,
       timeLogs: widget.timeLogs,
+      todoGroups: widget.todoGroups,
       pomodoroRecords: widget.pomodoroRecords,
       planBlocks: _planBlocks,
       todos: widget.todos,
+      countdowns: widget.countdowns,
+      pomodoroTags: widget.pomodoroTags,
       conflicts: widget.conflicts,
       teams: widget.teams,
       now: DateTime.now(),
@@ -3969,9 +3968,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ),
               ],
             ),
-            if (_inputHasText &&
-                (_liveSmartContextPreview.isNotEmpty ||
-                    _liveFixedContextPreview.isNotEmpty)) ...[
+            if (_inputHasText && _liveSmartContextPreview.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
@@ -3998,16 +3995,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    if (_liveFixedContextPreview.isNotEmpty)
-                      SelectableText(
-                        _liveFixedContextPreview,
-                        maxLines: 2,
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: colorScheme.onSurface.withValues(alpha: 0.8),
-                        ),
-                      ),
                     if (_liveSmartContextPreview.isNotEmpty)
                       SelectableText(
                         _liveSmartContextPreview,
@@ -4061,7 +4048,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     tooltip: '智能上下文',
                     onTap: (val) => setState(() {
                       _smartContext = val;
-                      _liveFixedContextPreview = _buildFixedContextPreview();
                       _liveSmartContextPreview =
                           _buildSmartContextPreview(_inputCtrl.text.trim());
                       _liveEstimatedTokens =

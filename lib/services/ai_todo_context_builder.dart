@@ -28,18 +28,6 @@ class AiTodoContextBuilder {
 
     return '''$resolvedBasePrompt
 
-【用户当前分类/文件夹】
-${_formatGroups(todoGroups)}
-
-【用户当前倒计时】
-${_formatCountdowns(countdowns)}
-
-【用户当前番茄标签】
-${_formatPomodoroTags(pomodoroTags)}
-
-【用户当前待办规划】
-${_formatPlanBlocks(planBlocks, todos)}
-
 【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
@@ -112,9 +100,12 @@ JSON操作块必须且只能使用以下协议：
     required String userMessage,
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
+    List<TodoGroup> todoGroups = const [],
     List<PomodoroRecord> pomodoroRecords = const [],
     List<TodoPlanBlock> planBlocks = const [],
     List<Map<String, dynamic>> todos = const [],
+    List<CountdownItem> countdowns = const [],
+    List<PomodoroTag> pomodoroTags = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -124,6 +115,41 @@ JSON操作块必须且只能使用以下协议：
 
     if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
       sections.add(_formatCourses(courses, userMessage, nowValue));
+    }
+    if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
+      sections.add(
+        _formatTodos(
+          todos,
+          todoGroups,
+          userMessage: userMessage,
+          now: nowValue,
+        ),
+      );
+    }
+    if (_matchesAny(userMessage, _groupKeywords) && todoGroups.isNotEmpty) {
+      sections.add('分类/文件夹:\n${_formatGroups(todoGroups)}');
+    }
+    if (_matchesAny(userMessage, _countdownKeywords) && countdowns.isNotEmpty) {
+      sections.add(
+        _formatCountdowns(
+          countdowns,
+          userMessage: userMessage,
+          now: nowValue,
+        ),
+      );
+    }
+    if (_matchesAny(userMessage, _tagKeywords) && pomodoroTags.isNotEmpty) {
+      sections.add('番茄标签:\n${_formatPomodoroTags(pomodoroTags)}');
+    }
+    if (_matchesAny(userMessage, _planKeywords) && planBlocks.isNotEmpty) {
+      sections.add(
+        _formatPlanBlocks(
+          planBlocks,
+          todos,
+          userMessage: userMessage,
+          now: nowValue,
+        ),
+      );
     }
     if (_matchesAny(userMessage, _timeLogKeywords) &&
         (timeLogs.isNotEmpty ||
@@ -138,7 +164,14 @@ JSON操作块必须且只能使用以下协议：
         ),
       );
       if (planBlocks.isNotEmpty) {
-        sections.add(_formatPlanBlocks(planBlocks, todos));
+        sections.add(
+          _formatPlanBlocks(
+            planBlocks,
+            todos,
+            userMessage: userMessage,
+            now: nowValue,
+          ),
+        );
       }
     }
     if (_matchesAny(userMessage, _conflictKeywords) && conflicts.isNotEmpty) {
@@ -157,8 +190,12 @@ JSON操作块必须且只能使用以下协议：
     required String userMessage,
     required List<CourseItem> courses,
     required List<TimeLogItem> timeLogs,
+    List<TodoGroup> todoGroups = const [],
     List<PomodoroRecord> pomodoroRecords = const [],
     List<TodoPlanBlock> planBlocks = const [],
+    List<Map<String, dynamic>> todos = const [],
+    List<CountdownItem> countdowns = const [],
+    List<PomodoroTag> pomodoroTags = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -175,6 +212,36 @@ JSON操作块必须且只能使用以下协议：
       } else {
         parts.add('课程今日起');
       }
+    }
+    if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
+      final scoped = _scopeTodosByTime(
+        todos,
+        userMessage: userMessage,
+        now: nowValue,
+      );
+      parts.add('待办${scoped.length}条');
+    }
+    if (_matchesAny(userMessage, _groupKeywords) && todoGroups.isNotEmpty) {
+      parts.add('分类${todoGroups.length}个');
+    }
+    if (_matchesAny(userMessage, _countdownKeywords) && countdowns.isNotEmpty) {
+      final scoped = _scopeCountdownsByTime(
+        countdowns,
+        userMessage: userMessage,
+        now: nowValue,
+      );
+      parts.add('倒计时${scoped.length}个');
+    }
+    if (_matchesAny(userMessage, _tagKeywords) && pomodoroTags.isNotEmpty) {
+      parts.add('番茄标签${pomodoroTags.where((t) => !t.isDeleted).length}个');
+    }
+    if (_matchesAny(userMessage, _planKeywords) && planBlocks.isNotEmpty) {
+      final scoped = _scopePlanBlocksByTime(
+        planBlocks,
+        userMessage: userMessage,
+        now: nowValue,
+      );
+      parts.add('规划块${scoped.length}个');
     }
 
     if (_matchesAny(userMessage, _timeLogKeywords) &&
@@ -215,6 +282,10 @@ JSON操作块必须且只能使用以下协议：
         _matchesAny(text, _planningTimeKeywords);
   }
 
+  static bool _shouldInjectTodoContext(String text) {
+    return _matchesAny(text, _todoKeywords);
+  }
+
   static const _courseKeywords = [
     '课',
     '课程',
@@ -238,6 +309,39 @@ JSON操作块必须且只能使用以下协议：
     '待办规划',
     '今日计划',
     '日程',
+  ];
+  static const _todoKeywords = [
+    '待办',
+    '任务',
+    'todo',
+    '创建',
+    '完成',
+    '删除',
+    '改期',
+    '安排',
+    '规划',
+  ];
+  static const _groupKeywords = [
+    '分类',
+    '文件夹',
+    '归类',
+    '分组',
+  ];
+  static const _countdownKeywords = [
+    '倒计时',
+    '截止',
+    'ddl',
+  ];
+  static const _tagKeywords = [
+    '标签',
+    '番茄标签',
+    'tag',
+  ];
+  static const _planKeywords = [
+    '规划',
+    '时间块',
+    'plan block',
+    '计划块',
   ];
   static const _planningTimeKeywords = [
     '未来',
@@ -335,9 +439,16 @@ JSON操作块必须且只能使用以下协议：
   static String _formatTodos(
     List<Map<String, dynamic>> todos,
     List<TodoGroup> todoGroups,
+    {String? userMessage, DateTime? now}
   ) {
     if (todos.isEmpty) return '暂无待办';
-    return todos.take(80).map((t) {
+    final scoped = _scopeTodosByTime(
+      todos,
+      userMessage: userMessage,
+      now: now,
+    );
+    if (scoped.isEmpty) return '待办列表: 暂无匹配时间范围的待办';
+    return '待办列表（按时间范围筛选，最多80条）:\n${scoped.take(80).map((t) {
       final id = t['id'] ?? 'unknown';
       final title = t['title'] ?? '';
       final remark = t['remark'] ?? '';
@@ -355,7 +466,7 @@ JSON操作块必须且只能使用以下协议：
       }
 
       return '- [ID: $id] 标题: $title${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence | 提醒: 提前$reminderMinutes分钟';
-    }).join('\n');
+    }).join('\n')}';
   }
 
   static String _formatGroups(List<TodoGroup> todoGroups) {
@@ -363,14 +474,22 @@ JSON操作块必须且只能使用以下协议：
     return todoGroups.map((g) => '- 名称: ${g.name} | ID: ${g.id}').join('\n');
   }
 
-  static String _formatCountdowns(List<CountdownItem> countdowns) {
-    final active = countdowns.where((c) => !c.isDeleted).take(40).toList();
-    if (active.isEmpty) return '暂无倒计时';
-    return active.map((c) {
+  static String _formatCountdowns(
+    List<CountdownItem> countdowns, {
+    String? userMessage,
+    DateTime? now,
+  }) {
+    final active = _scopeCountdownsByTime(
+      countdowns,
+      userMessage: userMessage,
+      now: now,
+    );
+    if (active.isEmpty) return '倒计时: 暂无匹配时间范围的记录';
+    return '倒计时（按时间范围筛选）:\n${active.take(40).map((c) {
       final target = DateFormat('yyyy-MM-dd HH:mm').format(c.targetDate);
       final status = c.isCompleted ? '已达成' : '进行中';
       return '- [ID: ${c.id}] 标题: ${c.title} | 目标: $target | 状态: $status';
-    }).join('\n');
+    }).join('\n')}';
   }
 
   static String _formatPomodoroTags(List<PomodoroTag> tags) {
@@ -384,10 +503,15 @@ JSON操作块必须且只能使用以下协议：
   static String _formatPlanBlocks(
     List<TodoPlanBlock> blocks,
     List<Map<String, dynamic>> todos,
+    {String? userMessage, DateTime? now}
   ) {
-    final active = blocks.where((b) => !b.isDeleted).toList()
+    final active = _scopePlanBlocksByTime(
+      blocks,
+      userMessage: userMessage,
+      now: now,
+    )
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    if (active.isEmpty) return '暂无规划';
+    if (active.isEmpty) return '待办规划: 暂无匹配时间范围的规划块';
 
     String todoTitle(String id) {
       final match = todos.where((t) => t['id']?.toString() == id).toList();
@@ -396,14 +520,14 @@ JSON操作块必须且只能使用以下协议：
       return title == null || title.isEmpty ? id : title;
     }
 
-    return active.take(60).map((b) {
+    return '待办规划（按时间范围筛选）:\n${active.take(60).map((b) {
       final start = DateFormat('yyyy-MM-dd HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(b.startTime));
       final end = DateFormat('yyyy-MM-dd HH:mm')
           .format(DateTime.fromMillisecondsSinceEpoch(b.endTime));
       final actualMinutes = b.actualFocusSeconds ~/ 60;
       return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
-    }).join('\n');
+    }).join('\n')}';
   }
 
   static String _formatCourses(
@@ -753,6 +877,93 @@ ${lines.isEmpty ? '暂无' : lines}''';
     if (hours == 0) return '$minutes分钟';
     if (rest == 0) return '$hours小时';
     return '$hours小时$rest分钟';
+  }
+
+  static List<Map<String, dynamic>> _scopeTodosByTime(
+    List<Map<String, dynamic>> todos, {
+    String? userMessage,
+    DateTime? now,
+  }) {
+    final base = todos.toList();
+    final message = userMessage ?? '';
+    final nowValue = now ?? DateTime.now();
+    final period = _resolveCoursePeriod(message, nowValue);
+    if (period == null) return base;
+    return base.where((t) {
+      final start = _parseFlexibleDateTime(
+        t['startTime'] ?? t['start_time'] ?? t['createdDate'] ?? t['created_date'],
+      );
+      final end = _parseFlexibleDateTime(
+        t['endTime'] ?? t['end_time'] ?? t['dueDate'] ?? t['due_date'],
+      );
+      final fallback = start ?? end;
+      if (start == null && end == null) return false;
+      final s = start ?? fallback!;
+      final e = end ?? s.add(const Duration(minutes: 1));
+      return _dateRangeOverlaps(period.start, period.end, s, e);
+    }).toList();
+  }
+
+  static List<CountdownItem> _scopeCountdownsByTime(
+    List<CountdownItem> countdowns, {
+    String? userMessage,
+    DateTime? now,
+  }) {
+    final active = countdowns.where((c) => !c.isDeleted).toList();
+    final message = userMessage ?? '';
+    final nowValue = now ?? DateTime.now();
+    final period = _resolveCoursePeriod(message, nowValue);
+    if (period == null) return active;
+    return active.where((c) {
+      final target = DateTime(
+        c.targetDate.year,
+        c.targetDate.month,
+        c.targetDate.day,
+      );
+      return !target.isBefore(period.start) && target.isBefore(period.end);
+    }).toList();
+  }
+
+  static List<TodoPlanBlock> _scopePlanBlocksByTime(
+    List<TodoPlanBlock> blocks, {
+    String? userMessage,
+    DateTime? now,
+  }) {
+    final active = blocks.where((b) => !b.isDeleted).toList();
+    final message = userMessage ?? '';
+    final nowValue = now ?? DateTime.now();
+    final period = _resolveCoursePeriod(message, nowValue);
+    if (period == null) return active;
+    return active.where((b) {
+      final start = DateTime.fromMillisecondsSinceEpoch(b.startTime);
+      final end = DateTime.fromMillisecondsSinceEpoch(b.endTime);
+      return _dateRangeOverlaps(period.start, period.end, start, end);
+    }).toList();
+  }
+
+  static bool _dateRangeOverlaps(
+    DateTime pStart,
+    DateTime pEnd,
+    DateTime itemStart,
+    DateTime itemEnd,
+  ) {
+    return itemEnd.isAfter(pStart) && itemStart.isBefore(pEnd);
+  }
+
+  static DateTime? _parseFlexibleDateTime(dynamic raw) {
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    if (text.isEmpty) return null;
+    final numeric = int.tryParse(text);
+    if (numeric != null) {
+      if (numeric > 1000000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(numeric);
+      }
+      if (numeric > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(numeric * 1000);
+      }
+    }
+    return DateTime.tryParse(text);
   }
 }
 
