@@ -58,6 +58,7 @@ class StorageService {
     }
 
     final batch = db.batch();
+    int queuedPlanOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final itemData = item.toDbJson();
@@ -78,7 +79,9 @@ class StorageService {
           'pomodoro_minutes',
           'pomodoro_rounds',
           'calendar_event_id',
-          'is_deleted'
+          'is_deleted',
+          'version',
+          'updated_at'
         ]);
       }
 
@@ -92,6 +95,7 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
+        queuedPlanOps++;
       }
 
       if (hasChanged || oldData == null) {
@@ -102,6 +106,8 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
+      debugPrint(
+          '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (sync) requestSync(username);
@@ -723,7 +729,9 @@ class StorageService {
           'target_time',
           'is_deleted',
           'is_completed',
-          'team_uuid'
+          'team_uuid',
+          'version',
+          'updated_at'
         ]);
       }
 
@@ -1009,6 +1017,7 @@ class StorageService {
 
     // 🚀 Batch 极速批量写入
     final batch = db.batch();
+    int queuedTodoOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final oldData = existingItemsMap[item.id];
@@ -1030,6 +1039,8 @@ class StorageService {
           'conflict_data',
           'image_path',
           'original_text',
+          'version',
+          'updated_at',
         ]);
       }
 
@@ -1048,6 +1059,7 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
+        queuedTodoOps++;
       }
 
       if (hasChanged || oldData == null) {
@@ -1090,6 +1102,8 @@ class StorageService {
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
       _inflightTodoRequests.clear();
+      debugPrint(
+          '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (recomputeScheduleConflicts) {
@@ -2753,6 +2767,7 @@ class StorageService {
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,
   }) async {
+    final bool shouldUploadAllLocal = uploadAllLocal || forceFullSync;
     // 1. 状态锁：防止重复进入
     if (!syncTodos &&
         !syncCountdowns &&
@@ -2810,6 +2825,13 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      final pendingByTable = <String, int>{};
+      for (final op in pendingOps) {
+        final t = (op['target_table'] ?? 'unknown').toString();
+        pendingByTable[t] = (pendingByTable[t] ?? 0) + 1;
+      }
+      debugPrint(
+          '🧪 [SyncDiag][PendingOps] total=${pendingOps.length} byTable=$pendingByTable');
 
       final Map<String, Map<String, dynamic>> dedupTodos = {};
       final Map<String, Map<String, dynamic>> dedupGroups = {};
@@ -2842,7 +2864,44 @@ class StorageService {
       dirtyCountdowns = dedupCountdowns.values.toList();
       dirtyPlanBlocks = dedupPlanBlocks.values.toList();
 
-      if (forceFullSync && uploadAllLocal) {
+      // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
+      if (syncTodos) {
+        for (final item in allLocalTodos) {
+          if (item.updatedAt > lastSyncTime) {
+            final data = item.toJson();
+            data.remove('image_path');
+            data.remove('imagePath');
+            dedupTodos[item.id] = _stripClientOnlyConflictForSync(data);
+          }
+        }
+        dirtyTodos = dedupTodos.values.toList();
+      }
+      if (syncCountdowns) {
+        for (final item in allLocalCountdowns) {
+          if (item.updatedAt > lastSyncTime) {
+            dedupCountdowns[item.id] = item.toJson();
+          }
+        }
+        dirtyCountdowns = dedupCountdowns.values.toList();
+      }
+      for (final item in allLocalGroups) {
+        if (item.updatedAt > lastSyncTime) {
+          dedupGroups[item.id] = item.toJson();
+        }
+      }
+      dirtyGroups = dedupGroups.values.toList();
+
+      // 兜底：规划块除 op_logs 外，再按 updatedAt 增量补采一遍，避免个别日志遗漏导致改删不同步
+      if (syncPlanBlocks) {
+        for (final item in allLocalPlanBlocks) {
+          if (item.updatedAt > lastSyncTime) {
+            dedupPlanBlocks[item.id] = item.toJson();
+          }
+        }
+        dirtyPlanBlocks = dedupPlanBlocks.values.toList();
+      }
+
+      if (shouldUploadAllLocal) {
         for (final item in allLocalTodos) {
           final data = item.toJson();
           data.remove('image_path');
@@ -2916,6 +2975,22 @@ class StorageService {
       }
 
       // 5. 发起网络同步请求
+      final uploadedTodoUuids =
+          dirtyTodos.map((e) => (e['uuid'] ?? e['id']).toString()).toList();
+      final uploadedDeletedTodoUuids = dirtyTodos
+          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      final uploadedPlanUuids = dirtyPlanBlocks
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      final uploadedDeletedPlanUuids = dirtyPlanBlocks
+          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      debugPrint(
+          '🧪 [SyncDiag][Client->Server] deviceId=$deviceId lastSync=$lastSyncTime todos=${dirtyTodos.length} deletedTodos=${uploadedDeletedTodoUuids.length} todoUuids=$uploadedTodoUuids deletedTodoUuids=$uploadedDeletedTodoUuids planBlocks=${dirtyPlanBlocks.length} deletedPlanBlocks=${uploadedDeletedPlanUuids.length} planUuids=$uploadedPlanUuids deletedPlanUuids=$uploadedDeletedPlanUuids');
+
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -2932,6 +3007,29 @@ class StorageService {
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
+      final serverTodosPreview = (response['server_todos'] as List?) ?? const [];
+      final serverTodoUuids = serverTodosPreview
+          .whereType<Map>()
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      final serverDeletedTodoUuids = serverTodosPreview
+          .whereType<Map>()
+          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      final serverPlanPreview =
+          (response['server_plan_blocks'] as List?) ?? const [];
+      final serverPlanUuids = serverPlanPreview
+          .whereType<Map>()
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      final serverDeletedPlanUuids = serverPlanPreview
+          .whereType<Map>()
+          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
+          .map((e) => (e['uuid'] ?? e['id']).toString())
+          .toList();
+      debugPrint(
+          '🧪 [SyncDiag][Server->Client] success=${response['success']} todos=${serverTodosPreview.length} deletedTodos=${serverDeletedTodoUuids.length} todoUuids=$serverTodoUuids deletedTodoUuids=$serverDeletedTodoUuids planBlocks=${serverPlanPreview.length} deletedPlanBlocks=${serverDeletedPlanUuids.length} planUuids=$serverPlanUuids deletedPlanUuids=$serverDeletedPlanUuids');
 
       bool hasPendingUpload() =>
           dirtyTodos.isNotEmpty ||
@@ -2971,9 +3069,38 @@ class StorageService {
       }
 
       if (response['success'] == true) {
-        // 🚀 全部上报成功后，标记 op_logs 为已同步，并清空之前的错误
-        await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
-            where: 'is_synced = 0');
+        // 🚀 仅标记“未冲突”的本地操作为已同步，避免被服务端拒收后本地误清队列
+        final List<dynamic> rawConflicts = (response['conflicts'] as List?) ?? [];
+        final Set<String> conflictUuids = <String>{};
+        for (final c in rawConflicts) {
+          if (c is! Map) continue;
+          final item = c['item'];
+          if (item is! Map) continue;
+          final uuid =
+              (item['uuid'] ?? item['id'] ?? item['todo_uuid'])?.toString();
+          if (uuid != null && uuid.isNotEmpty) {
+            conflictUuids.add(uuid);
+          }
+        }
+
+        if (conflictUuids.isEmpty) {
+          await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
+              where: 'is_synced = 0');
+        } else {
+          final placeholders = List.filled(conflictUuids.length, '?').join(',');
+          await db.update(
+            'op_logs',
+            {'is_synced': 1, 'sync_error': ''},
+            where: 'is_synced = 0 AND target_uuid NOT IN ($placeholders)',
+            whereArgs: conflictUuids.toList(),
+          );
+          await db.update(
+            'op_logs',
+            {'is_synced': 0, 'sync_error': 'server_conflict'},
+            where: 'is_synced = 0 AND target_uuid IN ($placeholders)',
+            whereArgs: conflictUuids.toList(),
+          );
+        }
 
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions =
@@ -3079,6 +3206,14 @@ class StorageService {
           final local = allLocalTodos[idx];
           debugPrint(
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
+
+          // 防回滚：本地已删除且更“新”时，拒绝服务端旧的未删除数据复活
+          if (local.isDeleted &&
+              !sItem.isDeleted &&
+              local.updatedAt > sItem.updatedAt &&
+              local.version >= sItem.version) {
+            continue;
+          }
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
