@@ -91,6 +91,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? courseKey;
   final GlobalKey? searchKey; // 🚀 新增
   final GlobalKey? teamsKey; // 🚀 新增
+  final GlobalKey? aiKey;
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   final bool hasTeamConflictDot;
@@ -111,6 +112,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.courseKey,
     this.searchKey,
     this.teamsKey,
+    this.aiKey,
     this.showCourseButton = false,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
@@ -254,6 +256,28 @@ class _HomeAppBarState extends State<HomeAppBar>
     );
   }
 
+  Widget _buildAnimatedAction(int index, Widget child) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 220 + index * 45),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, value, c) {
+        final clamped = value.clamp(0.0, 1.0);
+        return Opacity(
+          opacity: clamped,
+          child: Transform.translate(
+            offset: Offset(0, (1 - clamped) * 8),
+            child: Transform.scale(
+              scale: 0.92 + clamped * 0.08,
+              child: c,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLandscape =
@@ -286,6 +310,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       context,
       icon: Icons.smart_toy_outlined,
       onPressed: widget.onAiAssistant ?? () {},
+      buttonKey: widget.aiKey,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
@@ -351,23 +376,26 @@ class _HomeAppBarState extends State<HomeAppBar>
       actions: [
         if (isTablet || isLandscape) ...[
           if (widget.showCourseButton)
-            _buildActionButton(
-              context,
-              icon: Icons.calendar_view_week_rounded,
-              onPressed: () async {
-                await PageTransitions.pushFromRect(
-                  context: context,
-                  page: WeeklyCourseScreen(username: widget.username),
-                  sourceKey: widget.courseKey ?? GlobalKey(),
-                );
-              },
-              buttonKey: widget.courseKey,
+            _buildAnimatedAction(
+              0,
+              _buildActionButton(
+                context,
+                icon: Icons.calendar_view_week_rounded,
+                onPressed: () async {
+                  await PageTransitions.pushFromRect(
+                    context: context,
+                    page: WeeklyCourseScreen(username: widget.username),
+                    sourceKey: widget.courseKey ?? GlobalKey(),
+                  );
+                },
+                buttonKey: widget.courseKey,
+              ),
             ),
-          searchBtn,
-          aiBtn,
-          syncBtn,
-          teamsBtn,
-          settingsBtn,
+          _buildAnimatedAction(1, searchBtn),
+          _buildAnimatedAction(2, aiBtn),
+          _buildAnimatedAction(3, syncBtn),
+          _buildAnimatedAction(4, teamsBtn),
+          _buildAnimatedAction(5, settingsBtn),
         ] else ...[
           // 🚀 手机端纵屏：两行操作区，新增 AI 助手入口
           Padding(
@@ -378,20 +406,20 @@ class _HomeAppBarState extends State<HomeAppBar>
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    teamsBtn,
+                    _buildAnimatedAction(0, teamsBtn),
                     const SizedBox(width: 8),
-                    settingsBtn,
+                    _buildAnimatedAction(1, settingsBtn),
                     const SizedBox(width: 8),
-                    aiBtn,
+                    _buildAnimatedAction(2, aiBtn),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    searchBtn,
+                    _buildAnimatedAction(3, searchBtn),
                     const SizedBox(width: 8),
-                    syncBtn,
+                    _buildAnimatedAction(4, syncBtn),
                   ],
                 ),
               ],
