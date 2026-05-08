@@ -179,6 +179,66 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
   }
 
+  Future<void> openAiAssistant() async {
+    final aiContext = await _loadAiAssistantContext();
+    if (!mounted) return;
+
+    AiTodoChatLauncher.open(
+      context,
+      username: widget.username,
+      todos: widget.todos.where((t) => !t.isDone && !_isHistoricalTodo(t)).toList(),
+      todoGroups: widget.todoGroups,
+      courses: aiContext.courses,
+      timeLogs: aiContext.timeLogs,
+      pomodoroRecords: aiContext.pomodoroRecords,
+      conflicts: widget.conflicts,
+      teams: aiContext.teams,
+      onTodoGroupsChanged: widget.onGroupsChanged,
+      onTodosBatchAction: (inserted, updated) {
+        final List<TodoItem> resultList = List<TodoItem>.from(widget.todos);
+
+        resultList.addAll(inserted);
+
+        for (final update in updated) {
+          final idx = resultList.indexWhere((t) => t.id == update.id);
+          if (idx != -1) {
+            final existing = resultList[idx];
+            resultList[idx] = TodoItem(
+              id: existing.id,
+              title: update.title.isNotEmpty ? update.title : existing.title,
+              isDone: update.isDone,
+              isDeleted: update.isDeleted,
+              version: existing.version,
+              updatedAt: DateTime.now().millisecondsSinceEpoch,
+              createdAt: existing.createdAt,
+              createdDate: update.createdDate ?? existing.createdDate,
+              recurrence: update.recurrence,
+              customIntervalDays: update.customIntervalDays,
+              recurrenceEndDate: update.recurrenceEndDate,
+              dueDate: update.dueDate,
+              remark: update.remark ?? existing.remark,
+              imagePath: existing.imagePath,
+              originalText: update.originalText ?? existing.originalText,
+              groupId: update.groupId,
+              reminderMinutes: update.reminderMinutes,
+              teamUuid: existing.teamUuid,
+              creatorId: existing.creatorId,
+              creatorName: existing.creatorName,
+              teamName: existing.teamName,
+              collabType: existing.collabType,
+              hasConflict: existing.hasConflict,
+              serverVersionData: existing.serverVersionData,
+              isAllDay: update.isAllDay,
+              categoryId: existing.categoryId,
+            )..markAsChanged();
+          }
+        }
+
+        widget.onTodosChanged(resultList);
+      },
+    );
+  }
+
   bool _isHistoricalTodo(TodoItem t) {
     if (!t.isDone) return false;
     DateTime today = DateTime.now();
@@ -3270,84 +3330,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                         ),
                       )
                       .toList(),
-                ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    Icons.smart_toy_outlined,
-                    size: 20,
-                    color: useDarkUI ? Colors.white70 : Colors.grey,
-                  ),
-                  onPressed: () async {
-                    final aiContext = await _loadAiAssistantContext();
-                    if (!context.mounted) return;
-
-                    AiTodoChatLauncher.open(
-                      context,
-                      username: widget.username,
-                      todos: widget.todos
-                          .where((t) => !t.isDone && !_isHistoricalTodo(t))
-                          .toList(),
-                      todoGroups: widget.todoGroups,
-                      courses: aiContext.courses,
-                      timeLogs: aiContext.timeLogs,
-                      pomodoroRecords: aiContext.pomodoroRecords,
-                      conflicts: widget.conflicts,
-                      teams: aiContext.teams,
-                      onTodoGroupsChanged: widget.onGroupsChanged,
-                      onTodosBatchAction: (inserted, updated) {
-                        final List<TodoItem> resultList =
-                            List<TodoItem>.from(widget.todos);
-
-                        // 1. 处理新增
-                        resultList.addAll(inserted);
-
-                        // 2. 处理更新
-                        for (final update in updated) {
-                          final idx =
-                              resultList.indexWhere((t) => t.id == update.id);
-                          if (idx != -1) {
-                            final existing = resultList[idx];
-                            resultList[idx] = TodoItem(
-                              id: existing.id,
-                              title: update.title.isNotEmpty
-                                  ? update.title
-                                  : existing.title,
-                              isDone: update.isDone,
-                              isDeleted: update.isDeleted,
-                              version: existing.version,
-                              updatedAt: DateTime.now().millisecondsSinceEpoch,
-                              createdAt: existing.createdAt,
-                              createdDate:
-                                  update.createdDate ?? existing.createdDate,
-                              recurrence: update.recurrence,
-                              customIntervalDays: update.customIntervalDays,
-                              recurrenceEndDate: update.recurrenceEndDate,
-                              dueDate: update.dueDate,
-                              remark: update.remark ?? existing.remark,
-                              imagePath: existing.imagePath,
-                              originalText:
-                                  update.originalText ?? existing.originalText,
-                              groupId: update.groupId,
-                              reminderMinutes: update.reminderMinutes,
-                              teamUuid: existing.teamUuid,
-                              creatorId: existing.creatorId,
-                              creatorName: existing.creatorName,
-                              teamName: existing.teamName,
-                              collabType: existing.collabType,
-                              hasConflict: existing.hasConflict,
-                              serverVersionData: existing.serverVersionData,
-                              isAllDay: update.isAllDay,
-                              categoryId: existing.categoryId,
-                            )..markAsChanged();
-                          }
-                        }
-
-                        widget.onTodosChanged(resultList);
-                      },
-                    );
-                  },
-                  tooltip: 'AI待办助手',
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,

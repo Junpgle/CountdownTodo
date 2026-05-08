@@ -85,6 +85,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onSync;
   final VoidCallback onSettings;
   final VoidCallback? onSearch; // 🚀 新增：搜索回调
+  final VoidCallback? onAiAssistant;
   final VoidCallback? onTeams; // 🚀 新增：团队回调
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
@@ -104,6 +105,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.onSync,
     required this.onSettings,
     this.onSearch,
+    this.onAiAssistant,
     this.onTeams,
     this.settingsKey,
     this.courseKey,
@@ -280,6 +282,13 @@ class _HomeAppBarState extends State<HomeAppBar>
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
+    final aiBtn = _buildActionButton(
+      context,
+      icon: Icons.smart_toy_outlined,
+      onPressed: widget.onAiAssistant ?? () {},
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
     final teamsBtn = _buildActionButton(
       context,
       icon: Icons.people_rounded,
@@ -355,13 +364,14 @@ class _HomeAppBarState extends State<HomeAppBar>
               buttonKey: widget.courseKey,
             ),
           searchBtn,
+          aiBtn,
           syncBtn,
           teamsBtn,
           settingsBtn,
         ] else ...[
-          // 🚀 手机端纵屏：2*2 矩阵排列，位置自定义：团队(TL), 设置(TR), 搜索(BL), 同步(BR)
+          // 🚀 手机端纵屏：两行操作区，新增 AI 助手入口
           Padding(
-            padding: const EdgeInsets.only(right: 12), // 移除 top: 4 以节省空间，防止溢出
+            padding: const EdgeInsets.only(right: 12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -370,14 +380,16 @@ class _HomeAppBarState extends State<HomeAppBar>
                   children: [
                     teamsBtn,
                     const SizedBox(width: 8),
-                    settingsBtn, // 设置放在右上角
+                    settingsBtn,
+                    const SizedBox(width: 8),
+                    aiBtn,
                   ],
                 ),
-                const SizedBox(height: 4), // 缩小行间距
+                const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    searchBtn, // 搜索放在左下角
+                    searchBtn,
                     const SizedBox(width: 8),
                     syncBtn,
                   ],
