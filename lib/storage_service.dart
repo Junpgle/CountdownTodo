@@ -3081,34 +3081,39 @@ class StorageService {
         // 🚀 仅标记“未冲突”的本地操作为已同步，避免被服务端拒收后本地误清队列
         final List<dynamic> rawConflicts =
             (response['conflicts'] as List?) ?? [];
-        final Set<String> conflictUuids = <String>{};
+        final Set<String> blockingConflictUuids = <String>{};
         for (final c in rawConflicts) {
           if (c is! Map) continue;
+          final type = c['type']?.toString();
+          if (type == 'schedule_conflict' || type == 'pomodoro') {
+            continue;
+          }
           final item = c['item'];
           if (item is! Map) continue;
           final uuid =
               (item['uuid'] ?? item['id'] ?? item['todo_uuid'])?.toString();
           if (uuid != null && uuid.isNotEmpty) {
-            conflictUuids.add(uuid);
+            blockingConflictUuids.add(uuid);
           }
         }
 
-        if (conflictUuids.isEmpty) {
+        if (blockingConflictUuids.isEmpty) {
           await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
               where: 'is_synced = 0');
         } else {
-          final placeholders = List.filled(conflictUuids.length, '?').join(',');
+          final placeholders =
+              List.filled(blockingConflictUuids.length, '?').join(',');
           await db.update(
             'op_logs',
             {'is_synced': 1, 'sync_error': ''},
             where: 'is_synced = 0 AND target_uuid NOT IN ($placeholders)',
-            whereArgs: conflictUuids.toList(),
+            whereArgs: blockingConflictUuids.toList(),
           );
           await db.update(
             'op_logs',
             {'is_synced': 0, 'sync_error': 'server_conflict'},
             where: 'is_synced = 0 AND target_uuid IN ($placeholders)',
-            whereArgs: conflictUuids.toList(),
+            whereArgs: blockingConflictUuids.toList(),
           );
         }
 
@@ -3377,6 +3382,34 @@ class StorageService {
           final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
           if (itemId.isEmpty) continue;
           final serverVersion = c.conflictWith;
+          if (c.type == 'schedule_conflict' &&
+              todosIndexMap.containsKey(itemId)) {
+            final todo = allLocalTodos[todosIndexMap[itemId]!];
+            final peer = Map<String, dynamic>.from(serverVersion);
+            final data = {
+              'uuid': todo.id,
+              'id': todo.id,
+              'content': todo.title,
+              'team_uuid': todo.teamUuid,
+              'schedule_scope':
+                  (todo.teamUuid?.isNotEmpty ?? false) ? 'team' : 'personal',
+              'relation_type': 'personal_personal',
+              'conflict_kind': 'logic',
+              'conflict_type': 'local_schedule_conflict',
+              'source': 'server_detector',
+              'start_time': todo.createdDate ?? todo.createdAt,
+              'end_time': todo.dueDate?.millisecondsSinceEpoch,
+              'conflict_with': [peer],
+            };
+            if (!todo.hasConflict ||
+                jsonEncode(todo.serverVersionData) != jsonEncode(data)) {
+              todo.hasConflict = true;
+              todo.serverVersionData = data;
+              hasChanges = true;
+            }
+            continue;
+          }
+
           final serverVersionId =
               (serverVersion['uuid'] ?? serverVersion['id'] ?? '').toString();
           final bool isSameItemServerVersion = serverVersionId.isNotEmpty &&
