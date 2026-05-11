@@ -1711,13 +1711,33 @@ class _HomeDashboardState extends State<HomeDashboard>
         builder: (_) => TodoEditScreen(
           todo: todo,
           todos: _todos,
-          onTodosChanged: (newTodos) {
+          onTodosChanged: (newTodos) async {
             setState(() => _todos = newTodos);
-            _loadAllData();
+            final allTodos = await StorageService.getTodos(widget.username);
+            for (var newT in newTodos) {
+              int idx = allTodos.indexWhere((x) => x.id == newT.id);
+              if (idx != -1) {
+                allTodos[idx] = newT;
+              } else {
+                allTodos.add(newT);
+              }
+            }
+            await StorageService.saveTodos(widget.username, allTodos);
           },
           todoGroups: _todoGroups,
-          onGroupsChanged: (newGroups) {
+          onGroupsChanged: (newGroups) async {
             setState(() => _todoGroups = newGroups);
+            final allGroups =
+                await StorageService.getTodoGroups(widget.username);
+            for (var g in newGroups) {
+              int idx = allGroups.indexWhere((x) => x.id == g.id);
+              if (idx != -1) {
+                allGroups[idx] = g;
+              } else {
+                allGroups.add(g);
+              }
+            }
+            await StorageService.saveTodoGroups(widget.username, allGroups);
             _loadAllData();
           },
           username: widget.username,
@@ -2521,28 +2541,34 @@ class _HomeDashboardState extends State<HomeDashboard>
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
         results[2],
       ).where((c) => !c.isDeleted).toList();
+      final conflictDetectionEnabled =
+          await StorageService.getConflictDetectionEnabled();
 
-      final bool hasTeamConflict = allTodos.any((t) {
-            if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) return false;
-            if (t.isAllDayTask) return false;
-            final data = t.serverVersionData;
-            if (data != null &&
-                (data['type'] == 'schedule' || data['conflict_with'] != null)) {
-              final peers = data['conflict_with'];
-              if (peers is List) {
-                final hasValidPeer = peers.any((p) =>
-                    p is Map &&
-                    !TodoItem.fromJson(Map<String, dynamic>.from(p))
-                        .isAllDayTask);
-                if (!hasValidPeer) return false;
-              }
-            }
-            return true;
-          }) ||
-          allGroups
-              .any((g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
-          allCountdowns
-              .any((c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false));
+      final bool hasTeamConflict = conflictDetectionEnabled &&
+          (allTodos.any((t) {
+                if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) {
+                  return false;
+                }
+                if (t.isAllDayTask) return false;
+                final data = t.serverVersionData;
+                if (data != null &&
+                    (data['type'] == 'schedule' ||
+                        data['conflict_with'] != null)) {
+                  final peers = data['conflict_with'];
+                  if (peers is List) {
+                    final hasValidPeer = peers.any((p) =>
+                        p is Map &&
+                        !TodoItem.fromJson(Map<String, dynamic>.from(p))
+                            .isAllDayTask);
+                    if (!hasValidPeer) return false;
+                  }
+                }
+                return true;
+              }) ||
+              allGroups.any(
+                  (g) => g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
+              allCountdowns.any(
+                  (c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false)));
 
       final Map<String, dynamic> mathStats =
           (results[3] ?? {}) as Map<String, dynamic>;
@@ -2760,7 +2786,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) {
           setState(() => _latestSyncConflicts = conflicts);
         }
-        if (conflicts.isNotEmpty && mounted) {
+        final conflictDetectionEnabled =
+            await StorageService.getConflictDetectionEnabled();
+        if (conflictDetectionEnabled && conflicts.isNotEmpty && mounted) {
           final shouldOpenConflictCenter =
               await ConflictAlertDialog.show(context, conflicts);
           if (shouldOpenConflictCenter == true && mounted) {
