@@ -10,6 +10,7 @@ import 'package:http/io_client.dart';
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
+  static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
   static String? _baseUrlOverride;
@@ -48,6 +49,11 @@ class ApiService {
   // 初始化设置
   static void setServerChoice(String choice) {
     if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
+
+    if (kIsWeb) {
+      baseUrl = webAliyunProxyUrl;
+      return;
+    }
 
     if (choice == 'aliyun') {
       baseUrl = aliyunProdUrl;

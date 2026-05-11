@@ -3007,7 +3007,8 @@ class StorageService {
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
-      final serverTodosPreview = (response['server_todos'] as List?) ?? const [];
+      final serverTodosPreview =
+          (response['server_todos'] as List?) ?? const [];
       final serverTodoUuids = serverTodosPreview
           .whereType<Map>()
           .map((e) => (e['uuid'] ?? e['id']).toString())
@@ -3070,7 +3071,8 @@ class StorageService {
 
       if (response['success'] == true) {
         // 🚀 仅标记“未冲突”的本地操作为已同步，避免被服务端拒收后本地误清队列
-        final List<dynamic> rawConflicts = (response['conflicts'] as List?) ?? [];
+        final List<dynamic> rawConflicts =
+            (response['conflicts'] as List?) ?? [];
         final Set<String> conflictUuids = <String>{};
         for (final c in rawConflicts) {
           if (c is! Map) continue;
@@ -3814,7 +3816,7 @@ class StorageService {
 
   static Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_SERVER_CHOICE) ?? 'cloudflare';
+    return prefs.getString(KEY_SERVER_CHOICE) ?? 'aliyun';
   }
 
   static Future<bool> getSemesterEnabled() async {
