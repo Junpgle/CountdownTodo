@@ -2849,10 +2849,13 @@ class StorageService {
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
+          if (_payloadHasVersionConflict(data)) continue;
           dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
         } else if (table == 'todo_groups') {
+          if (_payloadHasConflict(data)) continue;
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
+          if (_payloadHasConflict(data)) continue;
           dedupCountdowns[uuid] = data;
         } else if (table == 'todo_plan_blocks' && syncPlanBlocks) {
           dedupPlanBlocks[uuid] = data;
@@ -2868,6 +2871,10 @@ class StorageService {
       if (syncTodos) {
         for (final item in allLocalTodos) {
           if (item.updatedAt > lastSyncTime) {
+            if (item.hasConflict &&
+                _hasVersionConflict(item.serverVersionData)) {
+              continue;
+            }
             final data = item.toJson();
             data.remove('image_path');
             data.remove('imagePath');
@@ -2879,6 +2886,7 @@ class StorageService {
       if (syncCountdowns) {
         for (final item in allLocalCountdowns) {
           if (item.updatedAt > lastSyncTime) {
+            if (item.hasConflict) continue;
             dedupCountdowns[item.id] = item.toJson();
           }
         }
@@ -2886,6 +2894,7 @@ class StorageService {
       }
       for (final item in allLocalGroups) {
         if (item.updatedAt > lastSyncTime) {
+          if (item.hasConflict) continue;
           dedupGroups[item.id] = item.toJson();
         }
       }
@@ -2903,23 +2912,22 @@ class StorageService {
 
       if (shouldUploadAllLocal) {
         for (final item in allLocalTodos) {
-          final data = item.toJson();
+          if (item.hasConflict && _hasVersionConflict(item.serverVersionData)) {
+            continue;
+          }
+          final data = _stripClientOnlyConflictForSync(item.toJson());
           data.remove('image_path');
           data.remove('imagePath');
-          data.remove('conflict_data');
-          data['has_conflict'] = 0;
           dedupTodos.putIfAbsent(item.id, () => data);
         }
         for (final item in allLocalGroups) {
+          if (item.hasConflict) continue;
           final data = item.toJson();
-          data.remove('conflict_data');
-          data['has_conflict'] = 0;
           dedupGroups.putIfAbsent(item.id, () => data);
         }
         for (final item in allLocalCountdowns) {
+          if (item.hasConflict) continue;
           final data = item.toJson();
-          data.remove('conflict_data');
-          data['has_conflict'] = 0;
           dedupCountdowns.putIfAbsent(item.id, () => data);
         }
         if (syncPlanBlocks) {
@@ -3639,6 +3647,32 @@ class StorageService {
     return type == 'version_conflict' ||
         kind == 'version' ||
         (type != 'local_schedule_conflict' && source != 'local_detector');
+  }
+
+  static bool _payloadHasConflict(Map<String, dynamic> data) {
+    final raw = data['has_conflict'] ?? data['hasConflict'];
+    return raw == 1 || raw == true || raw == '1' || raw == 'true';
+  }
+
+  static bool _payloadHasVersionConflict(Map<String, dynamic> data) {
+    if (!_payloadHasConflict(data)) return false;
+    final rawConflictData = data['conflict_data'] ??
+        data['conflictData'] ??
+        data['serverVersionData'];
+    Map<String, dynamic>? conflictData;
+    if (rawConflictData is String && rawConflictData.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawConflictData);
+        if (decoded is Map) {
+          conflictData = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        conflictData = null;
+      }
+    } else if (rawConflictData is Map) {
+      conflictData = Map<String, dynamic>.from(rawConflictData);
+    }
+    return _hasVersionConflict(conflictData);
   }
 
   static bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
