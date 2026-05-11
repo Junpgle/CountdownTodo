@@ -3483,22 +3483,8 @@ class StorageService {
       final endMs = dueDate?.millisecondsSinceEpoch ?? 0;
 
       // 🚀 核心修复：后台扫描也必须跳过时间范围全天（0:00-23:59）的任务
-      bool isAllDayRange = false;
-      if (startMs > 0 && endMs > 0) {
-        final duration = endMs - startMs;
-        if (duration >= 23.5 * 3600 * 1000) {
-          isAllDayRange = true;
-        } else {
-          final st = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
-          final et = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-          if (st.hour == 0 &&
-              st.minute == 0 &&
-              ((et.hour == 23 && et.minute == 59) ||
-                  (et.hour == 0 && et.minute == 0 && et.isAfter(st)))) {
-            isAllDayRange = true;
-          }
-        }
-      }
+      final isAllDayRange =
+          startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
 
       if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
         continue;
@@ -3611,6 +3597,18 @@ class StorageService {
     }
 
     return changed;
+  }
+
+  static bool _isAllDayRange(int startMs, int endMs) {
+    final duration = endMs - startMs;
+    if (duration >= 23.5 * 3600 * 1000) return true;
+
+    final st = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+    final et = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
+    return st.hour == 0 &&
+        st.minute == 0 &&
+        ((et.hour == 23 && et.minute == 59) ||
+            (et.hour == 0 && et.minute == 0 && et.isAfter(st)));
   }
 
   static String _scheduleConflictPairKey(

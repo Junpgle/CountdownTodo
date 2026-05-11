@@ -2030,6 +2030,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     try {
       int successCount = 0;
+      int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
 
       for (final itemId in ids) {
@@ -2040,6 +2041,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             orElse: () => null,
           );
           if (conflictItem == null) continue;
+
+          if (_isLocalScheduleConflict(conflictItem) &&
+              conflictItem is TodoItem) {
+            scheduleSkippedCount++;
+            continue;
+          }
 
           // 对于有服务器版本的冲突，使用 _ConflictResolutionSheet 的逻辑
           final serverVersion = _findServerVersion(conflictItem);
@@ -2063,12 +2070,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         _selectedConflictIds.clear();
         _isBatchMode = false;
         await _loadConflicts();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('已保留本地版本，成功处理 $successCount 项冲突'),
+            content: Text(scheduleSkippedCount > 0
+                ? '已保留本地版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
+                : '已保留本地版本，成功处理 $successCount 项冲突'),
             backgroundColor: Colors.green,
           ),
         );
@@ -2090,6 +2100,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     try {
       int successCount = 0;
+      int scheduleSkippedCount = 0;
       final ids = _selectedConflictIds.toList();
 
       for (final itemId in ids) {
@@ -2099,6 +2110,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             orElse: () => null,
           );
           if (conflictItem == null) continue;
+
+          if (_isLocalScheduleConflict(conflictItem) &&
+              conflictItem is TodoItem) {
+            scheduleSkippedCount++;
+            continue;
+          }
 
           final serverVersion = _findServerVersion(conflictItem);
           if (serverVersion == null || serverVersion.isEmpty) continue;
@@ -2132,12 +2149,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         _selectedConflictIds.clear();
         _isBatchMode = false;
         await _loadConflicts();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('已采用服务器版本，成功处理 $successCount 项冲突'),
+            content: Text(scheduleSkippedCount > 0
+                ? '已采用服务器版本，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
+                : '已采用服务器版本，成功处理 $successCount 项冲突'),
             backgroundColor: Colors.green,
           ),
         );
