@@ -193,6 +193,8 @@ class StorageService {
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_IGNORED_SCHEDULE_CONFLICTS =
       "ignored_schedule_conflicts";
+  static const String KEY_CONFLICT_DETECTION_ENABLED =
+      "conflict_detection_enabled";
   static const String KEY_SERVER_CHOICE = "app_server_choice";
   static const String KEY_SYSTEM_STARTUP_ENABLED = "system_startup_enabled";
   static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
@@ -1147,6 +1149,18 @@ class StorageService {
   static Future<void> _refreshTodoScheduleConflicts(String username) async {
     try {
       final allTodos = await getTodos(username, includeDeleted: true);
+      if (!await getConflictDetectionEnabled()) {
+        if (_clearLocalTodoScheduleConflicts(allTodos)) {
+          await saveTodos(
+            username,
+            allTodos,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false,
+          );
+        }
+        return;
+      }
       final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
       if (_recomputeLocalTodoScheduleConflicts(allTodos,
           ignoredScheduleConflictKeys: ignoredKeys)) {
@@ -1165,6 +1179,36 @@ class StorageService {
 
   static Future<Map<String, int>> scanAllTodoConflicts(String username) async {
     final allTodos = await getTodos(username, includeDeleted: true);
+    if (!await getConflictDetectionEnabled()) {
+      final changed = _clearLocalTodoScheduleConflicts(allTodos);
+      try {
+        if (changed) {
+          await saveTodos(
+            username,
+            allTodos,
+            sync: false,
+            isSyncSource: true,
+            recomputeScheduleConflicts: false,
+          );
+        } else {
+          triggerRefresh();
+        }
+      } finally {
+        conflictScanNotifier.value = {
+          'isScanning': false,
+          'progress': 100,
+          'current': allTodos.length,
+          'total': allTodos.length,
+          'message': '冲突检测已关闭',
+        };
+      }
+      return {
+        'total': 0,
+        'personal_personal': 0,
+        'personal_team': 0,
+        'team_team': 0,
+      };
+    }
     final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
     final changed = _recomputeLocalTodoScheduleConflicts(
       allTodos,
@@ -1233,6 +1277,18 @@ class StorageService {
       'personal_team': personalTeam,
       'team_team': teamTeam,
     };
+  }
+
+  static Future<void> clearLocalTodoScheduleConflicts(String username) async {
+    final allTodos = await getTodos(username, includeDeleted: true);
+    if (!_clearLocalTodoScheduleConflicts(allTodos)) return;
+    await saveTodos(
+      username,
+      allTodos,
+      sync: false,
+      isSyncSource: true,
+      recomputeScheduleConflicts: false,
+    );
   }
 
   static Future<void> ignoreLocalScheduleConflict(
@@ -2142,9 +2198,28 @@ class StorageService {
     }
 
     final db = await DatabaseHelper.instance.database;
+    final existingRows = await db.query('todo_groups');
+    final existingItemsMap = <String, Map<String, dynamic>>{
+      for (final row in existingRows) row['uuid'].toString(): row,
+    };
     final batch = db.batch();
     for (var item in dedupeMap.values) {
-      if (!isSyncSource) {
+      bool hasChanged = true;
+      final oldData = existingItemsMap[item.id];
+      if (oldData != null) {
+        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
+          'name',
+          'is_expanded',
+          'is_deleted',
+          'team_uuid',
+          'version',
+          'updated_at',
+          'has_conflict',
+          'conflict_data',
+        ]);
+      }
+
+      if (!isSyncSource && hasChanged) {
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': 'todo_groups',
@@ -2156,25 +2231,28 @@ class StorageService {
         });
       }
 
-      batch.insert(
-          'todo_groups',
-          {
-            'uuid': item.id,
-            'team_uuid': item.teamUuid,
-            'team_name': item.teamName,
-            'creator_id': item.creatorId,
-            'creator_name': item.creatorName,
-            'name': item.name,
-            'is_expanded': item.isExpanded ? 1 : 0,
-            'is_deleted': item.isDeleted ? 1 : 0,
-            'version': item.version,
-            'updated_at': item.updatedAt,
-            'created_at': item.createdAt,
-            'has_conflict': item.hasConflict ? 1 : 0,
-            'conflict_data':
-                item.conflictData != null ? jsonEncode(item.conflictData) : null
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      if (hasChanged || oldData == null) {
+        batch.insert(
+            'todo_groups',
+            {
+              'uuid': item.id,
+              'team_uuid': item.teamUuid,
+              'team_name': item.teamName,
+              'creator_id': item.creatorId,
+              'creator_name': item.creatorName,
+              'name': item.name,
+              'is_expanded': item.isExpanded ? 1 : 0,
+              'is_deleted': item.isDeleted ? 1 : 0,
+              'version': item.version,
+              'updated_at': item.updatedAt,
+              'created_at': item.createdAt,
+              'has_conflict': item.hasConflict ? 1 : 0,
+              'conflict_data': item.conflictData != null
+                  ? jsonEncode(item.conflictData)
+                  : null
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     }
     await batch.commit(noResult: true);
     _inflightTodoRequests.clear();
@@ -3200,6 +3278,12 @@ class StorageService {
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
+      // Snapshot items with conflicts before merge, to detect resolutions after merge
+      final Set<String> preMergeConflictIds = allLocalTodos
+          .where((t) => t.hasConflict)
+          .map((t) => t.id)
+          .toSet();
+
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
@@ -3232,8 +3316,7 @@ class StorageService {
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
-              sItem.updatedAt > local.updatedAt ||
-              sItem.hasConflict != local.hasConflict) {
+              sItem.updatedAt > local.updatedAt) {
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
               updatedTodoIds.add(sItem.id);
@@ -3245,6 +3328,24 @@ class StorageService {
             // as local item, preserving LWW semantics for folder assignments.
             allLocalTodos[idx].groupId = sItem.groupId;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          // Prevents overwriting a local resolution while still syncing conflict state.
+          if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
+            final idx2 = todosIndexMap[sItem.id]!;
+            final localItem = allLocalTodos[idx2];
+            if (sItem.hasConflict && !localItem.hasConflict) {
+              // Server still has conflict but local was resolved — sync conflict metadata only
+              localItem.hasConflict = true;
+              localItem.serverVersionData = sItem.serverVersionData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localItem.hasConflict) {
+              // Server cleared conflict (resolved from another device) — accept cleared state
+              localItem.hasConflict = false;
+              localItem.serverVersionData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3273,10 +3374,23 @@ class StorageService {
           final idx = groupsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalGroups[idx].version ||
-              sItem.updatedAt > allLocalGroups[idx].updatedAt ||
-              sItem.hasConflict != allLocalGroups[idx].hasConflict) {
+              sItem.updatedAt > allLocalGroups[idx].updatedAt) {
             allLocalGroups[idx] = sItem;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          if (!sItem.isDeleted) {
+            final localGroup = allLocalGroups[idx];
+            if (sItem.hasConflict && !localGroup.hasConflict) {
+              localGroup.hasConflict = true;
+              localGroup.conflictData = sItem.conflictData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localGroup.hasConflict) {
+              localGroup.hasConflict = false;
+              localGroup.conflictData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3303,10 +3417,23 @@ class StorageService {
           final idx = countdownsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              sItem.updatedAt > allLocalCountdowns[idx].updatedAt ||
-              sItem.hasConflict != allLocalCountdowns[idx].hasConflict) {
+              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          if (!sItem.isDeleted) {
+            final localCountdown = allLocalCountdowns[idx];
+            if (sItem.hasConflict && !localCountdown.hasConflict) {
+              localCountdown.hasConflict = true;
+              localCountdown.conflictData = sItem.conflictData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localCountdown.hasConflict) {
+              localCountdown.hasConflict = false;
+              localCountdown.conflictData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3378,12 +3505,14 @@ class StorageService {
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
       // 这里从 conflicts 数组直接补标，确保 ConflictInboxScreen 能看到。
       if (conflicts.isNotEmpty) {
+        final conflictDetectionEnabled = await getConflictDetectionEnabled();
         for (final c in conflicts) {
           final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
           if (itemId.isEmpty) continue;
           final serverVersion = c.conflictWith;
           if (c.type == 'schedule_conflict' &&
               todosIndexMap.containsKey(itemId)) {
+            if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             final peer = Map<String, dynamic>.from(serverVersion);
             final data = {
@@ -3421,21 +3550,45 @@ class StorageService {
 
           if (todosIndexMap.containsKey(itemId)) {
             final todo = allLocalTodos[todosIndexMap[itemId]!];
-            todo.hasConflict = true;
-            todo.serverVersionData = serverVersion;
-            hasChanges = true;
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            // Skip if already resolved (hasConflict cleared) or version bumped above server
+            if (!todo.hasConflict || todo.version > serverConflictVer) {
+              debugPrint(
+                  '⏭️ Skipping re-flag of resolved todo $itemId '
+                  '(hasConflict=${todo.hasConflict}, localV=${todo.version}, serverV=$serverConflictVer)');
+            } else {
+              todo.hasConflict = true;
+              todo.serverVersionData = serverVersion;
+              hasChanges = true;
+            }
           }
           if (countdownsIndexMap.containsKey(itemId)) {
-            final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
-            countdown.hasConflict = true;
-            countdown.conflictData = serverVersion;
-            hasChanges = true;
+            final countdown =
+                allLocalCountdowns[countdownsIndexMap[itemId]!];
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            if (!countdown.hasConflict ||
+                countdown.version > serverConflictVer) {
+              // skip — already resolved
+            } else {
+              countdown.hasConflict = true;
+              countdown.conflictData = serverVersion;
+              hasChanges = true;
+            }
           }
           if (groupsIndexMap.containsKey(itemId)) {
             final group = allLocalGroups[groupsIndexMap[itemId]!];
-            group.hasConflict = true;
-            group.conflictData = serverVersion;
-            hasChanges = true;
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            if (!group.hasConflict ||
+                group.version > serverConflictVer) {
+              // skip — already resolved
+            } else {
+              group.hasConflict = true;
+              group.conflictData = serverVersion;
+              hasChanges = true;
+            }
           }
           // TimeLogs don't have hasConflict field, skip
         }
@@ -3460,10 +3613,23 @@ class StorageService {
       // 7. 持久化数据
       final ignoredScheduleConflictKeys =
           await _getIgnoredScheduleConflictKeys(username);
-      if (_recomputeLocalTodoScheduleConflicts(
-        allLocalTodos,
-        ignoredScheduleConflictKeys: ignoredScheduleConflictKeys,
-      )) {
+      // Compute IDs of items whose conflict was cleared in this sync cycle
+      final Set<String> recentlyResolvedIds = preMergeConflictIds
+          .where((id) {
+            final idx = todosIndexMap[id];
+            if (idx == null) return false;
+            return !allLocalTodos[idx].hasConflict;
+          })
+          .toSet();
+      if (await getConflictDetectionEnabled()) {
+        if (_recomputeLocalTodoScheduleConflicts(
+          allLocalTodos,
+          ignoredScheduleConflictKeys: ignoredScheduleConflictKeys,
+          skipIds: recentlyResolvedIds,
+        )) {
+          hasChanges = true;
+        }
+      } else if (_clearLocalTodoScheduleConflicts(allLocalTodos)) {
         hasChanges = true;
       }
 
@@ -3513,6 +3679,7 @@ class StorageService {
   static bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
     Set<String> ignoredScheduleConflictKeys = const <String>{},
+    Set<String> skipIds = const <String>{},
     void Function(int current, int total, String message)? onProgress,
   }) {
     final buckets = <String, List<_TodoInterval>>{};
@@ -3603,6 +3770,11 @@ class StorageService {
 
       final peers = conflictMap[todo.id];
 
+      // Skip re-flagging items whose conflict was just resolved in this sync cycle
+      if (skipIds.contains(todo.id) && peers != null && peers.isNotEmpty) {
+        continue;
+      }
+
       if (peers != null && peers.isNotEmpty) {
         if (!_hasVersionConflict(existing)) {
           final bool isTeamTodo =
@@ -3639,6 +3811,17 @@ class StorageService {
       }
     }
 
+    return changed;
+  }
+
+  static bool _clearLocalTodoScheduleConflicts(List<TodoItem> todos) {
+    var changed = false;
+    for (final todo in todos) {
+      if (!_isLocalScheduleConflict(todo.serverVersionData)) continue;
+      todo.hasConflict = false;
+      todo.serverVersionData = null;
+      changed = true;
+    }
     return changed;
   }
 
@@ -3874,6 +4057,16 @@ class StorageService {
           (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
     }
     return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
+  }
+
+  static Future<bool> getConflictDetectionEnabled() async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    if (username != null && username.isNotEmpty) {
+      return prefs.getBool("${KEY_CONFLICT_DETECTION_ENABLED}_$username") ??
+          (prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false);
+    }
+    return prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false;
   }
 
   static Future<String> getThemeMode() async {

@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
 import '../storage_service.dart';
 
@@ -20,6 +21,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   List<TodoPlanBlock> _allBlocks = [];
   List<TodoItem> _todos = [];
   List<PomodoroRecord> _pomodoroRecords = [];
+  final Set<String> _mappedBlockIds = <String>{};
   bool _loading = true;
 
   @override
@@ -98,6 +100,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     final results = await Future.wait([
       StorageService.getPlanBlocks(widget.username),
       StorageService.getTodos(widget.username),
+      CourseService.getAllCourses(widget.username),
       PomodoroService.getRecordsInRange(r.start, r.end),
     ]);
     if (!mounted) return;
@@ -105,23 +108,112 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
         (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
     final todos =
         (results[1] as List<TodoItem>).where((t) => !t.isDeleted).toList();
-    final records = (results[2] as List<PomodoroRecord>)
+    final courses =
+        (results[2] as List<CourseItem>).where((c) => !c.isDeleted).toList();
+    final records = (results[3] as List<PomodoroRecord>)
         .where((record) =>
             !record.isDeleted &&
             record.startTime >= r.start.millisecondsSinceEpoch &&
             record.startTime < r.end.millisecondsSinceEpoch)
         .toList();
+    final rangeBlocks = allBlocks.where((b) {
+      final start = DateTime.fromMillisecondsSinceEpoch(b.startTime);
+      return !start.isBefore(r.start) && start.isBefore(r.end);
+    }).toList();
+    final mappedBlocks = _buildMappedBlocks(todos, courses, rangeBlocks, r);
+    final mappedIds = mappedBlocks.map((block) => block.id).toSet();
 
     setState(() {
-      _allBlocks = allBlocks.where((b) {
-        final start = DateTime.fromMillisecondsSinceEpoch(b.startTime);
-        return !start.isBefore(r.start) && start.isBefore(r.end);
-      }).toList();
+      _allBlocks = [
+        ...rangeBlocks,
+        ...mappedBlocks,
+      ];
       _todos = todos;
       _pomodoroRecords = records;
+      _mappedBlockIds
+        ..clear()
+        ..addAll(mappedIds);
       _loading = false;
     });
   }
+
+  List<TodoPlanBlock> _buildMappedBlocks(
+    List<TodoItem> todos,
+    List<CourseItem> courses,
+    List<TodoPlanBlock> existingBlocks,
+    DateTimeRange range,
+  ) {
+    final blocks = <TodoPlanBlock>[];
+    final plannedTodoIds = existingBlocks.map((block) => block.todoId).toSet();
+
+    for (final course in courses) {
+      final start = _courseDateTime(course.date, course.startTime);
+      final end = _courseDateTime(course.date, course.endTime);
+      if (start == null || end == null || !end.isAfter(start)) continue;
+      if (!_startsInRange(start, range)) continue;
+      final minutes = end.difference(start).inMinutes;
+      if (minutes <= 0) continue;
+      blocks.add(TodoPlanBlock(
+        id: 'mapped_course_${course.uuid}',
+        todoId: 'mapped_course_${course.uuid}',
+        titleSnapshot: '课程：${course.courseName}',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: end.millisecondsSinceEpoch,
+        plannedMinutes: minutes,
+        status: TodoPlanStatus.planned,
+        source: TodoPlanSource.calendar,
+        remark: course.roomName,
+      ));
+    }
+
+    for (final todo in todos) {
+      if (plannedTodoIds.contains(todo.id)) continue;
+      final startMs = todo.createdDate;
+      final dueDate = todo.dueDate;
+      if (startMs == null || dueDate == null) continue;
+      if (todo.isAllDayTask) continue;
+
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+      final end = dueDate;
+      if (!end.isAfter(start)) continue;
+      if (!_isSameLocalDay(start, end)) continue;
+      if (!_startsInRange(start, range)) continue;
+
+      final minutes = end.difference(start).inMinutes;
+      if (minutes <= 0) continue;
+      blocks.add(TodoPlanBlock(
+        id: 'mapped_todo_${todo.id}',
+        todoId: todo.id,
+        titleSnapshot: todo.title,
+        startTime: start.millisecondsSinceEpoch,
+        endTime: end.millisecondsSinceEpoch,
+        plannedMinutes: minutes,
+        status: todo.isDone ? TodoPlanStatus.finished : TodoPlanStatus.planned,
+        source: TodoPlanSource.calendar,
+        remark: todo.remark,
+      ));
+    }
+
+    return blocks;
+  }
+
+  DateTime? _courseDateTime(String date, int hhmm) {
+    final parsed = DateTime.tryParse(date);
+    if (parsed == null || hhmm <= 0) return null;
+    final hour = hhmm ~/ 100;
+    final minute = hhmm % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day, hour, minute);
+  }
+
+  bool _startsInRange(DateTime start, DateTimeRange range) =>
+      !start.isBefore(range.start) && start.isBefore(range.end);
+
+  bool _isSameLocalDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isMappedBlock(TodoPlanBlock block) =>
+      _mappedBlockIds.contains(block.id);
 
   @override
   Widget build(BuildContext context) {
@@ -591,10 +683,12 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
     if (_allBlocks.isEmpty) return const SizedBox.shrink();
     final missedOrEmpty = _allBlocks
         .where((b) =>
-            b.status == TodoPlanStatus.missed ||
-            (b.plannedMinutes > 0 && _actualSecondsForBlock(b) <= 0))
+            !_isMappedBlock(b) &&
+            (b.status == TodoPlanStatus.missed ||
+                (b.plannedMinutes > 0 && _actualSecondsForBlock(b) <= 0)))
         .length;
     final lowCompletion = _allBlocks.where((b) {
+      if (_isMappedBlock(b)) return false;
       final actualSeconds = _actualSecondsForBlock(b);
       if (b.plannedMinutes <= 0 || actualSeconds <= 0) return false;
       final ratio = actualSeconds / (b.plannedMinutes * 60);

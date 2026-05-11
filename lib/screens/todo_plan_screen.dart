@@ -2,9 +2,11 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../services/course_service.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import 'course_screens.dart';
 import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
 import 'todo_chat_screen.dart';
@@ -35,8 +37,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<TodoPlanBlock> _planBlocks = [];
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
+  List<CourseItem> _courses = [];
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _pomodoroRecords = [];
+  final Set<String> _mappedBlockIds = <String>{};
 
   @override
   void initState() {
@@ -72,6 +76,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       StorageService.getPlanBlocksByDay(widget.username, _focusedDate),
       StorageService.getTodos(widget.username),
       StorageService.getTodoGroups(widget.username),
+      CourseService.getAllCourses(widget.username),
       PomodoroService.getTags(),
       PomodoroService.getRecordsInRange(_focusedDate, dayEnd),
     ]);
@@ -84,8 +89,10 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
         (results[1] as List<TodoItem>).where((t) => !t.isDeleted).toList();
     final todoGroups =
         (results[2] as List<TodoGroup>).where((g) => !g.isDeleted).toList();
-    final tags = results[3] as List<PomodoroTag>;
-    final records = (results[4] as List<PomodoroRecord>)
+    final courses =
+        (results[3] as List<CourseItem>).where((c) => !c.isDeleted).toList();
+    final tags = results[4] as List<PomodoroTag>;
+    final records = (results[5] as List<PomodoroRecord>)
         .where((record) =>
             !record.isDeleted &&
             record.startTime >= _focusedDate.millisecondsSinceEpoch &&
@@ -113,10 +120,94 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
       _planBlocks = blocks;
       _todos = todos;
       _todoGroups = todoGroups;
+      _courses = courses;
       _tags = tags;
       _pomodoroRecords = records;
+      _mappedBlockIds
+        ..clear()
+        ..addAll(_buildMappedBlocks(todos, courses, blocks)
+            .map((block) => block.id));
       _isLoading = false;
     });
+  }
+
+  List<TodoPlanBlock> _buildMappedBlocks(
+    List<TodoItem> todos,
+    List<CourseItem> courses,
+    List<TodoPlanBlock> existingBlocks,
+  ) {
+    final mapped = <TodoPlanBlock>[];
+    final plannedTodoIds = existingBlocks
+        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
+        .map((block) => block.todoId)
+        .toSet();
+
+    for (final course in courses) {
+      final start = _courseDateTime(course.date, course.startTime);
+      final end = _courseDateTime(course.date, course.endTime);
+      if (start == null || end == null || !end.isAfter(start)) continue;
+      if (!_isSameLocalDay(start, _focusedDate)) continue;
+      final minutes = end.difference(start).inMinutes;
+      if (minutes <= 0) continue;
+      mapped.add(TodoPlanBlock(
+        id: 'mapped_course_${course.uuid}',
+        todoId: 'mapped_course_${course.uuid}',
+        titleSnapshot: '课程：${course.courseName}',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: end.millisecondsSinceEpoch,
+        plannedMinutes: minutes,
+        status: TodoPlanStatus.planned,
+        source: TodoPlanSource.calendar,
+        remark: course.roomName,
+      ));
+    }
+
+    for (final todo in todos) {
+      if (plannedTodoIds.contains(todo.id)) continue;
+      final startMs = todo.createdDate;
+      final dueDate = todo.dueDate;
+      if (startMs == null || dueDate == null) continue;
+      if (todo.isAllDayTask) continue;
+
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+      final end = dueDate.toLocal();
+      if (!end.isAfter(start)) continue;
+      if (!_isSameLocalDay(start, end)) continue;
+      if (!_isSameLocalDay(start, _focusedDate)) continue;
+      final minutes = end.difference(start).inMinutes;
+      if (minutes <= 0) continue;
+
+      mapped.add(TodoPlanBlock(
+        id: 'mapped_todo_${todo.id}',
+        todoId: todo.id,
+        titleSnapshot: todo.title,
+        startTime: start.millisecondsSinceEpoch,
+        endTime: end.millisecondsSinceEpoch,
+        plannedMinutes: minutes,
+        status: todo.isDone ? TodoPlanStatus.finished : TodoPlanStatus.planned,
+        source: TodoPlanSource.calendar,
+        remark: todo.remark,
+      ));
+    }
+
+    return mapped;
+  }
+
+  DateTime? _courseDateTime(String date, int hhmm) {
+    final parsed = DateTime.tryParse(date);
+    if (parsed == null || hhmm < 0) return null;
+    final hour = hhmm ~/ 100;
+    final minute = hhmm % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return DateTime(parsed.year, parsed.month, parsed.day, hour, minute);
+  }
+
+  bool _isSameLocalDay(DateTime a, DateTime b) {
+    final left = a.toLocal();
+    final right = b.toLocal();
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day;
   }
 
   void _prevDay() {
@@ -153,6 +244,9 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mappedBlocks = _buildMappedBlocks(_todos, _courses, _planBlocks);
+    final displayBlocks = [..._planBlocks, ...mappedBlocks]
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
@@ -199,9 +293,11 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
                 Expanded(
                   child: _PlanGridView(
                     date: _focusedDate,
-                    blocks: _planBlocks,
+                    blocks: displayBlocks,
+                    mappedBlockIds: _mappedBlockIds,
                     todos: _todos,
                     todoGroups: _todoGroups,
+                    courses: _courses,
                     tags: _tags,
                     pomodoroRecords: _pomodoroRecords,
                     username: widget.username,
@@ -340,8 +436,10 @@ class _PlanDaySummary extends StatelessWidget {
 class _PlanGridView extends StatefulWidget {
   final DateTime date;
   final List<TodoPlanBlock> blocks;
+  final Set<String> mappedBlockIds;
   final List<TodoItem> todos;
   final List<TodoGroup> todoGroups;
+  final List<CourseItem> courses;
   final List<PomodoroTag> tags;
   final List<PomodoroRecord> pomodoroRecords;
   final String username;
@@ -351,8 +449,10 @@ class _PlanGridView extends StatefulWidget {
   const _PlanGridView({
     required this.date,
     required this.blocks,
+    required this.mappedBlockIds,
     required this.todos,
     required this.todoGroups,
+    required this.courses,
     required this.tags,
     required this.pomodoroRecords,
     required this.username,
@@ -605,7 +705,16 @@ class _PlanGridViewState extends State<_PlanGridView> {
     final todo = widget.todos
         .cast<TodoItem?>()
         .firstWhere((t) => t?.id == block.todoId, orElse: () => null);
-    final color = Theme.of(context).colorScheme.primary;
+    final isMappedBlock = widget.mappedBlockIds.contains(block.id);
+    final isMappedCourse = block.id.startsWith('mapped_course_');
+    final color = isMappedCourse
+        ? Colors.teal
+        : (isMappedBlock
+            ? Colors.amber.shade700
+            : Theme.of(context).colorScheme.primary);
+    final icon = isMappedCourse
+        ? Icons.school_rounded
+        : (isMappedBlock ? Icons.task_alt_rounded : Icons.event_note);
     final actualMinutes =
         _actualMinutesForPlanBlock(block, widget.pomodoroRecords);
     final widgets = <Widget>[];
@@ -631,48 +740,57 @@ class _PlanGridViewState extends State<_PlanGridView> {
         width: max(1.0, segmentW - 2),
         height: max(1.0, hourH - 2),
         child: GestureDetector(
-          onTap: () => _showEditBlockSheet(block),
-          onLongPressStart: (_) {
-            _movingBlock = block;
-            _movingStart = start;
-            _movingEnd = end;
-            _lastMoveDelta = 0;
-          },
-          onLongPressMoveUpdate: (details) {
-            if (_movingBlock?.uuid != block.uuid ||
-                _movingStart == null ||
-                _movingEnd == null) {
-              return;
-            }
-            final deltaMinutes = _snapMinutes(
-              details.offsetFromOrigin.dy / hourH * 60 +
-                  details.offsetFromOrigin.dx / width * 60,
-            );
-            if (deltaMinutes == _lastMoveDelta) return;
-            _lastMoveDelta = deltaMinutes;
-            final nextStart =
-                _clampToDay(_movingStart!.add(Duration(minutes: deltaMinutes)));
-            final duration = _movingEnd!.difference(_movingStart!);
-            var nextEnd = nextStart.add(duration);
-            final dayEnd = _dayStart().add(const Duration(days: 1));
-            if (nextEnd.isAfter(dayEnd)) {
-              nextEnd = dayEnd;
-            }
-            setState(() {
-              block.startTime = nextStart.millisecondsSinceEpoch;
-              block.endTime = nextEnd.millisecondsSinceEpoch;
-              block.plannedMinutes = nextEnd.difference(nextStart).inMinutes;
-            });
-          },
-          onLongPressEnd: (_) async {
-            _movingBlock = null;
-            _movingStart = null;
-            _movingEnd = null;
-            _lastMoveDelta = 0;
-            block.markAsChanged();
-            await StorageService.savePlanBlocks(widget.username, [block]);
-            widget.onRefresh();
-          },
+          onTap: isMappedBlock
+              ? () => _openMappedBlockDetail(block)
+              : () => _showEditBlockSheet(block),
+          onLongPressStart: isMappedBlock
+              ? null
+              : (_) {
+                  _movingBlock = block;
+                  _movingStart = start;
+                  _movingEnd = end;
+                  _lastMoveDelta = 0;
+                },
+          onLongPressMoveUpdate: isMappedBlock
+              ? null
+              : (details) {
+                  if (_movingBlock?.uuid != block.uuid ||
+                      _movingStart == null ||
+                      _movingEnd == null) {
+                    return;
+                  }
+                  final deltaMinutes = _snapMinutes(
+                    details.offsetFromOrigin.dy / hourH * 60 +
+                        details.offsetFromOrigin.dx / width * 60,
+                  );
+                  if (deltaMinutes == _lastMoveDelta) return;
+                  _lastMoveDelta = deltaMinutes;
+                  final nextStart = _clampToDay(
+                      _movingStart!.add(Duration(minutes: deltaMinutes)));
+                  final duration = _movingEnd!.difference(_movingStart!);
+                  var nextEnd = nextStart.add(duration);
+                  final dayEnd = _dayStart().add(const Duration(days: 1));
+                  if (nextEnd.isAfter(dayEnd)) {
+                    nextEnd = dayEnd;
+                  }
+                  setState(() {
+                    block.startTime = nextStart.millisecondsSinceEpoch;
+                    block.endTime = nextEnd.millisecondsSinceEpoch;
+                    block.plannedMinutes =
+                        nextEnd.difference(nextStart).inMinutes;
+                  });
+                },
+          onLongPressEnd: isMappedBlock
+              ? null
+              : (_) async {
+                  _movingBlock = null;
+                  _movingStart = null;
+                  _movingEnd = null;
+                  _lastMoveDelta = 0;
+                  block.markAsChanged();
+                  await StorageService.savePlanBlocks(widget.username, [block]);
+                  widget.onRefresh();
+                },
           child: Stack(
             children: [
               Container(
@@ -687,7 +805,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                     Icon(
                         block.status == TodoPlanStatus.finished
                             ? Icons.check_circle
-                            : Icons.event_note,
+                            : icon,
                         size: 10,
                         color: color),
                     const SizedBox(width: 3),
@@ -702,6 +820,17 @@ class _PlanGridViewState extends State<_PlanGridView> {
                         maxLines: 1,
                       ),
                     ),
+                    if (segmentW > 60 && isMappedBlock) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        isMappedCourse ? '课程' : '待办',
+                        style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            color: color.withValues(alpha: 0.72)),
+                        maxLines: 1,
+                      ),
+                    ],
                     if (segmentW > 68)
                       Text(
                         '${DateFormat('HH:mm').format(start)}-${DateFormat('HH:mm').format(end)}',
@@ -723,7 +852,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                   ],
                 ),
               ),
-              if (isStartSegment)
+              if (isStartSegment && !isMappedBlock)
                 Positioned(
                   left: 0,
                   top: 0,
@@ -761,7 +890,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
                     ),
                   ),
                 ),
-              if (isEndSegment)
+              if (isEndSegment && !isMappedBlock)
                 Positioned(
                   right: 0,
                   top: 0,
@@ -858,6 +987,35 @@ class _PlanGridViewState extends State<_PlanGridView> {
         ],
       ),
     );
+  }
+
+  void _openMappedBlockDetail(TodoPlanBlock block) {
+    if (block.id.startsWith('mapped_course_')) {
+      final courseId = block.id.substring('mapped_course_'.length);
+      final course = widget.courses.cast<CourseItem?>().firstWhere(
+            (item) => item?.uuid == courseId,
+            orElse: () => null,
+          );
+      if (course != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => CourseDetailScreen(course: course)),
+        );
+      }
+      return;
+    }
+
+    if (block.id.startsWith('mapped_todo_')) {
+      final todoId = block.id.substring('mapped_todo_'.length);
+      final todo = widget.todos.cast<TodoItem?>().firstWhere(
+            (item) => item?.id == todoId,
+            orElse: () => null,
+          );
+      if (todo != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)),
+        );
+      }
+    }
   }
 
   void _showEditBlockSheet(TodoPlanBlock block) {

@@ -44,6 +44,7 @@ String _lessonTypeLabel(String? type) {
 // ─────────────────────────────────────────────
 class CourseSectionWidget extends StatelessWidget {
   final Map<String, dynamic> dashboardCourseData;
+  final List<TodoItem> todos;
   final bool isLight;
   final String? username;
   final int refreshTrigger;
@@ -51,21 +52,11 @@ class CourseSectionWidget extends StatelessWidget {
   const CourseSectionWidget({
     super.key,
     required this.dashboardCourseData,
+    this.todos = const [],
     required this.isLight,
     this.username,
     this.refreshTrigger = 0,
   });
-
-  void _openTodoPlanScreen(BuildContext context) {
-    final user = username;
-    if (user == null || user.isEmpty) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TodoPlanScreen(username: user),
-      ),
-    );
-  }
 
   void _showCourseDetail(
       BuildContext context, CourseItem course, GlobalKey cardKey) {
@@ -242,9 +233,19 @@ class CourseSectionWidget extends StatelessWidget {
       debugPrint('解析主页课程数据失败: $e');
     }
 
-    final title = username == null
-        ? dashboardCourseData['title']?.toString() ?? '课程提醒'
-        : '今日日程';
+    if (username != null) {
+      return _TodayScheduleList(
+        username: username!,
+        courses: courses,
+        todos: todos,
+        isLight: isLight,
+        refreshTrigger: refreshTrigger,
+        onCourseTap: (course, cardKey) =>
+            _showCourseDetail(context, course, cardKey),
+      );
+    }
+
+    final title = dashboardCourseData['title']?.toString() ?? '课程提醒';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,21 +253,12 @@ class CourseSectionWidget extends StatelessWidget {
         SectionHeader(
           title: title,
           icon: Icons.class_outlined,
-          onAction: username == null ? null : () => _openTodoPlanScreen(context),
-          actionIcon: username == null ? null : Icons.event_note_outlined,
-          actionTooltip: '打开规划界面',
+          onAction: null,
+          actionIcon: null,
+          actionTooltip: null,
           isLight: isLight,
         ),
-        if (username != null)
-          _TodayScheduleList(
-            username: username!,
-            courses: courses,
-            isLight: isLight,
-            refreshTrigger: refreshTrigger,
-            onCourseTap: (course, cardKey) =>
-                _showCourseDetail(context, course, cardKey),
-          )
-        else if (courses.isEmpty)
+        if (courses.isEmpty)
           EmptyState(
               text: dashboardCourseData['title'] == '暂无课表'
                   ? "尚未导入课表，点击上方图标开始"
@@ -292,24 +284,34 @@ class CourseSectionWidget extends StatelessWidget {
   }
 }
 
-enum _TodayScheduleItemType { course, plan }
+enum _TodayScheduleItemType { course, plan, todo }
 
 class _TodayScheduleItem {
   const _TodayScheduleItem.course(this.course)
       : block = null,
+        todo = null,
         type = _TodayScheduleItemType.course;
 
   const _TodayScheduleItem.plan(this.block)
       : course = null,
+        todo = null,
         type = _TodayScheduleItemType.plan;
+
+  const _TodayScheduleItem.todo(this.todo)
+      : course = null,
+        block = null,
+        type = _TodayScheduleItemType.todo;
 
   final _TodayScheduleItemType type;
   final CourseItem? course;
   final TodoPlanBlock? block;
+  final TodoItem? todo;
 
   int get startMs {
     final plan = block;
     if (plan != null) return plan.startTime;
+    final todoValue = todo;
+    if (todoValue != null) return _todoStartMs(todoValue);
     final courseValue = course!;
     return _courseTimeMs(courseValue, courseValue.startTime);
   }
@@ -317,9 +319,15 @@ class _TodayScheduleItem {
   int get endMs {
     final plan = block;
     if (plan != null) return plan.endTime;
+    final todoValue = todo;
+    if (todoValue != null) {
+      return todoValue.dueDate?.millisecondsSinceEpoch ?? 0;
+    }
     final courseValue = course!;
     return _courseTimeMs(courseValue, courseValue.endTime);
   }
+
+  static int _todoStartMs(TodoItem todo) => todo.createdDate ?? todo.createdAt;
 
   static int _courseTimeMs(CourseItem course, int hhmm) {
     final date = DateTime.tryParse(course.date);
@@ -335,6 +343,7 @@ class _TodayScheduleList extends StatefulWidget {
   const _TodayScheduleList({
     required this.username,
     required this.courses,
+    required this.todos,
     required this.isLight,
     required this.refreshTrigger,
     required this.onCourseTap,
@@ -342,6 +351,7 @@ class _TodayScheduleList extends StatefulWidget {
 
   final String username;
   final List<CourseItem> courses;
+  final List<TodoItem> todos;
   final bool isLight;
   final int refreshTrigger;
   final void Function(CourseItem course, GlobalKey cardKey) onCourseTap;
@@ -422,6 +432,15 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     });
   }
 
+  void _openTodoPlanScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TodoPlanScreen(username: widget.username),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -431,9 +450,19 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
+    final plannedTodoIds = _blocks
+        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
+        .map((block) => block.todoId)
+        .toSet();
+    final todayTimedTodos = _todayTimedTodos(
+      widget.todos,
+      DateTime.now(),
+      excludeTodoIds: plannedTodoIds,
+    );
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
       ..._blocks.map(_TodayScheduleItem.plan),
+      ...todayTimedTodos.map(_TodayScheduleItem.todo),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
     final endedItems = todayItems
         .where((item) => item.endMs > 0 && item.endMs < nowMs)
@@ -450,46 +479,61 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         (todayItems.isNotEmpty || tomorrowItems.isNotEmpty);
     final items = showingTomorrow ? tomorrowItems : activeItems;
 
+    final scheduleTitle = showingTomorrow ? '明日日程' : '今日日程';
+    final Widget content;
     if (_loading && todayItems.isEmpty && tomorrowItems.isEmpty) {
-      return const _TodayScheduleSkeleton();
-    }
-
-    if (items.isEmpty && endedItems.isEmpty) {
-      return EmptyState(
-        text: '今日和明日暂无课程与规划',
+      content = const _TodayScheduleSkeleton();
+    } else if (items.isEmpty && endedItems.isEmpty) {
+      content = EmptyState(
+        text: '今日和明日暂无课程、待办与规划',
         isLight: widget.isLight,
+      );
+    } else {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (endedItems.isNotEmpty && !showingTomorrow) ...[
+            _EndedScheduleSummary(
+              count: endedItems.length,
+              expanded: _showEnded,
+              isLight: widget.isLight,
+              onTap: () => setState(() => _showEnded = !_showEnded),
+            ),
+            if (_showEnded)
+              ...endedItems.map((item) => Opacity(
+                    opacity: 0.58,
+                    child: _buildItemCard(item),
+                  )),
+          ],
+          if (showingTomorrow)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                todayItems.isEmpty ? '明日安排' : '今日已全部结束，显示明日安排',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ...items.map(_buildItemCard),
+        ],
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (endedItems.isNotEmpty && !showingTomorrow) ...[
-          _EndedScheduleSummary(
-            count: endedItems.length,
-            expanded: _showEnded,
-            isLight: widget.isLight,
-            onTap: () => setState(() => _showEnded = !_showEnded),
-          ),
-          if (_showEnded)
-            ...endedItems.map((item) => Opacity(
-                  opacity: 0.58,
-                  child: _buildItemCard(item),
-                )),
-        ],
-        if (showingTomorrow)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              todayItems.isEmpty ? '明日安排' : '今日已全部结束，显示明日安排',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ...items.map(_buildItemCard),
+        SectionHeader(
+          title: scheduleTitle,
+          icon: Icons.class_outlined,
+          onAction: _openTodoPlanScreen,
+          actionIcon: Icons.event_note_outlined,
+          actionTooltip: '打开规划界面',
+          isLight: widget.isLight,
+        ),
+        content,
       ],
     );
   }
@@ -503,6 +547,18 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         onTap: (cardKey) => widget.onCourseTap(course, cardKey),
       );
     }
+    final todo = item.todo;
+    if (todo != null) {
+      return _TodoCompactCard(
+        todo: todo,
+        isLight: widget.isLight,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TodoDetailScreen(todo: todo),
+          ),
+        ),
+      );
+    }
     return _PlanCompactCard(
       block: item.block!,
       isLight: widget.isLight,
@@ -512,6 +568,37 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         ),
       ),
     );
+  }
+
+  List<TodoItem> _todayTimedTodos(
+    List<TodoItem> todos,
+    DateTime day, {
+    required Set<String> excludeTodoIds,
+  }) {
+    return todos.where((todo) {
+      if (todo.isDeleted || todo.dueDate == null) return false;
+      if (excludeTodoIds.contains(todo.id)) return false;
+      if (todo.isAllDayTask) return false;
+
+      final startMs = todo.createdDate ?? todo.createdAt;
+      if (startMs <= 0) return false;
+
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
+      final end = todo.dueDate!.toLocal();
+      if (!end.isAfter(start)) return false;
+      if (!_isSameLocalDay(start, end)) return false;
+      return _isSameLocalDay(start, day);
+    }).toList()
+      ..sort((a, b) => _TodayScheduleItem._todoStartMs(a)
+          .compareTo(_TodayScheduleItem._todoStartMs(b)));
+  }
+
+  bool _isSameLocalDay(DateTime a, DateTime b) {
+    final left = a.toLocal();
+    final right = b.toLocal();
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day;
   }
 }
 
@@ -1091,6 +1178,169 @@ class _PlanCompactCard extends StatelessWidget {
       default:
         return Colors.deepPurple;
     }
+  }
+}
+
+class _TodoCompactCard extends StatelessWidget {
+  const _TodoCompactCard({
+    required this.todo,
+    required this.isLight,
+    required this.onTap,
+  });
+
+  final TodoItem todo;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final start = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+    ).toLocal();
+    final end = todo.dueDate!.toLocal();
+    final now = DateTime.now();
+    final statusColor = todo.isDone
+        ? Colors.green
+        : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
+    final minutes = end.difference(start).inMinutes;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: statusColor.withValues(alpha: isLight ? 0.16 : 0.24),
+          width: 1,
+        ),
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          onLongPress: () =>
+              VersionHistorySheet.show(context, todo.id, 'todos', todo.title),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 36,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SizedBox(
+                  width: 50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        DateFormat('HH:mm').format(start),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                          height: 1.2,
+                        ),
+                      ),
+                      Text(
+                        DateFormat('HH:mm').format(end),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: statusColor.withValues(alpha: 0.58),
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            todo.isDone
+                                ? Icons.check_circle_rounded
+                                : Icons.task_alt_rounded,
+                            size: 14,
+                            color: statusColor,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              todo.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurface,
+                                decoration: todo.isDone
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.schedule_rounded,
+                              size: 11,
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.4)),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${todo.remark?.isNotEmpty == true ? ' · ${todo.remark}' : ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.45),
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded,
+                    size: 16,
+                    color: colorScheme.onSurface.withValues(alpha: 0.25)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
