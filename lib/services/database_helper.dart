@@ -188,7 +188,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 25, // V25: 新增 todo_plan_blocks 规划块表
+          version: 26, // V26: 修复 pomodoro_tags/pomodoro_records 缺少冲突字段
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -202,6 +202,23 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 26) {
+              try {
+                for (var table in ['pomodoro_tags', 'pomodoro_records']) {
+                  final info = await db.rawQuery("PRAGMA table_info($table)");
+                  if (!info.any((row) => row['name'] == 'has_conflict')) {
+                    await db.execute(
+                        "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
+                    await db.execute(
+                        "ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
+                    debugPrint("✅ Database: 修复字段 $table.has_conflict");
+                  }
+                }
+              } catch (e) {
+                debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
+              }
+            }
+
             if (oldVersion < 24) {
               await ensureCourseTableSchema(db);
               await ensureTodoClientLocalSchema(db);
