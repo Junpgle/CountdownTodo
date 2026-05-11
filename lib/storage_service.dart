@@ -3278,6 +3278,12 @@ class StorageService {
       // 合并 Todos
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
+      // Snapshot items with conflicts before merge, to detect resolutions after merge
+      final Set<String> preMergeConflictIds = allLocalTodos
+          .where((t) => t.hasConflict)
+          .map((t) => t.id)
+          .toSet();
+
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
@@ -3310,8 +3316,7 @@ class StorageService {
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
-              sItem.updatedAt > local.updatedAt ||
-              sItem.hasConflict != local.hasConflict) {
+              sItem.updatedAt > local.updatedAt) {
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
               updatedTodoIds.add(sItem.id);
@@ -3323,6 +3328,24 @@ class StorageService {
             // as local item, preserving LWW semantics for folder assignments.
             allLocalTodos[idx].groupId = sItem.groupId;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          // Prevents overwriting a local resolution while still syncing conflict state.
+          if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
+            final idx2 = todosIndexMap[sItem.id]!;
+            final localItem = allLocalTodos[idx2];
+            if (sItem.hasConflict && !localItem.hasConflict) {
+              // Server still has conflict but local was resolved — sync conflict metadata only
+              localItem.hasConflict = true;
+              localItem.serverVersionData = sItem.serverVersionData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localItem.hasConflict) {
+              // Server cleared conflict (resolved from another device) — accept cleared state
+              localItem.hasConflict = false;
+              localItem.serverVersionData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3351,10 +3374,23 @@ class StorageService {
           final idx = groupsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalGroups[idx].version ||
-              sItem.updatedAt > allLocalGroups[idx].updatedAt ||
-              sItem.hasConflict != allLocalGroups[idx].hasConflict) {
+              sItem.updatedAt > allLocalGroups[idx].updatedAt) {
             allLocalGroups[idx] = sItem;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          if (!sItem.isDeleted) {
+            final localGroup = allLocalGroups[idx];
+            if (sItem.hasConflict && !localGroup.hasConflict) {
+              localGroup.hasConflict = true;
+              localGroup.conflictData = sItem.conflictData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localGroup.hasConflict) {
+              localGroup.hasConflict = false;
+              localGroup.conflictData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3381,10 +3417,23 @@ class StorageService {
           final idx = countdownsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              sItem.updatedAt > allLocalCountdowns[idx].updatedAt ||
-              sItem.hasConflict != allLocalCountdowns[idx].hasConflict) {
+              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
+          }
+
+          // Handle conflict flag divergence separately from content merge.
+          if (!sItem.isDeleted) {
+            final localCountdown = allLocalCountdowns[idx];
+            if (sItem.hasConflict && !localCountdown.hasConflict) {
+              localCountdown.hasConflict = true;
+              localCountdown.conflictData = sItem.conflictData;
+              hasChanges = true;
+            } else if (!sItem.hasConflict && localCountdown.hasConflict) {
+              localCountdown.hasConflict = false;
+              localCountdown.conflictData = null;
+              hasChanges = true;
+            }
           }
         } else {
           if (!sItem.isDeleted) {
@@ -3501,21 +3550,45 @@ class StorageService {
 
           if (todosIndexMap.containsKey(itemId)) {
             final todo = allLocalTodos[todosIndexMap[itemId]!];
-            todo.hasConflict = true;
-            todo.serverVersionData = serverVersion;
-            hasChanges = true;
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            // Skip if already resolved (hasConflict cleared) or version bumped above server
+            if (!todo.hasConflict || todo.version > serverConflictVer) {
+              debugPrint(
+                  '⏭️ Skipping re-flag of resolved todo $itemId '
+                  '(hasConflict=${todo.hasConflict}, localV=${todo.version}, serverV=$serverConflictVer)');
+            } else {
+              todo.hasConflict = true;
+              todo.serverVersionData = serverVersion;
+              hasChanges = true;
+            }
           }
           if (countdownsIndexMap.containsKey(itemId)) {
-            final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
-            countdown.hasConflict = true;
-            countdown.conflictData = serverVersion;
-            hasChanges = true;
+            final countdown =
+                allLocalCountdowns[countdownsIndexMap[itemId]!];
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            if (!countdown.hasConflict ||
+                countdown.version > serverConflictVer) {
+              // skip — already resolved
+            } else {
+              countdown.hasConflict = true;
+              countdown.conflictData = serverVersion;
+              hasChanges = true;
+            }
           }
           if (groupsIndexMap.containsKey(itemId)) {
             final group = allLocalGroups[groupsIndexMap[itemId]!];
-            group.hasConflict = true;
-            group.conflictData = serverVersion;
-            hasChanges = true;
+            final serverConflictVer =
+                (serverVersion['version'] as num?)?.toInt() ?? 0;
+            if (!group.hasConflict ||
+                group.version > serverConflictVer) {
+              // skip — already resolved
+            } else {
+              group.hasConflict = true;
+              group.conflictData = serverVersion;
+              hasChanges = true;
+            }
           }
           // TimeLogs don't have hasConflict field, skip
         }
@@ -3540,10 +3613,19 @@ class StorageService {
       // 7. 持久化数据
       final ignoredScheduleConflictKeys =
           await _getIgnoredScheduleConflictKeys(username);
+      // Compute IDs of items whose conflict was cleared in this sync cycle
+      final Set<String> recentlyResolvedIds = preMergeConflictIds
+          .where((id) {
+            final idx = todosIndexMap[id];
+            if (idx == null) return false;
+            return !allLocalTodos[idx].hasConflict;
+          })
+          .toSet();
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
           allLocalTodos,
           ignoredScheduleConflictKeys: ignoredScheduleConflictKeys,
+          skipIds: recentlyResolvedIds,
         )) {
           hasChanges = true;
         }
@@ -3597,6 +3679,7 @@ class StorageService {
   static bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
     Set<String> ignoredScheduleConflictKeys = const <String>{},
+    Set<String> skipIds = const <String>{},
     void Function(int current, int total, String message)? onProgress,
   }) {
     final buckets = <String, List<_TodoInterval>>{};
@@ -3686,6 +3769,11 @@ class StorageService {
       }
 
       final peers = conflictMap[todo.id];
+
+      // Skip re-flagging items whose conflict was just resolved in this sync cycle
+      if (skipIds.contains(todo.id) && peers != null && peers.isNotEmpty) {
+        continue;
+      }
 
       if (peers != null && peers.isNotEmpty) {
         if (!_hasVersionConflict(existing)) {

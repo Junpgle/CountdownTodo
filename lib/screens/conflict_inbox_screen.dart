@@ -410,7 +410,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         bumpedVersion: newVersion,
         data: localJson,
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('resolve_conflict keep_local API failed (will retry via oplog): $e');
+    }
 
     if (syncNow) {
       Future.microtask(() => StorageService.syncData(widget.username));
@@ -2134,13 +2136,21 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             touchUpdatedAt: false,
           );
 
-          try {
-            await ApiService.resolveConflict(
+          final apiResult = await ApiService.resolveConflict(
+            uuid: uuid,
+            table: table,
+            resolution: 'accept_server',
+          );
+          if (apiResult['success'] != true) {
+            debugPrint('batch accept_server API failed for $uuid: ${apiResult['error']}');
+            await StorageService.resolveConflictLocally(
               uuid: uuid,
               table: table,
-              resolution: 'accept_server',
+              resolvedData: serverVersion,
+              createOplog: true,
+              touchUpdatedAt: true,
             );
-          } catch (_) {}
+          }
 
           successCount++;
         } catch (e) {
@@ -2320,7 +2330,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   bumpedVersion: newVersion,
                   data: localJson,
                 );
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('batch resolve_conflict keep_local API failed for $uuid: $e');
+              }
 
               successCount++;
             }
@@ -2328,6 +2340,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         } catch (e) {
           debugPrint('批量推荐方案失败 $itemId: $e');
         }
+      }
+
+      // Trigger sync so oplog entries get pushed to server immediately
+      if (successCount > 0) {
+        Future.microtask(() => StorageService.syncData(widget.username));
       }
 
       if (mounted) {
@@ -3839,8 +3856,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           bumpedVersion: newVersion,
           data: widget.localItem,
         );
-      } catch (_) {
-        // Server call is best-effort; local resolution is what matters
+      } catch (e) {
+        debugPrint('resolve_conflict keep_local API failed (will retry via oplog): $e');
       }
 
       if (mounted) {
@@ -3891,13 +3908,22 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       );
 
       // Notify server
-      try {
-        await ApiService.resolveConflict(
+      final apiResult = await ApiService.resolveConflict(
+        uuid: uuid,
+        table: widget.table,
+        resolution: 'accept_server',
+      );
+      if (apiResult['success'] != true) {
+        // API failed — create fallback oplog so resolution survives next sync
+        debugPrint('accept_server API failed, creating fallback oplog: ${apiResult['error']}');
+        await StorageService.resolveConflictLocally(
           uuid: uuid,
           table: widget.table,
-          resolution: 'accept_server',
+          resolvedData: widget.serverItem!,
+          createOplog: true,
+          touchUpdatedAt: true,
         );
-      } catch (_) {}
+      }
 
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
