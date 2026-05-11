@@ -22,6 +22,8 @@ class PreferenceSection extends StatelessWidget {
   final VoidCallback? onIslandPriorityPressed;
   final int llmRetryCount;
   final ValueChanged<int?>? onLLMRetryCountChanged;
+  final bool conflictDetectionEnabled;
+  final ValueChanged<bool>? onConflictDetectionChanged;
 
   const PreferenceSection({
     super.key,
@@ -41,6 +43,8 @@ class PreferenceSection extends StatelessWidget {
     this.onIslandPriorityPressed,
     this.llmRetryCount = 3,
     this.onLLMRetryCountChanged,
+    this.conflictDetectionEnabled = false,
+    this.onConflictDetectionChanged,
   });
 
   // 🚀 辅助方法：构建带高亮动画的 Tile
@@ -56,8 +60,8 @@ class PreferenceSection extends StatelessWidget {
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
         decoration: BoxDecoration(
-          color: isHighlighted 
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2) 
+          color: isHighlighted
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -101,6 +105,22 @@ class PreferenceSection extends StatelessWidget {
                       DropdownMenuItem(value: 0, child: Text('每次启动')),
                     ],
                     onChanged: onSyncIntervalChanged,
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'conflict_detection',
+                child: ListTile(
+                  leading: const Icon(Icons.warning_amber_outlined,
+                      color: Colors.orange),
+                  title: const Text('冲突检测'),
+                  subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
+                  trailing: Switch(
+                    value: conflictDetectionEnabled,
+                    activeThumbColor: Colors.orange,
+                    onChanged: onConflictDetectionChanged,
                   ),
                 ),
               ),
@@ -164,7 +184,8 @@ class PreferenceSection extends StatelessWidget {
                       }
                       return Text(
                         '已配置: ${config.model}',
-                        style: const TextStyle(fontSize: 12, color: Colors.green),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.green),
                       );
                     },
                   ),
@@ -286,7 +307,8 @@ class PreferenceSection extends StatelessWidget {
                     context: context,
                     targetId: 'island_priority',
                     child: ListTile(
-                      leading: const Icon(Icons.priority_high, color: Colors.indigo),
+                      leading:
+                          const Icon(Icons.priority_high, color: Colors.indigo),
                       title: const Text('灵动岛优先级设置'),
                       subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
                       trailing: const Icon(Icons.chevron_right),

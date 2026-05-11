@@ -87,6 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'theme': GlobalKey(),
     'server_choice': GlobalKey(),
     'sync_interval': GlobalKey(),
+    'conflict_detection': GlobalKey(),
     'float_window_style': GlobalKey(),
     'llm_retry': GlobalKey(),
     'lan_sync': GlobalKey(),
@@ -134,6 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _noCourseBehavior = 'keep';
   String _serverChoice = 'aliyun';
   int _llmRetryCount = 3;
+  bool _conflictDetectionEnabled = false;
 
   // 学期进度状态
   bool _semesterEnabled = false;
@@ -196,8 +198,13 @@ class _SettingsPageState extends State<SettingsPage> {
     GlobalKey? itemKey = _itemKeys[target];
 
     setState(() {
-      if (['theme', 'server_choice', 'sync_interval', 'llm_retry']
-          .contains(target)) {
+      if ([
+        'theme',
+        'server_choice',
+        'sync_interval',
+        'conflict_detection',
+        'llm_retry'
+      ].contains(target)) {
         _preferenceExpanded = true;
         sectionKey = _preferenceSectionKey;
       } else if (target == 'float_window_style') {
@@ -502,6 +509,8 @@ class _SettingsPageState extends State<SettingsPage> {
     String theme = await StorageService.getThemeMode();
     String serverUrlChoice = await StorageService.getServerChoice();
     int llmRetryCount = await StorageService.getLLMRetryCount();
+    bool conflictDetectionEnabled =
+        await StorageService.getConflictDetectionEnabled();
 
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
@@ -540,6 +549,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _themeMode = theme;
       _serverChoice = serverUrlChoice;
       _llmRetryCount = llmRetryCount;
+      _conflictDetectionEnabled = conflictDetectionEnabled;
       _semesterEnabled = sEnabled;
       _semesterStart = sStart;
       _semesterEnd = sEnd;
@@ -588,6 +598,17 @@ class _SettingsPageState extends State<SettingsPage> {
       _announcementLoadFailed = false;
       _settingsAnnouncements = announcements;
     });
+  }
+
+  Future<void> _setConflictDetectionEnabled(bool enabled) async {
+    setState(() => _conflictDetectionEnabled = enabled);
+    await StorageService.saveAppSetting(
+      StorageService.KEY_CONFLICT_DETECTION_ENABLED,
+      enabled,
+    );
+    if (!enabled && _username.isNotEmpty && _username != '加载中...') {
+      await StorageService.clearLocalTodoScheduleConflicts(_username);
+    }
   }
 
   Widget _buildAnnouncementPanel() {
@@ -1379,6 +1400,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         StorageService.KEY_SYNC_INTERVAL, val);
                   }
                 },
+                conflictDetectionEnabled: _conflictDetectionEnabled,
+                onConflictDetectionChanged: (val) async {
+                  await _setConflictDetectionEnabled(val);
+                },
                 serverChoice: _serverChoice,
                 onServerChoiceTap: () {
                   Navigator.push(
@@ -1809,6 +1834,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             StorageService.saveAppSetting(
                                 StorageService.KEY_SYNC_INTERVAL, val);
                           }
+                        },
+                        conflictDetectionEnabled: _conflictDetectionEnabled,
+                        onConflictDetectionChanged: (val) async {
+                          await _setConflictDetectionEnabled(val);
                         },
                         serverChoice: _serverChoice,
                         onServerChoiceTap: () {

@@ -1,147 +1,308 @@
-# 团队单天冲突本地判定计划
+# 当前冲突判断逻辑梳理
 
-## 问题与方案
-当前团队“单天时间冲突”原先依赖服务端冲突返回；在服务端关闭团队冲突检测后，前端不会再自动产生该类冲突。  
-方案是在前端同步收敛点（`StorageService.syncData`）新增**本地团队 Todo 单天冲突检测**，直接标记 `hasConflict/conflict_data`，并把结果用于冲突中心展示，同时在团队列表/卡片展示冲突数量角标。
+本文基于当前本地代码梳理 Flutter 客户端、阿里云调试后端、Cloudflare Worker 后端的冲突逻辑。
 
-## Todos
-1. **梳理并固定判定规则**
-    - 仅处理 `teamUuid != null` 的 Todo。
-    - 仅处理存在有效时间区间的 Todo（`createdDate` 或 `createdAt` 作为开始，`dueDate` 作为结束）。
-    - “单天”定义：冲突双方都落在同一自然日（本地日历日），且时间区间重叠。
-    - 排除已删除项；是否排除已完成项按现有团队视图习惯评估后保持一致。
+## 相关文件
 
-2. **在 StorageService 增加本地冲突检测与标记**
-    - 新增私有 helper：按 `teamUuid + yyyy-mm-dd` 分桶并做区间重叠扫描。
-    - 对检测出的 Todo 设置 `hasConflict = true`，并写入 `serverVersionData/conflict_data`（存放冲突对端摘要，供冲突中心展示）。
-    - 对不再冲突的团队 Todo 清理旧冲突标记，避免“脏冲突”长期残留。
-    - 与现有“服务端 conflicts 补标”逻辑并存：本地结果补充团队单天冲突，不影响版本冲突处理。
+- `lib/storage_service.dart`：本地数据保存、同步 payload 生成、同步结果合并、本地日程冲突扫描、冲突开关读取。
+- `lib/screens/home_dashboard.dart`：首页同步后冲突弹窗、团队冲突红点。
+- `lib/screens/home_settings_screen.dart`：设置页冲突检测开关状态读取与保存。
+- `lib/screens/settings/widgets/preference_section.dart`：设置页“冲突检测”开关 UI。
+- `lib/screens/conflict_inbox_screen.dart`：冲突中心加载、分类、展示和处理冲突。
+- `lib/widgets/conflict_alert_dialog.dart`：同步后首页冲突弹窗。
+- `lib/models.dart`：`TodoItem`、`TodoGroup`、`CountdownItem`、`ConflictInfo` 等冲突字段模型。
+- `aliyun_debug/server.js`：阿里云后端同步、版本冲突、服务端日程冲突、冲突解决接口。
+- `math-quiz-backend/src/index.js`：Cloudflare Worker 同步逻辑。
+- `lib/services/pomodoro_service.dart`：番茄钟记录同步入口；当前不参与冲突计算。
 
-3. **团队管理页增加冲突角标数据**
-    - 在团队加载阶段统计每个团队当前 `hasConflict` 的 Todo 数量（本地数据源）。
-    - 在 `team_management_screen.dart` 的团队卡片上新增/复用角标展示冲突数。
-    - 与现有待审批数量角标并存，视觉优先级明确（避免覆盖）。
+## 冲突检测开关
 
-4. **冲突中心文案与展示校准**
-    - 将冲突卡片标签从固定“版本争议”改为按类型显示（至少区分“时间重叠/版本争议”）。
-    - 确保本地生成的冲突数据可在对比弹窗里读取到时间区间与冲突来源摘要。
+设置项为 `StorageService.KEY_CONFLICT_DETECTION_ENABLED`，实际 key 是 `conflict_detection_enabled`。
 
-5. **联调与回归**
-    - 验证场景：新增冲突、冲突消失、跨团队互不影响、离线后重开仍可见、同步后不被覆盖。
-    - 验证“冲突中心 + 团队列表角标”两处一致。
+默认值是关闭。保存逻辑按账号隔离，因为它不在 `saveAppSetting` 的全局设置例外列表里。
 
-## 说明
-- 已确认范围：仅团队 Todo；不覆盖课程/番茄记录。
-- 实现位置优先放在 `StorageService`，避免在多页面重复判定逻辑。
-- 保持现有数据结构，不新增后端接口或协议字段。
+关闭开关后的效果：
 
-## 同步冲突蓝图（团队 Todo 单天冲突）
+- 本地不执行待办时间重叠扫描。
+- 手动扫描冲突会清理本地日程冲突并返回 0。
+- 同步完成后不会重新计算本地日程冲突。
+- 阿里云返回的 `schedule_conflict` 不会被客户端持久化为本地待办冲突。
+- 首页不会弹冲突弹窗。
+- 首页团队按钮冲突红点不显示。
+- 版本冲突不受这个开关影响。
 
-### 1. 触发层（何时判定）
-- 主触发：`StorageService.syncData()` 合并完本地与服务端数据后执行一次本地冲突判定。
-- 次触发：本地 Todo 变更写入后（新增/编辑/完成/删除）可复用同一 helper 做增量重算（后续可优化）。
+## 本地日程冲突
 
-### 2. 输入层（判定数据集）
-- 数据源：当前用户本地 `allLocalTodos`（已包含本轮同步合并结果）。
-- 过滤条件：
-    - `teamUuid != null`
-    - `isDeleted == false`
-    - 存在有效时间区间：`startMs` 与 `endMs` 均有效且 `startMs < endMs`
-- 时间字段映射：
-    - `startMs = createdDate ?? createdAt`
-    - `endMs = dueDate.millisecondsSinceEpoch`
+本地日程冲突只发生在 `lib/storage_service.dart` 的 `_recomputeLocalTodoScheduleConflicts`。
 
-### 3. 规则层（单天+重叠）
-- 单天规则：只比较同一自然日（本地时区 `yyyy-MM-dd`）内的任务。
-- 分桶键：`teamUuid + dayKey`。
-- 重叠规则：区间 `[startA, endA)` 与 `[startB, endB)` 满足 `startA < endB && startB < endA` 即冲突。
-- 输出：冲突任务 UUID 集合 + 每条任务的冲突对端摘要（至少含 uuid/title/start/end/team_uuid）。
+参与对象：
 
-### 4. 标记层（写回本地模型）
-- 对命中冲突的 Todo：
-    - `hasConflict = true`
-    - `serverVersionData/conflict_data` 写入本地冲突摘要（字段名保持兼容现有冲突中心）。
-- 对未命中冲突但历史上有冲突标记的团队 Todo：
-    - 清理 `hasConflict = false`
-    - 清空 `conflict_data`
-- 与版本冲突并存策略：
-    - 若已有版本冲突数据，保留版本冲突优先级；本地时间冲突可写入可区分的 `type: local_schedule_conflict` 元信息。
+- 只扫描 `TodoItem` 与 `TodoItem`。
 
-### 5. 展示层（两处对齐）
-- 冲突中心（`conflict_inbox_screen.dart`）：
-    - 标签按类型显示：`时间重叠` / `版本争议`
-    - 详情卡可展示本地冲突时间段与冲突对象标题
-- 团队管理（`team_management_screen.dart`）：
-    - 统计每个团队 `hasConflict == true` 的 Todo 数量
-    - 卡片显示冲突角标（与待审批角标并存，不互相覆盖）
+不参与对象：
 
-### 6. 一致性层（避免脏状态）
-- 每轮同步后统一重算并覆写团队 Todo 冲突标记，避免旧冲突残留。
-- 仅按本地已知数据判定（离线可用），不依赖服务端 `conflicts`。
-- 服务端返回的版本冲突仍按现有链路消费，不回退兼容。
+- 专注记录 / 番茄钟记录。
+- 时间日志。
+- 课程。
+- 规划块。
+- 倒计时。
+- 文件夹。
 
-### 7. 验证层（完成标准）
-- 任务 A/B 同团队同日重叠：两条都标记冲突，冲突中心可见，团队卡片角标+2。
-- 调整时间后不重叠：两条冲突标记被清理，角标归零。
-- 不同团队同日重叠：互不影响。
-- 跨天任务：按“单天冲突”策略不纳入本期判定（后续可扩展）。
+扫描条件：
 
-## 全量冲突蓝图（统一视角）
+- `todo.isDeleted == false`
+- `dueDate != null`
+- `todo.isAllDay == false`
+- 不是近似全天范围。
+- 起止时间有效：`startMs > 0 && endMs > 0 && startMs < endMs`
+- 起止时间必须在本地同一天。
 
-### A. 冲突类型矩阵
-1. **逻辑冲突（local_schedule_conflict）**
-    - 含义：团队内同日时间区间重叠（本地可判定）。
-    - 触发点：本地数据合并后重算。
-    - 数据来源：本地 Todo 集合。
-2. **多端编辑争议（version_conflict）**
-    - 含义：同一条目在多设备并发编辑，客户端版本不占优且内容不一致。
-    - 触发点：同步响应中的 `conflicts` 或服务端 `has_conflict`。
-    - 数据来源：服务端返回 `conflict_with` + 本地条目。
-3. **版本回退链路（rollback_conflict_flow）**
-    - 含义：用户选择“保留本地/采用服务器”后，需要清理冲突标记并推进版本。
-    - 触发点：冲突中心解决动作。
-    - 数据来源：本地条目 + 服务器版本快照（若可用）。
+起止时间来源：
 
-### B. 统一状态机
-- `clean`：无冲突。
-- `conflict_logic`：仅逻辑冲突。
-- `conflict_version`：仅版本冲突。
-- `conflict_mixed`：逻辑+版本同时存在（展示优先级：版本争议 > 逻辑冲突）。
-- `resolving`：用户正在执行保留本地/采用服务器。
-- `resolved_pending_sync`：本地已解决，待下轮同步对齐服务端状态。
+- 开始：`todo.createdDate ?? todo.createdAt`
+- 结束：`todo.dueDate.millisecondsSinceEpoch`
 
-### C. 数据契约（前端内部）
-- 继续复用 `hasConflict + conflict_data(serverVersionData)`，但在 `conflict_data` 增加可区分字段：
-    - `conflict_kind`: `logic` | `version`
-    - `conflict_type`: `local_schedule_conflict` | `version_conflict`
-    - `source`: `local_detector` | `server_sync`
-    - `conflict_with`: 对端摘要（uuid/title/time/version 等）
-- 这样不改数据库结构即可在 UI 层精准分流与展示。
+重叠判断：
 
-### D. 管线分层
-1. **Detect（检测）**
-    - 本地检测器负责逻辑冲突。
-    - 服务端返回负责版本冲突。
-2. **Normalize（标准化）**
-    - 两类冲突归一为统一内部结构（同一字段集）。
-3. **Mark（落标）**
-    - 写回 `hasConflict/conflict_data`；并清理失效冲突。
-4. **Present（展示）**
-    - 冲突中心按 `conflict_kind` 展示标签与卡片文案。
-    - 团队列表角标统计 `hasConflict`，可附加类型分布（后续）。
-5. **Resolve（解决）**
-    - 逻辑冲突：以时间调整后自动消除为主，保留手动清理入口。
-    - 版本冲突：保留本地/采用服务器，执行版本推进与清标。
+```text
+a.start < b.end && b.start < a.end
+```
 
-### E. 处理优先级
-- 先保留并展示版本冲突（防止数据丢失），再补充逻辑冲突提示。
-- 若同条目存在混合冲突，冲突中心主标签显示“版本争议（含时间重叠）”。
+冲突写入格式：
 
-### F. 回归口径
-- 逻辑冲突闭环：创建重叠 -> 标记 -> 调整时间 -> 自动清除。
-- 多端争议闭环：设备 A/B 交叉修改 -> 进冲突中心 -> 选择策略 -> 双端对齐。
-- 回退闭环：执行回退后不出现“已解决条目再次幽灵复活”。
+```text
+hasConflict = true
+serverVersionData = {
+  uuid,
+  id,
+  content,
+  team_uuid,
+  schedule_scope,
+  relation_type,
+  conflict_kind: "logic",
+  conflict_type: "local_schedule_conflict",
+  source: "local_detector",
+  start_time,
+  end_time,
+  conflict_with: [...]
+}
+```
 
-最终目标:
-智能冲突检测与提醒：通过算法自动检测日程时间冲突，实时推送提醒，并提供智能调整建议，优化日程安排合理性。​
-数据可视化与分析：将日程数据以图表形式呈现，如任务进度甘特图、时间占用热力图，帮助用户直观把握时间分配情况，辅助决策。
+`relation_type` 的分类：
+
+- 当前项和冲突对象一个个人、一个团队：`personal_team`
+- 当前项是团队项，且冲突对象都是团队项：`team_team`
+- 否则：`personal_personal`
+
+忽略冲突：
+
+- `ignoreLocalScheduleConflict` 会把当前项与 peers 的 pair key 存入 `ignored_schedule_conflicts_<username>`。
+- 后续扫描遇到该 pair key 会跳过。
+- 忽略后会清除当前项及包含当前项的 peer 冲突，再重新扫描。
+
+上传保护：
+
+- `_stripClientOnlyConflictForSync` 会移除 `local_schedule_conflict`，并把 `has_conflict` 置 0。
+- 本地日程冲突是客户端私有逻辑，不作为服务端版本冲突 payload 上传。
+
+## 客户端同步时如何处理冲突
+
+入口是 `StorageService.syncData`。
+
+上传前：
+
+- `todos`：如果本地是版本冲突，跳过上传；如果只是本地日程冲突，会剥离冲突字段再上传。
+- `todo_groups`：如果 `hasConflict == true`，跳过上传。
+- `countdowns`：如果 `hasConflict == true`，跳过上传。
+- `time_logs`：正常按 `updatedAt > lastSyncTime` 上传，没有冲突字段。
+- `todo_plan_blocks`：正常上传，不走冲突中心逻辑。
+
+发送成功后：
+
+- 客户端读取服务端 `response.conflicts` 并转成 `ConflictInfo`。
+- `schedule_conflict` 和 `pomodoro` 类型不会阻塞 op_log 标记为已同步。
+- 其他冲突会让对应 op_log 保持未同步并标记 `sync_error = server_conflict`。
+
+合并服务端数据：
+
+- `todos`、`todo_groups`、`countdowns` 会合并服务端 `has_conflict` 状态。
+- `time_logs` 没有客户端冲突字段。
+- `todo_plan_blocks` 当前只按版本/更新时间合并，不进入冲突中心。
+- `pomodoro` 标签和记录通过 `PomodoroService` 单独同步。
+
+额外补标：
+
+- 如果 `response.conflicts` 中有 `schedule_conflict`，且冲突检测开关开启，客户端会把它转换成本地 `local_schedule_conflict` 写入对应待办。
+- 如果 `response.conflicts` 中有版本冲突，并且 `conflict_with` 是同一个 item 的服务端快照，客户端会写入对应 `TodoItem.serverVersionData`、`TodoGroup.conflictData` 或 `CountdownItem.conflictData`。
+- `TimeLogs don't have hasConflict field, skip`。
+
+## 首页冲突行为
+
+`home_dashboard.dart` 中有两个入口：
+
+- 团队按钮红点：只有冲突检测开关开启时才计算并展示。
+- 同步后的 `ConflictAlertDialog`：只有冲突检测开关开启且 `response.conflicts` 非空时才弹。
+
+注意：这里的开关会屏蔽首页弹窗，但不会阻止版本冲突在本地保存和在冲突中心显示。
+
+## 冲突中心
+
+文件：`lib/screens/conflict_inbox_screen.dart`
+
+加载对象：
+
+- `TodoItem.hasConflict`
+- `TodoGroup.hasConflict`
+- `CountdownItem.hasConflict`
+
+过滤规则：
+
+- 已删除项不展示。
+- 全天待办不展示。
+- 如果冲突对象全部是全天任务，也不展示。
+
+分类：
+
+- `conflict_type == local_schedule_conflict` 或 `source == local_detector`：显示为时间冲突。
+- 其他冲突：显示为其他冲突/版本冲突。
+
+解决方式：
+
+- 对日程冲突，可保留现状，调用 `StorageService.ignoreLocalScheduleConflict`，之后不再提示这组时间重叠。
+- 对版本冲突，可保留本地并调用 `resolveConflictLocally` / `ApiService.resolveConflict` 清理冲突状态并提升版本。
+- 批量清理幽灵冲突时，会把 `hasConflict` 和 `conflictData/serverVersionData` 清空并持久化。
+
+## 阿里云后端冲突逻辑
+
+文件：`aliyun_debug/server.js`
+
+### 服务端日程冲突
+
+函数：`checkItemConflict(item, userId)`
+
+当前规则：
+
+- 无开始/结束时间：不冲突。
+- 全天任务：不冲突。
+- 团队记录：不由服务端判定日程冲突，直接返回 `null`。
+- 个人范围内查询 `courses` 和 `todos` 的时间重叠。
+- 不查询 `pomodoro_records`，因此番茄钟/专注记录不参与日程冲突。
+- 不查询 `time_logs`。
+
+触发点：
+
+- 同步 `todos` 时调用 `checkItemConflict(t, user_id)`，命中后返回 `type: schedule_conflict`。
+- 课程同步时也会调用 `checkItemConflict(c, user_id)` 并写课程 `has_conflict`，但客户端冲突中心当前不加载课程冲突。
+
+### 版本冲突
+
+阿里云同步中会对以下类型判定版本冲突：
+
+- `todos`
+- `countdowns`
+- `todo_groups`
+
+`todos` 版本冲突条件：
+
+```text
+client.version <= server.version
+&& 数据字段存在实质差异
+&& client.updated_at <= server.updated_at
+```
+
+命中后：
+
+- 返回 `type: version_conflict`
+- 服务端写 `has_conflict = 1`
+- 服务端写 `conflict_data = safeSnapshotJson(existing, table)`
+- 本轮不再覆盖服务端数据
+
+`countdowns` 当前条件：
+
+```text
+client.version <= server.version
+&& 数据字段存在实质差异
+```
+
+它没有像 `todos` 一样额外检查 `client.updated_at <= server.updated_at`。
+
+`todo_groups` 当前条件：
+
+```text
+client.version <= server.version
+&& 数据字段存在实质差异
+&& client.updated_at <= server.updated_at
+```
+
+这是当前已修复后的逻辑。用于避免“同版本但客户端更新时间更新”的文件夹修改被误判为版本冲突。
+
+`todo_groups` 的实质差异字段：
+
+- `name`
+- `is_deleted`
+- `is_expanded`
+
+### 不再产生冲突的类型
+
+在阿里云同步主接口中：
+
+- `time_logs` 不做版本冲突，只按 `version` 或 `updated_at` 新旧更新。
+- `pomodoro_tags` 不做版本冲突，只按 `version` 或 `updated_at` 新旧更新。
+- `pomodoro_records` 不做版本冲突，也不做日程冲突，只按 `version` 或 `updated_at` 新旧更新。
+- `todo_plan_blocks` 不进入冲突中心；更新时会清 `has_conflict = 0`。
+
+独立接口 `/api/pomodoro/tags` 和 `/api/pomodoro/records` 当前也不再把番茄标签/记录打成版本冲突，更新成功会清 `has_conflict`。
+
+### 冲突解决接口
+
+阿里云提供冲突解决相关接口，涉及：
+
+- `todos`
+- `countdowns`
+- `todo_groups`
+- `pomodoro_records`
+- `pomodoro_tags`
+
+但当前客户端冲突中心主要使用 `todos`、`countdowns`、`todo_groups`。
+
+## Cloudflare Worker 冲突逻辑
+
+文件：`math-quiz-backend/src/index.js`
+
+Cloudflare Worker 的 `/api/sync` 当前没有像阿里云一样返回 `conflicts` 数组，也没有写入客户端冲突中心使用的 `has_conflict/conflict_data`。
+
+它主要按下面规则做 LWW 更新：
+
+```text
+client.version > server.version
+|| client.updated_at > server.updated_at
+```
+
+适用对象包括：
+
+- `todos`
+- `countdowns`
+- `todo_groups`
+- `time_logs`
+- `pomodoro_tags`
+- `pomodoro_records`
+
+因此在 Cloudflare 路线下，当前同步更接近“较新版本/较新更新时间覆盖”，不会走本地冲突中心那套版本冲突展示流程。
+
+## 专注记录 / 番茄钟 / 时间日志结论
+
+当前代码中：
+
+- 本地日程扫描不包含专注记录、番茄钟、时间日志。
+- 阿里云 `checkItemConflict` 不查询 `pomodoro_records` 和 `time_logs`。
+- 阿里云同步不再为 `pomodoro_tags`、`pomodoro_records` 生成版本冲突。
+- 时间日志没有客户端 `hasConflict` 字段，也不会进入冲突中心。
+
+所以“专注记录 / 番茄钟 / 时间日志永远不参与冲突计算”在当前主要路径上成立。
+
+## 当前需要注意的边界
+
+- `countdowns` 在阿里云版本冲突判断里仍未比较 `client.updated_at <= server.updated_at`，如果未来出现同版本但客户端更新时间更新的倒计时误冲突，可以按 `todo_groups` 的修复方式同步修。
+- `courses` 服务端可能写 `has_conflict`，但客户端冲突中心不展示课程冲突。
+- Cloudflare Worker 不返回 `conflicts`，因此服务器线路切换会影响“版本冲突是否进入冲突中心”的体验。
+- 关闭冲突检测开关只关闭日程冲突和首页提醒，不关闭版本冲突的持久化。
