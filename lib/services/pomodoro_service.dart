@@ -646,9 +646,19 @@ class PomodoroService {
     final allTags =
         (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
     if (allTags.isEmpty) return;
-    await ApiService.syncPomodoroTags(allTags.map((t) => t.toJson()).toList());
-    final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
-    await prefs.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    final ok = await ApiService.syncPomodoroTags(
+        allTags.map((t) => t.toJson()).toList());
+    if (ok) {
+      final db = await DatabaseHelper.instance.database;
+      await db.update(
+        'op_logs',
+        {'is_synced': 1, 'sync_error': ''},
+        where: 'is_synced = 0 AND target_table = ?',
+        whereArgs: ['pomodoro_tags'],
+      );
+      final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
+      await prefs.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    }
   }
 
   static Future<void> syncTagsFromCloud() async {
