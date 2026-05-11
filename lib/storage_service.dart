@@ -4466,6 +4466,12 @@ class StorageService {
         break;
     }
 
+    batch.delete(
+      'op_logs',
+      where: 'is_synced = 0 AND target_table = ? AND target_uuid = ?',
+      whereArgs: [table, uuid],
+    );
+
     if (createOplog) {
       batch.insert('op_logs', {
         'op_type': 'UPSERT',
