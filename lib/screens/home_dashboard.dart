@@ -3534,6 +3534,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         return CourseSectionWidget(
                                           dashboardCourseData:
                                               _dashboardCourseData,
+                                          todos: _todos,
                                           isLight: isLight,
                                           username: widget.username,
                                           refreshTrigger: trigger,

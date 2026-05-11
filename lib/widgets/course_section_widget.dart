@@ -576,7 +576,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     required Set<String> excludeTodoIds,
   }) {
     return todos.where((todo) {
-      if (todo.isDone || todo.isDeleted || todo.dueDate == null) return false;
+      if (todo.isDeleted || todo.dueDate == null) return false;
       if (excludeTodoIds.contains(todo.id)) return false;
       if (todo.isAllDayTask) return false;
 
@@ -1200,8 +1200,9 @@ class _TodoCompactCard extends StatelessWidget {
     ).toLocal();
     final end = todo.dueDate!.toLocal();
     final now = DateTime.now();
-    final statusColor =
-        end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700;
+    final statusColor = todo.isDone
+        ? Colors.green
+        : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
     final minutes = end.difference(start).inMinutes;
 
     return Container(
@@ -1279,7 +1280,9 @@ class _TodoCompactCard extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            Icons.task_alt_rounded,
+                            todo.isDone
+                                ? Icons.check_circle_rounded
+                                : Icons.task_alt_rounded,
                             size: 14,
                             color: statusColor,
                           ),
@@ -1293,6 +1296,9 @@ class _TodoCompactCard extends StatelessWidget {
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w600,
                                 color: colorScheme.onSurface,
+                                decoration: todo.isDone
+                                    ? TextDecoration.lineThrough
+                                    : null,
                                 height: 1.2,
                               ),
                             ),
