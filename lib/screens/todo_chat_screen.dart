@@ -88,6 +88,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   DateTime? _customInjectEnd;
   bool _inputHasText = false;
   String _liveSmartContextPreview = '';
+  String _liveActionProtocolPreview = '';
   int _liveEstimatedTokens = 0;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
@@ -161,15 +162,18 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final text = _inputCtrl.text.trim();
     final hasText = text.isNotEmpty;
     final preview = _buildSmartContextPreview(text);
+    final actionPreview = _buildActionProtocolPreview(text);
     final estimatedTokens = _estimateTokensForPendingInput(text);
     if (hasText == _inputHasText &&
         preview == _liveSmartContextPreview &&
+        actionPreview == _liveActionProtocolPreview &&
         estimatedTokens == _liveEstimatedTokens) {
       return;
     }
     setState(() {
       _inputHasText = hasText;
       _liveSmartContextPreview = preview;
+      _liveActionProtocolPreview = actionPreview;
       _liveEstimatedTokens = estimatedTokens;
     });
   }
@@ -207,6 +211,68 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     return '$userText，并扩大到未来30天范围';
   }
 
+  String _buildActionProtocolPreview(String userText) {
+    if (userText.isEmpty) return '';
+    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(userText);
+    final categories = <String>[];
+    void addIf(bool cond, String label) {
+      if (cond && !categories.contains(label)) categories.add(label);
+    }
+
+    addIf(
+      prompt.contains('create_todo') ||
+          prompt.contains('update_todo') ||
+          prompt.contains('complete_todo') ||
+          prompt.contains('delete_todo') ||
+          prompt.contains('reschedule_todo') ||
+          prompt.contains('bulk_reschedule') ||
+          prompt.contains('categorize_todo') ||
+          prompt.contains('split_todo') ||
+          prompt.contains('merge_todos') ||
+          prompt.contains('plan_todos'),
+      '待办相关',
+    );
+    addIf(
+      prompt.contains('create_plan_block') ||
+          prompt.contains('update_plan_block') ||
+          prompt.contains('reschedule_plan_blocks') ||
+          prompt.contains('delete_plan_block') ||
+          prompt.contains('skip_plan_block') ||
+          prompt.contains('start_plan_block_pomodoro'),
+      '规划块相关',
+    );
+    addIf(
+      prompt.contains('create_time_log') ||
+          prompt.contains('update_time_log') ||
+          prompt.contains('delete_time_log') ||
+          prompt.contains('start_pomodoro') ||
+          prompt.contains('stop_pomodoro'),
+      '专注相关',
+    );
+    addIf(
+      prompt.contains('create_countdown') ||
+          prompt.contains('update_countdown') ||
+          prompt.contains('complete_countdown') ||
+          prompt.contains('delete_countdown'),
+      '倒计时相关',
+    );
+    addIf(
+      prompt.contains('create_todo_group') ||
+          prompt.contains('update_todo_group') ||
+          prompt.contains('delete_todo_group'),
+      '分类相关',
+    );
+    addIf(
+      prompt.contains('create_pomodoro_tag') ||
+          prompt.contains('update_pomodoro_tag') ||
+          prompt.contains('delete_pomodoro_tag'),
+      '标签相关',
+    );
+
+    if (categories.isEmpty) return '动作协议：基础待办相关';
+    return '动作协议：${categories.join('、')}';
+  }
+
   Future<void> _pickCustomInjectRange() async {
     final now = DateTime.now();
     final first = DateTime(now.year - 2, 1, 1);
@@ -233,6 +299,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _customInjectEnd = DateTime(end.year, end.month, end.day);
       _injectMoreContext = false;
       _liveSmartContextPreview = _buildSmartContextPreview(_inputCtrl.text.trim());
+      _liveActionProtocolPreview =
+          _buildActionProtocolPreview(_inputCtrl.text.trim());
       _liveEstimatedTokens = _estimateTokensForPendingInput(_inputCtrl.text.trim());
     });
   }
@@ -4106,7 +4174,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ),
               ],
             ),
-            if (_inputHasText && _liveSmartContextPreview.isNotEmpty) ...[
+            if (_inputHasText &&
+                (_liveSmartContextPreview.isNotEmpty ||
+                    _liveActionProtocolPreview.isNotEmpty)) ...[
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
@@ -4144,6 +4214,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                               }
                               _liveSmartContextPreview =
                                   _buildSmartContextPreview(
+                                      _inputCtrl.text.trim());
+                              _liveActionProtocolPreview =
+                                  _buildActionProtocolPreview(
                                       _inputCtrl.text.trim());
                               _liveEstimatedTokens = _estimateTokensForPendingInput(
                                   _inputCtrl.text.trim());
@@ -4214,6 +4287,25 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           color: colorScheme.onSurface.withValues(alpha: 0.8),
                         ),
                       ),
+                    if (_liveSmartContextPreview.isEmpty)
+                      Text(
+                        '将注入：无（当前消息无需额外业务上下文）',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.65),
+                        ),
+                      ),
+                    if (_liveActionProtocolPreview.isNotEmpty)
+                      SelectableText(
+                        _liveActionProtocolPreview,
+                        maxLines: 3,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                        ),
+                      ),
                     SelectableText(
                       '预计Token：~$_liveEstimatedTokens',
                       maxLines: 1,
@@ -4259,6 +4351,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       _smartContext = val;
                       _liveSmartContextPreview =
                           _buildSmartContextPreview(_inputCtrl.text.trim());
+                      _liveActionProtocolPreview =
+                          _buildActionProtocolPreview(_inputCtrl.text.trim());
                       _liveEstimatedTokens =
                           _estimateTokensForPendingInput(_inputCtrl.text.trim());
                     }),
