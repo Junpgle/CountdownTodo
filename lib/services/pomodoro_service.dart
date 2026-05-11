@@ -21,6 +21,8 @@ class PomodoroTag {
   int version;
   int createdAt; // UTC ms
   int updatedAt; // UTC ms
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   PomodoroTag({
     String? uuid,
@@ -30,6 +32,8 @@ class PomodoroTag {
     this.version = 1,
     int? createdAt,
     int? updatedAt,
+    this.hasConflict = false,
+    this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -43,6 +47,8 @@ class PomodoroTag {
         'version': version,
         'created_at': createdAt,
         'updated_at': updatedAt,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
   factory PomodoroTag.fromJson(Map<String, dynamic> j) => PomodoroTag(
@@ -53,7 +59,22 @@ class PomodoroTag {
         version: j['version'] as int? ?? 1,
         createdAt: _ms(j['created_at']),
         updatedAt: _ms(j['updated_at']),
+        hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
+        conflictData: _mapOrJson(j['conflict_data']),
       );
+
+  static Map<String, dynamic>? _mapOrJson(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return value.cast<String, dynamic>();
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) return decoded.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return null;
+  }
 
   static int _ms(dynamic v) {
     if (v == null) return DateTime.now().millisecondsSinceEpoch;
@@ -88,6 +109,8 @@ class PomodoroRecord {
   int version;
   int createdAt;
   int updatedAt;
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   PomodoroRecord({
     String? uuid,
@@ -105,6 +128,8 @@ class PomodoroRecord {
     this.version = 1,
     int? createdAt,
     int? updatedAt,
+    this.hasConflict = false,
+    this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [],
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -135,6 +160,8 @@ class PomodoroRecord {
       'version': version,
       'created_at': createdAt,
       'updated_at': updatedAt,
+      'has_conflict': hasConflict ? 1 : 0,
+      'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
     };
   }
 
@@ -168,6 +195,8 @@ class PomodoroRecord {
       version: (j['version'] as num?)?.toInt() ?? 1,
       createdAt: _ms(j['created_at']),
       updatedAt: _ms(j['updated_at']),
+      hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
+      conflictData: PomodoroTag._mapOrJson(j['conflict_data']),
     );
   }
 
@@ -518,6 +547,9 @@ class PomodoroService {
             'version': t.version,
             'created_at': t.createdAt,
             'updated_at': t.updatedAt,
+            'has_conflict': t.hasConflict ? 1 : 0,
+            'conflict_data':
+                t.conflictData != null ? jsonEncode(t.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -578,6 +610,9 @@ class PomodoroService {
             'version': t.version,
             'created_at': t.createdAt,
             'updated_at': t.updatedAt,
+            'has_conflict': t.hasConflict ? 1 : 0,
+            'conflict_data':
+                t.conflictData != null ? jsonEncode(t.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -646,9 +681,19 @@ class PomodoroService {
     final allTags =
         (jsonDecode(s) as List).map((e) => PomodoroTag.fromJson(e)).toList();
     if (allTags.isEmpty) return;
-    await ApiService.syncPomodoroTags(allTags.map((t) => t.toJson()).toList());
-    final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
-    await prefs.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    final ok = await ApiService.syncPomodoroTags(
+        allTags.map((t) => t.toJson()).toList());
+    if (ok) {
+      final db = await DatabaseHelper.instance.database;
+      await db.update(
+        'op_logs',
+        {'is_synced': 1, 'sync_error': ''},
+        where: 'is_synced = 0 AND target_table = ?',
+        whereArgs: ['pomodoro_tags'],
+      );
+      final lastSyncKey = await _getScopedKey('pomodoro_last_tag_sync');
+      await prefs.setInt(lastSyncKey, DateTime.now().millisecondsSinceEpoch);
+    }
   }
 
   static Future<void> syncTagsFromCloud() async {
@@ -703,6 +748,9 @@ class PomodoroService {
             'version': r.version,
             'created_at': r.createdAt,
             'updated_at': r.updatedAt,
+            'has_conflict': r.hasConflict ? 1 : 0,
+            'conflict_data':
+                r.conflictData != null ? jsonEncode(r.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -975,6 +1023,8 @@ class PomodoroService {
               version: cloudNewer ? rr.version : ex.version,
               createdAt: ex.createdAt,
               updatedAt: cloudNewer ? rr.updatedAt : ex.updatedAt,
+              hasConflict: cloudNewer ? rr.hasConflict : ex.hasConflict,
+              conflictData: cloudNewer ? rr.conflictData : ex.conflictData,
             );
             hasChange = true;
           }
@@ -1015,13 +1065,45 @@ class PomodoroService {
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final db = await DatabaseHelper.instance.database;
       final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
       final lastUpload = prefs.getInt(lastUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
-      final dirty = forceFullSync
+
+      final Map<String, PomodoroRecord> dedup = {};
+
+      if (!forceFullSync) {
+        final pendingOps = await db.query(
+          'op_logs',
+          where: 'is_synced = 0 AND target_table = ?',
+          whereArgs: ['pomodoro_records'],
+          orderBy: 'timestamp ASC',
+        );
+        for (final op in pendingOps) {
+          final raw = op['data_json']?.toString();
+          if (raw == null || raw.isEmpty) continue;
+          try {
+            final j = jsonDecode(raw);
+            if (j is Map<String, dynamic>) {
+              final r = PomodoroRecord.fromJson(j);
+              dedup[r.uuid] = r;
+            } else if (j is Map) {
+              final r = PomodoroRecord.fromJson(j.cast<String, dynamic>());
+              dedup[r.uuid] = r;
+            }
+          } catch (_) {}
+        }
+      }
+
+      final timeWindowRecords = forceFullSync
           ? all
           : all.where((r) => r.updatedAt > lastUpload).toList();
+      for (final r in timeWindowRecords) {
+        dedup[r.uuid] = r;
+      }
+      final dirty = dedup.values.toList();
+
       debugPrint(
         '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
       );
@@ -1029,6 +1111,12 @@ class PomodoroService {
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
       if (ok) {
+        await db.update(
+          'op_logs',
+          {'is_synced': 1, 'sync_error': ''},
+          where: 'is_synced = 0 AND target_table = ?',
+          whereArgs: ['pomodoro_records'],
+        );
         await prefs.setInt(
             lastUploadKey, DateTime.now().millisecondsSinceEpoch);
       }
@@ -1131,11 +1219,29 @@ class PomodoroService {
     final all = await _getAllRecordsRaw();
     final idx = all.indexWhere((r) => r.uuid == updated.uuid);
     if (idx != -1) {
-      all[idx] = updated;
-      await _saveRecords(all); // 本地保存完成，立即返回
-      // 后台异步上传，不阻塞调用方
-      ApiService.uploadPomodoroRecord(updated.toJson())
-          .catchError((_) => false);
+      final old = all[idx];
+      final merged = PomodoroRecord(
+        uuid: old.uuid,
+        todoUuid: updated.todoUuid ?? old.todoUuid,
+        todoTitle: updated.todoTitle ?? old.todoTitle,
+        tagUuids: updated.tagUuids,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+        plannedDuration: updated.plannedDuration,
+        actualDuration: updated.actualDuration,
+        status: updated.status,
+        deviceId: updated.deviceId ?? old.deviceId,
+        planBlockId: updated.planBlockId ?? old.planBlockId,
+        isDeleted: updated.isDeleted,
+        version: (updated.version <= old.version)
+            ? (old.version + 1)
+            : updated.version,
+        createdAt: old.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        hasConflict: old.hasConflict,
+        conflictData: old.conflictData,
+      );
+      await addRecord(merged);
     }
   }
 
@@ -1145,7 +1251,7 @@ class PomodoroService {
     final idx = all.indexWhere((r) => r.uuid == uuid);
     if (idx != -1) {
       final old = all[idx];
-      all[idx] = PomodoroRecord(
+      final deleted = PomodoroRecord(
         uuid: old.uuid,
         todoUuid: old.todoUuid,
         todoTitle: old.todoTitle,
@@ -1160,10 +1266,10 @@ class PomodoroService {
         version: old.version + 1,
         createdAt: old.createdAt,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
+        hasConflict: old.hasConflict,
+        conflictData: old.conflictData,
       );
-      await _saveRecords(all);
-      ApiService.uploadPomodoroRecord(all[idx].toJson())
-          .catchError((_) => false);
+      await addRecord(deleted);
     }
   }
 

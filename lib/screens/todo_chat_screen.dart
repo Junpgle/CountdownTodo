@@ -17,6 +17,7 @@ import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';
+import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 
@@ -81,7 +82,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _pendingManualSmartContext = '';
   List<ChatSession> _sessions = [];
   bool _smartContext = true;
+  bool _injectMoreContext = false;
+  bool _useCustomInjectRange = false;
+  DateTime? _customInjectStart;
+  DateTime? _customInjectEnd;
   bool _inputHasText = false;
+  String _liveSmartContextPreview = '';
+  String _liveActionProtocolPreview = '';
+  int _liveEstimatedTokens = 0;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
@@ -151,9 +159,178 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   void _handleInputChanged() {
-    final hasText = _inputCtrl.text.trim().isNotEmpty;
-    if (hasText == _inputHasText) return;
-    setState(() => _inputHasText = hasText);
+    final text = _inputCtrl.text.trim();
+    final hasText = text.isNotEmpty;
+    final preview = _buildSmartContextPreview(text);
+    final actionPreview = _buildActionProtocolPreview(text);
+    final estimatedTokens = _estimateTokensForPendingInput(text);
+    if (hasText == _inputHasText &&
+        preview == _liveSmartContextPreview &&
+        actionPreview == _liveActionProtocolPreview &&
+        estimatedTokens == _liveEstimatedTokens) {
+      return;
+    }
+    setState(() {
+      _inputHasText = hasText;
+      _liveSmartContextPreview = preview;
+      _liveActionProtocolPreview = actionPreview;
+      _liveEstimatedTokens = estimatedTokens;
+    });
+  }
+
+  String _buildSmartContextPreview(String userText) {
+    if (!_smartContext || userText.isEmpty) return '';
+    final contextQueryText = _buildContextQueryText(userText);
+    return AiTodoContextBuilder.buildContextInjectionSummary(
+          userMessage: contextQueryText,
+          courses: widget.courses,
+          timeLogs: widget.timeLogs,
+          todoGroups: widget.todoGroups,
+          pomodoroRecords: widget.pomodoroRecords,
+          planBlocks: _planBlocks,
+          todos: widget.todos,
+          countdowns: widget.countdowns,
+          pomodoroTags: widget.pomodoroTags,
+          conflicts: widget.conflicts,
+          teams: widget.teams,
+          now: DateTime.now(),
+        ) ??
+        '';
+  }
+
+  String _buildContextQueryText(String userText) {
+    if (_useCustomInjectRange &&
+        _customInjectStart != null &&
+        _customInjectEnd != null) {
+      final start = DateFormat('yyyy-MM-dd').format(_customInjectStart!);
+      final end = DateFormat('yyyy-MM-dd').format(_customInjectEnd!);
+      return '$userText，并使用自定义注入范围 $start 至 $end';
+    }
+    if (!_injectMoreContext) return userText;
+    if (userText.contains('未来30天')) return userText;
+    return '$userText，并扩大到未来30天范围';
+  }
+
+  String _buildActionProtocolPreview(String userText) {
+    if (userText.isEmpty) return '';
+    final prompt = AiTodoContextBuilder.buildActionProtocolPrompt(userText);
+    final categories = <String>[];
+    void addIf(bool cond, String label) {
+      if (cond && !categories.contains(label)) categories.add(label);
+    }
+
+    addIf(
+      prompt.contains('create_todo') ||
+          prompt.contains('update_todo') ||
+          prompt.contains('complete_todo') ||
+          prompt.contains('delete_todo') ||
+          prompt.contains('reschedule_todo') ||
+          prompt.contains('bulk_reschedule') ||
+          prompt.contains('categorize_todo') ||
+          prompt.contains('split_todo') ||
+          prompt.contains('merge_todos') ||
+          prompt.contains('plan_todos'),
+      '待办相关',
+    );
+    addIf(
+      prompt.contains('create_plan_block') ||
+          prompt.contains('update_plan_block') ||
+          prompt.contains('reschedule_plan_blocks') ||
+          prompt.contains('delete_plan_block') ||
+          prompt.contains('skip_plan_block') ||
+          prompt.contains('start_plan_block_pomodoro'),
+      '规划块相关',
+    );
+    addIf(
+      prompt.contains('create_time_log') ||
+          prompt.contains('update_time_log') ||
+          prompt.contains('delete_time_log') ||
+          prompt.contains('start_pomodoro') ||
+          prompt.contains('stop_pomodoro'),
+      '专注相关',
+    );
+    addIf(
+      prompt.contains('create_countdown') ||
+          prompt.contains('update_countdown') ||
+          prompt.contains('complete_countdown') ||
+          prompt.contains('delete_countdown'),
+      '倒计时相关',
+    );
+    addIf(
+      prompt.contains('create_todo_group') ||
+          prompt.contains('update_todo_group') ||
+          prompt.contains('delete_todo_group'),
+      '分类相关',
+    );
+    addIf(
+      prompt.contains('create_pomodoro_tag') ||
+          prompt.contains('update_pomodoro_tag') ||
+          prompt.contains('delete_pomodoro_tag'),
+      '标签相关',
+    );
+
+    if (categories.isEmpty) return '动作协议：基础待办相关';
+    return '动作协议：${categories.join('、')}';
+  }
+
+  Future<void> _pickCustomInjectRange() async {
+    final now = DateTime.now();
+    final first = DateTime(now.year - 2, 1, 1);
+    final last = DateTime(now.year + 2, 12, 31);
+    final start = await showDatePicker(
+      context: context,
+      initialDate: _customInjectStart ?? now,
+      firstDate: first,
+      lastDate: last,
+      helpText: '选择注入开始日期',
+    );
+    if (start == null || !mounted) return;
+    final end = await showDatePicker(
+      context: context,
+      initialDate: _customInjectEnd ?? start,
+      firstDate: start,
+      lastDate: last,
+      helpText: '选择注入结束日期',
+    );
+    if (end == null || !mounted) return;
+    setState(() {
+      _useCustomInjectRange = true;
+      _customInjectStart = DateTime(start.year, start.month, start.day);
+      _customInjectEnd = DateTime(end.year, end.month, end.day);
+      _injectMoreContext = false;
+      _liveSmartContextPreview = _buildSmartContextPreview(_inputCtrl.text.trim());
+      _liveActionProtocolPreview =
+          _buildActionProtocolPreview(_inputCtrl.text.trim());
+      _liveEstimatedTokens = _estimateTokensForPendingInput(_inputCtrl.text.trim());
+    });
+  }
+
+  int _estimateTokensForPendingInput(String text) {
+    if (text.isEmpty) return 0;
+    final messages = _buildApiMessages(
+      pendingUserText: text,
+      trackSmartContext: false,
+    );
+    return _estimateRequestTokens(messages);
+  }
+
+  int _estimateRequestTokens(List<Map<String, String>> messages) {
+    var total = 2;
+    for (final msg in messages) {
+      total += 4;
+      total += _estimateTextTokens(msg['role'] ?? '');
+      total += _estimateTextTokens(msg['content'] ?? '');
+    }
+    return total;
+  }
+
+  int _estimateTextTokens(String text) {
+    if (text.isEmpty) return 0;
+    final cjk = RegExp(r'[\u4E00-\u9FFF]').allMatches(text).length;
+    final other = text.length - cjk;
+    final cjkTokens = (cjk / 1.6).ceil();
+    final otherTokens = (other / 4).ceil();
+    return cjkTokens + otherTokens;
   }
 
   Future<void> _initSessions() async {
@@ -282,6 +459,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
   }
 
+  Future<void> _openTutorialPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const AiAssistantTutorialScreen(),
+      ),
+    );
+  }
+
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollCtrl.hasClients) {
@@ -295,23 +480,32 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _buildSystemPrompt() {
-    return AiTodoContextBuilder.buildSystemPrompt(
+    return AiTodoContextBuilder.buildLeanSystemPrompt(
       customPrompt: _customPrompt,
       promptEnabled: _promptEnabled,
-      todos: widget.todos,
-      todoGroups: widget.todoGroups,
-      countdowns: widget.countdowns,
-      pomodoroTags: widget.pomodoroTags,
-      planBlocks: _planBlocks,
     );
   }
 
   static const int _maxContextMessages = 15;
 
-  List<Map<String, String>> _buildApiMessages({String? pendingUserText}) {
+  List<Map<String, String>> _buildApiMessages({
+    String? pendingUserText,
+    bool trackSmartContext = true,
+  }) {
     final List<Map<String, String>> apiMessages = [
       {'role': 'system', 'content': _buildSystemPrompt()},
     ];
+    final protocolSourceText = pendingUserText?.trim().isNotEmpty == true
+        ? pendingUserText!.trim()
+        : _latestUserTextFromHistory();
+    if (protocolSourceText.isNotEmpty) {
+      apiMessages.add({
+        'role': 'system',
+        'content': AiTodoContextBuilder.buildActionProtocolPrompt(
+          protocolSourceText,
+        ),
+      });
+    }
 
     final sourceMessages = <ChatMessage>[
       ..._messages,
@@ -357,8 +551,21 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       }
     }
 
-    _lastRequestSmartContext = _injectContext(apiMessages);
+    final smartContext = _injectContext(apiMessages);
+    if (trackSmartContext) {
+      _lastRequestSmartContext = smartContext;
+    }
     return apiMessages;
+  }
+
+  String _latestUserTextFromHistory() {
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].role == ChatRole.user &&
+          _messages[i].content.trim().isNotEmpty) {
+        return _messages[i].content.trim();
+      }
+    }
+    return '';
   }
 
   /// 根据最后一条用户消息的关键词，按需注入课程/时间日志/冲突/团队上下文。
@@ -375,13 +582,17 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (lastUserIdx == -1) return '';
 
     final userText = apiMessages[lastUserIdx]['content'] ?? '';
+    final contextQueryText = _buildContextQueryText(userText);
     final injection = AiTodoContextBuilder.buildContextInjection(
-      userMessage: userText,
+      userMessage: contextQueryText,
       courses: widget.courses,
       timeLogs: widget.timeLogs,
+      todoGroups: widget.todoGroups,
       pomodoroRecords: widget.pomodoroRecords,
       planBlocks: _planBlocks,
       todos: widget.todos,
+      countdowns: widget.countdowns,
+      pomodoroTags: widget.pomodoroTags,
       conflicts: widget.conflicts,
       teams: widget.teams,
       now: DateTime.now(),
@@ -597,7 +808,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _cancelGeneration = null;
         _suggestions = inlineSuggestions.isNotEmpty
             ? inlineSuggestions
-            : _getDefaultSuggestions();
+            : _getSmartSuggestions();
         if (todoActions.isNotEmpty) {
           _actionRailCollapsed = false;
         }
@@ -716,7 +927,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _cancelGeneration = null;
       _suggestions = inlineSuggestions.isNotEmpty
           ? inlineSuggestions
-          : _getDefaultSuggestions();
+          : _getSmartSuggestions();
       if (todoActions.isNotEmpty) {
         _actionRailCollapsed = false;
       }
@@ -1528,14 +1739,37 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               ),
               const SizedBox(height: 28),
               _StaggeredFadeSlide(
-                delay: const Duration(milliseconds: 230),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _getDefaultSuggestions()
-                      .map(_buildQuickQuestion)
-                      .toList(),
+                delay: const Duration(milliseconds: 200),
+                child: OutlinedButton.icon(
+                  onPressed: _openTutorialPage,
+                  icon: const Icon(Icons.menu_book_rounded, size: 18),
+                  label: const Text('查看使用教程'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(
+                      color: colorScheme.primary.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              _StaggeredFadeSlide(
+                child: SizedBox(
+                  height: _isWide ? 180 : 140,
+                  width: double.infinity,
+                  child: _DanmakuSuggestions(
+                    suggestions: _getSmartSuggestions(),
+                    onTap: (text) {
+                      _inputCtrl.text = text;
+                      _sendMessage();
+                    },
+                  ),
                 ),
               ),
             ],
@@ -1790,7 +2024,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _sessions = [];
         _messages = [];
         _activeSessionId = '';
-        _suggestions = _getDefaultSuggestions();
+        _suggestions = _getSmartSuggestions();
       });
       // 关闭侧边栏
       Navigator.pop(sidebarCtx);
@@ -2084,14 +2318,69 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
-  List<String> _getDefaultSuggestions() {
-    return [
+  List<String> _getSmartSuggestions() {
+    final List<String> suggestions = [];
+
+    // 1. 基础引导 (恒定)
+    suggestions.addAll([
       '帮我规划今天的待办',
-      '明天有什么课？',
-      '我今天专注了多久？',
-      '帮我整理一下待办分类',
-      '哪些待办最紧急？',
-    ];
+      '怎么使用深度规划？',
+      '分析一下我最近的效率',
+      '有哪些紧急任务需要处理？',
+    ]);
+
+    // 2. 基于课程数据
+    if (widget.courses.isNotEmpty) {
+      suggestions.add('明天的课程表是什么？');
+      suggestions.add('这周我还有多少节课？');
+      suggestions.add('帮我把课程同步到待办');
+    }
+
+    // 3. 基于待办状态
+    if (widget.todos.isNotEmpty) {
+      final highPriority =
+          widget.todos.where((t) => (t['priority'] ?? 0) >= 2).length;
+      if (highPriority > 0) suggestions.add('列出所有高优先级任务');
+
+      final overdue = widget.todos.where((t) {
+        final dueDate = t['dueDate'] as String?;
+        if (dueDate == null || dueDate.isEmpty) return false;
+        final date = DateTime.tryParse(dueDate);
+        return date != null && date.isBefore(DateTime.now());
+      }).length;
+      if (overdue > 0) suggestions.add('有哪些任务已经逾期了？');
+
+      suggestions.add('帮我给这些待办分个类');
+      suggestions.add('预测一下我完成所有任务需要多久');
+    }
+
+    // 4. 基于专注记录
+    if (widget.pomodoroRecords.isNotEmpty) {
+      suggestions.add('我这周专注时长达标了吗？');
+      suggestions.add('分析我的专注分布情况');
+    }
+
+    // 5. 基于倒计时/目标
+    if (widget.countdowns.isNotEmpty) {
+      suggestions.add('最近的考试/目标还有多久？');
+    }
+
+    // 6. 基于规划冲突
+    if (widget.conflicts.isNotEmpty) {
+      suggestions.add('帮我解决目前的规划冲突');
+    }
+
+    // 7. 通用高级技巧
+    suggestions.addAll([
+      '帮我整理番茄标签',
+      '如何提高我的专注力？',
+      '整理一下我的时间日志',
+      '帮我制定一个复习计划',
+      '有哪些建议能让我更自律？',
+      '备份我的所有数据',
+    ]);
+
+    return suggestions.toSet().toList();
   }
 
   String _formatTodoTimeRange(
@@ -3885,6 +4174,151 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 ),
               ],
             ),
+            if (_inputHasText &&
+                (_liveSmartContextPreview.isNotEmpty ||
+                    _liveActionProtocolPreview.isNotEmpty)) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.04)
+                      : colorScheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '发送预览',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _injectMoreContext = !_injectMoreContext;
+                              if (_injectMoreContext) {
+                                _useCustomInjectRange = false;
+                              }
+                              _liveSmartContextPreview =
+                                  _buildSmartContextPreview(
+                                      _inputCtrl.text.trim());
+                              _liveActionProtocolPreview =
+                                  _buildActionProtocolPreview(
+                                      _inputCtrl.text.trim());
+                              _liveEstimatedTokens = _estimateTokensForPendingInput(
+                                  _inputCtrl.text.trim());
+                            });
+                          },
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 22),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                          ),
+                          child: Text(
+                            _injectMoreContext ? '注入更多: 开' : '注入更多',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _pickCustomInjectRange,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 22),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                          ),
+                          child: Text(
+                            _useCustomInjectRange ? '自定义注入: 开' : '自定义注入',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_injectMoreContext)
+                      Text(
+                        '已扩大到未来30天范围',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    if (_useCustomInjectRange &&
+                        _customInjectStart != null &&
+                        _customInjectEnd != null)
+                      Text(
+                        '自定义范围: ${DateFormat('yyyy-MM-dd').format(_customInjectStart!)} 至 ${DateFormat('yyyy-MM-dd').format(_customInjectEnd!)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+                    if (_liveSmartContextPreview.isNotEmpty)
+                      SelectableText(
+                        _liveSmartContextPreview,
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    if (_liveSmartContextPreview.isEmpty)
+                      Text(
+                        '将注入：无（当前消息无需额外业务上下文）',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.65),
+                        ),
+                      ),
+                    if (_liveActionProtocolPreview.isNotEmpty)
+                      SelectableText(
+                        _liveActionProtocolPreview,
+                        maxLines: 3,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: colorScheme.onSurface.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    SelectableText(
+                      '预计Token：~$_liveEstimatedTokens',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: colorScheme.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Container(
               decoration: BoxDecoration(
                 color: isDark
@@ -3913,7 +4347,15 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     icon: Icons.auto_awesome_rounded,
                     isSelected: _smartContext,
                     tooltip: '智能上下文',
-                    onTap: (val) => setState(() => _smartContext = val),
+                    onTap: (val) => setState(() {
+                      _smartContext = val;
+                      _liveSmartContextPreview =
+                          _buildSmartContextPreview(_inputCtrl.text.trim());
+                      _liveActionProtocolPreview =
+                          _buildActionProtocolPreview(_inputCtrl.text.trim());
+                      _liveEstimatedTokens =
+                          _estimateTokensForPendingInput(_inputCtrl.text.trim());
+                    }),
                   ),
                   const SizedBox(width: 4),
                   Container(
@@ -4511,6 +4953,166 @@ class _ThinkingLoaderState extends State<_ThinkingLoader>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DanmakuSuggestions extends StatefulWidget {
+  final List<String> suggestions;
+  final Function(String) onTap;
+
+  const _DanmakuSuggestions({
+    required this.suggestions,
+    required this.onTap,
+  });
+
+  @override
+  State<_DanmakuSuggestions> createState() => _DanmakuSuggestionsState();
+}
+
+class _DanmakuSuggestionsState extends State<_DanmakuSuggestions> {
+  late ScrollController _scrollCtrl1;
+  late ScrollController _scrollCtrl2;
+  late ScrollController _scrollCtrl3;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtrl1 = ScrollController();
+    _scrollCtrl2 = ScrollController();
+    _scrollCtrl3 = ScrollController();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startScrolling();
+    });
+  }
+
+  void _startScrolling() {
+    _timer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      if (!mounted) return;
+      _autoScroll(_scrollCtrl1, 0.35);
+      _autoScroll(_scrollCtrl2, 0.55);
+      _autoScroll(_scrollCtrl3, 0.45);
+    });
+  }
+
+  void _autoScroll(ScrollController ctrl, double speed) {
+    if (ctrl.hasClients) {
+      final max = ctrl.position.maxScrollExtent;
+      if (max > 0) {
+        final next = ctrl.offset + speed;
+        if (next >= max) {
+          ctrl.jumpTo(0);
+        } else {
+          ctrl.jumpTo(next);
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scrollCtrl1.dispose();
+    _scrollCtrl2.dispose();
+    _scrollCtrl3.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.suggestions.isEmpty) return const SizedBox.shrink();
+
+    // 分成三行
+    final row1 = <String>[];
+    final row2 = <String>[];
+    final row3 = <String>[];
+
+    for (int i = 0; i < widget.suggestions.length; i++) {
+      if (i % 3 == 0) {
+        row1.add(widget.suggestions[i]);
+      } else if (i % 3 == 1) {
+        row2.add(widget.suggestions[i]);
+      } else {
+        row3.add(widget.suggestions[i]);
+      }
+    }
+
+    // 为了实现无缝循环，每行内容加倍
+    final items1 = [...row1, ...row1, ...row1];
+    final items2 = [...row2, ...row2, ...row2];
+    final items3 = [...row3, ...row3, ...row3];
+
+    return Column(
+      children: [
+        if (row1.isNotEmpty) _buildRow(_scrollCtrl1, items1),
+        if (row2.isNotEmpty) const SizedBox(height: 10),
+        if (row2.isNotEmpty) _buildRow(_scrollCtrl2, items2),
+        if (row3.isNotEmpty) const SizedBox(height: 10),
+        if (row3.isNotEmpty) _buildRow(_scrollCtrl3, items3),
+      ],
+    );
+  }
+
+  Widget _buildRow(ScrollController ctrl, List<String> items) {
+    return Expanded(
+      child: ListView.builder(
+        controller: ctrl,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _DanmakuItem(
+              text: items[index],
+              onTap: () => widget.onTap(items[index]),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DanmakuItem extends StatelessWidget {
+  final String text;
+  final VoidCallback onTap;
+
+  const _DanmakuItem({required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: isDark ? colorScheme.surfaceContainerHigh : colorScheme.surface,
+      borderRadius: BorderRadius.circular(20),
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.1),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
       ),
     );
   }

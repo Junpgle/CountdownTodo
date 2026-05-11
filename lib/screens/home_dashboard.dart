@@ -34,6 +34,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
+import '../services/ai_todo_chat_launcher.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -196,7 +197,96 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 🚀 GlobalKeys for Zoom Animations
   final GlobalKey _searchButtonKey = GlobalKey();
   final GlobalKey _teamsButtonKey = GlobalKey();
+  final GlobalKey _aiButtonKey = GlobalKey();
   final GlobalKey _courseCenterKey = GlobalKey();
+
+  Future<void> _openAiAssistantFromAppBar() async {
+    final todoState = _todoSectionKey.currentState;
+    if (todoState != null) {
+      await todoState.openAiAssistant(sourceKey: _aiButtonKey);
+      return;
+    }
+
+    try {
+      final results = await Future.wait<dynamic>([
+        CourseService.getAllCourses(widget.username),
+        StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
+        ApiService.fetchTeams(),
+      ]);
+      final courses = (results[0] as List<CourseItem>)
+          .where((course) => !course.isDeleted)
+          .toList();
+      final timeLogs = (results[1] as List<TimeLogItem>)
+          .where((log) => !log.isDeleted)
+          .toList();
+      final pomodoroRecords = (results[2] as List<PomodoroRecord>)
+          .where((record) => !record.isDeleted)
+          .toList();
+      final teams = (results[3] as List)
+          .whereType<Map>()
+          .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
+          .toList();
+
+      if (!mounted) return;
+      await AiTodoChatLauncher.open(
+        context,
+        username: widget.username,
+        sourceKey: _aiButtonKey,
+        todos: _todos.where((t) => !t.isDone && !t.isDeleted).toList(),
+        todoGroups: _todoGroups,
+        courses: courses,
+        timeLogs: timeLogs,
+        pomodoroRecords: pomodoroRecords,
+        conflicts: _latestSyncConflicts,
+        teams: teams,
+        onTodoGroupsChanged: (groups) {
+          unawaited(_handleAiTodoGroupsChanged(groups));
+        },
+        onTodosBatchAction: (inserted, updated) {
+          unawaited(_handleAiTodosBatchAction(inserted, updated));
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('打开AI助手失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _handleAiTodoGroupsChanged(List<TodoGroup> groups) async {
+    if (!mounted) return;
+    setState(() => _todoGroups = groups.where((g) => !g.isDeleted).toList());
+    await StorageService.saveTodoGroups(widget.username, groups, sync: true);
+  }
+
+  Future<void> _handleAiTodosBatchAction(
+    List<TodoItem> inserted,
+    List<TodoItem> updated,
+  ) async {
+    final nextTodos = List<TodoItem>.from(_todos)..addAll(inserted);
+    for (final item in updated) {
+      final idx = nextTodos.indexWhere((t) => t.id == item.id);
+      if (idx >= 0) {
+        nextTodos[idx] = item;
+      } else {
+        nextTodos.add(item);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _todos = nextTodos);
+    await StorageService.saveTodos(widget.username, nextTodos);
+    await _saveTodosToSharedFile(nextTodos);
+    _timelineRefreshTriggerNotifier.value++;
+    _todoUpdateSignalNotifier.value++;
+    FloatWindowService.triggerReminderCheck();
+    FloatWindowService.invalidateSlotCache();
+    FloatWindowService.update();
+    _syncTodoNotification();
+    _rescheduleAlarms();
+    await WidgetService.updateTodoWidget(nextTodos);
+  }
 
   // === 初始化与生命周期 ===
   @override
@@ -3339,8 +3429,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                     isSyncing: _isSyncing,
                     onSync: _showSyncOptionsDialog,
                     onSearch: _showGlobalSearch,
+                    onAiAssistant: _openAiAssistantFromAppBar,
                     searchKey: _searchButtonKey,
                     teamsKey: _teamsButtonKey,
+                    aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,

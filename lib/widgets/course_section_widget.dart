@@ -56,6 +56,17 @@ class CourseSectionWidget extends StatelessWidget {
     this.refreshTrigger = 0,
   });
 
+  void _openTodoPlanScreen(BuildContext context) {
+    final user = username;
+    if (user == null || user.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TodoPlanScreen(username: user),
+      ),
+    );
+  }
+
   void _showCourseDetail(
       BuildContext context, CourseItem course, GlobalKey cardKey) {
     final renderBox = cardKey.currentContext?.findRenderObject() as RenderBox?;
@@ -241,6 +252,9 @@ class CourseSectionWidget extends StatelessWidget {
         SectionHeader(
           title: title,
           icon: Icons.class_outlined,
+          onAction: username == null ? null : () => _openTodoPlanScreen(context),
+          actionIcon: username == null ? null : Icons.event_note_outlined,
+          actionTooltip: '打开规划界面',
           isLight: isLight,
         ),
         if (username != null)

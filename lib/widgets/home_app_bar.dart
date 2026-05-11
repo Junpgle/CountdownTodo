@@ -85,11 +85,13 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onSync;
   final VoidCallback onSettings;
   final VoidCallback? onSearch; // 🚀 新增：搜索回调
+  final VoidCallback? onAiAssistant;
   final VoidCallback? onTeams; // 🚀 新增：团队回调
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
   final GlobalKey? searchKey; // 🚀 新增
   final GlobalKey? teamsKey; // 🚀 新增
+  final GlobalKey? aiKey;
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   final bool hasTeamConflictDot;
@@ -104,11 +106,13 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.onSync,
     required this.onSettings,
     this.onSearch,
+    this.onAiAssistant,
     this.onTeams,
     this.settingsKey,
     this.courseKey,
     this.searchKey,
     this.teamsKey,
+    this.aiKey,
     this.showCourseButton = false,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
@@ -252,6 +256,28 @@ class _HomeAppBarState extends State<HomeAppBar>
     );
   }
 
+  Widget _buildAnimatedAction(int index, Widget child) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 220 + index * 45),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, value, c) {
+        final clamped = value.clamp(0.0, 1.0);
+        return Opacity(
+          opacity: clamped,
+          child: Transform.translate(
+            offset: Offset(0, (1 - clamped) * 8),
+            child: Transform.scale(
+              scale: 0.92 + clamped * 0.08,
+              child: c,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLandscape =
@@ -277,6 +303,14 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.cloud_sync_rounded,
       isLoading: widget.isSyncing,
       onPressed: widget.onSync,
+      isSmall: isMobileGrid,
+      margin: isMobileGrid ? EdgeInsets.zero : null,
+    );
+    final aiBtn = _buildActionButton(
+      context,
+      icon: Icons.smart_toy_outlined,
+      onPressed: widget.onAiAssistant ?? () {},
+      buttonKey: widget.aiKey,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
@@ -342,44 +376,50 @@ class _HomeAppBarState extends State<HomeAppBar>
       actions: [
         if (isTablet || isLandscape) ...[
           if (widget.showCourseButton)
-            _buildActionButton(
-              context,
-              icon: Icons.calendar_view_week_rounded,
-              onPressed: () async {
-                await PageTransitions.pushFromRect(
-                  context: context,
-                  page: WeeklyCourseScreen(username: widget.username),
-                  sourceKey: widget.courseKey ?? GlobalKey(),
-                );
-              },
-              buttonKey: widget.courseKey,
+            _buildAnimatedAction(
+              0,
+              _buildActionButton(
+                context,
+                icon: Icons.calendar_view_week_rounded,
+                onPressed: () async {
+                  await PageTransitions.pushFromRect(
+                    context: context,
+                    page: WeeklyCourseScreen(username: widget.username),
+                    sourceKey: widget.courseKey ?? GlobalKey(),
+                  );
+                },
+                buttonKey: widget.courseKey,
+              ),
             ),
-          searchBtn,
-          syncBtn,
-          teamsBtn,
-          settingsBtn,
+          _buildAnimatedAction(1, searchBtn),
+          _buildAnimatedAction(2, aiBtn),
+          _buildAnimatedAction(3, syncBtn),
+          _buildAnimatedAction(4, teamsBtn),
+          _buildAnimatedAction(5, settingsBtn),
         ] else ...[
-          // 🚀 手机端纵屏：2*2 矩阵排列，位置自定义：团队(TL), 设置(TR), 搜索(BL), 同步(BR)
+          // 🚀 手机端纵屏：两行操作区，新增 AI 助手入口
           Padding(
-            padding: const EdgeInsets.only(right: 12), // 移除 top: 4 以节省空间，防止溢出
+            padding: const EdgeInsets.only(right: 12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    teamsBtn,
+                    _buildAnimatedAction(0, teamsBtn),
                     const SizedBox(width: 8),
-                    settingsBtn, // 设置放在右上角
+                    _buildAnimatedAction(1, settingsBtn),
+                    const SizedBox(width: 8),
+                    _buildAnimatedAction(2, aiBtn),
                   ],
                 ),
-                const SizedBox(height: 4), // 缩小行间距
+                const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    searchBtn, // 搜索放在左下角
+                    _buildAnimatedAction(3, searchBtn),
                     const SizedBox(width: 8),
-                    syncBtn,
+                    _buildAnimatedAction(4, syncBtn),
                   ],
                 ),
               ],

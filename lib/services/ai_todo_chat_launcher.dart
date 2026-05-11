@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models.dart';
 import '../screens/todo_chat_screen.dart';
+import '../utils/page_transitions.dart';
 import 'pomodoro_service.dart';
 
 class AiTodoChatLauncher {
@@ -20,28 +21,35 @@ class AiTodoChatLauncher {
     List<Team> teams = const [],
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    GlobalKey? sourceKey,
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
   }) {
+    final page = TodoChatScreen(
+      username: username,
+      todos: toChatTodoMaps(todos),
+      todoGroups: todoGroups,
+      courses: courses,
+      timeLogs: timeLogs,
+      pomodoroRecords: pomodoroRecords,
+      conflicts: conflicts,
+      teams: teams,
+      countdowns: countdowns,
+      pomodoroTags: pomodoroTags,
+      onTodosBatchAction: onTodosBatchAction,
+      onTodoGroupsChanged: onTodoGroupsChanged,
+    );
+    if (sourceKey != null) {
+      return PageTransitions.pushFromRect(
+        context: context,
+        page: page,
+        sourceKey: sourceKey,
+      );
+    }
     return Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => TodoChatScreen(
-          username: username,
-          todos: toChatTodoMaps(todos),
-          todoGroups: todoGroups,
-          courses: courses,
-          timeLogs: timeLogs,
-          pomodoroRecords: pomodoroRecords,
-          conflicts: conflicts,
-          teams: teams,
-          countdowns: countdowns,
-          pomodoroTags: pomodoroTags,
-          onTodosBatchAction: onTodosBatchAction,
-          onTodoGroupsChanged: onTodoGroupsChanged,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => page),
     );
   }
 

@@ -1018,7 +1018,9 @@ class DatabaseHelper {
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
-        updated_at $integerType
+        updated_at $integerType,
+        has_conflict INTEGER DEFAULT 0,
+        conflict_data TEXT
       )
     ''');
 
@@ -1073,7 +1075,9 @@ class DatabaseHelper {
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
-        updated_at $integerType
+        updated_at $integerType,
+        has_conflict INTEGER DEFAULT 0,
+        conflict_data TEXT
       )
     ''');
 

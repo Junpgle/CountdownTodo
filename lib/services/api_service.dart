@@ -10,6 +10,7 @@ import 'package:http/io_client.dart';
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
   static const String cloudflareUrl = 'https://mathquiz.junpgle.me';
+  static const String webAliyunProxyUrl = 'https://api-cdt.junpgle.me';
   static const String aliyunProdUrl = 'http://101.200.13.100:8082';
   static const String aliyunTestUrl = 'http://101.200.13.100:8084';
   static String? _baseUrlOverride;
@@ -48,6 +49,11 @@ class ApiService {
   // 初始化设置
   static void setServerChoice(String choice) {
     if (_isLocked) return; // 🛡️ 如果环境已锁定（如测试版），禁止通过设置更改地址
+
+    if (kIsWeb) {
+      baseUrl = webAliyunProxyUrl;
+      return;
+    }
 
     if (choice == 'aliyun') {
       baseUrl = aliyunProdUrl;
@@ -587,7 +593,10 @@ class ApiService {
         headers: _getHeaders(),
         body: jsonEncode({'tags': tags}),
       );
-      return response.statusCode == 200;
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      final conflicts = data is Map ? data['conflicts'] : null;
+      return conflicts is! List || conflicts.isEmpty;
     } catch (e) {
       return false;
     }
@@ -601,7 +610,10 @@ class ApiService {
         headers: _getHeaders(),
         body: jsonEncode({'record': record}),
       );
-      return response.statusCode == 200;
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      final conflicts = data is Map ? data['conflicts'] : null;
+      return conflicts is! List || conflicts.isEmpty;
     } catch (e) {
       return false;
     }
@@ -639,7 +651,10 @@ class ApiService {
         headers: _getHeaders(),
         body: jsonEncode({'records': records}),
       );
-      return response.statusCode == 200;
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      final conflicts = data is Map ? data['conflicts'] : null;
+      return conflicts is! List || conflicts.isEmpty;
     } catch (e) {
       return false;
     }
