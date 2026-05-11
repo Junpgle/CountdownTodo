@@ -610,7 +610,10 @@ class ApiService {
         headers: _getHeaders(),
         body: jsonEncode({'record': record}),
       );
-      return response.statusCode == 200;
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      final conflicts = data is Map ? data['conflicts'] : null;
+      return conflicts is! List || conflicts.isEmpty;
     } catch (e) {
       return false;
     }

@@ -21,6 +21,8 @@ class PomodoroTag {
   int version;
   int createdAt; // UTC ms
   int updatedAt; // UTC ms
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   PomodoroTag({
     String? uuid,
@@ -30,6 +32,8 @@ class PomodoroTag {
     this.version = 1,
     int? createdAt,
     int? updatedAt,
+    this.hasConflict = false,
+    this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -43,6 +47,8 @@ class PomodoroTag {
         'version': version,
         'created_at': createdAt,
         'updated_at': updatedAt,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
   factory PomodoroTag.fromJson(Map<String, dynamic> j) => PomodoroTag(
@@ -53,7 +59,22 @@ class PomodoroTag {
         version: j['version'] as int? ?? 1,
         createdAt: _ms(j['created_at']),
         updatedAt: _ms(j['updated_at']),
+        hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
+        conflictData: _mapOrJson(j['conflict_data']),
       );
+
+  static Map<String, dynamic>? _mapOrJson(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return value.cast<String, dynamic>();
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) return decoded.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return null;
+  }
 
   static int _ms(dynamic v) {
     if (v == null) return DateTime.now().millisecondsSinceEpoch;
@@ -88,6 +109,8 @@ class PomodoroRecord {
   int version;
   int createdAt;
   int updatedAt;
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   PomodoroRecord({
     String? uuid,
@@ -105,6 +128,8 @@ class PomodoroRecord {
     this.version = 1,
     int? createdAt,
     int? updatedAt,
+    this.hasConflict = false,
+    this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [],
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -135,6 +160,8 @@ class PomodoroRecord {
       'version': version,
       'created_at': createdAt,
       'updated_at': updatedAt,
+      'has_conflict': hasConflict ? 1 : 0,
+      'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
     };
   }
 
@@ -168,6 +195,8 @@ class PomodoroRecord {
       version: (j['version'] as num?)?.toInt() ?? 1,
       createdAt: _ms(j['created_at']),
       updatedAt: _ms(j['updated_at']),
+      hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
+      conflictData: PomodoroTag._mapOrJson(j['conflict_data']),
     );
   }
 
@@ -518,6 +547,9 @@ class PomodoroService {
             'version': t.version,
             'created_at': t.createdAt,
             'updated_at': t.updatedAt,
+            'has_conflict': t.hasConflict ? 1 : 0,
+            'conflict_data':
+                t.conflictData != null ? jsonEncode(t.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -578,6 +610,9 @@ class PomodoroService {
             'version': t.version,
             'created_at': t.createdAt,
             'updated_at': t.updatedAt,
+            'has_conflict': t.hasConflict ? 1 : 0,
+            'conflict_data':
+                t.conflictData != null ? jsonEncode(t.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -713,6 +748,9 @@ class PomodoroService {
             'version': r.version,
             'created_at': r.createdAt,
             'updated_at': r.updatedAt,
+            'has_conflict': r.hasConflict ? 1 : 0,
+            'conflict_data':
+                r.conflictData != null ? jsonEncode(r.conflictData) : null,
           },
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
@@ -985,6 +1023,8 @@ class PomodoroService {
               version: cloudNewer ? rr.version : ex.version,
               createdAt: ex.createdAt,
               updatedAt: cloudNewer ? rr.updatedAt : ex.updatedAt,
+              hasConflict: cloudNewer ? rr.hasConflict : ex.hasConflict,
+              conflictData: cloudNewer ? rr.conflictData : ex.conflictData,
             );
             hasChange = true;
           }
@@ -1198,6 +1238,8 @@ class PomodoroService {
             : updated.version,
         createdAt: old.createdAt,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
+        hasConflict: old.hasConflict,
+        conflictData: old.conflictData,
       );
       await addRecord(merged);
     }
@@ -1224,6 +1266,8 @@ class PomodoroService {
         version: old.version + 1,
         createdAt: old.createdAt,
         updatedAt: DateTime.now().millisecondsSinceEpoch,
+        hasConflict: old.hasConflict,
+        conflictData: old.conflictData,
       );
       await addRecord(deleted);
     }
