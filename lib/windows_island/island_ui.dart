@@ -46,6 +46,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   late AnimationController _splitController;
   late AnimationController _sizeController;
   late Animation<Size> _sizeAnimation;
+  late Animation<double> _radiusAnimation;
 
   // ── 时间显示
   final ValueNotifier<String> _timeNotifier = ValueNotifier<String>('');
@@ -165,6 +166,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       parent: _sizeController,
       curve: Curves.easeOutCubic,
     ));
+    _radiusAnimation = AlwaysStoppedAnimation<double>(
+      IslandConfig.capsuleRadius,
+    );
 
     // 初始化脉冲动画控制器
     _pulseController = AnimationController(
@@ -253,13 +257,62 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (!mounted) return;
 
     final Size toSize = _targetSizeFor(nextState);
-    _transitionVersion++;
-    _sizeAnimation = AlwaysStoppedAnimation<Size>(toSize);
-    _resizeWindowOnce(toSize);
-    _transitioning = false;
+    _animateSurfaceTo(toSize, _radiusFor(nextState));
+
+    if (nextState == IslandState.reminderSplit) {
+      if (_expandedReminderPart == null) {
+        _splitController.reverse();
+      } else {
+        _splitController.forward(from: 0);
+      }
+    }
+  }
+
+  void _animateSizeTo(Size toSize) {
+    _animateSurfaceTo(toSize, _radiusFor(_stack.current));
+  }
+
+  void _animateSurfaceTo(Size toSize, double endRadius) {
+    final beginSize = _sizeAnimation.value;
+    final beginRadius = _radiusAnimation.value;
+    final version = ++_transitionVersion;
+    final growsWindow = toSize.width > _currentWindowSize.width ||
+        toSize.height > _currentWindowSize.height;
+
+    _transitioning = true;
+    _resizeDebounce?.cancel();
+    _sizeController.stop();
+    _sizeController.reset();
+    _sizeAnimation = Tween<Size>(
+      begin: beginSize,
+      end: toSize,
+    ).animate(CurvedAnimation(
+      parent: _sizeController,
+      curve: Curves.easeOutCubic,
+    ));
+    _radiusAnimation = Tween<double>(
+      begin: beginRadius,
+      end: endRadius,
+    ).animate(CurvedAnimation(
+      parent: _sizeController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    if (growsWindow) {
+      _resizeWindowOnce(toSize);
+    }
+
     if (mounted) {
       setState(() {});
     }
+    _sizeController.forward().whenComplete(() {
+      if (!mounted || version != _transitionVersion) return;
+      _transitioning = false;
+      if (!growsWindow) {
+        _resizeWindowOnce(toSize);
+      }
+      setState(() {});
+    });
   }
 
   void _ensureMediaPollingStarted() {
@@ -527,12 +580,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 时间处理 ─────────────────────────────────────────────────────────────
 
-
   void _ensureTimerRunning() {
     _countdownTimer?.cancel();
     if (!_isFocusing) {
       _updateDisplayTime();
-      _countdownTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) _updateDisplayTime();
       });
       return;
@@ -546,7 +598,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         // 增加暂停计时
         final pStart = fd?['pauseStartMs'] ?? 0;
         if (pStart > 0) {
-          final pSecs = (DateTime.now().millisecondsSinceEpoch - pStart) ~/ 1000;
+          final pSecs =
+              (DateTime.now().millisecondsSinceEpoch - pStart) ~/ 1000;
           final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
           final pss = (pSecs % 60).toString().padLeft(2, '0');
           _pauseTimeNotifier.value = '$pmm:$pss';
@@ -650,16 +703,41 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
   }
 
+  double _radiusFor(IslandState s) {
+    switch (s) {
+      case IslandState.stackedCard:
+      case IslandState.finishConfirm:
+      case IslandState.abandonConfirm:
+      case IslandState.finishFinal:
+      case IslandState.reminderPopup:
+      case IslandState.reminderSplit:
+      case IslandState.musicPlayer:
+      case IslandState.volumeControl:
+      case IslandState.brightnessControl:
+      case IslandState.cardCarousel:
+        return IslandConfig.cardRadius;
+      case IslandState.idle:
+      case IslandState.focusing:
+      case IslandState.hoverWide:
+      case IslandState.splitAlert:
+      case IslandState.reminderCapsule:
+      case IslandState.copiedLink:
+      case IslandState.quickControls:
+        return IslandConfig.capsuleRadius;
+    }
+  }
+
+  String _contentKeyForCurrentState() {
+    final selectedCard = _currentPayload?['selectedCard'];
+    final selectedType = selectedCard is Map ? selectedCard['type'] : null;
+    return '${_stack.current.name}:$_transitionVersion:${selectedType ?? ''}';
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isTransparent = _stack.current == IslandState.reminderSplit;
-    final isCard = _stack.current == IslandState.stackedCard ||
-        _stack.current == IslandState.finishConfirm ||
-        _stack.current == IslandState.abandonConfirm ||
-        _stack.current == IslandState.finishFinal ||
-        _stack.current == IslandState.reminderSplit;
 
     return Material(
       color: Colors.transparent,
@@ -668,9 +746,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: AnimatedBuilder(
           animation: _sizeController,
           builder: (_, __) {
-            final double borderRadius = isCard
-                ? IslandConfig.cardRadius
-                : IslandConfig.capsuleRadius;
+            final double borderRadius = _radiusAnimation.value;
+            final shadowProgress = _transitioning ? _sizeController.value : 1.0;
             return Container(
               width: _sizeAnimation.value.width,
               height: _sizeAnimation.value.height,
@@ -679,9 +756,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.55),
-                    blurRadius: 15,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 5),
+                    blurRadius: lerpDouble(10, 18, shadowProgress)!,
+                    spreadRadius: lerpDouble(0, 1, shadowProgress)!,
+                    offset: Offset(0, lerpDouble(3, 6, shadowProgress)!),
                   ),
                 ],
               ),
@@ -705,15 +782,36 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     clipBehavior: Clip.antiAlias,
                     child: AnimatedSwitcher(
                       duration: IslandConfig.switchDuration,
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: ScaleTransition(
-                          scale: Tween<double>(begin: 0.92, end: 1.0)
-                              .animate(anim),
-                          child: child,
-                        ),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      layoutBuilder: (currentChild, previousChildren) => Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ...previousChildren,
+                          if (currentChild != null) currentChild,
+                        ],
                       ),
-                      child: _buildContent(),
+                      transitionBuilder: (child, anim) {
+                        final curved = CurvedAnimation(
+                          parent: anim,
+                          curve: Curves.easeOutCubic,
+                          reverseCurve: Curves.easeInCubic,
+                        );
+                        return FadeTransition(
+                          opacity: curved,
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: IslandConfig.switchScaleBegin,
+                              end: IslandConfig.switchScaleEnd,
+                            ).animate(curved),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: KeyedSubtree(
+                        key: ValueKey(_contentKeyForCurrentState()),
+                        child: _buildContent(),
+                      ),
                     ),
                   ),
                 ),
@@ -812,11 +910,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           _currentCardIndex = 0;
         });
         final newSize = _idleSizeForCard();
-        _sizeAnimation = Tween<Size>(
-          begin: newSize,
-          end: newSize,
-        ).animate(_sizeController);
-        _resizeWindowOnce(newSize);
+        _animateSizeTo(newSize);
         return;
       }
       if (_stack.current != IslandState.idle) return;
@@ -825,11 +919,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         _isScrolledInFocus = false;
       });
       final newSize = _idleSizeForCard();
-      _sizeAnimation = Tween<Size>(
-        begin: newSize,
-        end: newSize,
-      ).animate(_sizeController);
-      _resizeWindowOnce(newSize);
+      _animateSizeTo(newSize);
     });
   }
 
@@ -904,17 +994,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           onPointerSignal: (pointerSignal) {
             if (pointerSignal is PointerScrollEvent) {
               final delta = pointerSignal.scrollDelta.dy;
-              
+
               // idle 态下滚轮切换卡片
               if (!_cardsLoaded) {
                 _initCards();
               }
-              
+
               if (_cards.isEmpty) return;
-              
+
               // 重置自动返回定时器
               _resetIdleAutoReturnTimer();
-              
+
               if (_isFocusing && _isScrolledInFocus) {
                 // 专注状态下已滚轮切换：继续在卡片间滚动
                 if (delta > 0) {
@@ -925,8 +1015,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 } else if (delta < 0) {
                   // 向上滚 → 上一张卡片
                   setState(() {
-                    _currentCardIndex = _currentCardIndex == 0 
-                        ? _cards.length - 1 
+                    _currentCardIndex = _currentCardIndex == 0
+                        ? _cards.length - 1
                         : _currentCardIndex - 1;
                   });
                 }
@@ -938,8 +1028,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   });
                 } else if (delta < 0) {
                   setState(() {
-                    _currentCardIndex = _currentCardIndex == 0 
-                        ? _cards.length - 1 
+                    _currentCardIndex = _currentCardIndex == 0
+                        ? _cards.length - 1
                         : _currentCardIndex - 1;
                   });
                 }
@@ -959,14 +1049,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   });
                 }
               }
-              
+
               // 同时更新窗口大小
               final newSize = _idleSizeForCard();
-              _sizeAnimation = Tween<Size>(
-                begin: _currentWindowSize,
-                end: newSize,
-              ).animate(_sizeController);
-              _resizeWindowOnce(newSize);
+              _animateSizeTo(newSize);
             }
           },
           child: Container(
@@ -1015,10 +1101,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                               valueListenable: _pauseTimeNotifier,
                               builder: (context, pauseTime, _) {
                                 return Text(
-                                  fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                                  fd?['isPaused'] == true
+                                      ? '暂停中 $pauseTime'
+                                      : title,
                                   style: TextStyle(
                                     color: _isPulsing
-                                        ? _colorAnimation.value?.withValues(alpha: 0.7) ??
+                                        ? _colorAnimation.value
+                                                ?.withValues(alpha: 0.7) ??
                                             Colors.white70
                                         : Colors.white70,
                                     fontSize: 10,
@@ -1037,7 +1126,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                     ValueListenableBuilder<String>(
                       valueListenable: _timeNotifier,
                       builder: (_, time, __) {
-                        if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
+                        if (_isCountdown &&
+                            _remainingSecs == 0 &&
+                            !_isPulsing) {
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             _triggerPomodoroAlert();
                           });
@@ -1096,9 +1187,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     // 时间卡片：显示当前时间
     if (type == 'time') {
-      final now = DateTime.now();
-      final timeStr =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       return AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
         transitionBuilder: (child, anim) {
@@ -1111,14 +1199,18 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             child: SlideTransition(position: offset, child: child),
           );
         },
-        child: Text(
-          timeStr,
-          key: ValueKey(_currentCardIndex),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.0,
+        child: ValueListenableBuilder<String>(
+          key: const ValueKey('idle_time_card'),
+          valueListenable: _timeNotifier,
+          builder: (_, time, __) => Text(
+            time,
+            key: ValueKey(time),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
           ),
         ),
       );
@@ -1242,10 +1334,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                           valueListenable: _pauseTimeNotifier,
                           builder: (context, pauseTime, _) {
                             return Text(
-                              fd?['isPaused'] == true ? '暂停中 $pauseTime' : title,
+                              fd?['isPaused'] == true
+                                  ? '暂停中 $pauseTime'
+                                  : title,
                               style: TextStyle(
                                 color: _isPulsing
-                                    ? _colorAnimation.value?.withValues(alpha: 0.7) ??
+                                    ? _colorAnimation.value
+                                            ?.withValues(alpha: 0.7) ??
                                         Colors.white70
                                     : Colors.white70,
                                 fontSize: 10,
@@ -1261,7 +1356,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       ValueListenableBuilder<String>(
                         valueListenable: _timeNotifier,
                         builder: (_, time, __) {
-                          if (_isCountdown && _remainingSecs == 0 && !_isPulsing) {
+                          if (_isCountdown &&
+                              _remainingSecs == 0 &&
+                              !_isPulsing) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               _triggerPomodoroAlert();
                             });
@@ -2039,19 +2136,47 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
 
     if (expanded == null) {
-      return KeyedSubtree(
-          key: const ValueKey('reminderSplit'), child: Center(child: row));
+      return FadeTransition(
+        opacity: ReverseAnimation(_splitController),
+        child: Center(child: row),
+      );
     }
 
     final card =
         expanded == 'focusing' ? _expandedFocusing() : _expandedReminder();
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Positioned(
-            top: 0, left: 0, right: 0, height: 46, child: Center(child: row)),
-        Positioned(top: 54, left: 8, right: 8, child: card),
-      ],
+    return AnimatedBuilder(
+      animation: _splitController,
+      builder: (context, child) {
+        final progress = Curves.easeOutCubic.transform(_splitController.value);
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 46,
+              child: Opacity(
+                opacity: lerpDouble(0.75, 1.0, progress)!,
+                child: Center(child: row),
+              ),
+            ),
+            Positioned(
+              top: lerpDouble(66, 54, progress)!,
+              left: 8,
+              right: 8,
+              child: Opacity(
+                opacity: progress,
+                child: Transform.scale(
+                  alignment: Alignment.topCenter,
+                  scale: lerpDouble(0.96, 1.0, progress)!,
+                  child: card,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2125,7 +2250,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       decoration: BoxDecoration(
         color: IslandConfig.bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.5), width: 0.8),
+        border:
+            Border.all(color: Colors.black.withValues(alpha: 0.5), width: 0.8),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2470,8 +2596,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final p = _currentPayload;
     final seenCards = <String>{};
 
-    void addPayloadCard(String type, String icon, String title, String subtitle,
-        Color color, [Map<String, dynamic>? extra]) {
+    void addPayloadCard(
+        String type, String icon, String title, String subtitle, Color color,
+        [Map<String, dynamic>? extra]) {
       if (title.trim().isEmpty) return;
       final key = '$type|$title|$subtitle';
       if (!seenCards.add(key)) return;
@@ -3252,9 +3379,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         overlayShape:
                             const RoundSliderOverlayShape(overlayRadius: 14),
                         activeTrackColor: IslandConfig.focusColor,
-                        inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                        inactiveTrackColor:
+                            Colors.white.withValues(alpha: 0.15),
                         thumbColor: Colors.white,
-                        overlayColor: IslandConfig.focusColor.withValues(alpha: 0.2),
+                        overlayColor:
+                            IslandConfig.focusColor.withValues(alpha: 0.2),
                       ),
                       child: Slider(
                         value: currentVolume,
@@ -3413,7 +3542,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         overlayShape:
                             const RoundSliderOverlayShape(overlayRadius: 14),
                         activeTrackColor: IslandConfig.warningColor,
-                        inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                        inactiveTrackColor:
+                            Colors.white.withValues(alpha: 0.15),
                         thumbColor: Colors.white,
                         overlayColor:
                             IslandConfig.warningColor.withValues(alpha: 0.2),
