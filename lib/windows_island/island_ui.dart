@@ -647,10 +647,16 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     final title = card['title'] as String? ?? '';
     final subtitle = card['subtitle'] as String? ?? '';
-    int maxLen = title.length;
-    if (subtitle.length > maxLen) maxLen = subtitle.length;
-    final textWidth = maxLen * 12.0;
-    final width = (24 + 16 + 6 + textWidth).clamp(100.0, 300.0);
+    final maxLen =
+        title.length > subtitle.length ? title.length : subtitle.length;
+    final textWidth = maxLen.clamp(0, 14) * 10.0;
+    final maxWidth = switch (type) {
+      'course' => 190.0,
+      'countdown' => 180.0,
+      'todo' => 200.0,
+      _ => 180.0,
+    };
+    final width = (46 + textWidth).clamp(100.0, maxWidth);
     final height = subtitle.isNotEmpty ? 52.0 : 40.0;
     return Size(width, height);
   }
