@@ -655,6 +655,17 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     return Size(width, height);
   }
 
+  Size _cardCarouselSize() {
+    final visibleCount = _cards.where((c) => c['type'] != 'focusing').length;
+    final count = visibleCount <= 0 ? 1 : visibleCount;
+    const horizontalPadding = 16.0;
+    const cardWidth = 76.0;
+    const gap = 6.0;
+    final width = (horizontalPadding + count * cardWidth + (count - 1) * gap)
+        .clamp(220.0, 680.0);
+    return Size(width, 96);
+  }
+
   Size _targetSizeFor(IslandState s) {
     final hasSub =
         _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
@@ -699,7 +710,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.brightnessControl:
         return const Size(320, 140);
       case IslandState.cardCarousel:
-        return const Size(320, 72);
+        return _cardCarouselSize();
     }
   }
 
@@ -2741,13 +2752,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       onLongPressStart: (_) => _startDrag(),
       child: Container(
         color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-        child: SizedBox(
-          height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: SizedBox.expand(
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: visibleCards.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 5),
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
             itemBuilder: (context, index) {
               final card = visibleCards[index];
               final type = card['type'] as String;
@@ -2763,8 +2773,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 cardContent = Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(icon, style: const TextStyle(fontSize: 12)),
-                    const SizedBox(height: 2),
+                    Text(icon, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 4),
                     ValueListenableBuilder<String>(
                       valueListenable: _timeNotifier,
                       builder: (_, time, __) => Text(
@@ -2787,9 +2797,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                   children: [
                     Text(
                       icon,
-                      style: const TextStyle(fontSize: 12),
+                      style: const TextStyle(fontSize: 14),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       title,
                       style: const TextStyle(
@@ -2802,7 +2812,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       textAlign: TextAlign.center,
                     ),
                     if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 1),
+                      const SizedBox(height: 2),
                       Text(
                         subtitle,
                         style: TextStyle(
@@ -2829,12 +2839,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               }
 
               return SizedBox(
-                width: 62,
+                width: 76,
+                height: 80,
                 child: GestureDetector(
                   onTap: onTap,
                   child: Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
