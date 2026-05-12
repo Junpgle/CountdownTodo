@@ -2,7 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
-import 'package:win32/win32.dart' hide Size;
+import 'package:win32/win32.dart';
 import 'island_config.dart';
 
 // ── DWM API Bindings ──────────────────────────────────────────────────────
@@ -139,7 +139,10 @@ double getIslandScaleFactor(int hwnd) {
   return 1.0;
 }
 
-/// Apply frameless transparent style to a window
+/// Apply the island window chrome.
+///
+/// The island is repeatedly moved/resized after creation, so the topmost bit
+/// must be restored together with the frameless/transparent styles.
 void applyFramelessTransparent(int hwnd) {
   try {
     const wsCaption = 0x00C00000;
@@ -157,12 +160,12 @@ void applyFramelessTransparent(int hwnd) {
     SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
     var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-    exStyle |= WS_EX_LAYERED;
+    exStyle |= WS_EX_LAYERED | WS_EX_TOPMOST;
     SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
 
     SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
-    SetWindowPos(hwnd, 0, 0, 0, 0, 0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
   } catch (e) {
     debugPrint('[IslandWin32] applyFramelessTransparent failed: $e');
   }
@@ -229,12 +232,9 @@ void resizeCurrentWindow(int targetW, int targetH) {
         if (curW > 0 && curW != physicalW) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
-        const int hwndTopmost = -1;
-        const int swpNoactivate = 0x0010;
-
         applyFramelessTransparent(hwnd);
-        SetWindowPos(hwnd, hwndTopmost, newX, newY, physicalW, physicalH,
-            swpNoactivate | SWP_FRAMECHANGED);
+        SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
+            SWP_NOACTIVATE | SWP_FRAMECHANGED);
       }
     });
   } catch (e) {
@@ -258,13 +258,9 @@ void moveCurrentWindow(int targetX, int targetY) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
-        const int hwndTopmost = -1;
-        const int swpNoactivate = 0x0010;
-        const int swpNosize = 0x0001;
-
         applyFramelessTransparent(hwnd);
-        SetWindowPos(hwnd, hwndTopmost, physicalX, physicalY, curW, curH,
-            swpNoactivate | swpNosize | SWP_FRAMECHANGED);
+        SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
+            SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED);
       }
     });
   } catch (e) {
@@ -327,14 +323,15 @@ void setWindowPosition(int left, int top, int width, int height) {
         rectPtr.ref.top = top;
         rectPtr.ref.right = left + width;
         rectPtr.ref.bottom = top + height;
+        applyFramelessTransparent(hwnd);
         SetWindowPos(
             hwnd,
-            0,
+            HWND_TOPMOST,
             rectPtr.ref.left,
             rectPtr.ref.top,
             rectPtr.ref.right - rectPtr.ref.left,
             rectPtr.ref.bottom - rectPtr.ref.top,
-            0x0041);
+            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
       });
     }
   } catch (e) {
