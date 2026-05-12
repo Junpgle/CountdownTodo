@@ -3778,9 +3778,6 @@ class StorageService {
     for (final todo in todos) {
       final existing = todo.serverVersionData;
       final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
-      final isLocalDetectorScheduleConflict =
-          _isLocalDetectorScheduleConflict(existing);
-
       if (todo.isDeleted) {
         if (isLocalScheduleConflict || todo.hasConflict) {
           todo.hasConflict = false;
@@ -3826,7 +3823,7 @@ class StorageService {
           todo.hasConflict = true;
           changed = true;
         }
-      } else if (isLocalDetectorScheduleConflict) {
+      } else if (isLocalScheduleConflict) {
         todo.hasConflict = false;
         todo.serverVersionData = null;
         changed = true;
@@ -3918,12 +3915,6 @@ class StorageService {
   static bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
     if (data == null || data.isEmpty) return false;
     return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
-  }
-
-  static bool _isLocalDetectorScheduleConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' &&
         data['source'] == 'local_detector';
   }
 
