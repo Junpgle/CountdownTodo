@@ -123,6 +123,10 @@ Future<void> islandMain(List<String> args) async {
       await controller.invokeMethod('setAlwaysOnTop', true);
     } catch (_) {}
 
+    Timer(const Duration(milliseconds: 120), ensureIslandFrameless);
+    Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
+    Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
+
     Future.delayed(IslandConfig.windowRestoreDelay, () {
       _restoreWindowPosition();
     });
@@ -338,6 +342,8 @@ Future<void> islandMain(List<String> args) async {
           return;
         }
 
+        ensureIslandFrameless();
+
         final rect = getWindowRect();
         if (rect != null &&
             boundsSaveEnabled &&
@@ -463,8 +469,8 @@ Future<void> islandMain(List<String> args) async {
                   onAction: (action, [modifiedSecs, data]) async {
                     try {
                       if (action == 'reminder_ok') {
-                        final itemId = payloadNotifier.value?['reminderPopupData']
-                                ?['itemId']
+                        final itemId = payloadNotifier
+                            .value?['reminderPopupData']?['itemId']
                             ?.toString();
                         if (itemId != null) {
                           acknowledgedReminders.add(itemId);
@@ -550,8 +556,9 @@ Future<void> islandMain(List<String> args) async {
                         String? url = data;
                         if (url == null) {
                           final currentPayload = payloadNotifier.value ?? {};
-                          final copiedLinkData = currentPayload['copiedLinkData']
-                              as Map<String, dynamic>?;
+                          final copiedLinkData =
+                              currentPayload['copiedLinkData']
+                                  as Map<String, dynamic>?;
                           url = copiedLinkData?['url']?.toString();
                         }
                         if (url != null) {
@@ -575,8 +582,9 @@ Future<void> islandMain(List<String> args) async {
                         if (current.containsKey('legacy')) {
                           final legacy = current['legacy'] as Map?;
                           if (legacy != null && legacy['isLocal'] is bool) {
-                            syncMode =
-                                (legacy['isLocal'] as bool) ? 'local' : 'remote';
+                            syncMode = (legacy['isLocal'] as bool)
+                                ? 'local'
+                                : 'remote';
                           }
                         } else if (current.containsKey('focusData')) {
                           final fd =
@@ -615,7 +623,8 @@ Future<void> islandMain(List<String> args) async {
                             color: Colors.black.withValues(alpha: 0.35),
                             borderRadius: BorderRadius.circular(8)),
                         child: const Text('灵动岛已就绪 — 等待主程序数据',
-                            style: TextStyle(color: Colors.white, fontSize: 12)),
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 12)),
                       );
                     }
                     return const SizedBox.shrink();
@@ -650,7 +659,8 @@ Future<void> islandMain(List<String> args) async {
           backgroundColor: IslandConfig.scaffoldBg,
           body: Focus(
             onKeyEvent: (node, event) => KeyEventResult.handled,
-            child: Center(child: IslandUI(initialPayload: payloadNotifier.value)),
+            child:
+                Center(child: IslandUI(initialPayload: payloadNotifier.value)),
           ),
         ),
       ),

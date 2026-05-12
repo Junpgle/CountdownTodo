@@ -50,6 +50,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // ── 时间显示
   final ValueNotifier<String> _timeNotifier = ValueNotifier<String>('');
+  final ValueNotifier<String> _clockTimeNotifier = ValueNotifier<String>('');
   final ValueNotifier<String> _pauseTimeNotifier = ValueNotifier<String>('');
   Timer? _countdownTimer;
   int _remainingSecs = 0;
@@ -217,6 +218,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _quickControlsAutoReturnTimer?.cancel();
     _resizeDebounce?.cancel();
     _timeNotifier.dispose();
+    _clockTimeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
@@ -591,6 +593,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      _updateClockTime();
       final fd = _currentPayload?['focusData'] as Map?;
       final bool isPaused = fd?['isPaused'] ?? false;
 
@@ -617,14 +620,19 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   }
 
   void _updateDisplayTime() {
+    _updateClockTime();
     if (!_isFocusing) {
-      final now = DateTime.now();
-      _timeNotifier.value =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      _timeNotifier.value = _clockTimeNotifier.value;
       return;
     }
     _timeNotifier.value =
         '${(_remainingSecs ~/ 60).toString().padLeft(2, '0')}:${(_remainingSecs % 60).toString().padLeft(2, '0')}';
+  }
+
+  void _updateClockTime() {
+    final now = DateTime.now();
+    _clockTimeNotifier.value =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
   // ── 尺寸配置 ─────────────────────────────────────────────────────────────
@@ -643,7 +651,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       return const Size(100, 34);
     }
     if (type == 'focusing') {
-      return const Size(90, 40);
+      return const Size(132, 54);
     }
     final title = card['title'] as String? ?? '';
     final subtitle = card['subtitle'] as String? ?? '';
@@ -672,6 +680,20 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     return Size(width, 96);
   }
 
+  Size _stackedCardSize() {
+    if (_currentPayload?['selectedCard'] != null) {
+      return const Size(260, 150);
+    }
+    final fd = _currentPayload?['focusData'] as Map?;
+    final title = fd?['title']?.toString() ?? '';
+    final tags = fd?['tags'] as List?;
+    final hasTags = tags != null && tags.isNotEmpty;
+    final textLen = title.isEmpty ? 8 : title.length.clamp(8, 16);
+    final width = (112 + textLen * 8.0).clamp(180.0, 240.0);
+    final height = hasTags ? 112.0 : 98.0;
+    return Size(width, height);
+  }
+
   Size _targetSizeFor(IslandState s) {
     final hasSub =
         _reminderPopupData?['subtitle']?.toString().isNotEmpty ?? false;
@@ -685,8 +707,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       case IslandState.splitAlert:
         return const Size(300, 36);
       case IslandState.stackedCard:
-        final hasSelected = _currentPayload?['selectedCard'] != null;
-        return hasSelected ? const Size(260, 150) : const Size(280, 150);
+        return _stackedCardSize();
       case IslandState.finishConfirm:
       case IslandState.abandonConfirm:
       case IslandState.finishFinal:
@@ -1083,7 +1104,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       );
 
   // 专注计时器显示（从 _buildFocusing 提取，用于 idle 态下的专注显示）
-  Widget _buildFocusTimerDisplay() {
+  Widget _buildFocusTimerDisplay({bool forceTitle = false}) {
     final fd = _currentPayload?['focusData'] as Map?;
     final title = fd?['title']?.toString() ?? '专注事项';
 
@@ -1098,7 +1119,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
             alignment: Alignment.center,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compact = constraints.maxHeight <= 56;
+                final compact = !forceTitle && constraints.maxHeight <= 56;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1218,7 +1239,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         },
         child: ValueListenableBuilder<String>(
           key: const ValueKey('idle_time_card'),
-          valueListenable: _timeNotifier,
+          valueListenable: _clockTimeNotifier,
           builder: (_, time, __) => Text(
             time,
             key: ValueKey(time),
@@ -1250,7 +1271,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         child: Container(
           key: ValueKey(_currentCardIndex),
           alignment: Alignment.center,
-          child: _buildFocusTimerDisplay(),
+          child: _buildFocusTimerDisplay(forceTitle: true),
         ),
       );
     }
@@ -1546,7 +1567,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       onLongPressStart: (_) => _startDrag(),
       child: Container(
         color: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1583,7 +1604,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             if (!isLocal)
               _btn('远端计时中，无法更改', Colors.white.withValues(alpha: 0.1), () {})
             else
@@ -1596,7 +1617,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                       _animateToState(IslandState.finishConfirm);
                     }),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _btn('放弃', IslandConfig.dangerColor, () {
                       _stack.push(IslandState.abandonConfirm,

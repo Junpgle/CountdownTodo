@@ -99,7 +99,8 @@ int? getSmallestFlutterWindow() {
       lpEnumFunc.close();
     }
 
-    final candidates = emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
+    final candidates =
+        emptyTitleHwnds.isNotEmpty ? emptyTitleHwnds : foundHwnds;
 
     if (candidates.isNotEmpty) {
       int? bestHwnd;
@@ -144,11 +145,15 @@ void applyFramelessTransparent(int hwnd) {
     const wsCaption = 0x00C00000;
     const wsThickframe = 0x00040000;
     const wsSysmenu = 0x00080000;
+    const wsMinimizebox = 0x00020000;
+    const wsMaximizebox = 0x00010000;
 
     var style = GetWindowLongPtr(hwnd, GWL_STYLE);
     style &= ~wsCaption;
     style &= ~wsThickframe;
     style &= ~wsSysmenu;
+    style &= ~wsMinimizebox;
+    style &= ~wsMaximizebox;
     SetWindowLongPtr(hwnd, GWL_STYLE, style);
 
     var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
@@ -156,9 +161,18 @@ void applyFramelessTransparent(int hwnd) {
     SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
 
     SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
+    SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
   } catch (e) {
     debugPrint('[IslandWin32] applyFramelessTransparent failed: $e');
   }
+}
+
+void ensureIslandFrameless() {
+  final hwnd = getSmallestFlutterWindow();
+  if (hwnd == null) return;
+  _islandHwndCache = hwnd;
+  applyFramelessTransparent(hwnd);
 }
 
 /// Initialize FFI: wait for HWND to appear and shrink, then apply transparency
@@ -218,8 +232,9 @@ void resizeCurrentWindow(int targetW, int targetH) {
         const int hwndTopmost = -1;
         const int swpNoactivate = 0x0010;
 
+        applyFramelessTransparent(hwnd);
         SetWindowPos(hwnd, hwndTopmost, newX, newY, physicalW, physicalH,
-            swpNoactivate);
+            swpNoactivate | SWP_FRAMECHANGED);
       }
     });
   } catch (e) {
@@ -247,8 +262,9 @@ void moveCurrentWindow(int targetX, int targetY) {
         const int swpNoactivate = 0x0010;
         const int swpNosize = 0x0001;
 
+        applyFramelessTransparent(hwnd);
         SetWindowPos(hwnd, hwndTopmost, physicalX, physicalY, curW, curH,
-            swpNoactivate | swpNosize);
+            swpNoactivate | swpNosize | SWP_FRAMECHANGED);
       }
     });
   } catch (e) {
