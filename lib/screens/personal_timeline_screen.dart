@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 import '../models.dart';
 import '../services/timeline_service.dart';
 import '../services/pomodoro_service.dart';
@@ -173,9 +174,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 24),
-                        _buildDimensionToggle(colorScheme),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 8),
 
                         // Animated Content Area
                         AnimatedSwitcher(
@@ -452,7 +451,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
                     ),
                   ),
                 ],
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                _buildDimensionToggle(cs),
+                const SizedBox(height: 12),
                 Text(
                   _getMotivationText(),
                   style: TextStyle(fontSize: 12,
@@ -639,8 +640,34 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
   }
 
   Widget _buildStatsOverview(ColorScheme cs, bool isWide) {
+    final summary = _summary;
+    if (summary == null) return const SizedBox();
+
+    int hours = _totalFocusMinutes ~/ 60;
+    int mins = _totalFocusMinutes % 60;
+    String focusTimeStr = hours > 0 ? '$hours 小时 $mins 分钟' : '$mins 分钟';
+    String topSub = summary.topSubject;
+    int subRatio = 0;
+    if (summary.subjectDistribution.containsKey(topSub)) {
+      double total = summary.subjectDistribution.values.fold(0.0, (a, b) => a + b);
+      if (total > 0) subRatio = ((summary.subjectDistribution[topSub]! / total) * 100).toInt();
+    }
+    
+    final overarchingText = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('你本阶段累计专注 $focusTimeStr，完成 $_completedCount 个任务。',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.onSurface)),
+        const SizedBox(height: 4),
+        Text('${summary.peakHour}:00 是你的黄金产出时刻，${topSub != '全能型' ? topSub : '各项事务'} 占据了你 ${subRatio > 0 ? subRatio : (summary.homeworkRatio*100).toInt()}% 的精力。',
+            style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 24),
+      ],
+    );
+
+    Widget statsGrid;
     if (isWide) {
-      return Container(
+      statsGrid = Container(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
         decoration: BoxDecoration(
           color: cs.surfaceContainer.withValues(alpha: 0.6),
@@ -676,9 +703,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
           ],
         ),
       );
-    }
-    return Container(
-      padding: const EdgeInsets.all(24),
+    } else {
+      statsGrid = Container(
+        padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: cs.surfaceContainer.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(32),
@@ -717,12 +744,21 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
               _buildStatItem(
                   '冲刺', '${_summary?.examPrepCount ?? 0}', '次备考',
                   Icons.auto_graph_rounded, Colors.redAccent, cs),
-              _buildStatItem('偏好', _topAppCategory ?? '学习', '',
-                  Icons.category_outlined, Colors.orange, cs),
+              _buildStatItem('偏好', _topAppCategory ?? '学习', '', Icons.category_outlined,
+                  Colors.orange, cs),
             ],
           ),
         ],
       ),
+      );
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        overarchingText,
+        statsGrid,
+      ],
     );
   }
 
@@ -875,54 +911,27 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
                 '${dur ~/ 60}m', cs);
           }).toList() : null,
         ),
-        if (_summary!.topCompletedTodos.isNotEmpty)
-          _buildStatCard(
-            '最近目标达成',
-            _summary!.topCompletedTodos.first['title'] as String,
-            '达成于 ${DateFormat('HH:mm').format(
-                DateTime.fromMillisecondsSinceEpoch(
-                    _summary!.topCompletedTodos.first['time'] as int))}',
-            Icons.task_alt_rounded,
-            Colors.green,
-            cs,
-            extraItems: _summary!.topCompletedTodos.length > 1 ? _summary!
-                .topCompletedTodos
-                .skip(1)
-                .take(4)
-                .toList()
-                .asMap()
-                .entries
-                .map((e) {
-              final todo = e.value;
-              return _buildRankItem(e.key + 2, todo['title'] as String,
-                  DateFormat('HH:mm').format(
-                      DateTime.fromMillisecondsSinceEpoch(todo['time'] as int)),
-                  cs);
-            }).toList() : null,
-          ),
-        if (_summary!.mostProductiveDay != null &&
-            _dimension != TimelineDimension.daily)
-          _buildStatCard(
-            '最高产的一天',
-            DateFormat('MM月dd日').format(_summary!.mostProductiveDay!),
-            '产出了 ${_summary!.mostProductiveDayDurationMinutes} 分钟',
-            Icons.local_fire_department_rounded,
-            Colors.orange,
-            cs,
-            extraItems: _summary!.topProductiveDays.length > 1 ? _summary!
-                .topProductiveDays
-                .skip(1)
-                .take(4)
-                .toList()
-                .asMap()
-                .entries
-                .map((e) {
-              final day = e.value;
-              return _buildRankItem(e.key + 2,
-                  DateFormat('MM-dd').format(day['date'] as DateTime),
-                  '${day['minutes']}m', cs);
-            }).toList() : null,
-          ),
+        _buildStatCard(
+          '专注质量',
+          '中断率 ${(_summary!.interruptionRate * 100).toStringAsFixed(1)}%',
+          '${_summary!.interruptionCount} 次被打断或放弃',
+          Icons.shield_moon_rounded,
+          Colors.indigo,
+          cs,
+          extraItems: [
+            const SizedBox(height: 8),
+            _buildRankItem(0, '深度心流', '${_summary!.deepWorkCount}次', cs),
+            _buildRankItem(0, '平均时长', '${_summary!.avgPomodoroMinutes.toStringAsFixed(0)}m', cs),
+          ],
+        ),
+        _buildStatCard(
+          '任务执行力',
+          '${_summary!.earlyCompletionCount} 项提前完成',
+          '逾期任务: ${_summary!.overdueCount} 项',
+          Icons.done_all_rounded,
+          Colors.green,
+          cs,
+        ),
         _buildTrendCard(
           '深度工作',
           '${_summary!.deepWorkCount} 次',
@@ -947,8 +956,36 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
             cs,
             extraItems: [
               const SizedBox(height: 8),
-              ..._summary!.examSubjectDist.entries.take(3).map((e) =>
-                  _buildRankItem(0, e.key, '${e.value}次', cs)),
+              ..._summary!.examSubjectDist.entries.take(5).map((e) {
+                final maxVal = _summary!.examSubjectDist.values.isNotEmpty 
+                    ? _summary!.examSubjectDist.values.reduce(math.max).toDouble() 
+                    : 1.0;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(e.key, style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+                          Text('${e.value}次', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: cs.onSurface)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: maxVal > 0 ? e.value / maxVal : 0,
+                          backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
+                          color: Colors.redAccent,
+                          minHeight: 4,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
             ],
           ),
         _buildStatCard(
@@ -959,18 +996,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
           Icons.travel_explore_rounded,
           Colors.teal,
           cs,
-          extraItems: _summary!.topSearchQueries.length > 1 ? _summary!
-              .topSearchQueries
-              .skip(1)
-              .take(4)
-              .toList()
-              .asMap()
-              .entries
-              .map((e) {
+          extraItems: _summary!.topSearchQueries.take(5).toList().asMap().entries.map((e) {
             final q = e.value;
-            return _buildRankItem(
-                e.key + 2, q['query'] as String? ?? '', '${q['freq']}x', cs);
-          }).toList() : null,
+            return _buildRankItem(e.key + 1, q['query'] as String? ?? '', '${q['freq']}x', cs);
+          }).toList(),
         ),
         _buildStatCard(
           '任务构成',

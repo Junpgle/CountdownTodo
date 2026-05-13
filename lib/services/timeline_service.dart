@@ -184,6 +184,30 @@ class TimelineService {
         [startMs, endMs],
       );
 
+      // 4. Pomodoro Details (Quality metrics)
+      final pomodoroDetailStats = await db.rawQuery(
+        'SELECT COUNT(*) as total, '
+        'SUM(CASE WHEN status = \'interrupted\' OR status = \'abandoned\' THEN 1 ELSE 0 END) as interrupted '
+        'FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        [startMs, endMs],
+      );
+      final int totalPomos = pomodoroDetailStats.first['total'] as int? ?? 0;
+      final int interruptedPomos = pomodoroDetailStats.first['interrupted'] as int? ?? 0;
+      final double interruptionRate = totalPomos > 0 ? interruptedPomos / totalPomos : 0.0;
+
+      // 4b. Task Quality (Overdue vs Early)
+      final taskQualityStats = await db.rawQuery(
+        'SELECT '
+        'SUM(CASE WHEN deadline > 0 AND updated_at > deadline THEN 1 ELSE 0 END) as overdue, '
+        'SUM(CASE WHEN deadline > 0 AND (deadline - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
+        'FROM todos '
+        'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        [startMs, endMs],
+      );
+      final int overdueCount = taskQualityStats.first['overdue'] as int? ?? 0;
+      final int earlyCount = taskQualityStats.first['early'] as int? ?? 0;
+
       final pomoTop = await db.rawQuery(
         'SELECT uuid, todo_title, actual_duration, start_time FROM ('
         'SELECT uuid, todo_title, actual_duration, start_time FROM pomodoro_records '
@@ -445,13 +469,33 @@ class TimelineService {
         actualEnd = DateTime.fromMillisecondsSinceEpoch(rangeData.first['last_ts'] as int);
       }
 
+      // 11. Consecutive Active Days (Approximate from dailyTrend)
+      int consecutiveDays = 0;
+      if (dailyTrend.isNotEmpty) {
+        int currentStreak = 0;
+        for (var val in dailyTrend) {
+          if (val > 5) { // More than 5 mins counts as active
+            currentStreak++;
+          } else {
+            currentStreak = 0;
+          }
+          if (currentStreak > consecutiveDays) consecutiveDays = currentStreak;
+        }
+      }
+
+      final todoCreated = todoStats.first['created'] as int? ?? 0;
+      final todoCompleted = todoStats.first['completed'] as int? ?? 0;
+      final completionRate = todoCreated > 0 ? (todoCompleted / todoCreated) : (todoCompleted > 0 ? 1.0 : 0.0);
 
       return TimelineSummary(
         searchCount: searchCount,
         lastSearchTime: lastSearchTs != null ? DateTime.fromMillisecondsSinceEpoch(lastSearchTs) : null,
-        todoCreatedCount: todoStats.first['created'] as int? ?? 0,
+        todoCreatedCount: todoCreated,
         todoEditedCount: 0,
-        todoCompletedCount: todoStats.first['completed'] as int? ?? 0,
+        todoCompletedCount: todoCompleted,
+        todoCompletionRate: completionRate,
+        consecutiveActiveDays: consecutiveDays,
+        totalFocusMinutes: totalSecs ~/ 60,
         countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
         countdownEditedCount: 0,
         countdownCompletedCount: cdStats.first['completed'] as int? ?? 0,
@@ -484,6 +528,10 @@ class TimelineService {
         topSearchQueries: topQueries,
         topCompletedTodos: topCompleted,
         examSubjectDist: examSubjectDist,
+        interruptionCount: interruptedPomos,
+        interruptionRate: interruptionRate,
+        overdueCount: overdueCount,
+        earlyCompletionCount: earlyCount,
       );
     } catch (e) {
       debugPrint('❌ getSummaryForRange error: $e');
@@ -508,6 +556,9 @@ class TimelineSummary {
   final int todoCreatedCount;
   final int todoEditedCount;
   final int todoCompletedCount;
+  final double todoCompletionRate;
+  final int consecutiveActiveDays;
+  final int totalFocusMinutes;
   final int countdownCreatedCount;
   final int countdownEditedCount;
   final int countdownCompletedCount;
@@ -537,6 +588,7 @@ class TimelineSummary {
   final List<Map<String, dynamic>> topFocusSessions;
   final List<Map<String, dynamic>> topProductiveDays;
   final List<Map<String, dynamic>> topSearchQueries;
+  final List<Map<String, dynamic>> topCompletedTodosDetails; // To distinguish from topCompletedTodos
 
   TimelineSummary({
     required this.searchCount,
@@ -544,6 +596,9 @@ class TimelineSummary {
     required this.todoCreatedCount,
     required this.todoEditedCount,
     required this.todoCompletedCount,
+    this.todoCompletionRate = 0.0,
+    this.consecutiveActiveDays = 0,
+    this.totalFocusMinutes = 0,
     required this.countdownCreatedCount,
     required this.countdownEditedCount,
     required this.countdownCompletedCount,
@@ -573,9 +628,27 @@ class TimelineSummary {
     this.topProductiveDays = const [],
     this.topSearchQueries = const [],
     this.topCompletedTodos = const [],
+    this.topCompletedTodosDetails = const [],
     this.examSubjectDist = const {},
+    this.interruptionCount = 0,
+    this.interruptionRate = 0.0,
+    this.overdueCount = 0,
+    this.earlyCompletionCount = 0,
   });
 
   final Map<String, double> subjectDistribution;
   final int examPrepCount;
+
+  // New Quality Metrics
+  final int interruptionCount;
+  final double interruptionRate;
+  final int overdueCount;
+  final int earlyCompletionCount;
+
+  String get topSubject {
+    if (subjectDistribution.isEmpty) return '全能型';
+    return subjectDistribution.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
+  }
 }
