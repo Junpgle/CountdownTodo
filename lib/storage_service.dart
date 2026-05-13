@@ -3201,27 +3201,44 @@ class StorageService {
       }
 
       if (response['success'] == true) {
-        // 冲突已经由后续合并逻辑落到本地条目的 has_conflict/conflict_data。
-        // 旧 op_log 不能继续保留为待同步，否则下一次同步会反复上传同一份旧 payload。
+        // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
+        // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
         final List<dynamic> rawConflicts =
             (response['conflicts'] as List?) ?? [];
-        int blockingConflictCount = 0;
+        final Set<String> blockingConflictUuids = <String>{};
         for (final c in rawConflicts) {
           if (c is! Map) continue;
           final type = c['type']?.toString();
           if (type == 'schedule_conflict' || type == 'pomodoro') {
             continue;
           }
-          blockingConflictCount++;
+          final item = c['item'];
+          if (item is! Map) continue;
+          final uuid =
+              (item['uuid'] ?? item['id'] ?? item['todo_uuid'])?.toString();
+          if (uuid != null && uuid.isNotEmpty) {
+            blockingConflictUuids.add(uuid);
+          }
         }
-        final syncedOps = await db.update(
-          'op_logs',
-          {'is_synced': 1, 'sync_error': ''},
-          where: 'is_synced = 0',
-        );
-        if (blockingConflictCount > 0) {
-          debugPrint(
-              '🧪 [SyncDiag][Conflicts] consumed $syncedOps pending ops after $blockingConflictCount blocking conflicts');
+
+        if (blockingConflictUuids.isEmpty) {
+          await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
+              where: 'is_synced = 0');
+        } else {
+          final placeholders =
+              List.filled(blockingConflictUuids.length, '?').join(',');
+          await db.update(
+            'op_logs',
+            {'is_synced': 1, 'sync_error': ''},
+            where: 'is_synced = 0 AND target_uuid NOT IN ($placeholders)',
+            whereArgs: blockingConflictUuids.toList(),
+          );
+          await db.update(
+            'op_logs',
+            {'is_synced': 0, 'sync_error': 'server_conflict'},
+            where: 'is_synced = 0 AND target_uuid IN ($placeholders)',
+            whereArgs: blockingConflictUuids.toList(),
+          );
         }
 
         // 🚀 处理独立待办完成情况
