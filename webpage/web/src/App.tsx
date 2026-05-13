@@ -20,10 +20,11 @@ const LoadingSpinner = () => (
 );
 
 const App = () => {
-  const isAppPage = !window.location.pathname.includes('home.html');
-  
+  const isLandingPage = window.location.pathname.includes('home.html') || window.location.search.includes('landing=1') || window.location.hash.includes('landing');
+  const isAppPage = !isLandingPage;
+
   const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'webapp' | 'dashboard'>(() => {
-    if (!isAppPage) return 'landing';
+    if (isLandingPage) return 'landing';
     if (window.location.hash.includes('dashboard')) return 'dashboard';
     return ApiService.getToken() ? 'webapp' : 'auth';
   });
@@ -31,7 +32,7 @@ const App = () => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    if (!isAppPage && currentView !== 'landing') {
+    if (isLandingPage && currentView !== 'landing') {
         window.location.href = './index.html' + window.location.hash;
         return;
     }
@@ -88,9 +89,9 @@ const App = () => {
             {currentView === 'dashboard' && user ? (
                 <TeamDisplayBoard user={user} onBack={() => setCurrentView('webapp')} />
             ) : currentView === 'auth' ? (
-                <AuthScreen onBack={() => { window.location.href = './home.html'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
+                <AuthScreen onBack={() => { window.location.href = './home.html?landing=1#features'; }} onLoginSuccess={(u) => { setUser(u); setCurrentView('webapp'); }} />
             ) : currentView === 'webapp' && user ? (
-                <WebApp onBack={() => { window.location.href = './home.html'; }} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
+                <WebApp onBack={() => { window.location.href = './home.html?landing=1#features'; }} onOpenDashboard={() => setCurrentView('dashboard')} user={user} onLogout={handleLogout} />
             ) : (
                 <LoadingSpinner />
             )}
