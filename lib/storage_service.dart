@@ -15,6 +15,7 @@ import 'models.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
+import 'services/background_notification_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
@@ -536,6 +537,7 @@ class StorageService {
     await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
     await prefs.remove(KEY_AUTH_TOKEN);
     ApiService.setToken('');
+    unawaited(BackgroundNotificationService.stopNotificationPoll());
     // 🚀 核心修复：退出登录后关闭并清空数据库引用
     await DatabaseHelper.instance.closeDatabase();
   }

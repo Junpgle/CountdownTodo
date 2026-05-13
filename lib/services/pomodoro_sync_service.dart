@@ -94,12 +94,15 @@ class CrossDevicePomodoroState {
         pausedAtMs: _parseInt(j['pausedAtMs']),
         accumulatedMs: _parseInt(j['accumulatedMs']),
         pauseStartMs: _parseInt(j['pauseStartMs']),
-        serverElapsedMs: _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
-        conflicts: j['conflicts'] != null 
-          ? (j['conflicts'] as List).map((c) => ConflictInfo.fromJson(c)).toList() 
-          : null,
+        serverElapsedMs:
+            _parseInt(j['server_elapsed_ms'] ?? j['serverElapsedMs']),
+        conflicts: j['conflicts'] != null
+            ? (j['conflicts'] as List)
+                .map((c) => ConflictInfo.fromJson(c))
+                .toList()
+            : null,
         teamUuid: j['teamUuid']?.toString() ?? j['team_uuid']?.toString(),
-        delta: j['delta'],
+        delta: j['delta'] ?? j['event'],
       );
 
   static int? _parseInt(dynamic v) {
@@ -149,8 +152,8 @@ class PomodoroSyncService {
   // ── 连接参数 ──────────────────────────────────────────────
   String? _userId;
   String? _deviceId;
-  String? _authToken; 
-  String? _appVersion; 
+  String? _authToken;
+  String? _appVersion;
 
   // ── 内部状态 ──────────────────────────────────────────────
   WebSocketChannel? _channel;
@@ -231,7 +234,8 @@ class PomodoroSyncService {
     _retryCount = 0; // 重置指数退避计数
 
     if (_userId == null || _deviceId == null) {
-      debugPrint('[PomodoroSync] ❌ 无法手动重连：UserId($_userId) 或 DeviceId($_deviceId) 为空');
+      debugPrint(
+          '[PomodoroSync] ❌ 无法手动重连：UserId($_userId) 或 DeviceId($_deviceId) 为空');
       return;
     }
     debugPrint('[PomodoroSync] ⚡ 收到手动强制重连请求，正在解锁并重试...');
@@ -249,12 +253,14 @@ class PomodoroSyncService {
     _wsSub = null;
     try {
       // 🚀 增加超时，防止在网络异常时 close 操作卡死
-      await _channel?.sink.close(ws_status.normalClosure).timeout(const Duration(seconds: 2));
+      await _channel?.sink
+          .close(ws_status.normalClosure)
+          .timeout(const Duration(seconds: 2));
     } catch (_) {}
     _channel = null;
 
     _setConnState(SyncConnectionState.connecting);
-    
+
     // 🚀 动态补全凭证：如果当前 Token 为空，尝试从全局 ApiService 同步
     if (_authToken == null || _authToken!.isEmpty) {
       _authToken = ApiService.getToken();
@@ -266,7 +272,9 @@ class PomodoroSyncService {
 
       // 🚀 核心修复：WebSocket 地址动态跟随 ApiService，消除 8082/8084 端口不匹配
       String apiBase = ApiService.baseUrl;
-      String wsBase = apiBase.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
+      String wsBase = apiBase
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
 
       final uri = Uri.parse(
         '$wsBase/?token=${Uri.encodeComponent(_authToken ?? '')}'
@@ -298,7 +306,7 @@ class PomodoroSyncService {
       );
 
       _startHeartbeat();
-      _subscribeToTeams(); 
+      _subscribeToTeams();
 
       // 🚀 补擦除逻辑：连接成功后，如果本地不是专注发起者且处于空闲，主动上报一次空闲状态
       // 只有在 _isLocalFocusing 为 false 时才发送，避免干扰当前正在进行的计时
@@ -322,15 +330,16 @@ class PomodoroSyncService {
         _lastMessageTime = DateTime.now();
         return;
       }
-      
+
       // debugPrint('📥 [WS接收] 原始数据: $raw'); // 调试时开启
       final data = jsonDecode(raw.toString()) as Map<String, dynamic>;
       final signal = CrossDevicePomodoroState.fromJson(data);
 
       if (signal.action == 'UPDATE_AVAILABLE') {
         final manifest = signal.manifestData;
-        final latestVersion = signal.latestVersion ?? manifest?['version_name']?.toString();
-        
+        final latestVersion =
+            signal.latestVersion ?? manifest?['version_name']?.toString();
+
         debugPrint('[PomodoroSync] 🎁 收到新版本推送: $latestVersion');
 
         String? downloadUrl = signal.downloadUrl;
@@ -338,7 +347,8 @@ class PomodoroSyncService {
 
         if (manifest != null && manifest['update_info'] != null) {
           final info = manifest['update_info'] as Map<String, dynamic>;
-          downloadUrl ??= info['full_package_url']?.toString() ?? info['PC_package_url']?.toString();
+          downloadUrl ??= info['full_package_url']?.toString() ??
+              info['PC_package_url']?.toString();
           releaseNotes ??= info['description']?.toString();
         }
 
@@ -399,7 +409,7 @@ class PomodoroSyncService {
       _lastMessageTime = DateTime.now(); // 🚀 每次收到有效消息都刷新时间
       if (!_stateCtrl.isClosed) _stateCtrl.add(signal);
     } catch (e) {
-        debugPrint('[PomodoroSync] 消息解析失败: $e');
+      debugPrint('[PomodoroSync] 消息解析失败: $e');
     }
   }
 
@@ -412,15 +422,15 @@ class PomodoroSyncService {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
-    
+
     // 🚀 指数退避：重试延迟随次数增加 2s, 5s, 10s, 30s, 60s(max)
     _retryCount++;
     int delaySecs = (_retryCount * 5).clamp(5, 60);
     if (_retryCount > 3) delaySecs = 30;
     if (_retryCount > 6) delaySecs = 60;
-    
+
     debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
-    
+
     _reconnectTimer = Timer(Duration(seconds: delaySecs), () {
       if (_userId != null) {
         _doConnect();
@@ -435,9 +445,10 @@ class PomodoroSyncService {
         // 🚀 核心逻辑：如果超过 2 个心跳周期（60s）没收到任何消息，判定为“僵尸活跃”，强制重连
         final silentDuration = DateTime.now().difference(_lastMessageTime);
         if (silentDuration > (_heartbeatInterval * 2.5)) {
-           debugPrint('[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
-           _onDisconnected();
-           return;
+          debugPrint(
+              '[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
+          _onDisconnected();
+          return;
         }
         _send({'action': 'HEARTBEAT'});
       }

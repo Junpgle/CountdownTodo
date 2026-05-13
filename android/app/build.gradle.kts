@@ -127,6 +127,7 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("com.google.android.material:material:1.12.0")
     implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
     implementation("dev.rikka.shizuku:api:13.1.5")

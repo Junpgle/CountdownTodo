@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
+import '../services/background_notification_service.dart';
 import '../storage_service.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import 'home_dashboard.dart';
@@ -853,6 +854,11 @@ class _LoginScreenState extends State<LoginScreen>
           token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', user['id'] as int);
+      await BackgroundNotificationService.configureNotificationPoll(
+        userId: user['id'] as int,
+        token: token,
+        apiBaseUrl: ApiService.effectiveBaseUrl,
+      );
       if (_legacyLocalUser != null) {
         await _syncLocalDataToCloud(
             user['id'] as int, user['username'] as String);
@@ -923,6 +929,11 @@ class _LoginScreenState extends State<LoginScreen>
       await StorageService.saveLoginSession(username, token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', userInfo['id'] as int);
+      await BackgroundNotificationService.configureNotificationPoll(
+        userId: userInfo['id'] as int,
+        token: token,
+        apiBaseUrl: ApiService.effectiveBaseUrl,
+      );
       await _syncLocalDataToCloud(userInfo['id'] as int, username);
       _finalizeLoginAndNavigate(username);
     } else {

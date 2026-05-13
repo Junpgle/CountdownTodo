@@ -22,6 +22,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
+import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
@@ -177,6 +178,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasTeamConflictDot = false;
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
+  final Set<int> _handledForegroundNotificationIds = <int>{};
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
@@ -299,6 +301,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
+    _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
 
@@ -431,6 +434,18 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 🚀 清理 7 天前的过期图片
       TodoItem.cleanupAnalysisImages();
     });
+  }
+
+  Future<void> _configureBackgroundNotificationPoll() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('current_user_id');
+    final token = prefs.getString('auth_token');
+    if (userId == null || token == null || token.isEmpty) return;
+    await BackgroundNotificationService.configureNotificationPoll(
+      userId: userId,
+      token: token,
+      apiBaseUrl: ApiService.effectiveBaseUrl,
+    );
   }
 
   @override
@@ -881,6 +896,33 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'NEW_JOIN_REQUEST':
       case 'PENDING_COUNTS':
         _fetchTeamPendingCount();
+        break;
+
+      case 'NOTIFICATION_EVENT':
+        _fetchTeamPendingCount();
+        final eventId = signal.delta is Map
+            ? int.tryParse(signal.delta['id']?.toString() ?? '')
+            : null;
+        if (eventId != null && eventId > 0) {
+          unawaited(
+            BackgroundNotificationService.markNotificationEventShown(
+              eventId,
+            ),
+          );
+          if (!_handledForegroundNotificationIds.add(eventId)) {
+            break;
+          }
+        }
+        final title =
+            signal.delta is Map ? signal.delta['title']?.toString() : null;
+        final body =
+            signal.delta is Map ? signal.delta['body']?.toString() : null;
+        if (title != null && title.isNotEmpty) {
+          NotificationService.showGenericNotification(
+            title: title,
+            body: body ?? '',
+          );
+        }
         break;
 
       case 'NEW_ANNOUNCEMENT':
@@ -2155,7 +2197,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       }));
 
       if (mounted) {
-        setState(() => _teamPendingCount = totalPending);
+        final backgroundUnread = await BackgroundNotificationService
+            .getUnreadBackgroundNotifications();
+        setState(
+            () => _teamPendingCount = totalPending + backgroundUnread.length);
       }
     } catch (e) {
       debugPrint('❌ [首页] 获取团队消息计数失败: $e');
@@ -3472,6 +3517,18 @@ class _HomeDashboardState extends State<HomeDashboard>
                         page: TeamManagementScreen(username: widget.username),
                         sourceKey: _teamsButtonKey,
                       );
+                      final unreadBackgroundNotifications =
+                          await BackgroundNotificationService
+                              .getUnreadBackgroundNotifications();
+                      final notificationIds = unreadBackgroundNotifications
+                          .map((e) => e['id'])
+                          .whereType<num>()
+                          .map((e) => e.toInt())
+                          .toList();
+                      await ApiService.markNotificationsRead(notificationIds);
+                      await BackgroundNotificationService
+                          .clearUnreadBackgroundNotifications();
+                      await _fetchTeamPendingCount();
                       _loadAllData(deferred: true);
                     },
                     onSettings: () async {
