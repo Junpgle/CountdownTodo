@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
 import 'dart:io';
@@ -481,15 +482,83 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           const SizedBox(height: 36),
           _buildReflection(cs),
           const SizedBox(height: 28),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '由 CountDownTodo 生成',
-              style: TextStyle(
-                fontSize: 13,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.62),
-                fontWeight: FontWeight.w600,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  '由 CountDownTodo 生成',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.62),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
+              _buildWebsiteQr(cs),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebsiteQr(ColorScheme cs) {
+    const siteUrl = 'https://countdowntodo.junpgle.me/';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '扫码访问',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade800,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                siteUrl,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          QrImageView(
+            data: siteUrl,
+            version: QrVersions.auto,
+            size: 96,
+            gapless: false,
+            backgroundColor: Colors.white,
+            eyeStyle: const QrEyeStyle(
+              eyeShape: QrEyeShape.square,
+              color: Colors.black,
+            ),
+            dataModuleStyle: const QrDataModuleStyle(
+              dataModuleShape: QrDataModuleShape.square,
+              color: Colors.black,
             ),
           ),
         ],
