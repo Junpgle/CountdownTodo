@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
+import 'dart:io';
 import '../models.dart';
 import '../services/timeline_service.dart';
 import '../services/pomodoro_service.dart';
@@ -23,6 +27,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   TimelineDimension _dimension = TimelineDimension.daily;
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
+  bool _isExportingPoster = false;
   late AnimationController _animationController;
 
   // Data points
@@ -328,6 +333,170 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     return category == '社交通讯' || category == '影音娱乐' || category == '游戏与辅助';
   }
 
+  Future<void> _saveTimelinePoster() async {
+    if (_summary == null || _isExportingPoster) return;
+
+    setState(() => _isExportingPoster = true);
+    final posterKey = GlobalKey();
+    OverlayEntry? entry;
+
+    try {
+      final overlay = Overlay.of(context);
+      final theme = Theme.of(context);
+      final cs = theme.colorScheme;
+
+      entry = OverlayEntry(
+        builder: (_) => Positioned(
+          left: 0,
+          top: 0,
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: 0.01,
+              child: Material(
+                color: Colors.transparent,
+                child: RepaintBoundary(
+                  key: posterKey,
+                  child: Theme(
+                    data: theme,
+                    child: MediaQuery(
+                      data: const MediaQueryData(
+                        size: Size(1080, 1920),
+                        devicePixelRatio: 1,
+                        textScaler: TextScaler.noScaling,
+                      ),
+                      child: _buildSharePoster(cs),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      overlay.insert(entry);
+      await WidgetsBinding.instance.endOfFrame;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      final boundary = posterKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw StateError('分享长图渲染失败');
+      }
+
+      final image = await boundary.toImage(pixelRatio: 2);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) {
+        throw StateError('PNG 编码失败');
+      }
+
+      final dir = await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final safePeriod = _getPeriodName();
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('${dir.path}${Platform.pathSeparator}'
+          'CountDownTodo_${safePeriod}_timeline_$timestamp.png');
+      await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('长图已保存：${file.path}'),
+          action: SnackBarAction(
+            label: '打开',
+            onPressed: () => OpenFile.open(file.path),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('保存时间线长图失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存长图失败：$e')),
+        );
+      }
+    } finally {
+      entry?.remove();
+      if (mounted) setState(() => _isExportingPoster = false);
+    }
+  }
+
+  Widget _buildSharePoster(ColorScheme cs) {
+    return Container(
+      width: 1080,
+      color: cs.surface,
+      padding: const EdgeInsets.fromLTRB(56, 56, 56, 64),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CountDownTodo ${_getPeriodName()}总结',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _getDateRangeString(),
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                DateFormat('yyyy.MM.dd HH:mm').format(DateTime.now()),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          _buildStatsOverview(cs, true),
+          const SizedBox(height: 36),
+          _buildSectionTitle('概览回顾', Icons.insights_rounded, cs),
+          const SizedBox(height: 16),
+          _buildRangeSummary(cs, true),
+          _buildOverviewInsightPanels(cs, true),
+          const SizedBox(height: 36),
+          _buildSectionTitle('数据深度洞察', Icons.analytics_outlined, cs),
+          const SizedBox(height: 16),
+          _buildSubjectDonutChart(cs),
+          const SizedBox(height: 36),
+          _buildReflection(cs),
+          const SizedBox(height: 28),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '由 CountDownTodo 生成',
+              style: TextStyle(
+                fontSize: 13,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.62),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -570,6 +739,21 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         icon: const Icon(Icons.arrow_back_ios_new_rounded),
         onPressed: () => Navigator.pop(context),
       ),
+      actions: [
+        IconButton(
+          tooltip: '保存分享长图',
+          icon: _isExportingPoster
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.ios_share_rounded),
+          onPressed:
+              _isLoading || _isExportingPoster ? null : _saveTimelinePoster,
+        ),
+        const SizedBox(width: 8),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(
           children: [
