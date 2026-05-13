@@ -366,7 +366,54 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Future<void> _saveTimelinePoster() async {
+  Future<void> _chooseAndSaveTimelinePoster() async {
+    if (_summary == null || _isExportingPoster) return;
+
+    final includeMedals = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '保存分享长图',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.emoji_events_outlined),
+                  title: const Text('带上勋章墙'),
+                  subtitle: const Text('适合展示完整阶段成果'),
+                  onTap: () => Navigator.pop(context, true),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('不带勋章墙'),
+                  subtitle: const Text('长图更短，适合快速分享'),
+                  onTap: () => Navigator.pop(context, false),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (includeMedals == null) return;
+    await _saveTimelinePoster(includeMedals: includeMedals);
+  }
+
+  Future<void> _saveTimelinePoster({required bool includeMedals}) async {
     if (_summary == null || _isExportingPoster) return;
 
     setState(() => _isExportingPoster = true);
@@ -397,7 +444,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                         devicePixelRatio: 1,
                         textScaler: TextScaler.noScaling,
                       ),
-                      child: _buildSharePoster(cs),
+                      child: _buildSharePoster(
+                        cs,
+                        includeMedals: includeMedals,
+                      ),
                     ),
                   ),
                 ),
@@ -454,7 +504,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     }
   }
 
-  Widget _buildSharePoster(ColorScheme cs) {
+  Widget _buildSharePoster(ColorScheme cs, {required bool includeMedals}) {
     return Container(
       width: 1080,
       color: cs.surface,
@@ -507,6 +557,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           const SizedBox(height: 16),
           _buildRangeSummary(cs, true),
           _buildOverviewInsightPanels(cs, true),
+          if (includeMedals) _buildMedalWall(cs, true),
           const SizedBox(height: 36),
           _buildSectionTitle('数据深度洞察', Icons.analytics_outlined, cs),
           const SizedBox(height: 16),
@@ -671,6 +722,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                                     colorScheme, isWide),
                                                 _buildOverviewInsightPanels(
                                                     colorScheme, isWide),
+                                                _buildMedalWall(
+                                                    colorScheme, isWide),
                                                 if (_dimension ==
                                                     TimelineDimension
                                                         .daily) ...[
@@ -726,6 +779,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                       _buildRangeSummary(colorScheme, isWide),
                                       _buildOverviewInsightPanels(
                                           colorScheme, isWide),
+                                      _buildMedalWall(colorScheme, isWide),
                                       if (_dimension ==
                                           TimelineDimension.daily) ...[
                                         const SizedBox(height: 40),
@@ -851,7 +905,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 )
               : const Icon(Icons.ios_share_rounded),
           onPressed:
-              _isLoading || _isExportingPoster ? null : _saveTimelinePoster,
+              _isLoading || _isExportingPoster
+                  ? null
+                  : _chooseAndSaveTimelinePoster,
         ),
         const SizedBox(width: 8),
       ],
@@ -1292,49 +1348,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildAchievementStrip(ColorScheme cs) {
-    final summary = _summary;
-    if (summary == null) return const SizedBox();
-    final badges =
-        <({String title, String desc, IconData icon, Color color})>[];
-    if (summary.deepWorkCount > 0) {
-      badges.add((
-        title: '深度工作者',
-        desc: '${summary.deepWorkCount} 次深度专注',
-        icon: Icons.diamond_outlined,
-        color: Colors.purple
-      ));
-    }
-    if (_deadlineSprintCount > 0) {
-      badges.add((
-        title: 'DDL驯服者',
-        desc: '截止前完成 $_deadlineSprintCount 项',
-        icon: Icons.flag_outlined,
-        color: Colors.redAccent
-      ));
-    }
-    if (summary.peakHour >= 20 || summary.peakHour <= 5) {
-      badges.add((
-        title: '深夜效率王',
-        desc: '${summary.peakHour}:00 产出最高',
-        icon: Icons.nightlight_round,
-        color: Colors.indigo
-      ));
-    } else {
-      badges.add((
-        title: '黄金${summary.peakHour}点',
-        desc: '你的高效窗口',
-        icon: Icons.wb_sunny_outlined,
-        color: Colors.orange
-      ));
-    }
-    if (summary.subjectDistribution.length >= 4) {
-      badges.add((
-        title: '学习多面手',
-        desc: '覆盖 ${summary.subjectDistribution.length} 个主题',
-        icon: Icons.hub_outlined,
-        color: Colors.teal
-      ));
-    }
+    final badges = _earnedMedals();
+    if (badges.isEmpty) return const SizedBox();
 
     return Wrap(
       spacing: 10,
@@ -1368,6 +1383,332 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         );
       }).toList(),
     );
+  }
+
+  List<
+      ({
+        String title,
+        String desc,
+        DateTime? earnedAt,
+        IconData icon,
+        Color color
+      })> _earnedMedals() {
+    final summary = _summary;
+    if (summary == null) return const [];
+    final earnedAt = summary.actualEndTime ??
+        summary.latestTodoCompletionTime ??
+        summary.longestPomodoroDate ??
+        _selectedDate;
+    final badges = <({
+      String title,
+      String desc,
+      DateTime? earnedAt,
+      IconData icon,
+      Color color
+    })>[];
+    if (summary.pomodoroCount >= 1) {
+      badges.add((
+        title: '专注启动者',
+        desc: '记录 ${summary.pomodoroCount} 次专注',
+        earnedAt: earnedAt,
+        icon: Icons.play_circle_outline_rounded,
+        color: Colors.green
+      ));
+    }
+    if (_totalFocusMinutes >= 120) {
+      badges.add((
+        title: '两小时守门员',
+        desc: '累计专注 ${_formatMinutes(_totalFocusMinutes)}',
+        earnedAt: earnedAt,
+        icon: Icons.hourglass_bottom_rounded,
+        color: Colors.blue
+      ));
+    }
+    if (_totalFocusMinutes >= 480) {
+      badges.add((
+        title: '八小时长征',
+        desc: '累计专注 ${_formatMinutes(_totalFocusMinutes)}',
+        earnedAt: earnedAt,
+        icon: Icons.terrain_rounded,
+        color: Colors.brown
+      ));
+    }
+    if (summary.deepWorkCount > 0) {
+      badges.add((
+        title: '深度工作者',
+        desc: '${summary.deepWorkCount} 次深度专注',
+        earnedAt: summary.longestPomodoroDate ?? earnedAt,
+        icon: Icons.diamond_outlined,
+        color: Colors.purple
+      ));
+    }
+    if (summary.longestPomodoroMinutes >= 90) {
+      badges.add((
+        title: '长专注选手',
+        desc: '单次专注 ${summary.longestPomodoroMinutes} 分钟',
+        earnedAt: summary.longestPomodoroDate ?? earnedAt,
+        icon: Icons.workspace_premium_rounded,
+        color: Colors.amber
+      ));
+    }
+    if (summary.interruptionRate <= 0.1 && summary.pomodoroCount >= 3) {
+      badges.add((
+        title: '稳定输出',
+        desc: '中断率 ${_formatPercent(summary.interruptionRate)}',
+        earnedAt: earnedAt,
+        icon: Icons.shield_moon_rounded,
+        color: Colors.indigoAccent
+      ));
+    }
+    if (_completedCount >= 1) {
+      badges.add((
+        title: '任务收割者',
+        desc: '完成 $_completedCount 个任务',
+        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
+        icon: Icons.task_alt_rounded,
+        color: Colors.green
+      ));
+    }
+    if (_totalCount > 0 && _completedCount / _totalCount >= 0.8) {
+      badges.add((
+        title: '计划兑现者',
+        desc: '完成率 ${_formatPercent(_completedCount / _totalCount)}',
+        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
+        icon: Icons.fact_check_outlined,
+        color: Colors.lightGreen
+      ));
+    }
+    if (_earlyCompletionCount > 0) {
+      badges.add((
+        title: '提前交付者',
+        desc: '提前完成 $_earlyCompletionCount 项',
+        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
+        icon: Icons.rocket_launch_outlined,
+        color: Colors.cyan
+      ));
+    }
+    if (_deadlineSprintCount > 0) {
+      badges.add((
+        title: 'DDL驯服者',
+        desc: '截止前完成 $_deadlineSprintCount 项',
+        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
+        icon: Icons.flag_outlined,
+        color: Colors.redAccent
+      ));
+    }
+    final hasRhythm = summary.hourlyDistribution.any((v) => v > 0);
+    if (hasRhythm && (summary.peakHour >= 20 || summary.peakHour <= 5)) {
+      badges.add((
+        title: '深夜效率王',
+        desc: '${summary.peakHour}:00 产出最高',
+        earnedAt: earnedAt,
+        icon: Icons.nightlight_round,
+        color: Colors.indigo
+      ));
+    } else if (hasRhythm) {
+      badges.add((
+        title: '黄金${summary.peakHour}点',
+        desc: '你的高效窗口',
+        earnedAt: earnedAt,
+        icon: Icons.wb_sunny_outlined,
+        color: Colors.orange
+      ));
+    }
+    if (summary.subjectDistribution.length >= 4) {
+      badges.add((
+        title: '学习多面手',
+        desc: '覆盖 ${summary.subjectDistribution.length} 个主题',
+        earnedAt: earnedAt,
+        icon: Icons.hub_outlined,
+        color: Colors.teal
+      ));
+    }
+    final topSubject = summary.topSubject;
+    final topSubjectRatio = _subjectRatio(summary, topSubject);
+    if (topSubject != '全能型' && topSubjectRatio >= 45) {
+      badges.add((
+        title: '主线推进者',
+        desc: '$topSubject 占 $topSubjectRatio%',
+        earnedAt: earnedAt,
+        icon: Icons.route_outlined,
+        color: Colors.deepPurple
+      ));
+    }
+    if (summary.searchCount >= 3) {
+      badges.add((
+        title: '知识侦察兵',
+        desc: '${summary.searchCount} 次知识检索',
+        earnedAt: summary.lastSearchTime ?? earnedAt,
+        icon: Icons.travel_explore_rounded,
+        color: Colors.teal
+      ));
+    }
+    if (summary.examPrepCount >= 3) {
+      badges.add((
+        title: '备考冲刺者',
+        desc: '${summary.examPrepCount} 次备考信号',
+        earnedAt: earnedAt,
+        icon: Icons.school_outlined,
+        color: Colors.red
+      ));
+    }
+    if (summary.consecutiveActiveDays >= 3) {
+      badges.add((
+        title: '长跑型选手',
+        desc: '连续活跃 ${summary.consecutiveActiveDays} 天',
+        earnedAt: earnedAt,
+        icon: Icons.local_fire_department_outlined,
+        color: Colors.deepOrange
+      ));
+    }
+    if (_courseCount >= 1) {
+      badges.add((
+        title: '课表同行者',
+        desc: '记录 $_courseCount 节课',
+        earnedAt: earnedAt,
+        icon: Icons.event_note_outlined,
+        color: Colors.blueGrey
+      ));
+    }
+    if (_maxDailyCourseCount >= 5) {
+      badges.add((
+        title: '满课生存者',
+        desc: '最满一天 $_maxDailyCourseCount 节课',
+        earnedAt: earnedAt,
+        icon: Icons.view_day_outlined,
+        color: Colors.deepOrange
+      ));
+    }
+    if (_screenTimeSeconds > 0 &&
+        _productiveScreenSeconds / _screenTimeSeconds >= 0.5) {
+      badges.add((
+        title: '屏幕掌控者',
+        desc:
+            '生产力应用 ${_formatPercent(_productiveScreenSeconds / _screenTimeSeconds)}',
+        earnedAt: earnedAt,
+        icon: Icons.desktop_windows_outlined,
+        color: Colors.blueGrey
+      ));
+    }
+    if (_screenTimeSeconds > 0 &&
+        _distractionScreenSeconds / _screenTimeSeconds <= 0.15) {
+      badges.add((
+        title: '低分心模式',
+        desc:
+            '分心应用 ${_formatPercent(_distractionScreenSeconds / _screenTimeSeconds)}',
+        earnedAt: earnedAt,
+        icon: Icons.visibility_off_outlined,
+        color: Colors.grey
+      ));
+    }
+
+    return badges;
+  }
+
+  Widget _buildMedalWall(ColorScheme cs, bool isWide) {
+    final medals = _earnedMedals();
+    if (medals.isEmpty) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader('勋章墙', Icons.emoji_events_outlined, cs),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: medals.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: isWide ? 3 : 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              mainAxisExtent: 104,
+            ),
+            itemBuilder: (context, index) {
+              final medal = medals[index];
+              return Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: medal.color.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(medal.icon, color: medal.color, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            medal.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            medal.desc,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '获得于 ${_formatMedalTime(medal.earnedAt)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color:
+                                  cs.onSurfaceVariant.withValues(alpha: 0.64),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatMedalTime(DateTime? time) {
+    if (time == null) return _getDateRangeString();
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('HH:mm').format(time);
+      case TimelineDimension.weekly:
+      case TimelineDimension.monthly:
+        return DateFormat('MM/dd HH:mm').format(time);
+      case TimelineDimension.yearly:
+        return DateFormat('yyyy/MM/dd').format(time);
+    }
   }
 
   Widget _buildStatItem(String label, String value, String unit, IconData icon,
