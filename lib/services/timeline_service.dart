@@ -281,6 +281,7 @@ class TimelineService {
     int countdownCompleted = 0;
     List<String> attendedCourses = [];
     int pomodoroCount = 0;
+    int longestPomoSecs = 0;
 
     try {
       // 1. 搜索
@@ -355,13 +356,16 @@ class TimelineService {
       );
       for (var row in poms) {
         final status = row['status'] as String?;
+        final actualSecs = row['actual_duration'] as int? ?? 0;
+        
         if (status == 'completed') {
           pomodoroCount++;
+          if (actualSecs > longestPomoSecs) longestPomoSecs = actualSecs;
         } else if (status == 'interrupted') {
-          final actualSecs = row['actual_duration'] as int? ?? 0;
           final plannedSecs = row['planned_duration'] as int? ?? 0;
           if (plannedSecs == 0 || actualSecs >= plannedSecs * 0.9) {
             pomodoroCount++;
+            if (actualSecs > longestPomoSecs) longestPomoSecs = actualSecs;
           }
         }
       }
@@ -381,7 +385,130 @@ class TimelineService {
       countdownCompletedCount: countdownCompleted,
       attendedCourses: attendedCourses,
       pomodoroCount: pomodoroCount,
+      longestPomodoroMinutes: longestPomoSecs ~/ 60,
+      latestTodoCompletionTime: todoCompleted > 0 ? DateTime.fromMillisecondsSinceEpoch(
+        (await db.rawQuery('SELECT MAX(updated_at) as m FROM todos WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?', [startOfDayMs, endOfDayMs])).first['m'] as int? ?? 0
+      ) : null,
     );
+  }
+
+  Future<TimelineSummary> getSummaryForRange(String username, DateTime start, DateTime end) async {
+    final startMs = start.millisecondsSinceEpoch;
+    final endMs = end.millisecondsSinceEpoch;
+    
+    final db = await DatabaseHelper.instance.database;
+
+    try {
+      // 1. Search
+      final searches = await db.rawQuery(
+        'SELECT COUNT(*) as count, MAX(timestamp) as last FROM search_history WHERE timestamp >= ? AND timestamp < ?',
+        [startMs, endMs],
+      );
+      final searchCount = searches.first['count'] as int? ?? 0;
+      final lastSearchTs = searches.first['last'] as int?;
+
+      // 2. Todos
+      final todoStats = await db.rawQuery(
+        'SELECT '
+        'COUNT(CASE WHEN created_at >= ? AND created_at < ? THEN 1 END) as created, '
+        'COUNT(CASE WHEN is_completed = 1 AND updated_at >= ? AND updated_at < ? THEN 1 END) as completed '
+        'FROM todos WHERE is_deleted = 0',
+        [startMs, endMs, startMs, endMs],
+      );
+      
+      // 3. Countdowns
+      final cdStats = await db.rawQuery(
+        'SELECT '
+        'COUNT(CASE WHEN created_at >= ? AND created_at < ? THEN 1 END) as created, '
+        'COUNT(CASE WHEN is_completed = 1 AND updated_at >= ? AND updated_at < ? THEN 1 END) as completed '
+        'FROM countdowns WHERE is_deleted = 0',
+        [startMs, endMs, startMs, endMs],
+      );
+
+      // 4. Pomodoro
+      final pomoStats = await db.rawQuery(
+        'SELECT uuid, todo_title, actual_duration, start_time FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? AND '
+        '(status = "completed" OR (status = "interrupted" AND actual_duration >= planned_duration * 0.9)) '
+        'ORDER BY actual_duration DESC LIMIT 1',
+        [startMs, endMs],
+      );
+
+      // 5. Highlights - Latest Completion
+      final latestTodoStats = await db.rawQuery(
+        'SELECT content, updated_at FROM todos '
+        'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+        'ORDER BY updated_at DESC LIMIT 1',
+        [startMs, endMs],
+      );
+
+      // 6. Highlights - Most Productive Day
+      final productivity = await db.rawQuery(
+        'SELECT strftime("%Y-%m-%d", datetime(start_time / 1000, "unixepoch", "localtime")) as day, '
+        'SUM(actual_duration) as total_dur FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'GROUP BY day ORDER BY total_dur DESC LIMIT 1',
+        [startMs, endMs],
+      );
+      
+      DateTime? bestDay;
+      int bestDayMinutes = 0;
+      int bestDayCompleted = 0;
+      
+      if (productivity.isNotEmpty && productivity.first['day'] != null) {
+        final dayStr = productivity.first['day'] as String;
+        bestDay = DateFormat('yyyy-MM-dd').parse(dayStr);
+        bestDayMinutes = (productivity.first['total_dur'] as int? ?? 0) ~/ 60;
+        
+        // Find completions on that day
+        final dayStart = bestDay.millisecondsSinceEpoch;
+        final dayEnd = bestDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+        
+        final dayCompletions = await db.rawQuery(
+          'SELECT (SELECT COUNT(*) FROM todos WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) + '
+          '(SELECT COUNT(*) FROM countdowns WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) as c',
+          [dayStart, dayEnd, dayStart, dayEnd],
+        );
+        bestDayCompleted = dayCompletions.first['c'] as int? ?? 0;
+      }
+
+      final hasPomo = pomoStats.isNotEmpty;
+      final hasTodo = latestTodoStats.isNotEmpty;
+
+      return TimelineSummary(
+        searchCount: searchCount,
+        lastSearchTime: lastSearchTs != null ? DateTime.fromMillisecondsSinceEpoch(lastSearchTs) : null,
+        todoCreatedCount: todoStats.first['created'] as int? ?? 0,
+        todoEditedCount: 0,
+        todoCompletedCount: todoStats.first['completed'] as int? ?? 0,
+        countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
+        countdownEditedCount: 0,
+        countdownCompletedCount: cdStats.first['completed'] as int? ?? 0,
+        attendedCourses: [],
+        pomodoroCount: (await db.rawQuery('SELECT COUNT(*) as c FROM pomodoro_records WHERE is_deleted=0 AND start_time >= ? AND start_time < ?', [startMs, endMs])).first['c'] as int? ?? 0,
+        longestPomodoroMinutes: hasPomo ? (pomoStats.first['actual_duration'] as int? ?? 0) ~/ 60 : 0,
+        longestPomodoroTitle: hasPomo ? (pomoStats.first['todo_title'] as String? ?? '无题') : null,
+        longestPomodoroDate: hasPomo ? DateTime.fromMillisecondsSinceEpoch(pomoStats.first['start_time'] as int) : null,
+        latestTodoCompletionTime: hasTodo ? DateTime.fromMillisecondsSinceEpoch(latestTodoStats.first['updated_at'] as int) : null,
+        latestTodoTitle: hasTodo ? (latestTodoStats.first['content'] as String? ?? '未命名任务') : null,
+        mostProductiveDay: bestDay,
+        mostProductiveDayDurationMinutes: bestDayMinutes,
+        mostProductiveDayCompletedCount: bestDayCompleted,
+      );
+    } catch (e) {
+      debugPrint('❌ getSummaryForRange error: $e');
+      return TimelineSummary(
+        searchCount: 0,
+        todoCreatedCount: 0,
+        todoEditedCount: 0,
+        todoCompletedCount: 0,
+        countdownCreatedCount: 0,
+        countdownEditedCount: 0,
+        countdownCompletedCount: 0,
+        attendedCourses: [],
+        pomodoroCount: 0,
+      );
+    }
   }
 }
 
@@ -396,6 +523,16 @@ class TimelineSummary {
   final int countdownCompletedCount;
   final List<String> attendedCourses;
   final int pomodoroCount;
+  
+  // Highlights
+  final int longestPomodoroMinutes;
+  final String? longestPomodoroTitle;
+  final DateTime? longestPomodoroDate;
+  final DateTime? latestTodoCompletionTime;
+  final String? latestTodoTitle;
+  final DateTime? mostProductiveDay;
+  final int mostProductiveDayDurationMinutes;
+  final int mostProductiveDayCompletedCount;
 
   TimelineSummary({
     required this.searchCount,
@@ -408,5 +545,13 @@ class TimelineSummary {
     required this.countdownCompletedCount,
     required this.attendedCourses,
     required this.pomodoroCount,
+    this.longestPomodoroMinutes = 0,
+    this.longestPomodoroTitle,
+    this.longestPomodoroDate,
+    this.latestTodoCompletionTime,
+    this.latestTodoTitle,
+    this.mostProductiveDay,
+    this.mostProductiveDayDurationMinutes = 0,
+    this.mostProductiveDayCompletedCount = 0,
   });
 }
