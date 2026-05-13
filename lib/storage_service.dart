@@ -3174,6 +3174,9 @@ class StorageService {
           screenPayload != null;
 
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
+        if (!forceFullSync && !hasPendingUpload()) {
+          return false;
+        }
         final remotePayloadEmpty =
             (syncResponse['server_todos'] as List?)?.isEmpty == true &&
                 (syncResponse['server_todo_groups'] as List?)?.isEmpty ==
@@ -3249,13 +3252,32 @@ class StorageService {
         if (indCompletions != null) {
           final batch = db.batch();
           for (var ic in indCompletions) {
+            if (ic is! Map) continue;
+            final todoUuid = ic['todo_uuid']?.toString();
+            if (todoUuid == null || todoUuid.isEmpty) continue;
+            final serverUpdatedAt =
+                int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
+            final existing = await db.query(
+              'todo_completions',
+              where: 'todo_uuid = ? AND user_id = ?',
+              whereArgs: [todoUuid, userId],
+              limit: 1,
+            );
+            final localUpdatedAt = existing.isNotEmpty
+                ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
+                : 0;
+            if (serverUpdatedAt > 0 && serverUpdatedAt < localUpdatedAt) {
+              continue;
+            }
             batch.insert(
                 'todo_completions',
                 {
-                  'todo_uuid': ic['todo_uuid'],
+                  'todo_uuid': todoUuid,
                   'user_id': userId,
                   'is_completed': ic['is_completed'],
-                  'updated_at': DateTime.now().millisecondsSinceEpoch,
+                  'updated_at': serverUpdatedAt > 0
+                      ? serverUpdatedAt
+                      : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
           }
