@@ -16,6 +16,14 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 
+String? normalizeInviteCode(String? code) {
+  final value = code?.trim();
+  if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
+    return null;
+  }
+  return value.toUpperCase();
+}
+
 class TeamManagementScreen extends StatefulWidget {
   final String username;
   final String? initialTarget; // 🚀 新增：跳转目标
@@ -110,6 +118,57 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     final str = s.trim();
     if (str.runes.isEmpty) return '?';
     return String.fromCharCode(str.runes.first).toUpperCase();
+  }
+
+  String? _normalizeInviteCode(String? code) {
+    final value = code?.trim();
+    if (value == null || value.isEmpty || value.toLowerCase() == 'null') {
+      return null;
+    }
+    return value.toUpperCase();
+  }
+
+  String _buildInviteText(Team team, String inviteCode) {
+    return '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[$inviteCode]';
+  }
+
+  Future<String?> _ensureInviteCode(Team team) async {
+    final existingCode = _normalizeInviteCode(team.inviteCode);
+    if (existingCode != null) return existingCode;
+
+    final res = await ApiService.generateInviteCode(team.uuid);
+    if (res['success'] == true) {
+      final generatedCode = _normalizeInviteCode(res['code']?.toString());
+      await _loadTeams(isSilent: true);
+      if (generatedCode != null) return generatedCode;
+
+      final refreshedTeam =
+          _teams.where((t) => t.uuid == team.uuid).firstOrNull;
+      final refreshedCode = _normalizeInviteCode(refreshedTeam?.inviteCode);
+      if (refreshedCode != null) return refreshedCode;
+    }
+
+    if (mounted) {
+      _showErrorToast(res['error'] ?? res['message'] ?? '邀请码生成失败');
+    }
+    return null;
+  }
+
+  Future<void> _copyTeamInviteText(Team team) async {
+    final inviteCode = await _ensureInviteCode(team);
+    if (inviteCode == null || !mounted) return;
+
+    await Clipboard.setData(
+        ClipboardData(text: _buildInviteText(team, inviteCode)));
+    _showSuccessToast('邀请文案已复制，快去分享吧 📋');
+  }
+
+  Future<void> _copyInviteCode(Team team) async {
+    final inviteCode = await _ensureInviteCode(team);
+    if (inviteCode == null || !mounted) return;
+
+    await Clipboard.setData(ClipboardData(text: inviteCode));
+    _showSuccessToast('邀请码已复制');
   }
 
   Future<void> _checkClipboardForInvite() async {
@@ -691,6 +750,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                       team: _selectedTeam!,
                       onRefresh: _loadTeams,
                       username: widget.username,
+                      copyInviteText: _copyTeamInviteText,
+                      copyInviteCode: _copyInviteCode,
                       key: ValueKey(_selectedTeam!.uuid), // 强制刷新
                     ),
             ),
@@ -1423,40 +1484,36 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                         fontSize: 13,
                         fontWeight: FontWeight.w500)),
                 const Spacer(),
-                if (team.inviteCode != null)
-                  InkWell(
-                    onTap: () {
-                      final inviteText =
-                          '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
-                      Clipboard.setData(ClipboardData(text: inviteText));
-                      _showSuccessToast('邀请文案已复制，快去分享吧 📋');
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.05)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.grey.withValues(alpha: 0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          Text('邀请码: ${team.inviteCode}',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w600)),
-                          const SizedBox(width: 6),
-                          Icon(Icons.copy_rounded,
-                              size: 12, color: Colors.grey.shade500),
-                        ],
-                      ),
+                InkWell(
+                  onTap: () => unawaited(_copyTeamInviteText(team)),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          '邀请码: ${_normalizeInviteCode(team.inviteCode) ?? "尚未生成"}',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(Icons.copy_rounded,
+                            size: 12, color: Colors.grey.shade500),
+                      ],
                     ),
                   ),
+                ),
               ],
             ),
 
@@ -1642,10 +1699,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               color: Colors.blueAccent,
               onTap: () {
                 Navigator.pop(context);
-                final inviteText =
-                    '邀请您加入「${team.name}」团队进行协作。复制此消息后打开App即可自动申请加入。\n\n邀请码：[${team.inviteCode}]';
-                Clipboard.setData(ClipboardData(text: inviteText));
-                _showSuccessToast('邀请文案已复制 📋');
+                unawaited(_copyTeamInviteText(team));
               },
             ),
             const SizedBox(height: 12),
@@ -1969,11 +2023,15 @@ class _TeamDetailView extends StatefulWidget {
   final Team team;
   final VoidCallback onRefresh;
   final String username;
+  final Future<void> Function(Team team) copyInviteText;
+  final Future<void> Function(Team team) copyInviteCode;
   const _TeamDetailView(
       {super.key,
       required this.team,
       required this.onRefresh,
-      required this.username});
+      required this.username,
+      required this.copyInviteText,
+      required this.copyInviteCode});
 
   @override
   State<_TeamDetailView> createState() => _TeamDetailViewState();
@@ -2059,7 +2117,10 @@ class _TeamDetailViewState extends State<_TeamDetailView>
                   scrollController: ScrollController(),
                   onRefresh: widget.onRefresh),
               // Tab 3: 管理
-              _TeamSettingsView(team: widget.team, onRefresh: widget.onRefresh),
+              _TeamSettingsView(
+                  team: widget.team,
+                  onRefresh: widget.onRefresh,
+                  copyInviteCode: widget.copyInviteCode),
             ],
           ),
         ),
@@ -2115,13 +2176,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
-          onPressed: () {
-            Clipboard.setData(ClipboardData(
-                text:
-                    '邀请您加入「${widget.team.name}」团队，邀请码：[${widget.team.inviteCode}]'));
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('邀请码已复制 📋')));
-          },
+          onPressed: () => unawaited(widget.copyInviteText(widget.team)),
           icon: const Icon(Icons.person_add_rounded, size: 20),
           label: const Text('复制邀请码',
               style: TextStyle(fontWeight: FontWeight.bold)),
@@ -2241,7 +2296,11 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
 class _TeamSettingsView extends StatelessWidget {
   final Team team;
   final VoidCallback onRefresh;
-  const _TeamSettingsView({required this.team, required this.onRefresh});
+  final Future<void> Function(Team team) copyInviteCode;
+  const _TeamSettingsView(
+      {required this.team,
+      required this.onRefresh,
+      required this.copyInviteCode});
 
   @override
   Widget build(BuildContext context) {
@@ -2261,14 +2320,10 @@ class _TeamSettingsView extends StatelessWidget {
           icon: Icons.vpn_key_rounded,
           color: Colors.blueAccent,
           title: '团队邀请码',
-          subtitle: team.inviteCode ?? '尚未生成',
+          subtitle: normalizeInviteCode(team.inviteCode) ?? '尚未生成',
           trailing:
               const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: team.inviteCode ?? ''));
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('邀请码已复制')));
-          },
+          onTap: () => unawaited(copyInviteCode(team)),
         ),
         if (isAdmin) ...[
           const SizedBox(height: 32),

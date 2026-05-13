@@ -2593,6 +2593,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   children: [
                     Expanded(
                       child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onScaleUpdate: (details) {
                           final now = DateTime.now();
                           if (_lastModeSwitch != null &&

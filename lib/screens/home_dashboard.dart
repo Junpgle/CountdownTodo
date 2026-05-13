@@ -22,6 +22,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
+import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
@@ -130,6 +131,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     'timeline': true,
   };
   Timer? _courseTimer;
+  Timer? _todoPersistDebounce;
+  Completer<void>? _todoPersistDebounceCompleter;
+  Future<void> _todoPersistChain = Future.value();
+  List<TodoItem>? _pendingTodosToPersist;
+  List<TodoItem>? _persistingTodosSnapshot;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
   final GlobalKey _settingsButtonKey = GlobalKey();
   final GlobalKey _pomodoroCardKey = GlobalKey();
@@ -177,6 +183,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasTeamConflictDot = false;
   String? _currentSelectedTeamUuid; // 🚀 选中的团队 ID
   String? _currentSelectedTeamName; // 🚀 选中的团队名称
+  final Set<int> _handledForegroundNotificationIds = <int>{};
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
@@ -299,6 +306,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
+    _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
 
@@ -433,6 +441,19 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
   }
 
+  Future<void> _configureBackgroundNotificationPoll() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('current_user_id');
+    final token =
+        ApiService.getToken() ?? prefs.getString(StorageService.KEY_AUTH_TOKEN);
+    if (userId == null || token == null || token.isEmpty) return;
+    await BackgroundNotificationService.configureNotificationPoll(
+      userId: userId,
+      token: token,
+      apiBaseUrl: ApiService.effectiveBaseUrl,
+    );
+  }
+
   @override
   void dispose() {
     _todosNotifier.dispose();
@@ -447,6 +468,10 @@ class _HomeDashboardState extends State<HomeDashboard>
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
     _courseTimer?.cancel();
+    _todoPersistDebounce?.cancel();
+    if (_todoPersistDebounceCompleter?.isCompleted == false) {
+      _todoPersistDebounceCompleter!.complete();
+    }
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
@@ -830,7 +855,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     String? authToken = ApiService.getToken();
     if (authToken == null || authToken.isEmpty) {
-      authToken = prefs.getString('auth_token');
+      authToken = prefs.getString(StorageService.KEY_AUTH_TOKEN);
       // 同步回 ApiService 以防万一
       if (authToken != null) ApiService.setToken(authToken);
     }
@@ -846,7 +871,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _handleRemotePomodoroSignal(
       CrossDevicePomodoroState signal) async {
     if (!mounted || _deviceId.isEmpty) return;
-    if (signal.sourceDevice == 'flutter_$_deviceId') return;
+    if (signal.sourceDevice == _deviceId ||
+        signal.sourceDevice == 'flutter_$_deviceId') {
+      return;
+    }
 
     switch (signal.action) {
       // 🚀 新增：拦截云端的更新推送
@@ -881,6 +909,33 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'NEW_JOIN_REQUEST':
       case 'PENDING_COUNTS':
         _fetchTeamPendingCount();
+        break;
+
+      case 'NOTIFICATION_EVENT':
+        _fetchTeamPendingCount();
+        final eventId = signal.delta is Map
+            ? int.tryParse(signal.delta['id']?.toString() ?? '')
+            : null;
+        if (eventId != null && eventId > 0) {
+          unawaited(
+            BackgroundNotificationService.markNotificationEventShown(
+              eventId,
+            ),
+          );
+          if (!_handledForegroundNotificationIds.add(eventId)) {
+            break;
+          }
+        }
+        final title =
+            signal.delta is Map ? signal.delta['title']?.toString() : null;
+        final body =
+            signal.delta is Map ? signal.delta['body']?.toString() : null;
+        if (title != null && title.isNotEmpty) {
+          NotificationService.showGenericNotification(
+            title: title,
+            body: body ?? '',
+          );
+        }
         break;
 
       case 'NEW_ANNOUNCEMENT':
@@ -1711,19 +1766,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         builder: (_) => TodoEditScreen(
           todo: todo,
           todos: _todos,
-          onTodosChanged: (newTodos) async {
-            setState(() => _todos = newTodos);
-            final allTodos = await StorageService.getTodos(widget.username);
-            for (var newT in newTodos) {
-              int idx = allTodos.indexWhere((x) => x.id == newT.id);
-              if (idx != -1) {
-                allTodos[idx] = newT;
-              } else {
-                allTodos.add(newT);
-              }
-            }
-            await StorageService.saveTodos(widget.username, allTodos);
-          },
+          onTodosChanged: _handleTodosChanged,
           todoGroups: _todoGroups,
           onGroupsChanged: (newGroups) async {
             setState(() => _todoGroups = newGroups);
@@ -2155,7 +2198,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       }));
 
       if (mounted) {
-        setState(() => _teamPendingCount = totalPending);
+        final backgroundUnread = await BackgroundNotificationService
+            .getUnreadBackgroundNotifications();
+        setState(
+            () => _teamPendingCount = totalPending + backgroundUnread.length);
       }
     } catch (e) {
       debugPrint('❌ [首页] 获取团队消息计数失败: $e');
@@ -2532,9 +2578,11 @@ class _HomeDashboardState extends State<HomeDashboard>
             "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
       ]);
 
-      final List<TodoItem> allTodos = _safeListResult<TodoItem>(results[0])
-          .where((t) => !t.isDeleted)
-          .toList();
+      final List<TodoItem> allTodos = _mergePendingTodoSnapshots(
+        _safeListResult<TodoItem>(results[0])
+            .where((t) => !t.isDeleted)
+            .toList(),
+      );
       final List<TodoGroup> allGroups = _safeListResult<TodoGroup>(results[1])
           .where((g) => !g.isDeleted)
           .toList();
@@ -2723,6 +2771,106 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  List<TodoItem> _cloneTodosForPersistence(List<TodoItem> todos) {
+    return todos.map((todo) => TodoItem.fromJson(todo.toJson())).toList();
+  }
+
+  List<TodoItem> _mergePendingTodoSnapshots(List<TodoItem> loadedTodos) {
+    final snapshots = [
+      _persistingTodosSnapshot,
+      _pendingTodosToPersist,
+    ].whereType<List<TodoItem>>();
+    if (snapshots.isEmpty) return loadedTodos;
+
+    final byId = {for (final todo in loadedTodos) todo.id: todo};
+    for (final snapshot in snapshots) {
+      for (final pending in snapshot) {
+        final existing = byId[pending.id];
+        if (existing == null || pending.updatedAt >= existing.updatedAt) {
+          byId[pending.id] = pending;
+        }
+      }
+    }
+    return byId.values.where((todo) => !todo.isDeleted).toList();
+  }
+
+  Future<void> _handleTodosChanged(List<TodoItem> newTodos) async {
+    final oldTodos = List<TodoItem>.from(_todos);
+    final nextTodos = List<TodoItem>.from(newTodos);
+
+    if (mounted) {
+      setState(() => _todos = nextTodos);
+    } else {
+      _todos = nextTodos;
+    }
+    _timelineRefreshTriggerNotifier.value++;
+
+    for (var nt in nextTodos) {
+      if (nt.isDone) {
+        final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
+        if (!ot.isDone) {
+          debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+          NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
+        }
+      }
+    }
+
+    _pendingTodosToPersist = _cloneTodosForPersistence(nextTodos);
+    _todoPersistDebounce?.cancel();
+    if (_todoPersistDebounceCompleter?.isCompleted == false) {
+      _todoPersistDebounceCompleter!.complete();
+    }
+
+    final completer = Completer<void>();
+    _todoPersistDebounceCompleter = completer;
+    _todoPersistDebounce = Timer(const Duration(milliseconds: 220), () {
+      _todoPersistChain = _todoPersistChain.catchError((_) {}).then((_) async {
+        final snapshot = _pendingTodosToPersist;
+        if (snapshot == null) return;
+        _pendingTodosToPersist = null;
+        await _persistTodosSnapshot(snapshot);
+      }).catchError((e) {
+        debugPrint('[HomeDashboard] persist todos failed: $e');
+      }).whenComplete(() {
+        if (!completer.isCompleted) completer.complete();
+      });
+    });
+
+    return completer.future;
+  }
+
+  Future<void> _persistTodosSnapshot(List<TodoItem> todosSnapshot) async {
+    _persistingTodosSnapshot = todosSnapshot;
+    final allTodos = await StorageService.getTodos(widget.username);
+    try {
+      for (var newT in todosSnapshot) {
+        int idx = allTodos.indexWhere((x) => x.id == newT.id);
+        if (idx != -1) {
+          if (newT.updatedAt >= allTodos[idx].updatedAt) {
+            allTodos[idx] = newT;
+          }
+        } else {
+          allTodos.add(newT);
+        }
+      }
+      await StorageService.saveTodos(widget.username, allTodos);
+      await _saveTodosToSharedFile(allTodos);
+
+      FloatWindowService.triggerReminderCheck();
+      FloatWindowService.invalidateSlotCache();
+      FloatWindowService.update();
+      _syncTodoNotification();
+      _rescheduleAlarms();
+      await WidgetService.updateTodoWidget(todosSnapshot);
+
+      _todoUpdateSignalNotifier.value++;
+    } finally {
+      if (identical(_persistingTodosSnapshot, todosSnapshot)) {
+        _persistingTodosSnapshot = null;
+      }
+    }
+  }
+
   Future<void> _handleManualSync({
     bool silent = false,
     bool syncTodos = true,
@@ -2758,6 +2906,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           syncCountdowns: syncCountdowns,
           syncTimeLogs: syncTimeLogs,
           syncPlanBlocks: syncPlanBlocks,
+          syncPomodoro: false,
           context: context,
         );
         hasChanges = syncResult['hasChanges'] ?? false;
@@ -3472,6 +3621,18 @@ class _HomeDashboardState extends State<HomeDashboard>
                         page: TeamManagementScreen(username: widget.username),
                         sourceKey: _teamsButtonKey,
                       );
+                      final unreadBackgroundNotifications =
+                          await BackgroundNotificationService
+                              .getUnreadBackgroundNotifications();
+                      final notificationIds = unreadBackgroundNotifications
+                          .map((e) => e['id'])
+                          .whereType<num>()
+                          .map((e) => e.toInt())
+                          .toList();
+                      await ApiService.markNotificationsRead(notificationIds);
+                      await BackgroundNotificationService
+                          .clearUnreadBackgroundNotifications();
+                      await _fetchTeamPendingCount();
                       _loadAllData(deferred: true);
                     },
                     onSettings: () async {
@@ -3598,61 +3759,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                 widget.username, allGroups,
                                                 sync: true);
                                           },
-                                          onTodosChanged: (newTodos) async {
-                                            // 🚀 记录变更，用于通知清除
-                                            final oldTodos =
-                                                List<TodoItem>.from(_todos);
-                                            _todos = newTodos;
-                                            _timelineRefreshTriggerNotifier
-                                                .value++;
-
-                                            // 🚀 核心修复：任务完成后自动清除对应通知
-                                            for (var nt in newTodos) {
-                                              if (nt.isDone) {
-                                                final ot = oldTodos.firstWhere(
-                                                    (t) => t.id == nt.id,
-                                                    orElse: () => nt);
-                                                if (!ot.isDone) {
-                                                  // 刚完成
-                                                  debugPrint(
-                                                      "🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
-                                                  NotificationService
-                                                      .cancelSpecialTodoNotification(
-                                                          nt.id.hashCode);
-                                                }
-                                              }
-                                            }
-
-                                            final allTodos =
-                                                await StorageService.getTodos(
-                                                    widget.username);
-                                            for (var newT in _todos) {
-                                              int idx = allTodos.indexWhere(
-                                                  (x) => x.id == newT.id);
-                                              if (idx != -1) {
-                                                allTodos[idx] = newT;
-                                              } else {
-                                                allTodos.add(newT);
-                                              }
-                                            }
-                                            await StorageService.saveTodos(
-                                                widget.username, allTodos);
-                                            await _saveTodosToSharedFile(
-                                                allTodos);
-
-                                            FloatWindowService
-                                                .triggerReminderCheck();
-                                            FloatWindowService
-                                                .invalidateSlotCache();
-                                            FloatWindowService.update();
-                                            _syncTodoNotification();
-                                            _rescheduleAlarms();
-                                            await WidgetService
-                                                .updateTodoWidget(_todos);
-
-                                            _todoUpdateSignalNotifier
-                                                .value++; // 🚀 触发局部更新
-                                          },
+                                          onTodosChanged: _handleTodosChanged,
                                           initialSelectedTeamUuid:
                                               _currentSelectedTeamUuid,
                                           onRefreshRequested: _handleManualSync,
@@ -4215,13 +4322,19 @@ class _HomeDashboardState extends State<HomeDashboard>
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor,
-                    inactiveColor),
-                _buildCourseCenterButton(primaryColor),
-                _buildTabItem(
-                    2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
+                Expanded(
+                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页',
+                      primaryColor, inactiveColor),
+                ),
+                SizedBox(
+                  width: 64,
+                  child: Center(child: _buildCourseCenterButton(primaryColor)),
+                ),
+                Expanded(
+                  child: _buildTabItem(2, Icons.adjust_rounded, '专注',
+                      primaryColor, inactiveColor),
+                ),
               ],
             ),
           ),
@@ -4263,7 +4376,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildCourseCenterButton(Color primary) {
-    return InkWell(
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: InkWell(
         onTap: () {
           PageTransitions.pushFromRect(
             context: context,
@@ -4271,10 +4387,9 @@ class _HomeDashboardState extends State<HomeDashboard>
             sourceKey: _courseCenterKey,
           );
         },
+        borderRadius: BorderRadius.circular(24),
         child: Container(
           key: _courseCenterKey,
-          width: 48, // 缩小中键按钮
-          height: 48,
           decoration: BoxDecoration(
             color: primary,
             shape: BoxShape.circle,
@@ -4291,7 +4406,9 @@ class _HomeDashboardState extends State<HomeDashboard>
             color: Colors.white,
             size: 22,
           ),
-        ));
+        ),
+      ),
+    );
   }
 
   // 🚀 辅助方法：内容级深度比较，用于按需刷新

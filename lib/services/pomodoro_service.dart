@@ -715,7 +715,7 @@ class PomodoroService {
       final ex = merged[rt.uuid];
       if (ex == null || rt.updatedAt > ex.updatedAt) merged[rt.uuid] = rt;
     }
-    await saveTags(merged.values.toList());
+    await saveTags(merged.values.toList(), isSyncSource: true);
   }
 
   // ── 专注记录（本地缓存 + 云端上传）─────────────────────

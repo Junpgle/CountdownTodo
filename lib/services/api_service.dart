@@ -72,6 +72,7 @@ class ApiService {
   }
 
   static String get _effectiveBaseUrl => _baseUrlOverride ?? baseUrl;
+  static String get effectiveBaseUrl => _effectiveBaseUrl;
   // -----------------------------
 
   // 统一构建安全 Header
@@ -1304,6 +1305,23 @@ class ApiService {
       return {'success': false, 'error': result['error'] ?? '请求失败'};
     } catch (e) {
       return {'success': false, 'error': "网络错误: $e"};
+    }
+  }
+
+  static Future<bool> markNotificationsRead(List<int> ids) async {
+    if (ids.isEmpty) return true;
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_effectiveBaseUrl/api/notifications/mark_read'),
+            headers: _getHeaders(),
+            body: jsonEncode({'ids': ids}),
+          )
+          .timeout(const Duration(seconds: 5));
+      final data = jsonDecode(response.body);
+      return response.statusCode == 200 && data['success'] == true;
+    } catch (_) {
+      return false;
     }
   }
 }

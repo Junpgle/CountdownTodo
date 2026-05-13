@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   fullscreen_window
   permission_handler_windows
   screen_retriever_windows
+  share_plus
   tray_manager
   url_launcher_windows
   video_player_win

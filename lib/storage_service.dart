@@ -15,6 +15,7 @@ import 'models.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
+import 'services/background_notification_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
@@ -536,6 +537,7 @@ class StorageService {
     await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
     await prefs.remove(KEY_AUTH_TOKEN);
     ApiService.setToken('');
+    unawaited(BackgroundNotificationService.stopNotificationPoll());
     // 🚀 核心修复：退出登录后关闭并清空数据库引用
     await DatabaseHelper.instance.closeDatabase();
   }
@@ -792,20 +794,28 @@ class StorageService {
   }
 
   static Future<void> _clearGhostConflictFlags(dynamic db) async {
-    const where =
+    const emptyConflictWhere =
         "has_conflict = 1 AND (conflict_data IS NULL OR TRIM(conflict_data) = '' OR conflict_data = 'null')";
+    const staleConflictDataWhere =
+        "has_conflict = 0 AND conflict_data IS NOT NULL AND TRIM(conflict_data) != '' AND conflict_data != 'null'";
     for (final table in const ['todos', 'todo_groups', 'countdowns']) {
       try {
-        final count = await db.update(
+        final emptySnapshotCount = await db.update(
           table,
           {'has_conflict': 0, 'conflict_data': null},
-          where: where,
+          where: emptyConflictWhere,
         );
-        if (count > 0) {
-          debugPrint('✅ 已清理 $table 的空快照冲突标记: $count 条');
+        final staleSnapshotCount = await db.update(
+          table,
+          {'conflict_data': null},
+          where: staleConflictDataWhere,
+        );
+        if (emptySnapshotCount > 0 || staleSnapshotCount > 0) {
+          debugPrint(
+              '✅ 已清理 $table 的幽灵冲突: empty=$emptySnapshotCount stale=$staleSnapshotCount');
         }
       } catch (e) {
-        debugPrint('⚠️ 清理 $table 空快照冲突标记失败: $e');
+        debugPrint('⚠️ 清理 $table 幽灵冲突失败: $e');
       }
     }
   }
@@ -2893,6 +2903,13 @@ class StorageService {
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
       List<TodoPlanBlock> allLocalPlanBlocks =
           await getPlanBlocks(username, includeDeleted: true);
+      final localTodosById = {for (final item in allLocalTodos) item.id: item};
+      final localGroupsById = {
+        for (final item in allLocalGroups) item.id: item
+      };
+      final localCountdownsById = {
+        for (final item in allLocalCountdowns) item.id: item
+      };
       if (!forceFullSync &&
           ((syncCountdowns && allLocalCountdowns.isEmpty) ||
               (syncTimeLogs && allLocalTimeLogs.isEmpty))) {
@@ -2915,11 +2932,13 @@ class StorageService {
       final Map<String, Map<String, dynamic>> dedupGroups = {};
       final Map<String, Map<String, dynamic>> dedupCountdowns = {};
       final Map<String, Map<String, dynamic>> dedupPlanBlocks = {};
+      final List<int> consumedConflictOpIds = [];
 
       for (var op in pendingOps) {
         final table = op['target_table'];
         final uuid = op['target_uuid']?.toString();
         final dataJson = op['data_json'];
+        final opId = (op['id'] as num?)?.toInt();
 
         if (dataJson == null || uuid == null) continue;
         final data = jsonDecode(dataJson.toString());
@@ -2927,17 +2946,45 @@ class StorageService {
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
-          if (_payloadHasVersionConflict(data)) continue;
+          final localTodo = localTodosById[uuid];
+          final hasLocalVersionConflict = localTodo != null &&
+              localTodo.hasConflict &&
+              _hasVersionConflict(localTodo.serverVersionData);
+          if (_payloadHasVersionConflict(data) || hasLocalVersionConflict) {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
         } else if (table == 'todo_groups') {
-          if (_payloadHasConflict(data)) continue;
+          if (_payloadHasConflict(data) ||
+              (localGroupsById[uuid]?.hasConflict ?? false)) {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
-          if (_payloadHasConflict(data)) continue;
+          if (_payloadHasConflict(data) ||
+              (localCountdownsById[uuid]?.hasConflict ?? false)) {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           dedupCountdowns[uuid] = data;
         } else if (table == 'todo_plan_blocks' && syncPlanBlocks) {
           dedupPlanBlocks[uuid] = data;
         }
+      }
+
+      if (consumedConflictOpIds.isNotEmpty) {
+        final placeholders =
+            List.filled(consumedConflictOpIds.length, '?').join(',');
+        await db.update(
+          'op_logs',
+          {'is_synced': 1, 'sync_error': ''},
+          where: 'id IN ($placeholders)',
+          whereArgs: consumedConflictOpIds,
+        );
+        debugPrint(
+            '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');
       }
 
       dirtyTodos = dedupTodos.values.toList();
@@ -3127,6 +3174,9 @@ class StorageService {
           screenPayload != null;
 
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
+        if (!forceFullSync && !hasPendingUpload()) {
+          return false;
+        }
         final remotePayloadEmpty =
             (syncResponse['server_todos'] as List?)?.isEmpty == true &&
                 (syncResponse['server_todo_groups'] as List?)?.isEmpty ==
@@ -3156,7 +3206,8 @@ class StorageService {
       }
 
       if (response['success'] == true) {
-        // 🚀 仅标记“未冲突”的本地操作为已同步，避免被服务端拒收后本地误清队列
+        // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
+        // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
         final List<dynamic> rawConflicts =
             (response['conflicts'] as List?) ?? [];
         final Set<String> blockingConflictUuids = <String>{};
@@ -3201,13 +3252,32 @@ class StorageService {
         if (indCompletions != null) {
           final batch = db.batch();
           for (var ic in indCompletions) {
+            if (ic is! Map) continue;
+            final todoUuid = ic['todo_uuid']?.toString();
+            if (todoUuid == null || todoUuid.isEmpty) continue;
+            final serverUpdatedAt =
+                int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
+            final existing = await db.query(
+              'todo_completions',
+              where: 'todo_uuid = ? AND user_id = ?',
+              whereArgs: [todoUuid, userId],
+              limit: 1,
+            );
+            final localUpdatedAt = existing.isNotEmpty
+                ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
+                : 0;
+            if (serverUpdatedAt > 0 && serverUpdatedAt < localUpdatedAt) {
+              continue;
+            }
             batch.insert(
                 'todo_completions',
                 {
-                  'todo_uuid': ic['todo_uuid'],
+                  'todo_uuid': todoUuid,
                   'user_id': userId,
                   'is_completed': ic['is_completed'],
-                  'updated_at': DateTime.now().millisecondsSinceEpoch,
+                  'updated_at': serverUpdatedAt > 0
+                      ? serverUpdatedAt
+                      : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
           }
@@ -3279,10 +3349,8 @@ class StorageService {
       List<dynamic> serverTodos = response['server_todos'] ?? [];
 
       // Snapshot items with conflicts before merge, to detect resolutions after merge
-      final Set<String> preMergeConflictIds = allLocalTodos
-          .where((t) => t.hasConflict)
-          .map((t) => t.id)
-          .toSet();
+      final Set<String> preMergeConflictIds =
+          allLocalTodos.where((t) => t.hasConflict).map((t) => t.id).toSet();
 
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
@@ -3554,8 +3622,7 @@ class StorageService {
                 (serverVersion['version'] as num?)?.toInt() ?? 0;
             // Skip if already resolved (hasConflict cleared) or version bumped above server
             if (!todo.hasConflict || todo.version > serverConflictVer) {
-              debugPrint(
-                  '⏭️ Skipping re-flag of resolved todo $itemId '
+              debugPrint('⏭️ Skipping re-flag of resolved todo $itemId '
                   '(hasConflict=${todo.hasConflict}, localV=${todo.version}, serverV=$serverConflictVer)');
             } else {
               todo.hasConflict = true;
@@ -3564,8 +3631,7 @@ class StorageService {
             }
           }
           if (countdownsIndexMap.containsKey(itemId)) {
-            final countdown =
-                allLocalCountdowns[countdownsIndexMap[itemId]!];
+            final countdown = allLocalCountdowns[countdownsIndexMap[itemId]!];
             final serverConflictVer =
                 (serverVersion['version'] as num?)?.toInt() ?? 0;
             if (!countdown.hasConflict ||
@@ -3581,8 +3647,7 @@ class StorageService {
             final group = allLocalGroups[groupsIndexMap[itemId]!];
             final serverConflictVer =
                 (serverVersion['version'] as num?)?.toInt() ?? 0;
-            if (!group.hasConflict ||
-                group.version > serverConflictVer) {
+            if (!group.hasConflict || group.version > serverConflictVer) {
               // skip — already resolved
             } else {
               group.hasConflict = true;
@@ -3614,13 +3679,11 @@ class StorageService {
       final ignoredScheduleConflictKeys =
           await _getIgnoredScheduleConflictKeys(username);
       // Compute IDs of items whose conflict was cleared in this sync cycle
-      final Set<String> recentlyResolvedIds = preMergeConflictIds
-          .where((id) {
-            final idx = todosIndexMap[id];
-            if (idx == null) return false;
-            return !allLocalTodos[idx].hasConflict;
-          })
-          .toSet();
+      final Set<String> recentlyResolvedIds = preMergeConflictIds.where((id) {
+        final idx = todosIndexMap[id];
+        if (idx == null) return false;
+        return !allLocalTodos[idx].hasConflict;
+      }).toSet();
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
           allLocalTodos,
@@ -3756,9 +3819,6 @@ class StorageService {
     for (final todo in todos) {
       final existing = todo.serverVersionData;
       final isLocalScheduleConflict = _isLocalScheduleConflict(existing);
-      final isLocalDetectorScheduleConflict =
-          _isLocalDetectorScheduleConflict(existing);
-
       if (todo.isDeleted) {
         if (isLocalScheduleConflict || todo.hasConflict) {
           todo.hasConflict = false;
@@ -3804,7 +3864,7 @@ class StorageService {
           todo.hasConflict = true;
           changed = true;
         }
-      } else if (isLocalDetectorScheduleConflict) {
+      } else if (isLocalScheduleConflict) {
         todo.hasConflict = false;
         todo.serverVersionData = null;
         changed = true;
@@ -3896,12 +3956,6 @@ class StorageService {
   static bool _isLocalScheduleConflict(Map<String, dynamic>? data) {
     if (data == null || data.isEmpty) return false;
     return data['conflict_type'] == 'local_schedule_conflict' ||
-        data['source'] == 'local_detector';
-  }
-
-  static bool _isLocalDetectorScheduleConflict(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return false;
-    return data['conflict_type'] == 'local_schedule_conflict' &&
         data['source'] == 'local_detector';
   }
 

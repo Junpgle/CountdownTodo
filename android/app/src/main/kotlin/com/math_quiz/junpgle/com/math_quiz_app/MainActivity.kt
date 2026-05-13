@@ -49,6 +49,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
+    private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
@@ -874,12 +875,19 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         prefs.edit().putString(ReminderService.KEY_REMINDERS, merged.toString()).apply()
                     }
 
-                    startForegroundService(
-                        Intent(this, ReminderService::class.java).apply {
-                            action = ReminderService.ACTION_RESCHEDULE
-                        }
-                    )
-                    result.success(true)
+                    val rescheduleIntent = Intent(this, ReminderService::class.java).apply {
+                        action = ReminderService.ACTION_RESCHEDULE
+                    }
+                    try {
+                        startForegroundService(rescheduleIntent)
+                        result.success(true)
+                    } catch (e: ForegroundServiceStartNotAllowedException) {
+                        Log.w(TAG, "Reminder reschedule deferred: background FGS start is not allowed", e)
+                        result.success(false)
+                    } catch (e: RuntimeException) {
+                        Log.w(TAG, "Reminder reschedule failed", e)
+                        result.success(false)
+                    }
                 }
 
                 "getScheduledReminders" -> {
@@ -981,6 +989,107 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             result.success(syncCalendarEvents(calendarId, events, clearFirst))
                         }
                     }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            BACKGROUND_NOTIFICATION_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "configureNotificationPoll" -> {
+                    val userId = call.argument<Number>("userId")?.toLong() ?: -1L
+                    val token = call.argument<String>("token") ?: ""
+                    val apiBaseUrl = call.argument<String>("apiBaseUrl") ?: ""
+
+                    if (userId <= 0 || token.isBlank() || apiBaseUrl.isBlank()) {
+                        result.error("INVALID_ARGS", "userId/token/apiBaseUrl is invalid", null)
+                        return@setMethodCallHandler
+                    }
+
+                    val prefs = applicationContext.getSharedPreferences(
+                        NotificationPollWorker.PREFS_NAME,
+                        Context.MODE_PRIVATE
+                    )
+                    prefs.edit()
+                        .putLong(NotificationPollWorker.KEY_USER_ID, userId)
+                        .putString(NotificationPollWorker.KEY_TOKEN, token)
+                        .putString(NotificationPollWorker.KEY_API_BASE_URL, apiBaseUrl)
+                        .apply()
+
+                    BackgroundNotificationScheduler.startImportantNotificationPoll(applicationContext)
+                    BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
+                    Log.d(TAG, "📬 Background notification poll configured userId=$userId apiBaseUrl=$apiBaseUrl")
+                    result.success(true)
+                }
+
+                "runImmediateNotificationPoll" -> {
+                    BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
+                    Log.d(TAG, "📬 Immediate background notification poll requested")
+                    result.success(true)
+                }
+
+                "stopNotificationPoll" -> {
+                    BackgroundNotificationScheduler.stopImportantNotificationPoll(applicationContext)
+                    result.success(true)
+                }
+
+                "getUnreadBackgroundNotifications" -> {
+                    val prefs = applicationContext.getSharedPreferences(
+                        NotificationPollWorker.PREFS_NAME,
+                        Context.MODE_PRIVATE
+                    )
+                    result.success(
+                        prefs.getString(NotificationPollWorker.KEY_UNREAD_CACHE, "[]") ?: "[]"
+                    )
+                }
+
+                "clearUnreadBackgroundNotifications" -> {
+                    val prefs = applicationContext.getSharedPreferences(
+                        NotificationPollWorker.PREFS_NAME,
+                        Context.MODE_PRIVATE
+                    )
+                    prefs.edit()
+                        .putString(NotificationPollWorker.KEY_UNREAD_CACHE, "[]")
+                        .apply()
+                    result.success(true)
+                }
+
+                "markNotificationEventShown" -> {
+                    val eventId = call.argument<Number>("eventId")?.toLong() ?: 0L
+                    if (eventId <= 0L) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val prefs = applicationContext.getSharedPreferences(
+                        NotificationPollWorker.PREFS_NAME,
+                        Context.MODE_PRIVATE
+                    )
+                    val shownIds = (
+                        prefs.getStringSet(
+                            NotificationPollWorker.KEY_SHOWN_EVENT_IDS,
+                            emptySet()
+                        ) ?: emptySet()
+                    ).toMutableSet()
+                    shownIds.add(eventId.toString())
+                    if (shownIds.size > 200) {
+                        val sortedIds = shownIds
+                            .mapNotNull { it.toLongOrNull() }
+                            .sortedDescending()
+                            .take(200)
+                            .map { it.toString() }
+                            .toSet()
+                        shownIds.clear()
+                        shownIds.addAll(sortedIds)
+                    }
+                    prefs.edit()
+                        .putStringSet(NotificationPollWorker.KEY_SHOWN_EVENT_IDS, shownIds)
+                        .apply()
+                    Log.d(TAG, "📬 Marked notification event as shown: $eventId")
+                    result.success(true)
                 }
 
                 else -> result.notImplemented()

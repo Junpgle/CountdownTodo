@@ -359,7 +359,7 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
 
           <div className="relative z-10 mt-12">
              <button 
-               onClick={() => window.location.href = './home.html'}
+               onClick={() => window.location.href = './home.html?landing=1#features'}
                className="group flex items-center gap-3 px-8 py-4 rounded-2xl bg-white text-indigo-600 hover:bg-indigo-50 transition-all font-black shadow-lg shadow-black/20 hover:shadow-xl hover:-translate-y-1 active:scale-95 relative overflow-hidden"
              >
                 <div className="absolute inset-0 bg-gradient-to-r from-indigo-100 to-transparent opacity-0 group-hover:opacity-20 transition-opacity" />

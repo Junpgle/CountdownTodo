@@ -467,6 +467,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
