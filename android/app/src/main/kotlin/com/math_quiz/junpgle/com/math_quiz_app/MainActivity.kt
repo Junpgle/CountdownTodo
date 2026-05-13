@@ -875,12 +875,19 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         prefs.edit().putString(ReminderService.KEY_REMINDERS, merged.toString()).apply()
                     }
 
-                    startForegroundService(
-                        Intent(this, ReminderService::class.java).apply {
-                            action = ReminderService.ACTION_RESCHEDULE
-                        }
-                    )
-                    result.success(true)
+                    val rescheduleIntent = Intent(this, ReminderService::class.java).apply {
+                        action = ReminderService.ACTION_RESCHEDULE
+                    }
+                    try {
+                        startForegroundService(rescheduleIntent)
+                        result.success(true)
+                    } catch (e: ForegroundServiceStartNotAllowedException) {
+                        Log.w(TAG, "Reminder reschedule deferred: background FGS start is not allowed", e)
+                        result.success(false)
+                    } catch (e: RuntimeException) {
+                        Log.w(TAG, "Reminder reschedule failed", e)
+                        result.success(false)
+                    }
                 }
 
                 "getScheduledReminders" -> {
@@ -1015,11 +1022,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
                     BackgroundNotificationScheduler.startImportantNotificationPoll(applicationContext)
                     BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
+                    Log.d(TAG, "📬 Background notification poll configured userId=$userId apiBaseUrl=$apiBaseUrl")
                     result.success(true)
                 }
 
                 "runImmediateNotificationPoll" -> {
                     BackgroundNotificationScheduler.runImmediateNotificationPoll(applicationContext)
+                    Log.d(TAG, "📬 Immediate background notification poll requested")
                     result.success(true)
                 }
 
@@ -1079,6 +1088,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     prefs.edit()
                         .putStringSet(NotificationPollWorker.KEY_SHOWN_EVENT_IDS, shownIds)
                         .apply()
+                    Log.d(TAG, "📬 Marked notification event as shown: $eventId")
                     result.success(true)
                 }
 
