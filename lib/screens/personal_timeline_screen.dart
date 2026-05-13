@@ -114,7 +114,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
         setState(() {
           _summary = summary;
           _totalFocusMinutes = totalSecs ~/ 60;
-          _topAppCategory = topCat;
+          
+          // Smart Top Category: Prioritize task-based subject if app category is generic
+          String? displayCat = topCat;
+          if (displayCat == null || displayCat == '其他') {
+            if (summary.subjectDistribution.entries.isNotEmpty) {
+              final topSub = summary.subjectDistribution.entries
+                  .reduce((a, b) => a.value > b.value ? a : b).key;
+              if (topSub != '其他') {
+                displayCat = topSub;
+              }
+            }
+          }
+          _topAppCategory = displayCat ?? '学习';
           _completedCount = summary.todoCompletedCount + summary.countdownCompletedCount;
           _isLoading = false;
         });
@@ -131,6 +143,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     
+    final isWide = MediaQuery.of(context).size.width > 900;
+    
     return Scaffold(
       body: Stack(
         children: [
@@ -141,56 +155,107 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
             slivers: [
               _buildAppBar(context, colorScheme),
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 24),
-                      _buildDimensionToggle(colorScheme),
-                      const SizedBox(height: 32),
-                      
-                      // 使用 AnimatedSwitcher 实现无缝过渡
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 600),
-                        switchInCurve: Curves.easeOutQuart,
-                        switchOutCurve: Curves.easeInQuart,
-                        transitionBuilder: (Widget child, Animation<double> animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.02),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: _isLoading 
-                          ? _buildSkeleton(colorScheme)
-                          : Column(
-                              key: ValueKey('content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildStatsOverview(colorScheme),
-                                const SizedBox(height: 40),
-                                if (_dimension == TimelineDimension.daily) ...[
-                                  _buildSectionTitle('时光足迹', Icons.auto_stories_outlined, colorScheme),
-                                  const SizedBox(height: 16),
-                                  _buildTimelineFlow(colorScheme),
-                                ] else ...[
-                                  _buildSectionTitle('阶段回顾', Icons.insights_rounded, colorScheme),
-                                  const SizedBox(height: 16),
-                                  _buildRangeSummary(colorScheme),
+                child: Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 1400),
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        _buildDimensionToggle(colorScheme),
+                        const SizedBox(height: 16),
+                        _buildDateRangeIndicator(colorScheme),
+                        const SizedBox(height: 24),
+                        
+                        // Animated Content Area
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 600),
+                          switchInCurve: Curves.easeOutQuart,
+                          switchOutCurve: Curves.easeInQuart,
+                          transitionBuilder: (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.02),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _isLoading 
+                            ? _buildSkeleton(colorScheme)
+                            : Column(
+                                key: ValueKey('content_${_dimension}_${_selectedDate.millisecondsSinceEpoch}'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildStatsOverview(colorScheme, isWide),
+                                  const SizedBox(height: 40),
+                                  if (isWide)
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Left Side: Main Content
+                                        Expanded(
+                                          flex: 2,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              if (_dimension == TimelineDimension.daily) ...[
+                                                _buildSectionTitle('时光足迹', Icons.auto_stories_outlined, colorScheme),
+                                                const SizedBox(height: 16),
+                                                _buildTimelineFlow(colorScheme),
+                                              ] else ...[
+                                                _buildSectionTitle('阶段回顾', Icons.insights_rounded, colorScheme),
+                                                const SizedBox(height: 16),
+                                                _buildRangeSummary(colorScheme, isWide),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 48),
+                                        // Right Side: Sidebar
+                                        SizedBox(
+                                          width: 320,
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              _buildSectionTitle('数据深度洞察', Icons.analytics_outlined, colorScheme),
+                                              const SizedBox(height: 20),
+                                              _buildSideHighlights(colorScheme),
+                                              const SizedBox(height: 40),
+                                              _buildSectionTitle('感悟与思考', Icons.edit_note_rounded, colorScheme),
+                                              const SizedBox(height: 16),
+                                              _buildReflection(colorScheme),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  else ...[
+                                    // Mobile Layout (Existing)
+                                    if (_dimension == TimelineDimension.daily) ...[
+                                      _buildSectionTitle('时光足迹', Icons.auto_stories_outlined, colorScheme),
+                                      const SizedBox(height: 16),
+                                      _buildTimelineFlow(colorScheme),
+                                    ] else ...[
+                                      _buildSectionTitle('阶段回顾', Icons.insights_rounded, colorScheme),
+                                      const SizedBox(height: 16),
+                                      _buildRangeSummary(colorScheme, isWide),
+                                    ],
+                                    const SizedBox(height: 40),
+                                    _buildSectionTitle('感悟与思考', Icons.edit_note_rounded, colorScheme),
+                                    const SizedBox(height: 16),
+                                    _buildReflection(colorScheme),
+                                  ],
+                                  const SizedBox(height: 60),
                                 ],
-                                const SizedBox(height: 40),
-                                _buildReflection(colorScheme),
-                                const SizedBox(height: 60),
-                              ],
-                            ),
-                      ),
-                    ],
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -437,7 +502,90 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     }
   }
 
-  Widget _buildStatsOverview(ColorScheme cs) {
+  Widget _buildDateRangeIndicator(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: cs.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.calendar_today_rounded, size: 14, color: cs.primary.withValues(alpha: 0.7)),
+          const SizedBox(width: 8),
+          Text(
+            _getDateRangeString(),
+            style: TextStyle(
+              fontSize: 13, 
+              fontWeight: FontWeight.w600, 
+              color: cs.primary.withValues(alpha: 0.8),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getDateRangeString() {
+    DateTime start;
+    DateTime end;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('yyyy.MM.dd').format(day);
+      case TimelineDimension.weekly:
+        start = day.subtract(Duration(days: day.weekday - 1));
+        end = start.add(const Duration(days: 6));
+        final displayEnd = end.isAfter(today) ? today : end;
+        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+      case TimelineDimension.monthly:
+        start = DateTime(day.year, day.month, 1);
+        end = DateTime(day.year, day.month + 1, 0);
+        final displayEnd = end.isAfter(today) ? today : end;
+        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+      case TimelineDimension.yearly:
+        start = DateTime(day.year, 1, 1);
+        end = DateTime(day.year, 12, 31);
+        final displayEnd = end.isAfter(today) ? today : end;
+        return '${DateFormat('yyyy.MM.dd').format(start)} - ${DateFormat('yyyy.MM.dd').format(displayEnd)}';
+    }
+  }
+
+  Widget _buildStatsOverview(ColorScheme cs, bool isWide) {
+    if (isWide) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainer.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: cs.brightness == Brightness.dark ? 0.2 : 0.03), 
+              blurRadius: 20, 
+              offset: const Offset(0, 10),
+            )
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildStatItem('专注', '$_totalFocusMinutes', 'min', Icons.spa_outlined, cs.primary, cs),
+            _buildStatItem('达成', '$_completedCount', '项', Icons.task_alt_rounded, cs.secondary, cs),
+            _buildStatItem('知识', '${_summary?.searchCount ?? 0}', '次检索', Icons.travel_explore_rounded, Colors.indigo, cs),
+            _buildStatItem('深度', '${_summary?.deepWorkCount ?? 0}', '次心流', Icons.psychology_outlined, Colors.purple, cs),
+            _buildStatItem('冲刺', '${_summary?.examPrepCount ?? 0}', '次备考', Icons.auto_graph_rounded, Colors.redAccent, cs),
+            _buildStatItem('偏好', _topAppCategory ?? '学习', '', Icons.category_outlined, Colors.orange, cs),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -452,31 +600,48 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
           )
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildStatItem('专注', '$_totalFocusMinutes', 'min', Icons.spa_outlined, cs.primary, cs),
-          _buildStatItem('达成', '$_completedCount', '项', Icons.task_alt_rounded, cs.secondary, cs),
-          _buildStatItem('偏好', _topAppCategory ?? '学习', '', Icons.category_outlined, Colors.orange, cs),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('专注', '$_totalFocusMinutes', 'min', Icons.spa_outlined, cs.primary, cs),
+              _buildStatItem('达成', '$_completedCount', '项', Icons.task_alt_rounded, cs.secondary, cs),
+              _buildStatItem('知识', '${_summary?.searchCount ?? 0}', '次检索', Icons.travel_explore_rounded, Colors.indigo, cs),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('深度', '${_summary?.deepWorkCount ?? 0}', '次心流', Icons.psychology_outlined, Colors.purple, cs),
+              _buildStatItem('冲刺', '${_summary?.examPrepCount ?? 0}', '次备考', Icons.auto_graph_rounded, Colors.redAccent, cs),
+              _buildStatItem('偏好', _topAppCategory ?? '学习', '', Icons.category_outlined, Colors.orange, cs),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildStatItem(String label, String value, String unit, IconData icon, Color color, ColorScheme cs) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cs.onSurface)),
-            if (unit.isNotEmpty) Text(' $unit', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
-          ],
-        ),
-        Text(label, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
-      ],
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cs.onSurface)),
+              if (unit.isNotEmpty) Text(' $unit', style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+            ],
+          ),
+          Text(label, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+        ],
+      ),
     );
   }
 
@@ -544,48 +709,117 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
   }
 
 
-  Widget _buildRangeSummary(ColorScheme cs) {
+  Widget _buildRangeSummary(ColorScheme cs, bool isWide) {
     if (_summary == null) return _buildEmptyState(cs);
     
-    return Column(
-      children: [
+    final List<Widget> cards = [
+      _buildRangeSummaryCard(
+        '最长单次专注', 
+        '${_summary!.longestPomodoroMinutes} 分钟', 
+        Icons.timer_rounded, 
+        cs.primary,
+        cs: cs,
+        subtitle: _summary!.longestPomodoroTitle != null 
+          ? '在 ${_summary!.longestPomodoroDate != null ? DateFormat('MM-dd').format(_summary!.longestPomodoroDate!) : "某天"} 专注了「${_summary!.longestPomodoroTitle}」' 
+          : null,
+      ),
+      if (_summary!.latestTodoCompletionTime != null)
         _buildRangeSummaryCard(
-          '最长单次专注', 
-          '${_summary!.longestPomodoroMinutes} 分钟', 
-          Icons.timer_rounded, 
-          cs.primary,
+          '最晚肝到几点', 
+          DateFormat('HH:mm').format(_summary!.latestTodoCompletionTime!), 
+          Icons.nights_stay_rounded, 
+          Colors.indigo,
           cs: cs,
-          subtitle: _summary!.longestPomodoroTitle != null 
-            ? '在 ${_summary!.longestPomodoroDate != null ? DateFormat('MM-dd').format(_summary!.longestPomodoroDate!) : "某天"} 专注了「${_summary!.longestPomodoroTitle}」' 
-            : null,
+          subtitle: _summary!.latestTodoTitle != null ? '完成了「${_summary!.latestTodoTitle}」' : null,
         ),
-        const SizedBox(height: 16),
-        if (_summary!.latestTodoCompletionTime != null) ...[
-          _buildRangeSummaryCard(
-            '最晚肝到几点', 
-            DateFormat('HH:mm').format(_summary!.latestTodoCompletionTime!), 
-            Icons.nights_stay_rounded, 
-            Colors.indigo,
-            cs: cs,
-            subtitle: _summary!.latestTodoTitle != null ? '完成了「${_summary!.latestTodoTitle}」' : null,
-          ),
-          const SizedBox(height: 16),
-        ],
-        if (_summary!.mostProductiveDay != null) ...[
-          _buildRangeSummaryCard(
-            '最高产的一天', 
-            DateFormat('MM月dd日').format(_summary!.mostProductiveDay!), 
-            Icons.workspace_premium_rounded, 
-            Colors.orange,
-            cs: cs,
-            subtitle: '在那天你总共专注了 ${_summary!.mostProductiveDayDurationMinutes} 分钟，并达成了 ${_summary!.mostProductiveDayCompletedCount} 项目标',
-          ),
-          const SizedBox(height: 16),
-        ],
-        _buildRangeSummaryCard('目标达成总计', '完成了 ${_summary!.todoCompletedCount} 项待办', Icons.checklist_rtl_rounded, cs.secondary, cs: cs),
-        const SizedBox(height: 16),
-        _buildRangeSummaryCard('知识探索深度', '进行了 ${_summary!.searchCount} 次搜索', Icons.travel_explore_rounded, Colors.teal, cs: cs),
-      ],
+      if (_summary!.mostProductiveDay != null)
+        _buildRangeSummaryCard(
+          '最高产的一天', 
+          DateFormat('MM月dd日').format(_summary!.mostProductiveDay!), 
+          Icons.workspace_premium_rounded, 
+          Colors.orange,
+          cs: cs,
+          subtitle: '在那天你总共专注了 ${_summary!.mostProductiveDayDurationMinutes} 分钟，并达成了 ${_summary!.mostProductiveDayCompletedCount} 项目标',
+        ),
+      _buildRangeSummaryCard(
+        '黄金活跃期', 
+        '${_summary!.peakHour}:00 左右', 
+        Icons.wb_sunny_rounded, 
+        Colors.amber, 
+        cs: cs,
+        subtitle: '这段时间内，你在此时段的产出最为密集，是你的专属高效时刻',
+      ),
+      _buildRangeSummaryCard(
+        '专注深度报告', 
+        '平均 ${_summary!.avgPomodoroMinutes.toStringAsFixed(1)} 分钟', 
+        Icons.psychology_rounded, 
+        Colors.purple, 
+        cs: cs,
+        subtitle: '其中包含 ${_summary!.deepWorkCount} 次超过 45 分钟的深度专注，你的耐心正在稳步提升',
+      ),
+      _buildRangeSummaryCard(
+        '核心知识谱系', 
+        _summary!.subjectDistribution.entries.isNotEmpty 
+          ? _summary!.subjectDistribution.entries.reduce((a, b) => a.value > b.value ? a : b).key 
+          : '全领域探索', 
+        Icons.account_tree_rounded, 
+        Colors.indigo, 
+        cs: cs,
+        subtitle: _summary!.subjectDistribution.entries.isNotEmpty 
+          ? '这段时间你深耕于「${_summary!.subjectDistribution.entries.reduce((a, b) => a.value > b.value ? a : b).key}」领域，该方向占比 ${(_summary!.subjectDistribution.entries.reduce((a, b) => a.value > b.value ? a : b).value * 100).toInt()}%' 
+          : '你正在平衡各个学科的进度，保持全方位的知识摄入',
+      ),
+      if (_summary!.examPrepCount > 0)
+        _buildRangeSummaryCard(
+          '备考冲刺波', 
+          '检测到 ${_summary!.examPrepCount} 次备考行为', 
+          Icons.auto_graph_rounded, 
+          Colors.redAccent, 
+          cs: cs,
+          subtitle: '检测到你正处于高强度的考试/验收准备期，专注频率显著上升，请注意休息，保持状态',
+        ),
+      _buildRangeSummaryCard(
+        '任务构成分析', 
+        _summary!.homeworkRatio > 0.4 ? '作业攻坚战' : (_summary!.examRatio > 0.2 ? '备考冲刺期' : '全面均衡发展'), 
+        Icons.pie_chart_rounded, 
+        Colors.blueGrey, 
+        cs: cs,
+        subtitle: '其中计算机底层与科研训练占据了你大部分的精力，目标导向非常清晰',
+      ),
+      _buildRangeSummaryCard('目标达成总计', '完成了 ${_summary!.todoCompletedCount} 项待办', Icons.checklist_rtl_rounded, cs.secondary, cs: cs),
+      _buildRangeSummaryCard(
+        '知识探索深度', 
+        '进行了 ${_summary!.searchCount} 次搜索', 
+        Icons.travel_explore_rounded, 
+        Colors.teal, 
+        cs: cs,
+        subtitle: _summary!.topSearchQuery != null ? '你搜索最频繁的内容是「${_summary!.topSearchQuery}」' : '探索让知识的边界不断延伸',
+      ),
+    ];
+
+    if (isWide) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final double screenWidth = MediaQuery.of(context).size.width;
+          final double spacing = 20;
+          // Use 3 columns for very wide screens, 2 columns for medium-wide
+          final int columns = screenWidth > 1200 ? 3 : 2; 
+          final double cardWidth = (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+          
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: cards.map((card) => SizedBox(
+              width: cardWidth,
+              child: card,
+            )).toList(),
+          );
+        },
+      );
+    }
+
+    return Column(
+      children: cards.map((c) => Padding(padding: const EdgeInsets.only(bottom: 16), child: c)).toList(),
     );
   }
 
@@ -593,31 +827,201 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen> with Si
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
+        color: cs.surfaceContainer.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          )
+        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 24)),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color.withValues(alpha: 0.7))),
-                const SizedBox(height: 4),
-                Text(content, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurface)),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.6), height: 1.4)),
-                ],
-              ],
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title, 
+                style: TextStyle(
+                  fontSize: 12, 
+                  fontWeight: FontWeight.w600, 
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            content, 
+            style: TextStyle(
+              fontSize: 20, 
+              fontWeight: FontWeight.bold, 
+              color: cs.onSurface,
+              letterSpacing: -0.5,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              subtitle, 
+              style: TextStyle(
+                fontSize: 12, 
+                color: cs.onSurfaceVariant.withValues(alpha: 0.6), 
+                height: 1.5,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildSideHighlights(ColorScheme cs) {
+    if (_summary == null) return const SizedBox();
+    
+    return Column(
+      children: [
+        // Subject Distribution Chart
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainer.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('知识投入分布', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.onSurface)),
+              const SizedBox(height: 16),
+              ..._summary!.subjectDistribution.entries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(entry.key, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                          Text('${(entry.value * 100).toInt()}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: cs.primary)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: entry.value,
+                          backgroundColor: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                          color: entry.key.contains('计算机') ? Colors.indigo : (entry.key.contains('物理') ? Colors.orange : cs.primary),
+                          minHeight: 6,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        // Focus Rhythm / Peak Hour
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [cs.primary.withValues(alpha: 0.1), cs.secondary.withValues(alpha: 0.1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.1)),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: cs.primary, size: 28),
+              const SizedBox(height: 12),
+              Text('${_getPeriodName()}黄金活跃期', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              _buildHourlyChart(_summary!.hourlyDistribution, _summary!.peakHour, cs),
+              const SizedBox(height: 16),
+              Text('${_summary!.peakHour}:00 为巅峰时刻', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+              const SizedBox(height: 8),
+              Text('在此期间你的效率最高\n建议安排最具挑战的任务', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHourlyChart(List<int> distribution, int peakHour, ColorScheme cs) {
+    if (distribution.length < 24) return const SizedBox();
+    
+    int maxVal = distribution.reduce((a, b) => a > b ? a : b);
+    if (maxVal == 0) maxVal = 1;
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 60,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(24, (i) {
+              final val = distribution[i];
+              final ratio = val / maxVal;
+              final isPeak = i == peakHour;
+              
+              return Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(
+                    color: isPeak ? cs.primary : cs.primary.withValues(alpha: 0.2),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                  ),
+                  height: 4.0 + (ratio * 56.0),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('00', style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+            Text('06', style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+            Text('12', style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+            Text('18', style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+            Text('23', style: TextStyle(fontSize: 9, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _getPeriodName() {
+    switch (_dimension) {
+      case TimelineDimension.daily: return '今日';
+      case TimelineDimension.weekly: return '本周';
+      case TimelineDimension.monthly: return '本月';
+      case TimelineDimension.yearly: return '今年';
+    }
   }
 
   Widget _buildReflection(ColorScheme cs) {
