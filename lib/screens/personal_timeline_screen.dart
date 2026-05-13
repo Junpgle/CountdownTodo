@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
@@ -482,15 +483,28 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('长图已保存：${file.path}'),
-          action: SnackBarAction(
-            label: '打开',
-            onPressed: () => OpenFile.open(file.path),
+      if (Platform.isAndroid) {
+        try {
+          await SharePlus.instance.share(ShareParams(
+            files: [XFile(file.path)],
+            text: 'CountDownTodo ${_getPeriodName()} 总结',
+          ));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('打开分享失败：$e')),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('长图已保存：${file.path}'),
+            action: SnackBarAction(
+              label: '打开',
+              onPressed: () => OpenFile.open(file.path),
+            ),
           ),
-        ),
-      );
+        );
+      }
     } catch (e) {
       debugPrint('保存时间线长图失败: $e');
       if (mounted) {
