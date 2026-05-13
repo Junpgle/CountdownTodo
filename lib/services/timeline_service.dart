@@ -1,16 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:sqflite/sqflite.dart';
 import 'database_helper.dart';
 import 'course_service.dart';
-import 'pomodoro_service.dart';
 import '../models.dart';
 
 class TimelineService {
   static final TimelineService instance = TimelineService._();
   TimelineService._();
 
-  Future<List<TimelineEvent>> getEventsForDay(String username, DateTime date) async {
+  Future<List<TimelineEvent>> getEventsForDay(
+      String username, DateTime date) async {
     final db = await DatabaseHelper.instance.database;
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -30,7 +29,8 @@ class TimelineService {
       for (var row in searches) {
         events.add(TimelineEvent(
           id: 'search_${row['id']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
+          timestamp:
+              DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
           type: TimelineEventType.searchQuery,
           title: '知识检索',
           subtitle: row['query'] as String? ?? '',
@@ -47,7 +47,8 @@ class TimelineService {
         final title = row['content'] as String? ?? '';
         events.add(TimelineEvent(
           id: 'todo_create_${row['uuid']}',
-          timestamp: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+          timestamp:
+              DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
           type: TimelineEventType.todoCreated,
           title: '新增待办',
           subtitle: title,
@@ -56,7 +57,8 @@ class TimelineService {
 
       final completedTodos = await db.query(
         'todos',
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        where:
+            'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       for (var row in completedTodos) {
@@ -78,9 +80,10 @@ class TimelineService {
           // startTime is int (HHMM)
           final hour = course.startTime ~/ 100;
           final minute = course.startTime % 100;
-          final courseStart = DateTime(date.year, date.month, date.day, hour, minute);
-          
-          if (courseStart.millisecondsSinceEpoch >= startOfDayMs && 
+          final courseStart =
+              DateTime(date.year, date.month, date.day, hour, minute);
+
+          if (courseStart.millisecondsSinceEpoch >= startOfDayMs &&
               courseStart.millisecondsSinceEpoch < endOfDayMs) {
             events.add(TimelineEvent(
               id: 'course_${course.uuid}_${course.startTime}',
@@ -113,17 +116,18 @@ class TimelineService {
           subtitle: title,
         ));
 
-        if (status == 'completed' || (status == 'interrupted' && actualDur > 0)) {
+        if (status == 'completed' ||
+            (status == 'interrupted' && actualDur > 0)) {
           events.add(TimelineEvent(
             id: 'pomo_end_${row['uuid']}',
-            timestamp: DateTime.fromMillisecondsSinceEpoch(startTime + actualDur * 1000),
+            timestamp: DateTime.fromMillisecondsSinceEpoch(
+                startTime + actualDur * 1000),
             type: TimelineEventType.pomodoroEnd,
             title: status == 'completed' ? '收获专注果实' : '专注中断',
             subtitle: '$title (${actualDur ~/ 60}分钟)',
           ));
         }
       }
-
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
     }
@@ -136,13 +140,15 @@ class TimelineService {
     return getSummaryForDay(username, DateTime.now());
   }
 
-  Future<TimelineSummary> getSummaryForDay(String username, DateTime date) async {
+  Future<TimelineSummary> getSummaryForDay(
+      String username, DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     return getSummaryForRange(username, startOfDay, endOfDay);
   }
 
-  Future<TimelineSummary> getSummaryForRange(String username, DateTime start, DateTime end) async {
+  Future<TimelineSummary> getSummaryForRange(
+      String username, DateTime start, DateTime end) async {
     final db = await DatabaseHelper.instance.database;
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
@@ -160,15 +166,18 @@ class TimelineService {
       );
       final searchCount = searchStats.first['count'] as int? ?? 0;
       final lastSearchTs = searchStats.first['last_ts'] as int?;
-      
+
       final topSearch = await db.rawQuery(
         'SELECT query, COUNT(*) as freq FROM search_history '
         'WHERE timestamp >= ? AND timestamp < ? '
         'GROUP BY query ORDER BY freq DESC LIMIT 5',
         [startMs, endMs],
       );
-      final topQuery = topSearch.isNotEmpty ? topSearch.first['query'] as String? : null;
-      final topQueries = topSearch.map((r) => {'query': r['query'], 'freq': r['freq']}).toList();
+      final topQuery =
+          topSearch.isNotEmpty ? topSearch.first['query'] as String? : null;
+      final topQueries = topSearch
+          .map((r) => {'query': r['query'], 'freq': r['freq']})
+          .toList();
 
       // 2. Todos
       final todoStats = await db.rawQuery(
@@ -193,14 +202,16 @@ class TimelineService {
         [startMs, endMs],
       );
       final int totalPomos = pomodoroDetailStats.first['total'] as int? ?? 0;
-      final int interruptedPomos = pomodoroDetailStats.first['interrupted'] as int? ?? 0;
-      final double interruptionRate = totalPomos > 0 ? interruptedPomos / totalPomos : 0.0;
+      final int interruptedPomos =
+          pomodoroDetailStats.first['interrupted'] as int? ?? 0;
+      final double interruptionRate =
+          totalPomos > 0 ? interruptedPomos / totalPomos : 0.0;
 
       // 4b. Task Quality (Overdue vs Early)
       final taskQualityStats = await db.rawQuery(
         'SELECT '
-        'SUM(CASE WHEN deadline > 0 AND updated_at > deadline THEN 1 ELSE 0 END) as overdue, '
-        'SUM(CASE WHEN deadline > 0 AND (deadline - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
+        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND updated_at > due_date THEN 1 ELSE 0 END) as overdue, '
+        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND (due_date - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
         'FROM todos '
         'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         [startMs, endMs],
@@ -231,7 +242,9 @@ class TimelineService {
         [startMs, endMs],
       );
       hasTodo = latestTodoStats.isNotEmpty;
-      final topCompleted = latestTodoStats.map((r) => {'title': r['content'], 'time': r['updated_at']}).toList();
+      final topCompleted = latestTodoStats
+          .map((r) => {'title': r['content'], 'time': r['updated_at']})
+          .toList();
 
       // 6. Highlights - Daily Trend for Sparkline
       final trendRows = await db.rawQuery(
@@ -244,33 +257,39 @@ class TimelineService {
         ') GROUP BY day ORDER BY day ASC',
         [startMs, endMs, startMs, endMs],
       );
-      List<double> dailyTrend = trendRows.map((r) => (r['total_dur'] as num? ?? 0).toDouble() / 60).toList();
+      List<double> dailyTrend = trendRows
+          .map((r) => (r['total_dur'] as num? ?? 0).toDouble() / 60)
+          .toList();
 
       // 6b. Top Productive Days
       DateTime? bestDay;
       int bestDayMinutes = 0;
       int bestDayCompleted = 0;
       List<Map<String, dynamic>> topDays = [];
-      
+
       if (trendRows.isNotEmpty) {
-        var sortedTrend = List.from(trendRows)..sort((a, b) => (b['total_dur'] as num? ?? 0).compareTo(a['total_dur'] as num? ?? 0));
-        
+        var sortedTrend = List.from(trendRows)
+          ..sort((a, b) => (b['total_dur'] as num? ?? 0)
+              .compareTo(a['total_dur'] as num? ?? 0));
+
         for (var i = 0; i < sortedTrend.length && i < 5; i++) {
           final row = sortedTrend[i];
           final dayStr = row['day'] as String;
           final d = DateFormat('yyyy-MM-dd').parse(dayStr);
           final mins = (row['total_dur'] as num? ?? 0).toInt() ~/ 60;
-          
+
           if (i == 0) {
             bestDay = d;
             bestDayMinutes = mins;
           }
           topDays.add({'date': d, 'minutes': mins});
         }
-        
+
         if (bestDay != null) {
-          final dayStart = bestDay!.millisecondsSinceEpoch;
-          final dayEnd = bestDay!.add(const Duration(days: 1)).millisecondsSinceEpoch;
+          final productiveDay = bestDay;
+          final dayStart = productiveDay.millisecondsSinceEpoch;
+          final dayEnd =
+              productiveDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
           final dayCompletions = await db.rawQuery(
             'SELECT (SELECT COUNT(*) FROM todos WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) + '
             '(SELECT COUNT(*) FROM countdowns WHERE is_deleted=0 AND is_completed=1 AND updated_at >= ? AND updated_at < ?) as c',
@@ -289,7 +308,7 @@ class TimelineService {
         ') GROUP BY hr',
         [startMs, endMs, startMs, endMs, startMs, endMs],
       );
-      
+
       List<int> hourlyDist = List.filled(24, 0);
       int peakHr = 0;
       int maxC = 0;
@@ -317,17 +336,19 @@ class TimelineService {
       for (var row in pomoAll) {
         final dur = row['dur'] as int;
         totalSecs += dur;
-        if (dur >= 45 * 60) deepWork++;
+        if (dur >= 60 * 60) deepWork++;
       }
-      final avgPomo = pomoAll.isNotEmpty ? (totalSecs / pomoAll.length) / 60 : 0.0;
+      final avgPomo =
+          pomoAll.isNotEmpty ? (totalSecs / pomoAll.length) / 60 : 0.0;
 
       // 9. Task & Subject Distribution (Combine Todos & Pomodoros for better signal)
       final List<String> allTitles = [];
-      
+
       final todoRows = await db.query(
         'todos',
         columns: ['content'],
-        where: 'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
+        where:
+            'is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         whereArgs: [startMs, endMs],
       );
       allTitles.addAll(todoRows.map((r) => (r['content'] as String? ?? '')));
@@ -347,22 +368,143 @@ class TimelineService {
         whereArgs: [startMs, endMs],
       );
       allTitles.addAll(logRows.map((r) => (r['title'] as String? ?? '')));
-      
+
       final int totalItems = allTitles.length;
       int homework = 0;
       int exam = 0;
       Map<String, int> subjectCounts = {};
-      Map<String, int> wordFrequency = {}; 
+      Map<String, int> wordFrequency = {};
 
       final Map<String, List<String>> categories = {
-        '系统/硬件': ['计组', 'cpu', 'vivada', 'verilog', 'fpga', '汇编', '操作系统', 'os', 'linux', '内核', '驱动', '硬件', '单片机', '嵌入式', 'arm', 'riscv'],
-        '代码/算法': ['代码', 'coding', '算法', 'leetcode', 'c++', 'python', 'java', '软件', '开发', '调试', 'debug', '编程', '程序员', 'git', 'github'],
-        '科研/论文': ['科研', '论文', 'paper', '实验', '项目', '调研', '开题', '结题', '报告', 'ppt', '研讨', '文献', '笔记', '组会', '学术', '发表'],
-        '数学/计算': ['高数', '线代', '离散', '概率', '数学', '计算', '分析', '建模', '方程', '代数', '几何', '复变', '统计', '逻辑'],
-        '物理/信号': ['物理', '大物', '信号', '系统', '电路', '电子', '电磁', '光学', '力学', '热学', '验收', '答辩'],
-        '外语/考试': ['英语', '词汇', '单词', '阅读', '听力', '写作', '雅思', '托福', 'gre', '四级', '六级', '翻译', '口语', '考研', '考证'],
-        '人文/社科': ['思政', '毛泽东', '文化', '戏剧', '哲学', '历史', '艺术', '社会', '心理', '法律', '经济', '管理'],
-        '体育/健身': ['体育', '锻炼', '跑步', '健身', '篮球', '足球', '游泳', '散步', '拉伸', '训练', '有氧', '力量', '减脂'],
+        '系统/硬件': [
+          '计组',
+          'cpu',
+          'vivada',
+          'verilog',
+          'fpga',
+          '汇编',
+          '操作系统',
+          'os',
+          'linux',
+          '内核',
+          '驱动',
+          '硬件',
+          '单片机',
+          '嵌入式',
+          'arm',
+          'riscv'
+        ],
+        '代码/算法': [
+          '代码',
+          'coding',
+          '算法',
+          'leetcode',
+          'c++',
+          'python',
+          'java',
+          '软件',
+          '开发',
+          '调试',
+          'debug',
+          '编程',
+          '程序员',
+          'git',
+          'github'
+        ],
+        '科研/论文': [
+          '科研',
+          '论文',
+          'paper',
+          '实验',
+          '项目',
+          '调研',
+          '开题',
+          '结题',
+          '报告',
+          'ppt',
+          '研讨',
+          '文献',
+          '笔记',
+          '组会',
+          '学术',
+          '发表'
+        ],
+        '数学/计算': [
+          '高数',
+          '线代',
+          '离散',
+          '概率',
+          '数学',
+          '计算',
+          '分析',
+          '建模',
+          '方程',
+          '代数',
+          '几何',
+          '复变',
+          '统计',
+          '逻辑'
+        ],
+        '物理/信号': [
+          '物理',
+          '大物',
+          '信号',
+          '系统',
+          '电路',
+          '电子',
+          '电磁',
+          '光学',
+          '力学',
+          '热学',
+          '验收',
+          '答辩'
+        ],
+        '外语/考试': [
+          '英语',
+          '词汇',
+          '单词',
+          '阅读',
+          '听力',
+          '写作',
+          '雅思',
+          '托福',
+          'gre',
+          '四级',
+          '六级',
+          '翻译',
+          '口语',
+          '考研',
+          '考证'
+        ],
+        '人文/社科': [
+          '思政',
+          '毛泽东',
+          '文化',
+          '戏剧',
+          '哲学',
+          '历史',
+          '艺术',
+          '社会',
+          '心理',
+          '法律',
+          '经济',
+          '管理'
+        ],
+        '体育/健身': [
+          '体育',
+          '锻炼',
+          '跑步',
+          '健身',
+          '篮球',
+          '足球',
+          '游泳',
+          '散步',
+          '拉伸',
+          '训练',
+          '有氧',
+          '力量',
+          '减脂'
+        ],
       };
 
       for (var title in allTitles) {
@@ -372,11 +514,12 @@ class TimelineService {
         // Homework/Exam tagging
         if (RegExp(r'作业|练习|刷题|homework|lab|实验|课后').hasMatch(sub)) homework++;
         if (RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习').hasMatch(sub)) exam++;
-        
+
         // Word frequency (Split by common delimiters)
         final words = sub.split(RegExp(r'[\s、，,。（）()\[\]\-—_]'));
         for (var w in words) {
-          if (w.length > 1 && !RegExp(r'的|了|和|是|就|都|而|及|与|着|或|个|项|次').hasMatch(w)) {
+          if (w.length > 1 &&
+              !RegExp(r'的|了|和|是|就|都|而|及|与|着|或|个|项|次').hasMatch(w)) {
             wordFrequency[w] = (wordFrequency[w] ?? 0) + 1;
           }
         }
@@ -397,30 +540,34 @@ class TimelineService {
 
       final hwRatio = totalItems > 0 ? (homework / totalItems) : 0.0;
       final exRatio = totalItems > 0 ? (exam / totalItems) : 0.0;
-      
+
       // Calculate Exam Subject Distribution
       Map<String, int> examSubjectDist = {};
       for (var title in allTitles) {
         final sub = title.toLowerCase();
         if (RegExp(r'考试|测验|考证|期中|期末|exam|test|背诵|复习').hasMatch(sub)) {
-           bool matched = false;
-           for (var entry in categories.entries) {
-             if (entry.value.any((k) => sub.contains(k))) {
-               examSubjectDist[entry.key] = (examSubjectDist[entry.key] ?? 0) + 1;
-               matched = true;
-               break;
-             }
-           }
-           if (!matched) examSubjectDist['其他'] = (examSubjectDist['其他'] ?? 0) + 1;
+          bool matched = false;
+          for (var entry in categories.entries) {
+            if (entry.value.any((k) => sub.contains(k))) {
+              examSubjectDist[entry.key] =
+                  (examSubjectDist[entry.key] ?? 0) + 1;
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            examSubjectDist['其他'] = (examSubjectDist['其他'] ?? 0) + 1;
+          }
         }
       }
 
       // Dynamic Category Elevation: If 'Other' has many items, extract common keywords
-      final sortedWords = wordFrequency.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      
+      final sortedWords = wordFrequency.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
       Map<String, double> subjectDist = {};
       int othersCount = subjectCounts['其他'] ?? 0;
-      
+
       // Calculate known categories first
       subjectCounts.forEach((k, v) {
         if (k != '其他' && totalItems > 0) {
@@ -435,17 +582,21 @@ class TimelineService {
           // If a word is frequent and NOT part of existing category keywords
           bool isExisting = false;
           for (var list in categories.values) {
-            if (list.contains(wordEntry.key)) { isExisting = true; break; }
+            if (list.contains(wordEntry.key)) {
+              isExisting = true;
+              break;
+            }
           }
-          
+
           if (!isExisting && wordEntry.value > 1) {
             final dynamicLabel = wordEntry.key.toUpperCase();
-            subjectDist[dynamicLabel] = (subjectDist[dynamicLabel] ?? 0) + (wordEntry.value / totalItems);
+            subjectDist[dynamicLabel] = (subjectDist[dynamicLabel] ?? 0) +
+                (wordEntry.value / totalItems);
             distributed += wordEntry.value;
             if (subjectDist.length >= 8) break; // Limit categories for UI
           }
         }
-        
+
         if (distributed < othersCount) {
           subjectDist['其他'] = (othersCount - distributed) / totalItems;
         }
@@ -461,12 +612,14 @@ class TimelineService {
         ')',
         [startMs, endMs, startMs, endMs, startMs, endMs, startMs, endMs],
       );
-      
+
       DateTime? actualStart;
       DateTime? actualEnd;
       if (rangeData.isNotEmpty && rangeData.first['first_ts'] != null) {
-        actualStart = DateTime.fromMillisecondsSinceEpoch(rangeData.first['first_ts'] as int);
-        actualEnd = DateTime.fromMillisecondsSinceEpoch(rangeData.first['last_ts'] as int);
+        actualStart = DateTime.fromMillisecondsSinceEpoch(
+            rangeData.first['first_ts'] as int);
+        actualEnd = DateTime.fromMillisecondsSinceEpoch(
+            rangeData.first['last_ts'] as int);
       }
 
       // 11. Consecutive Active Days (Approximate from dailyTrend)
@@ -474,7 +627,8 @@ class TimelineService {
       if (dailyTrend.isNotEmpty) {
         int currentStreak = 0;
         for (var val in dailyTrend) {
-          if (val > 5) { // More than 5 mins counts as active
+          if (val > 5) {
+            // More than 5 mins counts as active
             currentStreak++;
           } else {
             currentStreak = 0;
@@ -485,11 +639,16 @@ class TimelineService {
 
       final todoCreated = todoStats.first['created'] as int? ?? 0;
       final todoCompleted = todoStats.first['completed'] as int? ?? 0;
-      final completionRate = todoCreated > 0 ? (todoCompleted / todoCreated) : (todoCompleted > 0 ? 1.0 : 0.0);
+      final completionRate = todoCreated > 0
+          ? (todoCompleted / todoCreated)
+          : (todoCompleted > 0 ? 1.0 : 0.0);
+      final topPomo = pomoStats;
 
       return TimelineSummary(
         searchCount: searchCount,
-        lastSearchTime: lastSearchTs != null ? DateTime.fromMillisecondsSinceEpoch(lastSearchTs) : null,
+        lastSearchTime: lastSearchTs != null
+            ? DateTime.fromMillisecondsSinceEpoch(lastSearchTs)
+            : null,
         todoCreatedCount: todoCreated,
         todoEditedCount: 0,
         todoCompletedCount: todoCompleted,
@@ -501,13 +660,22 @@ class TimelineService {
         countdownCompletedCount: cdStats.first['completed'] as int? ?? 0,
         attendedCourses: [],
         pomodoroCount: pomoAll.length,
-        longestPomodoroMinutes: hasPomo ? (pomoStats!['actual_duration'] as int? ?? 0) ~/ 60 : 0,
-        longestPomodoroTitle: hasPomo ? (pomoStats!['todo_title'] as String? ?? '无题') : null,
-        longestPomodoroDate: hasPomo && pomoStats!['start_time'] != null 
-            ? DateTime.fromMillisecondsSinceEpoch(pomoStats!['start_time'] as int) : null,
-        latestTodoCompletionTime: hasTodo && latestTodoStats.first['updated_at'] != null 
-            ? DateTime.fromMillisecondsSinceEpoch(latestTodoStats.first['updated_at'] as int) : null,
-        latestTodoTitle: hasTodo ? (latestTodoStats.first['content'] as String? ?? '未命名任务') : null,
+        longestPomodoroMinutes: topPomo != null
+            ? (topPomo['actual_duration'] as int? ?? 0) ~/ 60
+            : 0,
+        longestPomodoroTitle:
+            topPomo != null ? (topPomo['todo_title'] as String? ?? '无题') : null,
+        longestPomodoroDate: topPomo != null && topPomo['start_time'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(topPomo['start_time'] as int)
+            : null,
+        latestTodoCompletionTime:
+            hasTodo && latestTodoStats.first['updated_at'] != null
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    latestTodoStats.first['updated_at'] as int)
+                : null,
+        latestTodoTitle: hasTodo
+            ? (latestTodoStats.first['content'] as String? ?? '未命名任务')
+            : null,
         mostProductiveDay: bestDay,
         mostProductiveDayDurationMinutes: bestDayMinutes,
         mostProductiveDayCompletedCount: bestDayCompleted,
@@ -564,7 +732,7 @@ class TimelineSummary {
   final int countdownCompletedCount;
   final List<String> attendedCourses;
   final int pomodoroCount;
-  
+
   final int longestPomodoroMinutes;
   final String? longestPomodoroTitle;
   final DateTime? longestPomodoroDate;
@@ -576,7 +744,7 @@ class TimelineSummary {
   final String? topSearchQuery;
   final int peakHour; // Most active hour (0-23)
   final double avgPomodoroMinutes;
-  final int deepWorkCount; // Sessions > 45 mins
+  final int deepWorkCount; // Sessions >= 60 mins
   final double homeworkRatio; // % of homework tasks
   final double examRatio; // % of exam tasks
   final Map<String, int> examSubjectDist;
@@ -584,11 +752,13 @@ class TimelineSummary {
   final List<int> hourlyDistribution; // Counts for 0-23 hours
   final DateTime? actualStartTime;
   final DateTime? actualEndTime;
-  final List<double> dailyTrend; // Duration per day (minutes), normalized or raw
+  final List<double>
+      dailyTrend; // Duration per day (minutes), normalized or raw
   final List<Map<String, dynamic>> topFocusSessions;
   final List<Map<String, dynamic>> topProductiveDays;
   final List<Map<String, dynamic>> topSearchQueries;
-  final List<Map<String, dynamic>> topCompletedTodosDetails; // To distinguish from topCompletedTodos
+  final List<Map<String, dynamic>>
+      topCompletedTodosDetails; // To distinguish from topCompletedTodos
 
   TimelineSummary({
     required this.searchCount,
