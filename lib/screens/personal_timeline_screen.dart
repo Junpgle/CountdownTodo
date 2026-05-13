@@ -42,6 +42,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   int _productiveScreenSeconds = 0;
   int _distractionScreenSeconds = 0;
   int _deadlineSprintCount = 0;
+  int _earlyCompletionCount = 0;
   int _courseCount = 0;
   int _maxDailyCourseCount = 0;
   List<MapEntry<String, int>> _topScreenApps = [];
@@ -153,20 +154,28 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         if (todo.isDeleted) return false;
         final createdInRange = todo.createdAt >= start.millisecondsSinceEpoch &&
             todo.createdAt < end.millisecondsSinceEpoch;
+        final dueEnd = _effectiveTodoDueEnd(todo);
         final dueInRange = todo.dueDate != null &&
-            !todo.dueDate!.isBefore(start) &&
-            todo.dueDate!.isBefore(end);
+            dueEnd != null &&
+            !dueEnd.isBefore(start) &&
+            dueEnd.isBefore(end);
         final completedInRange = todo.isDone &&
             todo.updatedAt >= start.millisecondsSinceEpoch &&
             todo.updatedAt < end.millisecondsSinceEpoch;
         return createdInRange || dueInRange || completedInRange;
       }).toList();
       final sprintCount = completedTodos.where((todo) {
-        final due = todo.dueDate;
+        final due = _effectiveTodoDueEnd(todo);
         if (due == null) return false;
         final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
         final diff = due.difference(doneAt);
         return !diff.isNegative && diff.inHours <= 24;
+      }).length;
+      final earlyCount = completedTodos.where((todo) {
+        final due = _effectiveTodoDueEnd(todo);
+        if (due == null) return false;
+        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
+        return due.difference(doneAt).inHours >= 24;
       }).length;
 
       final courses = await CourseService.getAllCourses(widget.username);
@@ -218,6 +227,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _productiveScreenSeconds = productiveScreen;
           _distractionScreenSeconds = distractionScreen;
           _deadlineSprintCount = sprintCount;
+          _earlyCompletionCount = earlyCount;
           _courseCount = coursesByDay.values.fold(0, (sum, v) => sum + v);
           _maxDailyCourseCount = coursesByDay.values.isEmpty
               ? 0
@@ -332,6 +342,28 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   bool _isDistractionScreenCategory(String category) {
     return category == '社交通讯' || category == '影音娱乐' || category == '游戏与辅助';
+  }
+
+  DateTime? _effectiveTodoDueEnd(TodoItem todo) {
+    final due = todo.dueDate;
+    if (due == null) return null;
+
+    final localDue = due.toLocal();
+    final looksDateOnly = localDue.hour == 0 &&
+        localDue.minute == 0 &&
+        localDue.second == 0 &&
+        localDue.millisecond == 0;
+    if (!todo.isAllDayTask && !looksDateOnly) return localDue;
+
+    return DateTime(
+      localDue.year,
+      localDue.month,
+      localDue.day,
+      23,
+      59,
+      59,
+      999,
+    );
   }
 
   Future<void> _saveTimelinePoster() async {
@@ -1584,8 +1616,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         cs,
         extraItems: [
           const SizedBox(height: 8),
-          _buildRankItem(0, '提前完成', '${_summary!.earlyCompletionCount}项', cs),
-          _buildRankItem(0, '逾期任务', '${_summary!.overdueCount}项', cs),
+          _buildRankItem(0, '提前完成', '$_earlyCompletionCount项', cs),
           _buildRankItem(0, '截止前24小时完成', '$_deadlineSprintCount项', cs),
         ],
       ),

@@ -210,25 +210,19 @@ class TimelineService {
       // 4b. Task Quality (Overdue vs Early)
       final taskQualityStats = await db.rawQuery(
         'SELECT '
-        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND updated_at > due_date THEN 1 ELSE 0 END) as overdue, '
-        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND (due_date - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
+        'SUM(CASE WHEN due_date IS NOT NULL AND due_date > 0 AND ((due_date + 86399999) - updated_at) >= 86400000 THEN 1 ELSE 0 END) as early '
         'FROM todos '
         'WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ?',
         [startMs, endMs],
       );
-      final int overdueCount = taskQualityStats.first['overdue'] as int? ?? 0;
       final int earlyCount = taskQualityStats.first['early'] as int? ?? 0;
 
       final pomoTop = await db.rawQuery(
-        'SELECT uuid, todo_title, actual_duration, start_time FROM ('
         'SELECT uuid, todo_title, actual_duration, start_time FROM pomodoro_records '
         'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? AND '
         '(status = \'completed\' OR (status = \'interrupted\' AND actual_duration >= planned_duration * 0.9)) '
-        'UNION ALL '
-        'SELECT uuid, title as todo_title, (end_time - start_time) / 1000 as actual_duration, start_time FROM time_logs '
-        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
-        ') ORDER BY actual_duration DESC LIMIT 5',
-        [startMs, endMs, startMs, endMs],
+        'ORDER BY actual_duration DESC LIMIT 5',
+        [startMs, endMs],
       );
       hasPomo = pomoTop.isNotEmpty;
       pomoStats = hasPomo ? pomoTop.first : null;
@@ -698,7 +692,6 @@ class TimelineService {
         examSubjectDist: examSubjectDist,
         interruptionCount: interruptedPomos,
         interruptionRate: interruptionRate,
-        overdueCount: overdueCount,
         earlyCompletionCount: earlyCount,
       );
     } catch (e) {
@@ -802,7 +795,6 @@ class TimelineSummary {
     this.examSubjectDist = const {},
     this.interruptionCount = 0,
     this.interruptionRate = 0.0,
-    this.overdueCount = 0,
     this.earlyCompletionCount = 0,
   });
 
@@ -812,7 +804,6 @@ class TimelineSummary {
   // New Quality Metrics
   final int interruptionCount;
   final double interruptionRate;
-  final int overdueCount;
   final int earlyCompletionCount;
 
   String get topSubject {
