@@ -1303,7 +1303,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     if (actualSeconds > 5) {
       final isCountUp = _settings.mode == TimerMode.countUp;
-      PomodoroService.addRecord(PomodoroRecord(
+      await PomodoroService.addRecord(PomodoroRecord(
         uuid: _currentSessionUuid,
         todoUuid: oldTodo?.id,
         todoTitle: oldTodo?.title,
@@ -1485,7 +1485,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           : PomodoroRecordStatus.interrupted,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
-    PomodoroService.addRecord(record);
+    await PomodoroService.addRecord(record);
     if (completed == true && _boundTodo != null && _boundTodo!.id.isNotEmpty) {
       StorageService.getTodos(widget.username).then((allTodos) async {
         final idx = allTodos.indexWhere((t) => t.id == _boundTodo!.id);
