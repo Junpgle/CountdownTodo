@@ -16,6 +16,8 @@ import '../services/pomodoro_service.dart';
 import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../services/medal_recommendation_service.dart';
+import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
 
@@ -63,6 +65,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   int _courseCount = 0;
   int _maxDailyCourseCount = 0;
   List<MapEntry<String, int>> _topScreenApps = [];
+
+  // ML Medal Recommendation System
+  MedalRecommendation? _medalRecommendation;
+  List<MedalProgress> _earnedThisSession = [];
 
   @override
   void initState() {
@@ -254,6 +260,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _topScreenApps = appUsage.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           _topScreenApps = _topScreenApps.take(5).toList();
+
+          // Calculate ML Medal Recommendations
+          _medalRecommendation =
+              MedalRecommendationService.getRecommendations(
+            summary,
+            totalSecs ~/ 60,
+            completedTodos.length,
+            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            earlyCount,
+            sprintCount,
+            coursesByDay.values.fold(0, (sum, v) => sum + v),
+            coursesByDay.values.isEmpty ? 0 : coursesByDay.values.reduce(math.max),
+            screenTotal,
+            productiveScreen,
+            distractionScreen,
+          );
+
+          // Get earned medals in this session (this time period)
+          _earnedThisSession = _medalRecommendation?.earnedMedals ?? [];
+
           _isLoading = false;
         });
         _animationController.forward(from: 0.0);
@@ -1981,93 +2007,142 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildMedalWall(ColorScheme cs, bool isWide) {
     final medals = _earnedMedals();
-    if (medals.isEmpty) return const SizedBox();
 
     return Padding(
       padding: const EdgeInsets.only(top: 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('勋章墙', Icons.emoji_events_outlined, cs),
-          const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: medals.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: isWide ? 3 : 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              mainAxisExtent: 104,
-            ),
-            itemBuilder: (context, index) {
-              final medal = medals[index];
-              return Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.3)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionHeader('勋章墙', Icons.emoji_events_outlined, cs),
+              // "进入勋章墙" 按钮
+              if (_medalRecommendation != null)
+                ElevatedButton.icon(
+                  onPressed: () => _navigateToMedalWall(),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: const Text('全部勋章'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cs.primaryContainer,
+                    foregroundColor: cs.onPrimaryContainer,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: medal.color.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(medal.icon, color: medal.color, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            medal.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            medal.desc,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '获得于 ${_formatMedalTime(medal.earnedAt)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color:
-                                  cs.onSurfaceVariant.withValues(alpha: 0.64),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+            ],
           ),
+          const SizedBox(height: 14),
+          if (medals.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.emoji_events_outlined, size: 48, color: cs.outline),
+                  const SizedBox(height: 12),
+                  Text(
+                    '继续努力，您即将获得第一个勋章！',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: medals.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isWide ? 3 : 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 104,
+              ),
+              itemBuilder: (context, index) {
+                final medal = medals[index];
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: medal.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(medal.icon, color: medal.color, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              medal.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              medal.desc,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '获得于 ${_formatMedalTime(medal.earnedAt)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color:
+                                    cs.onSurfaceVariant.withValues(alpha: 0.64),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
         ],
+      ),
+    );
+  }
+
+  void _navigateToMedalWall() {
+    if (_medalRecommendation == null || _summary == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MedalWallPage(
+          recommendation: _medalRecommendation!,
+          earnedThisSession: _earnedThisSession,
+          summary: _summary!,
+        ),
       ),
     );
   }
