@@ -32,12 +32,12 @@ import 'services/widget_service.dart';
 import 'services/splash_service.dart';
 import 'services/course_service.dart';
 import 'services/environment_service.dart';
+import 'services/app_deep_link_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_ui.dart';
 
 import 'utils/navigator_utils.dart';
-
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -57,7 +57,8 @@ Future<bool> showCloseDialog() async {
       debugPrint('[Main] Error in close dialog callback: $e');
     }
   }
-  debugPrint('[Main] No callback registered or error occurred, allowing close by default');
+  debugPrint(
+      '[Main] No callback registered or error occurred, allowing close by default');
   return true;
 }
 
@@ -116,6 +117,8 @@ Future<void> main(List<String> args) async {
       return;
     }
   } catch (_) {}
+
+  await AppDeepLinkService.init(args);
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
@@ -211,7 +214,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<bool> _showCloseConfirmDialog() async {
     debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
-    
+
     if (!mounted) {
       debugPrint('[Main] Widget not mounted, falling back to native dialog');
       return true;
@@ -219,7 +222,8 @@ class _MyAppState extends State<MyApp> {
 
     final context = appNavigatorKey.currentContext;
     if (context == null) {
-      debugPrint('[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
+      debugPrint(
+          '[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
       return true;
     }
 
@@ -315,6 +319,9 @@ class _MyAppState extends State<MyApp> {
             _showPrivacyUpdateDialog();
           });
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(AppDeepLinkService.consumePendingAfterAppReady());
+        });
       }
     } catch (e) {
       debugPrint('[Main] 初始化失败: $e');
@@ -389,7 +396,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _applySplashTransitionIfReady() {
-    if (!_defaultSplashCompleted || !_windowReadyForSplashTransition || !mounted) {
+    if (!_defaultSplashCompleted ||
+        !_windowReadyForSplashTransition ||
+        !mounted) {
       return;
     }
     if (mounted) {
@@ -420,8 +429,7 @@ class _MyAppState extends State<MyApp> {
         onDeviceConnected: (info) {
           BandSyncService.registerListener();
         },
-        onDeviceDisconnected: () {
-        },
+        onDeviceDisconnected: () {},
         onMessageReceived: (data) {
           debugPrint('[Band] 收到消息: $data');
         },
@@ -494,7 +502,8 @@ class _MyAppState extends State<MyApp> {
 
   // --- 静态转换方法，供 compute (Isolate) 调用 ---
 
-  static List<Map<String, dynamic>> _transformTodosForBand(List<TodoItem> todos) {
+  static List<Map<String, dynamic>> _transformTodosForBand(
+      List<TodoItem> todos) {
     return todos.where((t) => !t.isDeleted && !t.isDone).map((t) {
       final j = t.toJson();
       j.remove('image_path');
@@ -513,23 +522,25 @@ class _MyAppState extends State<MyApp> {
     }).toList();
   }
 
-  static List<Map<String, dynamic>> _transformCoursesForBand(List<dynamic> courses) {
-    return courses.map((c) => (c as dynamic).toJson() as Map<String, dynamic>).toList();
+  static List<Map<String, dynamic>> _transformCoursesForBand(
+      List<dynamic> courses) {
+    return courses
+        .map((c) => (c as dynamic).toJson() as Map<String, dynamic>)
+        .toList();
   }
 
-  static List<Map<String, dynamic>> _transformCountdownsForBand(List<CountdownItem> countdowns) {
+  static List<Map<String, dynamic>> _transformCountdownsForBand(
+      List<CountdownItem> countdowns) {
     return countdowns
         .where((c) => !c.isDeleted)
         .map((c) => c.toJson())
         .toList();
   }
 
-  static List<Map<String, dynamic>> _transformPomodorosForBand(List<PomodoroRecord> records) {
+  static List<Map<String, dynamic>> _transformPomodorosForBand(
+      List<PomodoroRecord> records) {
     return records.map((r) => r.toJson()).toList();
   }
-
-
-
 
   Future<void> _handleBandPomodoroAction(String action) async {
     debugPrint('[Band] _handleBandPomodoroAction called: $action');
@@ -561,6 +572,23 @@ class _MyAppState extends State<MyApp> {
       await PomodoroService.clearRunState();
       debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
     } else if (action == 'abandon') {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final actualSeconds =
+          ((now - runState.sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+      if (actualSeconds > 5) {
+        final record = PomodoroRecord(
+          startTime: runState.sessionStartMs,
+          endTime: now,
+          plannedDuration: runState.plannedFocusSeconds,
+          actualDuration: actualSeconds,
+          tagUuids: runState.tagUuids,
+          todoUuid: runState.todoUuid,
+          todoTitle: runState.todoTitle,
+          status: PomodoroRecordStatus.interrupted,
+        );
+        debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
+        await PomodoroService.addRecord(record);
+      }
       debugPrint('[Band] Clearing run state (abandon)');
       await PomodoroService.clearRunState();
       debugPrint('[Band] 番茄钟已放弃');
@@ -689,7 +717,8 @@ class _MyAppState extends State<MyApp> {
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
-            '/teams': (context) => TeamManagementScreen(username: _loggedInUser ?? ''),
+            '/teams': (context) =>
+                TeamManagementScreen(username: _loggedInUser ?? ''),
             '/dev/island': (context) => const IslandDebugPage(),
           },
           builder: (context, child) {

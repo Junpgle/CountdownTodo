@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
+import '../services/app_report_launch_service.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../utils/page_transitions.dart';
@@ -58,6 +60,13 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
   }
 
+  Future<void> _openTodayReportInApp() {
+    return AppReportLaunchService.openTimelineReportInApp(
+      dimension: TimelineDimension.daily,
+      date: DateTime.now(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = widget.isLight ? Colors.white : null;
@@ -99,22 +108,36 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                     color: textColor),
               ),
               const Spacer(),
-              Icon(Icons.chevron_right, size: 20, color: subColor),
+              if (kIsWeb)
+                FilledButton.icon(
+                  onPressed: _openTodayReportInApp,
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: const Text('前往App查看报告'),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                )
+              else
+                Icon(Icons.chevron_right, size: 20, color: subColor),
             ],
           ),
         ),
         const SizedBox(height: 12),
         InkWell(
           key: _cardKey,
-          onTap: () => PageTransitions.pushFromRect(
-            context: context,
-            page: PersonalTimelineScreen(username: widget.username),
-            sourceKey: _cardKey,
-            sourceColor: widget.isLight
-                ? Colors.white.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.surface,
-            sourceBorderRadius: BorderRadius.circular(24),
-          ).then((_) => _loadData()),
+          onTap: kIsWeb
+              ? _openTodayReportInApp
+              : () => PageTransitions.pushFromRect(
+                    context: context,
+                    page: PersonalTimelineScreen(username: widget.username),
+                    sourceKey: _cardKey,
+                    sourceColor: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Theme.of(context).colorScheme.surface,
+                    sourceBorderRadius: BorderRadius.circular(24),
+                  ).then((_) => _loadData()),
           borderRadius: BorderRadius.circular(24),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
@@ -129,7 +152,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                      color: Colors.black
+                          .withValues(alpha: widget.isLight ? 0.1 : 0.05),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     )
@@ -137,7 +161,9 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                   border: Border.all(
                     color: widget.isLight
                         ? Colors.white.withValues(alpha: 0.2)
-                        : Theme.of(context).dividerColor.withValues(alpha: 0.05),
+                        : Theme.of(context)
+                            .dividerColor
+                            .withValues(alpha: 0.05),
                   ),
                 ),
                 child: AnimatedSwitcher(
@@ -158,7 +184,8 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                       : Container(
                           // 🚀 核心修复：增加 refreshTrigger 使 Key 在每次加载后唯一，
                           // 彻底解决 AnimatedSwitcher 在快速加载时可能出现的 Duplicate Key 崩溃
-                          key: ValueKey('summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
+                          key: ValueKey(
+                              'summary_${widget.refreshTrigger}_${_summaryContentKey()}'),
                           child: _buildSummaryGrid(subColor, textColor),
                         ),
                 ),
@@ -189,12 +216,20 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
 
     // 2. 待办事项
-    if (_summary!.todoCreatedCount > 0 || _summary!.todoEditedCount > 0 || _summary!.todoCompletedCount > 0) {
+    if (_summary!.todoCreatedCount > 0 ||
+        _summary!.todoEditedCount > 0 ||
+        _summary!.todoCompletedCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
       final parts = <String>[];
-      if (_summary!.todoCreatedCount > 0) parts.add('新增 ${_summary!.todoCreatedCount} 个');
-      if (_summary!.todoEditedCount > 0) parts.add('编辑 ${_summary!.todoEditedCount} 个');
-      if (_summary!.todoCompletedCount > 0) parts.add('完成 ${_summary!.todoCompletedCount} 个');
+      if (_summary!.todoCreatedCount > 0) {
+        parts.add('新增 ${_summary!.todoCreatedCount} 个');
+      }
+      if (_summary!.todoEditedCount > 0) {
+        parts.add('编辑 ${_summary!.todoEditedCount} 个');
+      }
+      if (_summary!.todoCompletedCount > 0) {
+        parts.add('完成 ${_summary!.todoCompletedCount} 个');
+      }
       rows.add(_buildSummaryRow(
         icon: Icons.task_alt_rounded,
         color: Colors.blue,
@@ -206,12 +241,20 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
 
     // 3. 倒计时
-    if (_summary!.countdownCreatedCount > 0 || _summary!.countdownEditedCount > 0 || _summary!.countdownCompletedCount > 0) {
+    if (_summary!.countdownCreatedCount > 0 ||
+        _summary!.countdownEditedCount > 0 ||
+        _summary!.countdownCompletedCount > 0) {
       if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
       final parts = <String>[];
-      if (_summary!.countdownCreatedCount > 0) parts.add('新增 ${_summary!.countdownCreatedCount} 个');
-      if (_summary!.countdownEditedCount > 0) parts.add('编辑 ${_summary!.countdownEditedCount} 个');
-      if (_summary!.countdownCompletedCount > 0) parts.add('完成 ${_summary!.countdownCompletedCount} 个');
+      if (_summary!.countdownCreatedCount > 0) {
+        parts.add('新增 ${_summary!.countdownCreatedCount} 个');
+      }
+      if (_summary!.countdownEditedCount > 0) {
+        parts.add('编辑 ${_summary!.countdownEditedCount} 个');
+      }
+      if (_summary!.countdownCompletedCount > 0) {
+        parts.add('完成 ${_summary!.countdownCompletedCount} 个');
+      }
       rows.add(_buildSummaryRow(
         icon: Icons.timer_outlined,
         color: Colors.redAccent,

@@ -196,7 +196,7 @@ class TimelineService {
       // 4. Pomodoro Details (Quality metrics)
       final pomodoroDetailStats = await db.rawQuery(
         'SELECT COUNT(*) as total, '
-        'SUM(CASE WHEN status = \'interrupted\' OR status = \'abandoned\' THEN 1 ELSE 0 END) as interrupted '
+        'SUM(CASE WHEN status = \'interrupted\' AND planned_duration > 0 AND actual_duration < planned_duration THEN 1 ELSE 0 END) as interrupted '
         'FROM pomodoro_records '
         'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
         [startMs, endMs],
@@ -616,20 +616,10 @@ class TimelineService {
             rangeData.first['last_ts'] as int);
       }
 
-      // 11. Consecutive Active Days (Approximate from dailyTrend)
-      int consecutiveDays = 0;
-      if (dailyTrend.isNotEmpty) {
-        int currentStreak = 0;
-        for (var val in dailyTrend) {
-          if (val > 5) {
-            // More than 5 mins counts as active
-            currentStreak++;
-          } else {
-            currentStreak = 0;
-          }
-          if (currentStreak > consecutiveDays) consecutiveDays = currentStreak;
-        }
-      }
+      // 11. Consecutive activity. Today's daily report uses the current streak;
+      // other ranges show the longest active streak inside the selected range.
+      final consecutiveDays =
+          await _calculateConsecutiveActiveDays(db, start, end);
 
       final todoCreated = todoStats.first['created'] as int? ?? 0;
       final todoCompleted = todoStats.first['completed'] as int? ?? 0;
@@ -708,6 +698,84 @@ class TimelineService {
         pomodoroCount: 0,
       );
     }
+  }
+
+  Future<int> _calculateConsecutiveActiveDays(
+      dynamic db, DateTime start, DateTime end) async {
+    final today = DateTime.now();
+    final todayDay = DateTime(today.year, today.month, today.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final reportLastDay = DateTime(end.year, end.month, end.day)
+        .subtract(const Duration(days: 1));
+    final isSingleDay = end.difference(start).inDays <= 1;
+
+    if (isSingleDay) {
+      final anchor = startDay.isAfter(todayDay) ? todayDay : startDay;
+      final cutoff = anchor.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final rows = await db.rawQuery(
+        'SELECT DISTINCT day FROM ('
+        'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp < ?'
+        ') WHERE day IS NOT NULL',
+        [cutoff, cutoff, cutoff, cutoff, cutoff],
+      );
+
+      final activeDays = rows.map((r) => r['day']?.toString()).toSet();
+      var cursor = anchor;
+      var streak = 0;
+      while (activeDays.contains(DateFormat('yyyy-MM-dd').format(cursor))) {
+        streak++;
+        cursor = cursor.subtract(const Duration(days: 1));
+      }
+      return streak;
+    }
+
+    final rangeEndDay =
+        reportLastDay.isAfter(todayDay) ? todayDay : reportLastDay;
+    if (rangeEndDay.isBefore(startDay)) return 0;
+    final rangeStartMs = startDay.millisecondsSinceEpoch;
+    final rangeEndMs =
+        rangeEndDay.add(const Duration(days: 1)).millisecondsSinceEpoch;
+
+    final rows = await db.rawQuery(
+      'SELECT DISTINCT day FROM ('
+      'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at >= ? AND created_at < ? '
+      'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+      'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+      'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+      'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp >= ? AND timestamp < ?'
+      ') WHERE day IS NOT NULL',
+      [
+        rangeStartMs,
+        rangeEndMs,
+        rangeStartMs,
+        rangeEndMs,
+        rangeStartMs,
+        rangeEndMs,
+        rangeStartMs,
+        rangeEndMs,
+        rangeStartMs,
+        rangeEndMs,
+      ],
+    );
+
+    final activeDays = rows.map((r) => r['day']?.toString()).toSet();
+    var cursor = startDay;
+    var current = 0;
+    var longest = 0;
+    while (!cursor.isAfter(rangeEndDay)) {
+      if (activeDays.contains(DateFormat('yyyy-MM-dd').format(cursor))) {
+        current++;
+        if (current > longest) longest = current;
+      } else {
+        current = 0;
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return longest;
   }
 }
 

@@ -16,9 +16,11 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
 import android.provider.CalendarContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
@@ -33,6 +35,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import org.json.JSONArray as KJSONArray
 import java.io.File
+import java.io.FileInputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.ConcurrentHashMap
@@ -47,6 +50,7 @@ import rikka.shizuku.Shizuku
 
 class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener, Shizuku.OnBinderReceivedListener, Shizuku.OnBinderDeadListener {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
+    private val DEEP_LINK_CHANNEL = "com.math_quiz_app/deep_links"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
@@ -107,6 +111,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
+    private var deepLinkChannel: MethodChannel? = null
+    private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
@@ -156,24 +162,33 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val launchDeepLink = extractDeepLinkFromIntent(intent)
+        if (launchDeepLink != null) {
+            pendingDeepLink = launchDeepLink
+            sanitizeDeepLinkIntent(intent)
+            Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
+        }
+
         super.onCreate(savedInstanceState)
         HomeWidgetPlugin.getData(this)
 
-        // 处理从通知栏传来的番茄钟动作
-        handlePomodoroActionFromIntent(intent)
+        if (launchDeepLink == null) {
+            // 处理从通知栏传来的番茄钟动作
+            handlePomodoroActionFromIntent(intent)
 
-        // 处理从通知栏传来的待办确认动作
-        handleTodoConfirmFromIntent(intent)
+            // 处理从通知栏传来的待办确认动作
+            handleTodoConfirmFromIntent(intent)
 
-        // 处理从通知栏传来的图片查看动作
-        handleAnalysisImageFromIntent(intent)
-        handleOriginalTextFromIntent(intent)
+            // 处理从通知栏传来的图片查看动作
+            handleAnalysisImageFromIntent(intent)
+            handleOriginalTextFromIntent(intent)
 
-        // 处理从通知栏传来的规划块提醒
-        handlePlanBlockFromIntent(intent)
+            // 处理从通知栏传来的规划块提醒
+            handlePlanBlockFromIntent(intent)
 
-        // 处理 App Shortcuts 导航
-        handleShortcutFromIntent(intent)
+            // 处理 App Shortcuts 导航
+            handleShortcutFromIntent(intent)
+        }
 
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
@@ -204,6 +219,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onNewIntent(intent: Intent) {
+        val deepLink = extractDeepLinkFromIntent(intent)
+        if (deepLink != null) {
+            sanitizeDeepLinkIntent(intent)
+            super.onNewIntent(intent)
+            dispatchDeepLink(deepLink)
+            return
+        }
+
         super.onNewIntent(intent)
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
@@ -211,6 +234,32 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleOriginalTextFromIntent(intent)
         handlePlanBlockFromIntent(intent)
         handleShortcutFromIntent(intent)
+    }
+
+    private fun extractDeepLinkFromIntent(intent: Intent?): String? {
+        val data = intent?.data?.toString() ?: return null
+        return if (data.startsWith("countdowntodo://")) data else null
+    }
+
+    private fun sanitizeDeepLinkIntent(intent: Intent?) {
+        intent ?: return
+        intent.action = null
+        intent.setDataAndType(null, null)
+        intent.clipData = null
+        intent.replaceExtras(Bundle())
+        intent.removeCategory(Intent.CATEGORY_BROWSABLE)
+        intent.removeCategory(Intent.CATEGORY_DEFAULT)
+    }
+
+    private fun dispatchDeepLink(data: String) {
+        Log.d(TAG, "🔗 dispatchDeepLink: $data")
+        if (deepLinkChannel != null) {
+            deepLinkChannel?.invokeMethod("openDeepLink", data)
+            Log.d(TAG, "🔗 Invoked openDeepLink to Flutter")
+        } else {
+            pendingDeepLink = data
+            Log.d(TAG, "🔗 Saved pending deep link")
+        }
     }
 
     private fun handleAnalysisImageFromIntent(intent: Intent?) {
@@ -342,6 +391,55 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    private fun saveImageToGallery(path: String, result: MethodChannel.Result) {
+        try {
+            val source = File(path)
+            if (!source.exists()) {
+                result.error("FILE_NOT_FOUND", "Image file does not exist", path)
+                return
+            }
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, source.name)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(
+                        MediaStore.Images.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/CountDownTodo"
+                    )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri == null) {
+                result.error("INSERT_FAILED", "Failed to create gallery item", null)
+                return
+            }
+
+            resolver.openOutputStream(uri)?.use { output ->
+                FileInputStream(source).use { input ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                result.error("OPEN_FAILED", "Failed to open gallery output stream", null)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            }
+
+            result.success(uri.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "saveImageToGallery failed", e)
+            result.error("SAVE_FAILED", e.message, null)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // 移除监听器，防止内存泄漏
@@ -357,6 +455,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         largeIconCache.clear()
         lastNotificationTimestampMs.clear()
         methodChannel = null
+        deepLinkChannel = null
     }
 
     // Shizuku 服务成功连接的回调
@@ -645,6 +744,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+        deepLinkChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialDeepLink" -> {
+                    result.success(pendingDeepLink)
+                    pendingDeepLink = null
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // 处理待处理的番茄钟动作
         pendingPomodoroAction?.let { action ->
@@ -737,6 +846,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         lastNotificationTimestampMs.remove(notifId)
                     }
                     result.success(null)
+                }
+
+                "saveImageToGallery" -> {
+                    val path = (call.arguments as? Map<String, Any>)?.get("path") as? String
+                    if (path.isNullOrBlank()) {
+                        result.error("INVALID_ARGS", "path is required", null)
+                    } else {
+                        saveImageToGallery(path, result)
+                    }
                 }
 
                 // 🚀 响应 Flutter 的添加小部件请求

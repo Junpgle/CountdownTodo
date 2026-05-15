@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../models.dart';
@@ -28,6 +27,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
   List<PomodoroSession> _sessions = [];
   List<PomodoroTag> _tags = [];
   List<TodoItem> _todos = [];
+  List<TodoGroup> _todoGroups = [];
   bool _loading = true;
   bool _syncing = false;
   bool _showDimensionPicker = false;
@@ -95,6 +95,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     final results = await Future.wait([
       PomodoroService.getTags(),
       StorageService.getTodos(widget.username),
+      StorageService.getTodoGroups(widget.username),
       PomodoroService.getSessionsInRange(_getChartRange().start, _getChartRange().end),
     ]);
     
@@ -106,7 +107,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
     final tags = results[0] as List<PomodoroTag>;
     final allTodos = results[1] as List<TodoItem>;
-    final allSessions = results[2] as List<PomodoroSession>;
+    final groups = results[2] as List<TodoGroup>;
+    final allSessions = results[3] as List<PomodoroSession>;
 
     // Filter for current detail view
     final detailRange = _getRange();
@@ -118,6 +120,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     setState(() {
       _tags = tags;
       _todos = allTodos.where((t) => !t.isDeleted).toList();
+      _todoGroups = groups.where((g) => !g.isDeleted).toList();
       _chartSessions = allSessions;
       _sessions = sessions;
       _loading = false;
@@ -614,6 +617,85 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
   }
 
+  List<Widget> _buildTodoPickerItems(BuildContext dialogContext) {
+    final sortedTodos = _sortTodosForPicker(_todos, _todoGroups);
+    final items = <Widget>[
+      ListTile(
+        title: const Text('自由专注（无绑定）'),
+        leading: const Icon(Icons.clear),
+        onTap: () => Navigator.pop(dialogContext, null),
+      ),
+      const Divider(),
+    ];
+
+    String? currentHeader;
+    for (final todo in sortedTodos) {
+      final header =
+          '${todo.isDone ? "已完成" : "未完成"} · ${_todoGroupName(todo)}';
+      if (header != currentHeader) {
+        currentHeader = header;
+        items.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            header,
+            style: TextStyle(
+              color: Theme.of(dialogContext).colorScheme.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ));
+      }
+      items.add(ListTile(
+        title: Text(todo.title),
+        subtitle: todo.remark != null ? Text(todo.remark!) : null,
+        leading: Icon(todo.isDone
+            ? Icons.check_circle_outline
+            : Icons.radio_button_unchecked),
+        onTap: () => Navigator.pop(dialogContext, todo),
+      ));
+    }
+    return items;
+  }
+
+  List<TodoItem> _sortTodosForPicker(
+      List<TodoItem> todos, List<TodoGroup> groups) {
+    int groupRank(TodoItem todo) {
+      final groupId = todo.groupId;
+      if (groupId == null || groupId.isEmpty) return 1 << 30;
+      final idx = groups.indexWhere((group) => group.id == groupId);
+      return idx == -1 ? (1 << 30) - 1 : idx;
+    }
+
+    int urgencyMs(TodoItem todo) {
+      if (todo.dueDate != null) return todo.dueDate!.millisecondsSinceEpoch;
+      if (todo.createdDate != null && todo.createdDate! > 0) {
+        return todo.createdDate!;
+      }
+      return 1 << 62;
+    }
+
+    return List<TodoItem>.from(todos)
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        final groupCompare = groupRank(a).compareTo(groupRank(b));
+        if (groupCompare != 0) return groupCompare;
+        final urgencyCompare = urgencyMs(a).compareTo(urgencyMs(b));
+        if (urgencyCompare != 0) return urgencyCompare;
+        return a.title.compareTo(b.title);
+      });
+  }
+
+  String _todoGroupName(TodoItem todo) {
+    final groupId = todo.groupId;
+    if (groupId == null || groupId.isEmpty) return '未分类';
+    return _todoGroups
+            .cast<TodoGroup?>()
+            .firstWhere((group) => group?.id == groupId, orElse: () => null)
+            ?.name ??
+        '未知分类';
+  }
+
   Future<void> _editSession(PomodoroSession session) async {
     List<String> editTags = List.from(session.tagUuids);
     String? editTodoUuid = session.todoUuid;
@@ -683,9 +765,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                       builder: (dctx) => AlertDialog(
                         title: const Text('选择任务'),
                         content: SizedBox(width: double.maxFinite, child: ListView(shrinkWrap: true, children: [
-                          ListTile(title: const Text('自由专注（无绑定）'), leading: const Icon(Icons.clear), onTap: () => Navigator.pop(dctx, null)),
-                          const Divider(),
-                          ..._todos.map((t) => ListTile(title: Text(t.title), subtitle: t.remark != null ? Text(t.remark!) : null, leading: Icon(t.isDone ? Icons.check_circle_outline : Icons.radio_button_unchecked), onTap: () => Navigator.pop(dctx, t))),
+                          ..._buildTodoPickerItems(dctx),
                         ])),
                       ),
                     );
@@ -731,6 +811,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         uuid: session.uuid, todoUuid: editTodoUuid, todoTitle: editTodoTitle, tagUuids: editTags,
                         startTime: session.startTime, endTime: session.endTime, plannedDuration: session.plannedDuration,
                         actualDuration: session.actualDuration, status: session.status, deviceId: session.deviceId,
+                        planBlockId: session.planBlockId,
                         isDeleted: session.isDeleted, version: session.version + 1, createdAt: session.createdAt,
                         updatedAt: DateTime.now().millisecondsSinceEpoch,
                       );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
@@ -11,14 +13,25 @@ import 'dart:io';
 import '../models.dart';
 import '../services/timeline_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
 
+enum _TimelinePosterAction { share, save }
+
 class PersonalTimelineScreen extends StatefulWidget {
   final String username;
-  const PersonalTimelineScreen({super.key, required this.username});
+  final TimelineDimension initialDimension;
+  final DateTime? initialDate;
+
+  const PersonalTimelineScreen({
+    super.key,
+    required this.username,
+    this.initialDimension = TimelineDimension.daily,
+    this.initialDate,
+  });
 
   @override
   State<PersonalTimelineScreen> createState() => _PersonalTimelineScreenState();
@@ -26,6 +39,9 @@ class PersonalTimelineScreen extends StatefulWidget {
 
 class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     with SingleTickerProviderStateMixin {
+  static const MethodChannel _nativeChannel =
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+
   TimelineDimension _dimension = TimelineDimension.daily;
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
@@ -51,6 +67,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   @override
   void initState() {
     super.initState();
+    _dimension = widget.initialDimension;
+    _selectedDate = widget.initialDate ?? DateTime.now();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -367,57 +385,360 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Future<void> _chooseAndSaveTimelinePoster() async {
+  Future<void> _chooseAndExportTimelinePoster() async {
     if (_summary == null || _isExportingPoster) return;
 
-    final includeMedals = await showModalBottomSheet<bool>(
+    final choice = await showModalBottomSheet<
+        ({
+          TimelineDimension dimension,
+          DateTime date,
+          bool includeMedals,
+          _TimelinePosterAction action
+        })>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
         final cs = Theme.of(context).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '保存分享长图',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: cs.onSurface,
-                  ),
+        var selectedDimension = _dimension;
+        var selectedDate = _selectedDate;
+        var includeMedals = true;
+        var action = _TimelinePosterAction.save;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            Future<void> pickPeriod() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: selectedDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+                helpText: '选择${_getDimensionFullName(selectedDimension)}报告时段',
+              );
+              if (picked != null) {
+                setModalState(() => selectedDate = picked);
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  8,
+                  20,
+                  20 + MediaQuery.of(context).viewInsets.bottom,
                 ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.emoji_events_outlined),
-                  title: const Text('带上勋章墙'),
-                  subtitle: const Text('适合展示完整阶段成果'),
-                  onTap: () => Navigator.pop(context, true),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '导出报告长图',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPosterChoiceSection(
+                      '报告维度',
+                      Icons.tune_rounded,
+                      cs,
+                      SegmentedButton<TimelineDimension>(
+                        showSelectedIcon: false,
+                        segments: TimelineDimension.values
+                            .map(
+                              (d) => ButtonSegment(
+                                value: d,
+                                label: Text(_getDimensionName(d)),
+                              ),
+                            )
+                            .toList(),
+                        selected: {selectedDimension},
+                        onSelectionChanged: (value) {
+                          setModalState(() {
+                            selectedDimension = value.first;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPosterChoiceSection(
+                      '具体时段',
+                      Icons.event_rounded,
+                      cs,
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest
+                              .withValues(alpha: 0.42),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton.filledTonal(
+                              tooltip: '上一个时段',
+                              onPressed: () => setModalState(() {
+                                selectedDate = _shiftTimelineDate(
+                                  selectedDate,
+                                  selectedDimension,
+                                  -1,
+                                );
+                              }),
+                              icon: const Icon(Icons.chevron_left_rounded),
+                            ),
+                            Expanded(
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: pickPeriod,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        _formatTimelinePeriod(
+                                          selectedDimension,
+                                          selectedDate,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                          color: cs.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '点击选择',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton.filledTonal(
+                              tooltip: '下一个时段',
+                              onPressed: () => setModalState(() {
+                                selectedDate = _shiftTimelineDate(
+                                  selectedDate,
+                                  selectedDimension,
+                                  1,
+                                );
+                              }),
+                              icon: const Icon(Icons.chevron_right_rounded),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPosterChoiceSection(
+                      '勋章墙',
+                      Icons.emoji_events_outlined,
+                      cs,
+                      SegmentedButton<bool>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: true, label: Text('带上')),
+                          ButtonSegment(value: false, label: Text('不带')),
+                        ],
+                        selected: {includeMedals},
+                        onSelectionChanged: (value) {
+                          setModalState(() => includeMedals = value.first);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPosterChoiceSection(
+                      '导出方式',
+                      Icons.outbox_rounded,
+                      cs,
+                      SegmentedButton<_TimelinePosterAction>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(
+                            value: _TimelinePosterAction.save,
+                            icon: Icon(Icons.photo_library_outlined),
+                            label: Text('保存到相册'),
+                          ),
+                          ButtonSegment(
+                            value: _TimelinePosterAction.share,
+                            icon: Icon(Icons.ios_share_rounded),
+                            label: Text('分享'),
+                          ),
+                        ],
+                        selected: {action},
+                        onSelectionChanged: (value) {
+                          setModalState(() => action = value.first);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(
+                          context,
+                          (
+                            dimension: selectedDimension,
+                            date: selectedDate,
+                            includeMedals: includeMedals,
+                            action: action,
+                          ),
+                        ),
+                        icon: Icon(action == _TimelinePosterAction.save
+                            ? Icons.photo_library_outlined
+                            : Icons.ios_share_rounded),
+                        label: Text(action == _TimelinePosterAction.save
+                            ? '保存到相册'
+                            : '打开分享面板'),
+                      ),
+                    ),
+                  ],
                 ),
-                ListTile(
-                  leading: const Icon(Icons.image_outlined),
-                  title: const Text('不带勋章墙'),
-                  subtitle: const Text('长图更短，适合快速分享'),
-                  onTap: () => Navigator.pop(context, false),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
 
-    if (includeMedals == null) return;
-    await _saveTimelinePoster(includeMedals: includeMedals);
+    if (choice == null) return;
+    if (choice.dimension != _dimension ||
+        !_isSameTimelinePeriod(choice.dimension, choice.date, _selectedDate)) {
+      setState(() {
+        _dimension = choice.dimension;
+        _selectedDate = choice.date;
+      });
+      await _loadData();
+    }
+    await _saveTimelinePoster(
+      includeMedals: choice.includeMedals,
+      action: choice.action,
+    );
   }
 
-  Future<void> _saveTimelinePoster({required bool includeMedals}) async {
+  Widget _buildPosterChoiceSection(
+    String title,
+    IconData icon,
+    ColorScheme cs,
+    Widget child,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainer.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  String _getDimensionFullName(TimelineDimension dimension) {
+    switch (dimension) {
+      case TimelineDimension.daily:
+        return '日';
+      case TimelineDimension.weekly:
+        return '周';
+      case TimelineDimension.monthly:
+        return '月';
+      case TimelineDimension.yearly:
+        return '年';
+    }
+  }
+
+  DateTime _shiftTimelineDate(
+    DateTime date,
+    TimelineDimension dimension,
+    int direction,
+  ) {
+    switch (dimension) {
+      case TimelineDimension.daily:
+        return date.add(Duration(days: direction));
+      case TimelineDimension.weekly:
+        return date.add(Duration(days: direction * 7));
+      case TimelineDimension.monthly:
+        return DateTime(date.year, date.month + direction, 1);
+      case TimelineDimension.yearly:
+        return DateTime(date.year + direction, 1, 1);
+    }
+  }
+
+  String _formatTimelinePeriod(TimelineDimension dimension, DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    switch (dimension) {
+      case TimelineDimension.daily:
+        return DateFormat('yyyy年MM月dd日').format(day);
+      case TimelineDimension.weekly:
+        final start = day.subtract(Duration(days: day.weekday - 1));
+        final end = start.add(const Duration(days: 6));
+        return '${DateFormat('MM/dd').format(start)} - ${DateFormat('MM/dd').format(end)}';
+      case TimelineDimension.monthly:
+        return DateFormat('yyyy年MM月').format(day);
+      case TimelineDimension.yearly:
+        return '${day.year}年';
+    }
+  }
+
+  bool _isSameTimelinePeriod(
+    TimelineDimension dimension,
+    DateTime a,
+    DateTime b,
+  ) {
+    switch (dimension) {
+      case TimelineDimension.daily:
+        return a.year == b.year && a.month == b.month && a.day == b.day;
+      case TimelineDimension.weekly:
+        final aStart = a.subtract(Duration(days: a.weekday - 1));
+        final bStart = b.subtract(Duration(days: b.weekday - 1));
+        return aStart.year == bStart.year &&
+            aStart.month == bStart.month &&
+            aStart.day == bStart.day;
+      case TimelineDimension.monthly:
+        return a.year == b.year && a.month == b.month;
+      case TimelineDimension.yearly:
+        return a.year == b.year;
+    }
+  }
+
+  Future<void> _saveTimelinePoster({
+    required bool includeMedals,
+    required _TimelinePosterAction action,
+  }) async {
     if (_summary == null || _isExportingPoster) return;
 
     setState(() => _isExportingPoster = true);
+    final messenger = ScaffoldMessenger.of(context);
     final posterKey = GlobalKey();
     OverlayEntry? entry;
 
@@ -483,32 +804,46 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
 
       if (!mounted) return;
-      if (Platform.isAndroid) {
+      if (action == _TimelinePosterAction.share) {
         try {
           await SharePlus.instance.share(ShareParams(
             files: [XFile(file.path)],
             text: 'CountDownTodo ${_getPeriodName()} 总结',
           ));
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('打开分享失败：$e')),
           );
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
+          SnackBar(content: Text('长图已保存，可从本地文件继续使用：${file.path}')),
+        );
+      }
+
+      if (action == _TimelinePosterAction.save) {
+        if (!kIsWeb && Platform.isAndroid) {
+          await _nativeChannel.invokeMethod('saveImageToGallery', {
+            'path': file.path,
+          });
+        }
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('长图已保存：${file.path}'),
-            action: SnackBarAction(
-              label: '打开',
-              onPressed: () => OpenFile.open(file.path),
-            ),
+            content: Text(!kIsWeb && Platform.isAndroid
+                ? '长图已保存到相册'
+                : '长图已保存：${file.path}'),
+            action: !kIsWeb
+                ? SnackBarAction(
+                    label: '打开',
+                    onPressed: () => OpenFile.open(file.path),
+                  )
+                : null,
           ),
         );
       }
     } catch (e) {
       debugPrint('保存时间线长图失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('保存长图失败：$e')),
         );
       }
@@ -686,8 +1021,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
-
                         // Animated Content Area
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 600),
@@ -900,8 +1233,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Widget _buildAppBar(BuildContext context, ColorScheme cs) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
+
     return SliverAppBar(
-      expandedHeight: 280,
+      expandedHeight: isCompact ? 260 : 232,
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
@@ -909,6 +1244,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
+        if (kIsWeb)
+          TextButton.icon(
+            onPressed: () => AppReportLaunchService.openTimelineReportInApp(
+              dimension: _dimension,
+              date: _selectedDate,
+            ),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('前往App查看报告'),
+          ),
         IconButton(
           tooltip: '保存分享长图',
           icon: _isExportingPoster
@@ -918,10 +1262,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.ios_share_rounded),
-          onPressed:
-              _isLoading || _isExportingPoster
-                  ? null
-                  : _chooseAndSaveTimelinePoster,
+          onPressed: _isLoading || _isExportingPoster
+              ? null
+              : _chooseAndExportTimelinePoster,
         ),
         const SizedBox(width: 8),
       ],
@@ -979,8 +1322,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         break;
     }
 
+    final isCompact = MediaQuery.of(context).size.width < 600;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 72, 24, 16),
+      padding: EdgeInsets.fromLTRB(24, isCompact ? 92 : 64, 24, 8),
       child: Row(
         children: [
           Expanded(
@@ -1201,6 +1546,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final qualityLine = summary.pomodoroCount > 0
         ? '平均每次 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度专注占 ${_formatPercent(summary.deepWorkCount / summary.pomodoroCount)}。'
         : '暂时没有可统计的专注质量数据。';
+    final consecutiveLabel =
+        _buildConsecutiveActiveLabel(summary.consecutiveActiveDays);
 
     final hero = Container(
       width: double.infinity,
@@ -1246,7 +1593,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             children: [
               _buildInsightPill('完成率 ${_formatPercent(completionRate)}',
                   Icons.check_circle_outline_rounded, cs.primary, cs),
-              _buildInsightPill('连续活跃 ${summary.consecutiveActiveDays} 天',
+              _buildInsightPill(consecutiveLabel,
                   Icons.local_fire_department_outlined, Colors.deepOrange, cs),
               _buildInsightPill('转化率 ${_formatPercent(screenConversion)}',
                   Icons.desktop_windows_outlined, Colors.teal, cs),
@@ -1359,6 +1706,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ],
       ),
     );
+  }
+
+  String _buildConsecutiveActiveLabel(int days) {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return '截至${_formatTimelinePeriod(_dimension, _selectedDate)}连续活跃 $days 天';
+      case TimelineDimension.weekly:
+        return '本周最长连续活跃 $days 天';
+      case TimelineDimension.monthly:
+        return '本月最长连续活跃 $days 天';
+      case TimelineDimension.yearly:
+        return '本年最长连续活跃 $days 天';
+    }
   }
 
   Widget _buildAchievementStrip(ColorScheme cs) {
@@ -1569,7 +1929,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (summary.consecutiveActiveDays >= 3) {
       badges.add((
         title: '长跑型选手',
-        desc: '连续活跃 ${summary.consecutiveActiveDays} 天',
+        desc: _buildConsecutiveActiveLabel(summary.consecutiveActiveDays),
         earnedAt: earnedAt,
         icon: Icons.local_fire_department_outlined,
         color: Colors.deepOrange
@@ -1802,7 +2162,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       if (_deadlineSprintCount > 0) 'DDL',
     ];
     if (words.isEmpty) return '专注、计划';
-    return words.take(4).join('、');
+    const maxChars = 14;
+    final buffer = StringBuffer();
+    for (final word in words) {
+      final next = buffer.isEmpty ? word : '、$word';
+      if (buffer.length + next.length > maxChars) {
+        if (buffer.isEmpty) {
+          return '${word.substring(0, maxChars - 1)}…';
+        }
+        return '${buffer.toString()}…';
+      }
+      buffer.write(next);
+    }
+    return buffer.toString();
   }
 
   String _getTaskCompositionReason() {
@@ -1951,7 +2323,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       _buildStatCard(
         '专注质量',
         '中断率 ${(_summary!.interruptionRate * 100).toStringAsFixed(1)}%',
-        '${_summary!.interruptionCount} 次被打断或放弃',
+        '${_summary!.interruptionCount} 次提前放弃',
         Icons.shield_moon_rounded,
         Colors.indigo,
         cs,

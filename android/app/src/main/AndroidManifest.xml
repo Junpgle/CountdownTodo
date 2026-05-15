@@ -63,6 +63,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
+            <!-- Web/App deep link: countdowntodo://timeline/report?... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="countdowntodo"
+                    android:host="timeline"
+                    android:pathPrefix="/report" />
+            </intent-filter>
+
             <!-- ========================================== -->
             <!-- 🚀 新增：处理通过“分享”发送到本应用的 JSON 文件 -->
             <!-- ========================================== -->

@@ -1222,8 +1222,8 @@ class PomodoroService {
       final old = all[idx];
       final merged = PomodoroRecord(
         uuid: old.uuid,
-        todoUuid: updated.todoUuid ?? old.todoUuid,
-        todoTitle: updated.todoTitle ?? old.todoTitle,
+        todoUuid: updated.todoUuid,
+        todoTitle: updated.todoTitle,
         tagUuids: updated.tagUuids,
         startTime: updated.startTime,
         endTime: updated.endTime,
@@ -1231,7 +1231,7 @@ class PomodoroService {
         actualDuration: updated.actualDuration,
         status: updated.status,
         deviceId: updated.deviceId ?? old.deviceId,
-        planBlockId: updated.planBlockId ?? old.planBlockId,
+        planBlockId: updated.planBlockId,
         isDeleted: updated.isDeleted,
         version: (updated.version <= old.version)
             ? (old.version + 1)
@@ -1242,6 +1242,26 @@ class PomodoroService {
         conflictData: old.conflictData,
       );
       await addRecord(merged);
+    } else {
+      await addRecord(PomodoroRecord(
+        uuid: updated.uuid,
+        todoUuid: updated.todoUuid,
+        todoTitle: updated.todoTitle,
+        tagUuids: updated.tagUuids,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+        plannedDuration: updated.plannedDuration,
+        actualDuration: updated.actualDuration,
+        status: updated.status,
+        deviceId: updated.deviceId,
+        planBlockId: updated.planBlockId,
+        isDeleted: updated.isDeleted,
+        version: updated.version,
+        createdAt: updated.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        hasConflict: updated.hasConflict,
+        conflictData: updated.conflictData,
+      ));
     }
   }
 

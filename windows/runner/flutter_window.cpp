@@ -15,6 +15,10 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 
 FlutterWindow::~FlutterWindow() {}
 
+namespace {
+constexpr ULONG_PTR kDeepLinkCopyData = 0x43445444;  // CDTD
+}
+
 bool FlutterWindow::OnCreate() {
     if (!Win32Window::OnCreate()) {
         return false;
@@ -30,6 +34,11 @@ bool FlutterWindow::OnCreate() {
     }
 
     RegisterPlugins(flutter_controller_->engine());
+    deep_link_channel_ =
+        std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+            flutter_controller_->engine()->messenger(),
+            "com.math_quiz_app/deep_links",
+            &flutter::StandardMethodCodec::GetInstance());
     DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
         auto *flutter_view_controller =
                 reinterpret_cast<flutter::FlutterViewController *>(controller);
@@ -51,6 +60,8 @@ bool FlutterWindow::OnCreate() {
 
 void FlutterWindow::OnDestroy() {
 
+    deep_link_channel_.reset();
+
     if (flutter_controller_) {
         flutter_controller_ = nullptr;
     }
@@ -70,6 +81,23 @@ return *result;
 }
 
 switch (message) {
+case WM_COPYDATA: {
+const auto* copy_data = reinterpret_cast<COPYDATASTRUCT*>(lparam);
+if (copy_data != nullptr && copy_data->dwData == kDeepLinkCopyData &&
+copy_data->lpData != nullptr && copy_data->cbData > 0) {
+std::string link(static_cast<const char*>(copy_data->lpData),
+                 copy_data->cbData);
+if (!link.empty() && link.back() == '\0') {
+link.pop_back();
+}
+if (deep_link_channel_ && !link.empty()) {
+deep_link_channel_->InvokeMethod(
+    "openDeepLink", std::make_unique<flutter::EncodableValue>(link));
+}
+return TRUE;
+}
+break;
+}
 case WM_FONTCHANGE:
 flutter_controller_->engine()->ReloadSystemFonts();
 break;
