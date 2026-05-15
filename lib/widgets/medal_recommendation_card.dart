@@ -33,6 +33,31 @@ class MedalRecommendationCard extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                 ),
+                if (recommendation.isML) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 10, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 2),
+                        Text(
+                          'AI',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 if (recommendation.earnedMedals.isNotEmpty)
                   Container(
@@ -92,7 +117,7 @@ class MedalRecommendationCard extends StatelessWidget {
                                 recommendation.topRecommendations.length - 1
                             ? 16
                             : 0),
-                    child: _buildMedalProgressItem(context, medal),
+                    child: _buildMedalProgressItem(context, medal, reason: recommendation.recommendReasons[medal.medal.id]),
                   );
                 }).toList(),
               ),
@@ -125,8 +150,9 @@ class MedalRecommendationCard extends StatelessWidget {
 
   Widget _buildMedalProgressItem(
     BuildContext context,
-    MedalProgress medal,
-  ) {
+    MedalProgress medal, {
+    String? reason,
+  }) {
     final percentage = (medal.progress * 100).toStringAsFixed(0);
 
     return Container(
@@ -174,6 +200,19 @@ class MedalRecommendationCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (reason != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        reason,
+                        style: TextStyle(
+                          color: medal.medal.color.withValues(alpha: 0.7),
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),

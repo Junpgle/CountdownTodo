@@ -87,6 +87,8 @@ class _MedalWallPageState extends State<MedalWallPage>
                                 widget.recommendation.topRecommendations.isEmpty,
                             emptyMessage: '恭喜！已获得所有推荐勋章',
                             showFeatured: true,
+                            isML: widget.recommendation.isML,
+                            reasons: widget.recommendation.recommendReasons,
                           ),
 
                           // Tab 1: 本周新获
@@ -241,6 +243,8 @@ class _MedalWallPageState extends State<MedalWallPage>
     bool isEmpty = false,
     String? emptyMessage,
     bool showFeatured = false,
+    bool isML = false,
+    Map<String, String> reasons = const {},
   }) {
     if (isEmpty) {
       return _buildEmptyState(context, emptyMessage);
@@ -254,7 +258,26 @@ class _MedalWallPageState extends State<MedalWallPage>
       slivers: [
         if (showFeatured && medals.isNotEmpty)
           SliverToBoxAdapter(
-            child: _buildFeaturedMedal(context, medals.first),
+            child: _buildFeaturedMedal(context, medals.first, reason: reasons[medals.first.medal.id]),
+          ),
+        if (isML)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 14, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'AI 智能推荐',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         SliverPadding(
           padding: const EdgeInsets.all(16),
@@ -270,7 +293,7 @@ class _MedalWallPageState extends State<MedalWallPage>
                 // If we showed featured, skip the first one in the grid
                 final medalIndex = showFeatured ? index + 1 : index;
                 if (medalIndex >= medals.length) return null;
-                return _buildMedalCard(context, medals[medalIndex]);
+                return _buildMedalCard(context, medals[medalIndex], reason: reasons[medals[medalIndex].medal.id]);
               },
               childCount: showFeatured
                   ? (medals.length > 1 ? medals.length - 1 : 0)
@@ -319,7 +342,7 @@ class _MedalWallPageState extends State<MedalWallPage>
     );
   }
 
-  Widget _buildFeaturedMedal(BuildContext context, MedalProgress medal) {
+  Widget _buildFeaturedMedal(BuildContext context, MedalProgress medal, {String? reason}) {
     final theme = Theme.of(context);
     final isWide = MediaQuery.of(context).size.width > 600;
 
@@ -399,6 +422,26 @@ class _MedalWallPageState extends State<MedalWallPage>
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
+                if (reason != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome, size: 12, color: medal.medal.color.withValues(alpha: 0.7)),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          reason,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: medal.medal.color.withValues(alpha: 0.7),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -415,7 +458,7 @@ class _MedalWallPageState extends State<MedalWallPage>
     );
   }
 
-  Widget _buildMedalCard(BuildContext context, MedalProgress medal) {
+  Widget _buildMedalCard(BuildContext context, MedalProgress medal, {String? reason}) {
     final theme = Theme.of(context);
     final earned = medal.earned;
     final progress = (medal.progress * 100).toInt();
@@ -522,17 +565,48 @@ class _MedalWallPageState extends State<MedalWallPage>
                     const SizedBox(height: 4),
                     SizedBox(
                       height: 32, // Fixed height for 2 lines of bodySmall
-                      child: Text(
-                        medal.medal.description,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 10,
-                          height: 1.2,
-                          color: theme.colorScheme.onSurface.withValues(alpha: earned ? 0.6 : 0.3),
-                        ),
-                      ),
+                      child: reason != null
+                          ? Column(
+                              children: [
+                                Text(
+                                  medal.medal.description,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontSize: 10,
+                                    height: 1.2,
+                                    color: theme.colorScheme.onSurface.withValues(alpha: earned ? 0.6 : 0.3),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Expanded(
+                                  child: Text(
+                                    reason,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontSize: 9,
+                                      height: 1.2,
+                                      color: medal.medal.color.withValues(alpha: 0.6),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              medal.medal.description,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 10,
+                                height: 1.2,
+                                color: theme.colorScheme.onSurface.withValues(alpha: earned ? 0.6 : 0.3),
+                              ),
+                            ),
                     ),
                     const Spacer(),
                     if (earned)

@@ -285,6 +285,29 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _isLoading = false;
         });
 
+        // Async ML enhancement for range-specific recommendations
+        final allMedals = _medalRecommendation?.allMedals;
+        if (allMedals != null) {
+          MedalRecommendationService.recommendNextML(
+            allMedals,
+            summary,
+            totalSecs ~/ 60,
+            completedTodos.length,
+            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            earlyCount,
+            sprintCount,
+            screenTotal,
+            productiveScreen,
+            distractionScreen,
+          ).then((mlResult) {
+            if (mounted && mlResult.topRecommendations.isNotEmpty) {
+              setState(() {
+                _medalRecommendation = mlResult;
+              });
+            }
+          });
+        }
+
         // Trigger All-time medal calculation if not yet loaded
         if (_allTimeRecommendation == null) {
           _loadAllTimeMedalData();
@@ -373,6 +396,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _allTimeRecommendation = recommendation;
         });
       }
+
+      // Async ML enhancement for all-time recommendations
+      MedalRecommendationService.recommendNextML(
+        recommendation.allMedals,
+        summary,
+        totalSecs ~/ 60,
+        completedTodos.length,
+        plannedTodos.length,
+        earlyCount,
+        sprintCount,
+        screenTotal,
+        productiveScreen,
+        distractionScreen,
+      ).then((mlResult) {
+        if (mounted && mlResult.topRecommendations.isNotEmpty) {
+          setState(() {
+            _allTimeRecommendation = mlResult;
+          });
+        }
+      });
     } catch (e) {
       debugPrint('Error loading all-time medal data: $e');
     }

@@ -188,7 +188,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 26, // V26: 修复 pomodoro_tags/pomodoro_records 缺少冲突字段
+          version: 27, // V27: 新增勋章推荐 ML 跟踪表
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -202,6 +202,26 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 27) {
+              try {
+                await db.execute('''
+                  CREATE TABLE IF NOT EXISTS medal_recommendations (
+                    medal_id TEXT PRIMARY KEY,
+                    alpha REAL DEFAULT 1.0,
+                    beta_ REAL DEFAULT 1.0,
+                    impression_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    last_shown_at INTEGER DEFAULT 0,
+                    last_outcome_at INTEGER DEFAULT 0,
+                    feature_score_cache REAL DEFAULT 0.0,
+                    updated_at INTEGER DEFAULT 0
+                  )
+                ''');
+                debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
+              } catch (e) {
+                debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
+              }
+            }
             if (oldVersion < 26) {
               try {
                 for (var table in ['pomodoro_tags', 'pomodoro_records']) {
@@ -1159,6 +1179,21 @@ class DatabaseHelper {
         created_at $integerType,
         updated_at $integerType,
         device_id $jsonType
+      )
+    ''');
+
+    // 14. 创建勋章推荐 ML 跟踪表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS medal_recommendations (
+        medal_id TEXT PRIMARY KEY,
+        alpha REAL DEFAULT 1.0,
+        beta_ REAL DEFAULT 1.0,
+        impression_count INTEGER DEFAULT 0,
+        success_count INTEGER DEFAULT 0,
+        last_shown_at INTEGER DEFAULT 0,
+        last_outcome_at INTEGER DEFAULT 0,
+        feature_score_cache REAL DEFAULT 0.0,
+        updated_at INTEGER DEFAULT 0
       )
     ''');
   }

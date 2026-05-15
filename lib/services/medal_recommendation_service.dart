@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'medal_bandit_service.dart';
+import 'medal_feature_extractor.dart';
 import 'timeline_service.dart';
 
 /// 勋章信息定义
@@ -52,11 +54,15 @@ class MedalRecommendation {
   final List<MedalProgress> topRecommendations; // 前6个最容易达成的
   final List<MedalProgress> allMedals; // 所有勋章及进度
   final List<MedalProgress> earnedMedals; // 已获得的勋章
+  final bool isML; // 是否使用了 ML 推荐
+  final Map<String, String> recommendReasons; // medalId → 推荐理由
 
   MedalRecommendation({
     required this.topRecommendations,
     required this.allMedals,
     required this.earnedMedals,
+    this.isML = false,
+    this.recommendReasons = const {},
   });
 }
 
@@ -1314,8 +1320,8 @@ class MedalRecommendationService {
 
       case 'efficiency_demon':
         earned = summary.interruptionRate <= 0.05 && totalFocusMinutes > 120;
-        progress = (summary.interruptionRate <= 0.05 && totalFocusMinutes > 60) ? 1.0 : 0.5;
-        nextMilestone = '专注效率达人';
+        progress = earned ? 1.0 : ((summary.interruptionRate <= 0.05 && totalFocusMinutes > 60) ? 0.8 : 0.5);
+        nextMilestone = earned ? '已获得' : '中断率 ${(summary.interruptionRate * 100).toStringAsFixed(1)}%，专注需超 120 分钟';
         break;
 
       case 'screen_time_slayer':
@@ -1354,8 +1360,8 @@ class MedalRecommendationService {
 
       case 'no_skip_champion':
         earned = summary.todoCompletionRate >= 0.95 && totalCount > 5;
-        progress = summary.todoCompletionRate;
-        nextMilestone = '坚持到底，不落一课';
+        progress = earned ? 1.0 : (totalCount > 0 ? (summary.todoCompletionRate * (totalCount / 6).clamp(0.0, 1.0)) : 0.0);
+        nextMilestone = earned ? '已获得' : '完成率 ${(summary.todoCompletionRate * 100).toStringAsFixed(0)}%，需达 95% 且任务数 > 5';
         break;
 
       case 'sync_pioneer':
@@ -1511,18 +1517,20 @@ class MedalRecommendationService {
         break;
       case 'habit_rhythm_master':
         earned = summary.consecutiveActiveDays >= 7;
-        progress = 1.0;
-        nextMilestone = '生活极具规律性';
+        progress = (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
         break;
 
       // === Category: Productivity Ninja (10个) ===
       case 'ninja_speed_demon':
         earned = earlyCompletionCount > 5;
-        progress = 1.0;
+        progress = (earlyCompletionCount / 5).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '还需提前完成 ${5 - earlyCompletionCount} 个任务';
         break;
       case 'ninja_bulk_completer':
         earned = completedCount >= 5;
-        progress = 1.0;
+        progress = (completedCount / 5).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '还需完成 ${5 - completedCount} 个任务';
         break;
       case 'ninja_focus_block_4':
         earned = totalFocusMinutes >= 4 * 60;
@@ -1546,11 +1554,13 @@ class MedalRecommendationService {
         break;
       case 'ninja_inbox_zero':
         earned = totalCount > 0 && completedCount == totalCount;
-        progress = 1.0;
+        progress = totalCount > 0 ? (completedCount / totalCount).clamp(0.0, 1.0) : 0.0;
+        nextMilestone = earned ? '已获得' : '还有 ${totalCount - completedCount} 个未完成';
         break;
       case 'ninja_consistency_king':
         earned = summary.consecutiveActiveDays >= 7;
-        progress = 1.0;
+        progress = (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
         break;
       case 'ninja_efficiency_max':
         final effRatio = screenTimeSeconds > 0 ? (productiveScreenSeconds / screenTimeSeconds) : 0.0;
@@ -1577,7 +1587,8 @@ class MedalRecommendationService {
         break;
       case 'academic_no_skip_month':
         earned = summary.consecutiveActiveDays >= 30;
-        progress = 1.0;
+        progress = (summary.consecutiveActiveDays / 30).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 30 天';
         break;
       case 'academic_full_house_7':
         earned = maxDailyCourseCount >= 7;
@@ -1585,7 +1596,8 @@ class MedalRecommendationService {
         break;
       case 'academic_bridge_builder':
         earned = summary.searchCount >= 20 && summary.pomodoroCount >= 20;
-        progress = 1.0;
+        progress = ((summary.searchCount / 20 + summary.pomodoroCount / 20) / 2).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '检索 ${summary.searchCount}/20，专注 ${summary.pomodoroCount}/20';
         break;
       case 'academic_library_phantom':
         final libMins = summary.subjectDistribution['图书馆'] ?? 0;
@@ -1594,7 +1606,8 @@ class MedalRecommendationService {
         break;
       case 'academic_top_of_class':
         earned = totalFocusMinutes > 5000;
-        progress = 1.0;
+        progress = (totalFocusMinutes / 5000).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '还需专注 ${5000 - totalFocusMinutes} 分钟';
         break;
       case 'academic_deep_thinker':
         progress = (summary.deepWorkCount / 50).clamp(0.0, 1.0);
@@ -1632,7 +1645,8 @@ class MedalRecommendationService {
         break;
       case 'explorer_pathfinder_10':
         earned = summary.searchCount >= 10;
-        progress = 1.0;
+        progress = (summary.searchCount / 10).clamp(0.0, 1.0);
+        nextMilestone = earned ? '已获得' : '还需探索 ${10 - summary.searchCount} 个领域';
         break;
       case 'explorer_night_watch':
         int lateSessions = summary.hourlyDistribution.sublist(2, 5).fold(0, (a, b) => a + b);
@@ -1674,7 +1688,7 @@ class MedalRecommendationService {
 
   /// 生成推荐（获取未获得的勋章，按步数排序）
   static List<MedalProgress> recommendNext(List<MedalProgress> allProgresses) {
-    final unearned = allProgresses.where((p) => !p.earned).toList();
+    final unearned = allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
     unearned.sort((a, b) => a.stepsRemaining.compareTo(b.stepsRemaining));
     return unearned.take(6).toList();
   }
@@ -1719,4 +1733,181 @@ class MedalRecommendationService {
       earnedMedals: earned,
     );
   }
+
+  /// ML-enhanced recommendation: feature scoring + Thompson Sampling bandit
+  /// Returns a full [MedalRecommendation] with isML=true and per-medal reasons.
+  static Future<MedalRecommendation> recommendNextML(
+    List<MedalProgress> allProgresses,
+    TimelineSummary summary,
+    int totalFocusMinutes,
+    int completedCount,
+    int totalCount,
+    int earlyCompletionCount,
+    int deadlineSprintCount,
+    int screenTimeSeconds,
+    int productiveScreenSeconds,
+    int distractionScreenSeconds,
+  ) async {
+    try {
+      final earned = allProgresses.where((p) => p.earned).toList();
+      // Exclude anomalies: progress >= 1.0 but not marked earned
+      final unearned = allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
+      if (unearned.isEmpty) {
+        return MedalRecommendation(
+          topRecommendations: [],
+          allMedals: allProgresses,
+          earnedMedals: earned,
+          isML: true,
+        );
+      }
+
+      // 1. Extract user features
+      final features = MedalFeatureExtractor.extractFeatures(
+        summary,
+        totalFocusMinutes,
+        completedCount,
+        totalCount,
+        earlyCompletionCount,
+        deadlineSprintCount,
+        screenTimeSeconds,
+        productiveScreenSeconds,
+        distractionScreenSeconds,
+      );
+
+      // 2. Compute earned medals per category for diversity bonus
+      final earnedPerCategory = <String, int>{};
+      for (final p in earned) {
+        earnedPerCategory[p.medal.category] = (earnedPerCategory[p.medal.category] ?? 0) + 1;
+      }
+
+      // 3. Get bandit samples
+      final banditService = MedalBanditService.instance;
+      final banditSamples = await banditService.sampleAll(
+        unearned.map((p) => p.medal.id).toList(),
+      );
+
+      // 4. Update outcomes from previous recommendations
+      await banditService.updateOutcomes(allProgresses);
+
+      // 5. Score each medal and generate reasons
+      final scored = <_ScoredEntry>[];
+      for (final progress in unearned) {
+        final breakdown = MedalFeatureExtractor.scoreMedalWithBreakdown(
+          progress, features, earnedPerCategory,
+        );
+        final banditSample = banditSamples[progress.medal.id] ?? 0.5;
+        final totalObs = await banditService.getObservationCount(progress.medal.id);
+        final combined = _combinedScore(breakdown.total, banditSample, totalObs);
+        final reason = _generateReason(breakdown, progress, banditSample, totalObs);
+        scored.add(_ScoredEntry(progress: progress, score: combined, reason: reason));
+      }
+
+      // 6. Sort by combined score descending, take top 6
+      scored.sort((a, b) => b.score.compareTo(a.score));
+      final top6 = scored.take(6).toList();
+
+      // 7. Record impressions for bandit learning
+      await banditService.recordImpressions(top6.map((s) => s.progress.medal.id).toList());
+
+      // 8. Build reasons map
+      final reasons = <String, String>{};
+      for (final entry in top6) {
+        reasons[entry.progress.medal.id] = entry.reason;
+      }
+
+      return MedalRecommendation(
+        topRecommendations: top6.map((s) => s.progress).toList(),
+        allMedals: allProgresses,
+        earnedMedals: earned,
+        isML: true,
+        recommendReasons: reasons,
+      );
+    } catch (e) {
+      debugPrint('ML recommendation failed, falling back: $e');
+      final fallback = recommendNext(allProgresses);
+      return MedalRecommendation(
+        topRecommendations: fallback,
+        allMedals: allProgresses,
+        earnedMedals: allProgresses.where((p) => p.earned).toList(),
+        isML: false,
+      );
+    }
+  }
+
+  static String _generateReason(
+    ScoreBreakdown breakdown,
+    MedalProgress progress,
+    double banditSample,
+    int totalObs,
+  ) {
+    final parts = <String>[];
+
+    // Proximity: strongest signal
+    if (breakdown.proximity > 0.7) {
+      parts.add('已完成 ${(progress.progress * 100).toInt()}%，距离解锁很近');
+    } else if (breakdown.proximity > 0.4) {
+      parts.add('进度 ${(progress.progress * 100).toInt()}%，稳步推进中');
+    }
+
+    // Category affinity
+    if (breakdown.affinity > 0.6) {
+      final catLabel = _categoryLabel(progress.medal.category);
+      parts.add('匹配你擅长的$catLabel领域');
+    }
+
+    // Velocity: recent activity
+    if (breakdown.velocity > 0.6) {
+      parts.add('你最近在这个领域很活跃');
+    }
+
+    // Diversity: under-explored category
+    if (breakdown.diversity > 0.6) {
+      parts.add('拓展新的成就领域');
+    }
+
+    // Challenge preference
+    if (breakdown.challenge > 0.7 && progress.medal.priority >= 4) {
+      parts.add('适合你挑战高难度的习惯');
+    } else if (breakdown.challenge > 0.7 && progress.medal.priority <= 2) {
+      parts.add('轻松入门，建立信心');
+    }
+
+    // Bandit learning signal
+    if (totalObs >= 10 && banditSample > 0.65) {
+      parts.add('历史数据表明你倾向完成此类勋章');
+    }
+
+    if (parts.isEmpty) {
+      parts.add('综合评估推荐');
+    }
+
+    return parts.join('；');
+  }
+
+  static String _categoryLabel(String category) {
+    switch (category) {
+      case 'focus': return '专注';
+      case 'completion': return '完成';
+      case 'persistence': return '坚持';
+      case 'efficiency': return '效率';
+      case 'breadth': return '广度';
+      default: return category;
+    }
+  }
+
+  /// Blend feature score with bandit sample.
+  /// Cold start: 100% feature. After 50+ observations: 60% feature / 40% bandit.
+  static double _combinedScore(double featureScore, double banditSample, int totalObservations) {
+    final banditConfidence = (totalObservations / 50.0).clamp(0.0, 1.0);
+    final banditWeight = 0.4 * banditConfidence;
+    final featureWeight = 1.0 - banditWeight;
+    return featureWeight * featureScore + banditWeight * banditSample;
+  }
+}
+
+class _ScoredEntry {
+  final MedalProgress progress;
+  final double score;
+  final String reason;
+  const _ScoredEntry({required this.progress, required this.score, required this.reason});
 }
