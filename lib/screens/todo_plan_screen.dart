@@ -9,6 +9,7 @@ import '../services/pomodoro_service.dart';
 import 'course_screens.dart';
 import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
+import '../services/time_estimation_service.dart';
 import 'todo_chat_screen.dart';
 
 // 复用 TimeLog 的颜色和基础常量
@@ -1088,6 +1089,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
   int _pomodoroMinutes = 25;
   int _pomodoroRounds = 0;
   late List<_TodoPlanSelectEntry> _todoEntries;
+  int? _estimatedMinutes;
 
   @override
   void initState() {
@@ -1120,6 +1122,44 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
   void dispose() {
     _remarkCtrl.dispose();
     super.dispose();
+  }
+
+  String _formatDuration(int minutes) {
+    if (minutes >= 60) {
+      final h = minutes ~/ 60;
+      final m = minutes % 60;
+      return m > 0 ? '${h}小时${m}分钟' : '${h}小时';
+    }
+    return '${minutes}分钟';
+  }
+
+  Future<void> _prefillEstimate(String todoId) async {
+    final todo = widget.todos.cast<TodoItem?>().firstWhere(
+          (t) => t?.id == todoId,
+          orElse: () => null,
+        );
+    if (todo == null || todo.title.isEmpty) return;
+
+    final result = await TimeEstimationService.estimate(
+      todo.title,
+      groupId: todo.groupId,
+    );
+    if (!mounted) return;
+
+    final estMin = result.estimatedMinutes;
+    final newEnd = _start.add(Duration(minutes: estMin));
+
+    setState(() {
+      _estimatedMinutes = estMin;
+      // Auto-fill end time
+      if (newEnd.isAfter(_start)) {
+        _end = newEnd;
+      }
+      // Suggest pomodoro rounds based on estimated duration
+      if (estMin >= _pomodoroMinutes) {
+        _pomodoroRounds = (estMin / _pomodoroMinutes).round().clamp(1, 6);
+      }
+    });
   }
 
   TodoItem? get _selectedTodo => widget.todos
@@ -1409,6 +1449,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
             onChanged: (v) {
               if (v == null || v.startsWith('__todo_header_')) return;
               setState(() => _selectedTodoId = v);
+              _prefillEstimate(v);
             },
             decoration: InputDecoration(
               border:
@@ -1416,6 +1457,27 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             ),
           ),
+          if (_estimatedMinutes != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.auto_awesome,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 4),
+                Text(
+                  'AI 预估 ${_formatDuration(_estimatedMinutes!)}，已自动设置时长和番茄轮数',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [

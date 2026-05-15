@@ -11,7 +11,9 @@ import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
+import '../services/time_estimation_service.dart';
 import '../utils/page_transitions.dart';
+import 'dart:async';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
@@ -73,6 +75,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   late AnimationController _dotsController;
 
+  // Time estimation state
+  TimeEstimationResult? _estimationResult;
+  Timer? _estimationDebounce;
+  int? _estimatedMinutesFromAI;
+  bool _userModifiedDueDate = false;
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +91,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat();
+    _titleCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
       if (_selectedGroupId != null &&
           _categoryReminderDefaults.containsKey(_selectedGroupId)) {
@@ -183,12 +192,41 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   @override
   void dispose() {
+    _titleCtrl.removeListener(_onTitleChanged);
+    _estimationDebounce?.cancel();
     _titleCtrl.dispose();
     _remarkCtrl.dispose();
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
     _dotsController.dispose();
     super.dispose();
+  }
+
+  void _onTitleChanged() {
+    _estimationDebounce?.cancel();
+    final text = _titleCtrl.text.trim();
+    if (text.length < 2) {
+      if (mounted && _estimationResult != null) {
+        setState(() => _estimationResult = null);
+      }
+      return;
+    }
+    _estimationDebounce = Timer(const Duration(milliseconds: 500), () async {
+      final result = await TimeEstimationService.estimate(
+        text,
+        groupId: _selectedGroupId,
+      );
+      if (mounted) {
+        setState(() {
+          _estimationResult = result;
+          _estimatedMinutesFromAI = result.estimatedMinutes;
+          // Auto-fill due date if user hasn't manually set it
+          if (!_userModifiedDueDate && !_isAllDay) {
+            _dueDate = _createdAt.add(Duration(minutes: result.estimatedMinutes));
+          }
+        });
+      }
+    });
   }
 
   RecurrenceType _parseRecurrenceType(String? type) {
@@ -571,12 +609,18 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
     if (pickedDate != null) {
       if (_isAllDay) {
-        setState(() => _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+        setState(() {
+          _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0);
+          _autoFollowDueDate();
+        });
       } else {
         if (!mounted) return;
         final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_createdAt));
         if (pickedTime != null) {
-          setState(() => _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+          setState(() {
+            _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+            _autoFollowDueDate();
+          });
         }
       }
     }
@@ -591,14 +635,27 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
     if (pickedDate != null) {
       if (_isAllDay) {
-        setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+        setState(() {
+          _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59);
+          _userModifiedDueDate = true;
+        });
       } else {
         if (!mounted) return;
         final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
         if (pickedTime != null) {
-          setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+          setState(() {
+            _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+            _userModifiedDueDate = true;
+          });
         }
       }
+    }
+  }
+
+  /// Auto-update due date to follow start time + estimated duration
+  void _autoFollowDueDate() {
+    if (!_userModifiedDueDate && _estimatedMinutesFromAI != null && !_isAllDay) {
+      _dueDate = _createdAt.add(Duration(minutes: _estimatedMinutesFromAI!));
     }
   }
 
@@ -640,6 +697,76 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
+  String _formatDuration(int minutes) {
+    if (minutes >= 60) {
+      final h = minutes ~/ 60;
+      final m = minutes % 60;
+      return m > 0 ? '${h}小时${m}分钟' : '${h}小时';
+    }
+    return '${minutes}分钟';
+  }
+
+  Widget _buildEstimationChip() {
+    final est = _estimationResult!;
+    final cs = Theme.of(context).colorScheme;
+    final confidenceLabel = est.confidence >= 0.6
+        ? '高'
+        : est.confidence >= 0.35
+            ? '中'
+            : '低';
+    final confidenceColor = est.confidence >= 0.6
+        ? Colors.green
+        : est.confidence >= 0.35
+            ? Colors.orange
+            : Colors.grey;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Row(
+        children: [
+          Icon(Icons.schedule, size: 16, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            'AI 预估: ~${_formatDuration(est.estimatedMinutes)}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: cs.primary,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: confidenceColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              confidenceLabel,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: confidenceColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              est.reason,
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurface.withValues(alpha: 0.5),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildManualInputTab({Key? key}) {
     return SingleChildScrollView(
       key: key,
@@ -664,6 +791,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   decoration: const InputDecoration(hintText: "准备做些什么？", border: InputBorder.none),
                 ),
+                if (_estimationResult != null) _buildEstimationChip(),
                 const Divider(height: 1),
                 TextField(
                   controller: _remarkCtrl,

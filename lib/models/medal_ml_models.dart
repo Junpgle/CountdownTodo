@@ -28,20 +28,3 @@ class UserProfileFeatures {
     required this.computedAt,
   });
 }
-
-/// Per-medal scoring result combining feature score and bandit sample
-class ScoredMedal {
-  final String medalId;
-  final double featureScore;
-  final double banditSample;
-  final double combinedScore;
-  final int observationCount;
-
-  const ScoredMedal({
-    required this.medalId,
-    required this.featureScore,
-    required this.banditSample,
-    required this.combinedScore,
-    required this.observationCount,
-  });
-}
