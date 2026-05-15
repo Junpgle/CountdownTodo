@@ -47,6 +47,7 @@ import rikka.shizuku.Shizuku
 
 class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener, Shizuku.OnBinderReceivedListener, Shizuku.OnBinderDeadListener {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
+    private val DEEP_LINK_CHANNEL = "com.math_quiz_app/deep_links"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
@@ -107,6 +108,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
+    private var deepLinkChannel: MethodChannel? = null
+    private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
     // 保存待处理的待办确认动作（在methodChannel初始化前）
@@ -156,24 +159,33 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val launchDeepLink = extractDeepLinkFromIntent(intent)
+        if (launchDeepLink != null) {
+            pendingDeepLink = launchDeepLink
+            sanitizeDeepLinkIntent(intent)
+            Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
+        }
+
         super.onCreate(savedInstanceState)
         HomeWidgetPlugin.getData(this)
 
-        // 处理从通知栏传来的番茄钟动作
-        handlePomodoroActionFromIntent(intent)
+        if (launchDeepLink == null) {
+            // 处理从通知栏传来的番茄钟动作
+            handlePomodoroActionFromIntent(intent)
 
-        // 处理从通知栏传来的待办确认动作
-        handleTodoConfirmFromIntent(intent)
+            // 处理从通知栏传来的待办确认动作
+            handleTodoConfirmFromIntent(intent)
 
-        // 处理从通知栏传来的图片查看动作
-        handleAnalysisImageFromIntent(intent)
-        handleOriginalTextFromIntent(intent)
+            // 处理从通知栏传来的图片查看动作
+            handleAnalysisImageFromIntent(intent)
+            handleOriginalTextFromIntent(intent)
 
-        // 处理从通知栏传来的规划块提醒
-        handlePlanBlockFromIntent(intent)
+            // 处理从通知栏传来的规划块提醒
+            handlePlanBlockFromIntent(intent)
 
-        // 处理 App Shortcuts 导航
-        handleShortcutFromIntent(intent)
+            // 处理 App Shortcuts 导航
+            handleShortcutFromIntent(intent)
+        }
 
         // 注册 Shizuku 权限请求与生命周期监听器
         Shizuku.addRequestPermissionResultListener(this)
@@ -204,6 +216,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onNewIntent(intent: Intent) {
+        val deepLink = extractDeepLinkFromIntent(intent)
+        if (deepLink != null) {
+            sanitizeDeepLinkIntent(intent)
+            super.onNewIntent(intent)
+            dispatchDeepLink(deepLink)
+            return
+        }
+
         super.onNewIntent(intent)
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
@@ -211,6 +231,32 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleOriginalTextFromIntent(intent)
         handlePlanBlockFromIntent(intent)
         handleShortcutFromIntent(intent)
+    }
+
+    private fun extractDeepLinkFromIntent(intent: Intent?): String? {
+        val data = intent?.data?.toString() ?: return null
+        return if (data.startsWith("countdowntodo://")) data else null
+    }
+
+    private fun sanitizeDeepLinkIntent(intent: Intent?) {
+        intent ?: return
+        intent.action = null
+        intent.setDataAndType(null, null)
+        intent.clipData = null
+        intent.replaceExtras(Bundle())
+        intent.removeCategory(Intent.CATEGORY_BROWSABLE)
+        intent.removeCategory(Intent.CATEGORY_DEFAULT)
+    }
+
+    private fun dispatchDeepLink(data: String) {
+        Log.d(TAG, "🔗 dispatchDeepLink: $data")
+        if (deepLinkChannel != null) {
+            deepLinkChannel?.invokeMethod("openDeepLink", data)
+            Log.d(TAG, "🔗 Invoked openDeepLink to Flutter")
+        } else {
+            pendingDeepLink = data
+            Log.d(TAG, "🔗 Saved pending deep link")
+        }
     }
 
     private fun handleAnalysisImageFromIntent(intent: Intent?) {
@@ -357,6 +403,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         largeIconCache.clear()
         lastNotificationTimestampMs.clear()
         methodChannel = null
+        deepLinkChannel = null
     }
 
     // Shizuku 服务成功连接的回调
@@ -645,6 +692,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
+        deepLinkChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialDeepLink" -> {
+                    result.success(pendingDeepLink)
+                    pendingDeepLink = null
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // 处理待处理的番茄钟动作
         pendingPomodoroAction?.let { action ->

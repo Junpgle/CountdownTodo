@@ -32,6 +32,7 @@ import 'services/widget_service.dart';
 import 'services/splash_service.dart';
 import 'services/course_service.dart';
 import 'services/environment_service.dart';
+import 'services/app_deep_link_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
 import 'windows_island/island_ui.dart';
@@ -116,6 +117,8 @@ Future<void> main(List<String> args) async {
       return;
     }
   } catch (_) {}
+
+  await AppDeepLinkService.init(args);
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
@@ -211,7 +214,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<bool> _showCloseConfirmDialog() async {
     debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
-    
+
     if (!mounted) {
       debugPrint('[Main] Widget not mounted, falling back to native dialog');
       return true;
@@ -315,6 +318,9 @@ class _MyAppState extends State<MyApp> {
             _showPrivacyUpdateDialog();
           });
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(AppDeepLinkService.consumePendingAfterAppReady());
+        });
       }
     } catch (e) {
       debugPrint('[Main] 初始化失败: $e');

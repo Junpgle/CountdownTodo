@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
@@ -11,6 +12,7 @@ import 'dart:io';
 import '../models.dart';
 import '../services/timeline_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 
@@ -18,7 +20,15 @@ enum TimelineDimension { daily, weekly, monthly, yearly }
 
 class PersonalTimelineScreen extends StatefulWidget {
   final String username;
-  const PersonalTimelineScreen({super.key, required this.username});
+  final TimelineDimension initialDimension;
+  final DateTime? initialDate;
+
+  const PersonalTimelineScreen({
+    super.key,
+    required this.username,
+    this.initialDimension = TimelineDimension.daily,
+    this.initialDate,
+  });
 
   @override
   State<PersonalTimelineScreen> createState() => _PersonalTimelineScreenState();
@@ -51,6 +61,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   @override
   void initState() {
     super.initState();
+    _dimension = widget.initialDimension;
+    _selectedDate = widget.initialDate ?? DateTime.now();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -909,6 +921,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
+        if (kIsWeb)
+          TextButton.icon(
+            onPressed: () => AppReportLaunchService.openTimelineReportInApp(
+              dimension: _dimension,
+              date: _selectedDate,
+            ),
+            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+            label: const Text('前往App查看报告'),
+          ),
         IconButton(
           tooltip: '保存分享长图',
           icon: _isExportingPoster
@@ -918,10 +939,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.ios_share_rounded),
-          onPressed:
-              _isLoading || _isExportingPoster
-                  ? null
-                  : _chooseAndSaveTimelinePoster,
+          onPressed: _isLoading || _isExportingPoster
+              ? null
+              : _chooseAndSaveTimelinePoster,
         ),
         const SizedBox(width: 8),
       ],
