@@ -1128,6 +1128,31 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
+  /// Record user's manual group selection as positive feedback,
+  /// and negative feedback for the AI-suggested group if different.
+  void _recordUserGroupChoice(String? chosenGroupId) {
+    if (chosenGroupId == null) return;
+    final kws = _extractKeywords();
+    if (kws.isEmpty) return;
+
+    // Positive feedback for user's choice
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'group',
+      suggestedValue: chosenGroupId, accepted: true,
+    );
+
+    // Negative feedback for AI suggestion if user chose differently
+    final suggestion = _classificationSuggestion;
+    if (suggestion != null &&
+        suggestion.hasGroup &&
+        suggestion.groupId != chosenGroupId) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: false,
+      );
+    }
+  }
+
   Widget _buildManualInputTab({Key? key}) {
     return SingleChildScrollView(
       key: key,
@@ -1447,17 +1472,21 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       ...widget.todoGroups.where((g) => !g.isDeleted).map((g) =>
                           PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
-                    onSelected: (v) => setState(() {
-                      _selectedGroupId = v == "__none__" ? null : v;
-                      if (_selectedGroupId != null &&
-                          _categoryReminderDefaults
-                              .containsKey(_selectedGroupId)) {
-                        _reminderMinutes =
-                            _categoryReminderDefaults[_selectedGroupId]!;
-                      } else if (_selectedGroupId == null) {
-                        _reminderMinutes = 5;
-                      }
-                    }),
+                    onSelected: (v) {
+                      final newGroupId = v == "__none__" ? null : v;
+                      _recordUserGroupChoice(newGroupId);
+                      setState(() {
+                        _selectedGroupId = newGroupId;
+                        if (_selectedGroupId != null &&
+                            _categoryReminderDefaults
+                                .containsKey(_selectedGroupId)) {
+                          _reminderMinutes =
+                              _categoryReminderDefaults[_selectedGroupId]!;
+                        } else if (_selectedGroupId == null) {
+                          _reminderMinutes = 5;
+                        }
+                      });
+                    },
                   )),
                 if (widget.todoGroups.isNotEmpty && _teams.isNotEmpty)
                   const SizedBox(width: 12),
