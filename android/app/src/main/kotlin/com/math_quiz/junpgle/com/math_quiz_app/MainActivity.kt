@@ -16,9 +16,11 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
 import android.provider.CalendarContract
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
@@ -33,6 +35,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import org.json.JSONArray as KJSONArray
 import java.io.File
+import java.io.FileInputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.ConcurrentHashMap
@@ -385,6 +388,55 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 methodChannel?.invokeMethod("pomodoroAbandon", null)
                 Log.d(TAG, "🍅 Invoked pomodoroAbandon to Flutter")
             }
+        }
+    }
+
+    private fun saveImageToGallery(path: String, result: MethodChannel.Result) {
+        try {
+            val source = File(path)
+            if (!source.exists()) {
+                result.error("FILE_NOT_FOUND", "Image file does not exist", path)
+                return
+            }
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, source.name)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(
+                        MediaStore.Images.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/CountDownTodo"
+                    )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val resolver = contentResolver
+            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri == null) {
+                result.error("INSERT_FAILED", "Failed to create gallery item", null)
+                return
+            }
+
+            resolver.openOutputStream(uri)?.use { output ->
+                FileInputStream(source).use { input ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                result.error("OPEN_FAILED", "Failed to open gallery output stream", null)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            }
+
+            result.success(uri.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "saveImageToGallery failed", e)
+            result.error("SAVE_FAILED", e.message, null)
         }
     }
 
@@ -794,6 +846,15 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         lastNotificationTimestampMs.remove(notifId)
                     }
                     result.success(null)
+                }
+
+                "saveImageToGallery" -> {
+                    val path = (call.arguments as? Map<String, Any>)?.get("path") as? String
+                    if (path.isNullOrBlank()) {
+                        result.error("INVALID_ARGS", "path is required", null)
+                    } else {
+                        saveImageToGallery(path, result)
+                    }
                 }
 
                 // 🚀 响应 Flutter 的添加小部件请求
