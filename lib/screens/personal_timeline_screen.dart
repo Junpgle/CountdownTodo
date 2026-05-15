@@ -430,6 +430,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (_summary == null || _isExportingPoster) return;
 
     setState(() => _isExportingPoster = true);
+    final messenger = ScaffoldMessenger.of(context);
     final posterKey = GlobalKey();
     OverlayEntry? entry;
 
@@ -502,12 +503,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             text: 'CountDownTodo ${_getPeriodName()} 总结',
           ));
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger.showSnackBar(
             SnackBar(content: Text('打开分享失败：$e')),
           );
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('长图已保存：${file.path}'),
             action: SnackBarAction(
@@ -520,7 +521,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     } catch (e) {
       debugPrint('保存时间线长图失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('保存长图失败：$e')),
         );
       }
@@ -698,8 +699,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
-
                         // Animated Content Area
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 600),
@@ -913,7 +912,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildAppBar(BuildContext context, ColorScheme cs) {
     return SliverAppBar(
-      expandedHeight: 280,
+      expandedHeight: 232,
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
@@ -1000,7 +999,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 72, 24, 16),
+      padding: const EdgeInsets.fromLTRB(24, 64, 24, 8),
       child: Row(
         children: [
           Expanded(
