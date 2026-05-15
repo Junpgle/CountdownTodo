@@ -790,33 +790,72 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final hasClassification =
         hasNewGroup || (clsSug != null && clsSug.tags.isNotEmpty);
 
-    return Container(
-      margin: const EdgeInsets.only(top: 6, bottom: 2),
-      padding: const EdgeInsets.all(12),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer.withValues(alpha: 0.4),
+            cs.primaryContainer.withValues(alpha: 0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header with a "Pro" feel
           Row(
             children: [
-              Icon(Icons.auto_awesome, size: 15, color: cs.primary),
-              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [cs.primary, cs.secondary],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'AI INSIGHT',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               Text(
-                '智能AI建议',
+                '智能建议',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: cs.primary,
+                  color: cs.onSurface.withValues(alpha: 0.8),
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: () {
+              TextButton(
+                onPressed: () {
                   _recordNegativeClassificationFeedback();
                   setState(() {
                     _estimationResult = null;
@@ -824,23 +863,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     _classificationSuggestion = null;
                   });
                 },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: Text(
-                  '忽略全部',
+                  '忽略',
                   style: TextStyle(
                     fontSize: 11,
-                    color: cs.onSurface.withValues(alpha: 0.45),
+                    color: cs.onSurface.withValues(alpha: 0.4),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
 
           // Duration suggestion
           if (est != null)
             _buildSuggestionItem(
-              icon: Icons.schedule,
-              label: '预估时长 ~${_formatDuration(est.estimatedMinutes)}',
+              icon: Icons.timer_outlined,
+              label: '预估耗时: ~${_formatDuration(est.estimatedMinutes)}',
               sub: _estimationConfidenceLabel(est),
               subColor: _estimationConfidenceColor(est),
               showAccept: false,
@@ -849,41 +893,43 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           // Due date suggestion
           if (hasDueDate)
             _buildSuggestionItem(
-              icon: Icons.event,
+              icon: Icons.calendar_today_rounded,
               label:
-                  '建议截止 ${DateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}',
+                  "建议截止: ${DateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}",
               showAccept: true,
               onAccept: _acceptDueDateSuggestion,
+              accentColor: Colors.deepOrangeAccent,
             ),
 
           // Classification suggestion
           if (hasClassification && clsSug != null) ...[
             _buildSuggestionItem(
-              icon: Icons.category,
-              label: '分类建议',
+              icon: Icons.auto_graph_rounded,
+              label: '分类与标签建议',
               showAccept: true,
               onAccept: _applyClassificationSuggestion,
+              accentColor: cs.primary,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Padding(
-              padding: const EdgeInsets.only(left: 24),
+              padding: const EdgeInsets.only(left: 26),
               child: Wrap(
-                spacing: 6,
-                runSpacing: 4,
+                spacing: 8,
+                runSpacing: 6,
                 children: [
                   if (hasNewGroup)
                     _buildMiniChip(
-                      Icons.folder_rounded,
+                      Icons.folder_special_rounded,
                       clsSug.groupName ?? '未分类',
                       Colors.amber.shade700,
                     ),
                   _buildMiniChip(
-                    Icons.flag_rounded,
+                    Icons.priority_high_rounded,
                     clsSug.priorityLabel,
                     clsSug.priority >= 4 ? Colors.redAccent : Colors.blueGrey,
                   ),
                   ...clsSug.tags.map(
-                    (tag) => _buildMiniChip(Icons.sell_outlined, tag, cs.primary),
+                    (tag) => _buildMiniChip(Icons.tag_rounded, tag, cs.primary),
                   ),
                 ],
               ),
@@ -901,67 +947,78 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     Color? subColor,
     required bool showAccept,
     VoidCallback? onAccept,
+    Color? accentColor,
   }) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: cs.primary),
-          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: (accentColor ?? cs.primary).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 14, color: accentColor ?? cs.primary),
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (sub != null) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: (subColor ?? Colors.grey).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      sub,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
-                        color: subColor ?? Colors.grey,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withValues(alpha: 0.9),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ),
-                ],
+                    if (sub != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        sub,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: subColor?.withValues(alpha: 0.7) ?? Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
           if (showAccept)
-            GestureDetector(
-              onTap: onAccept,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  '采纳',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onAccept,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (accentColor ?? cs.primary).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: (accentColor ?? cs.primary).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    '采纳',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: accentColor ?? cs.primary,
+                    ),
                   ),
                 ),
               ),
@@ -973,28 +1030,30 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Widget _buildMiniChip(IconData icon, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.11),
-        borderRadius: BorderRadius.circular(6),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.15), width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 10, color: color),
-          const SizedBox(width: 3),
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
+              fontWeight: FontWeight.w700,
+              color: color.withValues(alpha: 0.9),
             ),
           ),
         ],
       ),
     );
   }
+
 
   String _estimationConfidenceLabel(TimeEstimationResult est) {
     final pct = (est.confidence * 100).round();
