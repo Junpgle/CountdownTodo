@@ -816,11 +816,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () => setState(() {
-                  _estimationResult = null;
-                  _suggestedDueDate = null;
-                  _classificationSuggestion = null;
-                }),
+                onTap: () {
+                  _recordNegativeClassificationFeedback();
+                  setState(() {
+                    _estimationResult = null;
+                    _suggestedDueDate = null;
+                    _classificationSuggestion = null;
+                  });
+                },
                 child: Text(
                   '忽略全部',
                   style: TextStyle(
@@ -995,9 +998,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   String _estimationConfidenceLabel(TimeEstimationResult est) {
     final pct = (est.confidence * 100).round();
-    if (est.confidence >= 0.6) return '高 $pct%';
-    if (est.confidence >= 0.35) return '中 $pct%';
-    return '低 $pct%';
+    if (est.confidence >= 0.6) return '高置信度 $pct%';
+    if (est.confidence >= 0.35) return '中置信度 $pct%';
+    return '低置信度 $pct%';
   }
 
   Color _estimationConfidenceColor(TimeEstimationResult est) {
@@ -1055,9 +1058,43 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     return '$minutes分钟';
   }
 
+  List<String> _extractKeywords() {
+    final text = _titleCtrl.text.trim().toLowerCase();
+    final tokens = <String>[];
+    for (final m in RegExp(r'[a-z0-9]+').allMatches(text)) {
+      if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
+    }
+    for (final m in RegExp(r'[一-鿿]+').allMatches(text)) {
+      final seg = m.group(0)!;
+      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length - 1; i++) {
+        tokens.add(seg.substring(i, i + 2));
+      }
+    }
+    return tokens;
+  }
+
   void _applyClassificationSuggestion() {
     final suggestion = _classificationSuggestion;
     if (suggestion == null) return;
+    final kws = _extractKeywords();
+    // Record positive feedback
+    if (suggestion.hasGroup) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: true,
+      );
+    }
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}', accepted: true,
+    );
+    for (final tag in suggestion.tags) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'tag',
+        suggestedValue: tag, accepted: true,
+      );
+    }
     setState(() {
       if (suggestion.hasGroup) {
         _selectedGroupId = suggestion.groupId;
@@ -1067,6 +1104,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
       _classificationSuggestion = null;
     });
+  }
+
+  void _recordNegativeClassificationFeedback() {
+    final suggestion = _classificationSuggestion;
+    if (suggestion == null) return;
+    final kws = _extractKeywords();
+    if (suggestion.hasGroup) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: false,
+      );
+    }
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}', accepted: false,
+    );
+    for (final tag in suggestion.tags) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'tag',
+        suggestedValue: tag, accepted: false,
+      );
+    }
   }
 
   Widget _buildManualInputTab({Key? key}) {

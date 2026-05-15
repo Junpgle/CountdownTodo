@@ -28,9 +28,9 @@ class AiTodoChatLauncher {
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
-  }) {
+  }) async {
     final initialCategorizationActions =
-        TodoClassificationService.buildCategorizeActions(
+        await TodoClassificationService.buildCategorizeActions(
       todos: todos,
       groups: todoGroups,
       categoryReminderDefaults: categoryReminderDefaults,
@@ -57,7 +57,7 @@ class AiTodoChatLauncher {
         sourceKey: sourceKey,
       );
     }
-    return Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => page),
     );
