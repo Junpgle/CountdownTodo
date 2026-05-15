@@ -188,7 +188,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 27, // V27: 新增勋章推荐 ML 跟踪表
+          version: 28, // V28: 新增分类建议反馈学习表
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -202,6 +202,26 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 28) {
+              try {
+                await db.execute('''
+                  CREATE TABLE IF NOT EXISTS suggestion_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keyword TEXT NOT NULL,
+                    suggestion_type TEXT NOT NULL,
+                    suggested_value TEXT NOT NULL,
+                    accepted INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL DEFAULT 0
+                  )
+                ''');
+                await db.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
+                    'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
+                debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
+              } catch (e) {
+                debugPrint('⚠️ Database: 创建 suggestion_feedback 表失败: $e');
+              }
+            }
             if (oldVersion < 27) {
               try {
                 await db.execute('''

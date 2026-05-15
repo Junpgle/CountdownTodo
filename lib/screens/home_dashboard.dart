@@ -234,6 +234,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           .whereType<Map>()
           .map((t) => Team.fromJson(Map<String, dynamic>.from(t)))
           .toList();
+      final categoryReminderDefaults =
+          await StorageService.getCategoryReminderMinutes(widget.username);
 
       if (!mounted) return;
       await AiTodoChatLauncher.open(
@@ -247,6 +249,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         pomodoroRecords: pomodoroRecords,
         conflicts: _latestSyncConflicts,
         teams: teams,
+        categoryReminderDefaults: categoryReminderDefaults,
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
