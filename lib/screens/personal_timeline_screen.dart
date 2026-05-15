@@ -2296,7 +2296,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       _buildStatCard(
         '专注质量',
         '中断率 ${(_summary!.interruptionRate * 100).toStringAsFixed(1)}%',
-        '${_summary!.interruptionCount} 次被打断或放弃',
+        '${_summary!.interruptionCount} 次提前放弃',
         Icons.shield_moon_rounded,
         Colors.indigo,
         cs,

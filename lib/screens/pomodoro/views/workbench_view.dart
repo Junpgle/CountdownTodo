@@ -1480,9 +1480,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       endTime: isCountUp ? startMs + editedDuration * 1000 : endMs,
       plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
       actualDuration: editedDuration,
-      status: (completed ?? false)
-          ? PomodoroRecordStatus.completed
-          : PomodoroRecordStatus.interrupted,
+      status: PomodoroRecordStatus.completed,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
     await PomodoroService.addRecord(record);
@@ -1589,7 +1587,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('放弃本次专注？'),
-            content: const Text('本次专注记录将被丢弃。'),
+            content: const Text('本次专注会记录为放弃，用于统计中断率。'),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             actions: [
@@ -1607,13 +1605,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         confirm = res == true;
       }
       if (confirm) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final actualSeconds =
+            ((now - _sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+        final isCountUpMode = _settings.mode == TimerMode.countUp;
+        if (actualSeconds > 5) {
+          await PomodoroService.addRecord(PomodoroRecord(
+            uuid: _currentSessionUuid,
+            todoUuid:
+                (_boundTodo?.id.isNotEmpty == true) ? _boundTodo!.id : null,
+            todoTitle: _boundTodo?.title,
+            tagUuids: List.from(_selectedTagUuids),
+            startTime: _sessionStartMs,
+            endTime: now,
+            plannedDuration: isCountUpMode ? 0 : _settings.focusMinutes * 60,
+            actualDuration: actualSeconds,
+            status: PomodoroRecordStatus.interrupted,
+            deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+          ));
+        }
         NotificationService.cancelNotification();
         NotificationService.cancelReminder(40001);
         NotificationService.cancelReminder(40002);
         _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
         // 🚀 Notify island to switch to idle immediately
         await FloatWindowService.update(endMs: 0, isLocal: true);
-        final isCountUpMode = _settings.mode == TimerMode.countUp;
         setState(() {
           _phase = PomodoroPhase.idle;
           _currentCycle = 1;
