@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
   User as UserIcon, Calendar, AlertCircle, Users as UsersIcon, RotateCcw, Bell,
-  MessageSquare, Shield, Megaphone, History as HistoryIcon, Info
+  MessageSquare, Shield, Megaphone, History as HistoryIcon, Info, ExternalLink
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
@@ -21,6 +21,64 @@ import { CourseView } from './CourseView';
 import { PomodoroStatsView } from './PomodoroStatsView';
 import { PomodoroFocusView } from './PomodoroFocusView';
 import { TeamManagementView } from './TeamManagementView';
+
+type NativeAppManifest = {
+  update_info?: {
+    full_package_url?: string;
+    PC_package_url?: string;
+    android_arch_packages?: Record<string, string>;
+  };
+};
+
+const NATIVE_APP_MANIFEST_URL = 'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json';
+const NATIVE_APP_RELEASE_URL = 'https://github.com/Junpgle/CountdownTodo/releases';
+
+const formatDeepLinkDate = (date: Date) => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const getVisitorPlatform = () => {
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform.toLowerCase();
+  if (ua.includes('android')) return 'android';
+  if (ua.includes('windows') || platform.includes('win')) return 'windows';
+  return 'unknown';
+};
+
+const resolveNativeDownloadUrl = async () => {
+  try {
+    const response = await fetch(NATIVE_APP_MANIFEST_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Manifest ${response.status}`);
+    const manifest = (await response.json()) as NativeAppManifest;
+    const info = manifest.update_info ?? {};
+    const platform = getVisitorPlatform();
+
+    if (platform === 'windows' && info.PC_package_url) {
+      return info.PC_package_url;
+    }
+
+    if (platform === 'android') {
+      const archUrl = Object.values(info.android_arch_packages ?? {}).find(Boolean);
+      return archUrl || info.full_package_url || NATIVE_APP_RELEASE_URL;
+    }
+
+    return info.PC_package_url || info.full_package_url || NATIVE_APP_RELEASE_URL;
+  } catch {
+    return NATIVE_APP_RELEASE_URL;
+  }
+};
+
+const openTimelineReportInApp = () => {
+  const deepLink = `countdowntodo://timeline/report?dimension=daily&date=${formatDeepLinkDate(new Date())}`;
+  window.location.href = deepLink;
+};
+
+const downloadNativeApp = async () => {
+  window.location.href = await resolveNativeDownloadUrl();
+};
 
 // --------------------------------------------------------
 // 主应用组件 (WebApp)
@@ -73,6 +131,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [localHistoryItems, setLocalHistoryItems] = useState<Array<Record<string, unknown>>>([]);
   const [historyTab, setHistoryTab] = useState<'local' | 'cloud'>('cloud');
   const [historyTarget, setHistoryTarget] = useState<{ uuid: string; table: string; title: string } | null>(null);
+  const [showReportLauncher, setShowReportLauncher] = useState(false);
 
   useEffect(() => {
     loadLocalData();
@@ -1011,6 +1070,25 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           </div>
         )}
 
+        <div className="mb-6 bg-white border border-indigo-100 rounded-3xl shadow-sm px-5 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <HistoryIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-slate-900">个人时间轴报告</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">查看你的个人专注报告</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowReportLauncher(true)}
+            className="shrink-0 inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl text-sm font-black transition shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            前往App查看报告
+            <ExternalLink className="w-4 h-4" />
+          </button>
+        </div>
+
         <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0">
         {/* 左半部分：自适应周视图 */}
         <div className="w-full lg:w-1/2 flex flex-col shrink-0 lg:shrink h-auto lg:h-full min-h-[500px] lg:min-h-0">
@@ -1476,6 +1554,49 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           {currentTab === 'pomodoro' && mobileTab === 'home' && <PomodoroStatsView userId={user.id} todos={todos} />}
           {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>
+
+        {showReportLauncher && (
+          <div className="fixed inset-0 z-[70] bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl border border-slate-100 p-6 sm:p-8 animate-in zoom-in-95 duration-200">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <HistoryIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900">个人时间轴报告</h3>
+                    <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                      选择打开已安装的客户端，或手动下载适合当前设备的安装包。
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowReportLauncher(false)}
+                  className="p-2 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={openTimelineReportInApp}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black transition shadow-lg shadow-indigo-500/25 active:scale-[0.98]"
+                >
+                  打开App查看报告
+                  <ExternalLink className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={downloadNativeApp}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 py-4 rounded-2xl font-black transition active:scale-[0.98]"
+                >
+                  下载App
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 统一添加弹窗 (Todo / Countdown) */}
         {showAddModal && (
