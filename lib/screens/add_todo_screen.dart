@@ -521,7 +521,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         dueDate: r.endTime,
       );
       final suggestedGroupId =
-          classification.confidence >= 0.34 ? classification.groupId : null;
+          classification.confidence >= 0.20 ? classification.groupId : null;
       todos.add(TodoItem(
         title: r.title,
         recurrence: r.recurrence,

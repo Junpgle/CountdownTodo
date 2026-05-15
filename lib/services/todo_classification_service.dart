@@ -104,8 +104,8 @@ class TodoClassificationService {
             : _reminderForPriority(priority);
 
     return TodoClassificationSuggestion(
-      groupId: confidence >= 0.28 ? group?.id : null,
-      groupName: confidence >= 0.28 ? group?.name : null,
+      groupId: confidence >= 0.18 ? group?.id : null,
+      groupName: confidence >= 0.18 ? group?.name : null,
       priority: priority,
       priorityLabel: _priorityLabel(priority),
       tags: tags,
@@ -140,9 +140,12 @@ class TodoClassificationService {
         categoryReminderDefaults: categoryReminderDefaults,
         dueDate: todo.dueDate,
       );
+      final isUnclassified =
+          todo.groupId == null || todo.groupId!.isEmpty;
+      final minConfidence = isUnclassified ? 0.20 : 0.34;
       if (!suggestion.hasGroup ||
           suggestion.groupId == todo.groupId ||
-          suggestion.confidence < 0.34) {
+          suggestion.confidence < minConfidence) {
         continue;
       }
       actions.add(
@@ -293,7 +296,7 @@ class TodoClassificationService {
     List<String> tags,
   ) {
     final parts = <String>[];
-    if (group != null && confidence >= 0.28) {
+    if (group != null && confidence >= 0.18) {
       parts.add('匹配到「${group.name}」语义');
     }
     parts.add(_priorityLabel(priority));
