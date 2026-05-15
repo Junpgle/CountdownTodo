@@ -122,8 +122,15 @@ class TodoClassificationService {
     int limit = 6,
   }) async {
     if (groups.where((g) => !g.isDeleted).isEmpty) return const [];
+    // Prioritize unclassified todos (no groupId)
+    final sortedTodos = [...todos]
+      ..sort((a, b) {
+        final aEmpty = (a.groupId == null || a.groupId!.isEmpty) ? 0 : 1;
+        final bEmpty = (b.groupId == null || b.groupId!.isEmpty) ? 0 : 1;
+        return aEmpty.compareTo(bEmpty);
+      });
     final actions = <AiTodoAction>[];
-    for (final todo in todos) {
+    for (final todo in sortedTodos) {
       if (todo.isDeleted || todo.isDone) continue;
       final suggestion = await recommendForText(
         title: todo.title,

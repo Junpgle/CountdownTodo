@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
+import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
@@ -3077,7 +3078,54 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.isIgnored = true;
       action.isSelected = false;
     });
+    _recordIgnoreFeedback(action);
     _saveHistorySilently();
+  }
+
+  void _recordIgnoreFeedback(AiTodoAction action) {
+    if (action.type != AiTodoActionType.categorizeTodo) return;
+    final title = action.title ?? '';
+    if (title.isEmpty) return;
+    final kws = _extractActionKeywords(title);
+    if (kws.isEmpty) return;
+    if (action.groupId != null) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: action.groupId!, accepted: false,
+      );
+    }
+    final priority = action.metadata['priority'];
+    if (priority != null) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'priority',
+        suggestedValue: '$priority', accepted: false,
+      );
+    }
+    final tags = action.metadata['tags'];
+    if (tags is List) {
+      for (final tag in tags) {
+        SuggestionFeedbackService.record(
+          keywords: kws, suggestionType: 'tag',
+          suggestedValue: tag.toString(), accepted: false,
+        );
+      }
+    }
+  }
+
+  List<String> _extractActionKeywords(String text) {
+    final lower = text.toLowerCase();
+    final tokens = <String>[];
+    for (final m in RegExp(r'[a-z0-9]+').allMatches(lower)) {
+      if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
+    }
+    for (final m in RegExp(r'[一-鿿]+').allMatches(lower)) {
+      final seg = m.group(0)!;
+      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length - 1; i++) {
+        tokens.add(seg.substring(i, i + 2));
+      }
+    }
+    return tokens;
   }
 
   Future<void> _editAction(AiTodoAction action) async {
