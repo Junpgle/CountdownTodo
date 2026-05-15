@@ -1546,6 +1546,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final qualityLine = summary.pomodoroCount > 0
         ? '平均每次 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度专注占 ${_formatPercent(summary.deepWorkCount / summary.pomodoroCount)}。'
         : '暂时没有可统计的专注质量数据。';
+    final consecutiveLabel =
+        _buildConsecutiveActiveLabel(summary.consecutiveActiveDays);
 
     final hero = Container(
       width: double.infinity,
@@ -1591,7 +1593,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             children: [
               _buildInsightPill('完成率 ${_formatPercent(completionRate)}',
                   Icons.check_circle_outline_rounded, cs.primary, cs),
-              _buildInsightPill('连续活跃 ${summary.consecutiveActiveDays} 天',
+              _buildInsightPill(consecutiveLabel,
                   Icons.local_fire_department_outlined, Colors.deepOrange, cs),
               _buildInsightPill('转化率 ${_formatPercent(screenConversion)}',
                   Icons.desktop_windows_outlined, Colors.teal, cs),
@@ -1704,6 +1706,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ],
       ),
     );
+  }
+
+  String _buildConsecutiveActiveLabel(int days) {
+    switch (_dimension) {
+      case TimelineDimension.daily:
+        return '截至${_formatTimelinePeriod(_dimension, _selectedDate)}连续活跃 $days 天';
+      case TimelineDimension.weekly:
+        return '本周最长连续活跃 $days 天';
+      case TimelineDimension.monthly:
+        return '本月最长连续活跃 $days 天';
+      case TimelineDimension.yearly:
+        return '本年最长连续活跃 $days 天';
+    }
   }
 
   Widget _buildAchievementStrip(ColorScheme cs) {
@@ -1914,7 +1929,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     if (summary.consecutiveActiveDays >= 3) {
       badges.add((
         title: '长跑型选手',
-        desc: '连续活跃 ${summary.consecutiveActiveDays} 天',
+        desc: _buildConsecutiveActiveLabel(summary.consecutiveActiveDays),
         earnedAt: earnedAt,
         icon: Icons.local_fire_department_outlined,
         color: Colors.deepOrange
@@ -2147,7 +2162,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       if (_deadlineSprintCount > 0) 'DDL',
     ];
     if (words.isEmpty) return '专注、计划';
-    return words.take(4).join('、');
+    const maxChars = 14;
+    final buffer = StringBuffer();
+    for (final word in words) {
+      final next = buffer.isEmpty ? word : '、$word';
+      if (buffer.length + next.length > maxChars) {
+        if (buffer.isEmpty) {
+          return '${word.substring(0, maxChars - 1)}…';
+        }
+        return '${buffer.toString()}…';
+      }
+      buffer.write(next);
+    }
+    return buffer.toString();
   }
 
   String _getTaskCompositionReason() {
