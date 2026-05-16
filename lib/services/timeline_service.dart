@@ -621,6 +621,29 @@ class TimelineService {
       final consecutiveDays =
           await _calculateConsecutiveActiveDays(db, start, end);
 
+      // 11b. Active days in the current calendar month
+      final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = monthStart.add(const Duration(days: 32));
+      final monthEndSafe =
+          monthEnd.isAfter(now) ? now.add(const Duration(days: 1)) : monthEnd;
+      final monthStartMs = monthStart.millisecondsSinceEpoch;
+      final monthEndMs = monthEndSafe.millisecondsSinceEpoch;
+      final monthRows = await db.rawQuery(
+        'SELECT COUNT(DISTINCT day) as cnt FROM ('
+        'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at >= ? AND created_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp >= ? AND timestamp < ?'
+        ') WHERE day IS NOT NULL',
+        [monthStartMs, monthEndMs, monthStartMs, monthEndMs, monthStartMs,
+         monthEndMs, monthStartMs, monthEndMs, monthStartMs, monthEndMs],
+      );
+      final monthlyActiveDays = monthRows.isNotEmpty
+          ? (monthRows.first['cnt'] as int? ?? 0)
+          : 0;
+
       final todoCreated = todoStats.first['created'] as int? ?? 0;
       final todoCompleted = todoStats.first['completed'] as int? ?? 0;
       final completionRate = todoCreated > 0
@@ -638,6 +661,7 @@ class TimelineService {
         todoCompletedCount: todoCompleted,
         todoCompletionRate: completionRate,
         consecutiveActiveDays: consecutiveDays,
+        monthlyActiveDays: monthlyActiveDays,
         totalFocusMinutes: totalSecs ~/ 60,
         countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
         countdownEditedCount: 0,
@@ -787,6 +811,7 @@ class TimelineSummary {
   final int todoCompletedCount;
   final double todoCompletionRate;
   final int consecutiveActiveDays;
+  final int monthlyActiveDays;
   final int totalFocusMinutes;
   final int countdownCreatedCount;
   final int countdownEditedCount;
@@ -829,6 +854,7 @@ class TimelineSummary {
     required this.todoCompletedCount,
     this.todoCompletionRate = 0.0,
     this.consecutiveActiveDays = 0,
+    this.monthlyActiveDays = 0,
     this.totalFocusMinutes = 0,
     required this.countdownCreatedCount,
     required this.countdownEditedCount,

@@ -1496,9 +1496,11 @@ class MedalRecommendationService {
         nextMilestone = earned ? '已获得' : '需连续 10 周活跃';
         break;
       case 'habit_monthly_champion':
-        earned = summary.consecutiveActiveDays >= 28;
-        progress = (summary.consecutiveActiveDays / 28).clamp(0.0, 1.0);
-        nextMilestone = '单月近全勤挑战';
+        final monthDays = summary.monthlyActiveDays;
+        earned = monthDays >= 28;
+        progress = (monthDays / 28).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : (28 - monthDays);
+        nextMilestone = earned ? '已获得' : '本月活跃 $monthDays 天，需达 28 天';
         break;
       case 'habit_year_companion':
         progress = (summary.consecutiveActiveDays / 365).clamp(0.0, 1.0);
