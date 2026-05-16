@@ -268,8 +268,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _topScreenApps = _topScreenApps.take(5).toList();
 
           // Calculate ML Medal Recommendations
-          _medalRecommendation =
-              MedalRecommendationService.getRecommendations(
+          _medalRecommendation = MedalRecommendationService.getRecommendations(
             summary,
             totalSecs ~/ 60,
             completedTodos.length,
@@ -277,7 +276,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             earlyCount,
             sprintCount,
             coursesByDay.values.fold(0, (sum, v) => sum + v),
-            coursesByDay.values.isEmpty ? 0 : coursesByDay.values.reduce(math.max),
+            coursesByDay.values.isEmpty
+                ? 0
+                : coursesByDay.values.reduce(math.max),
             screenTotal,
             productiveScreen,
             distractionScreen,
@@ -290,12 +291,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         });
 
         // Async ML insights generation
-        TimelineMLService.instance.generateInsights(
+        TimelineMLService.instance
+            .generateInsights(
           username: widget.username,
           summary: summary,
           totalFocusMinutes: totalSecs ~/ 60,
           completedCount: completedTodos.length,
-          totalCount: plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+          totalCount: plannedTodos.isEmpty
+              ? completedTodos.length
+              : plannedTodos.length,
           screenTimeSeconds: screenTotal,
           productiveScreenSeconds: productiveScreen,
           distractionScreenSeconds: distractionScreen,
@@ -303,7 +307,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           deadlineSprintCount: sprintCount,
           startDate: start,
           endDate: end,
-        ).then((insights) {
+        )
+            .then((insights) {
           if (mounted && insights.isNotEmpty) {
             setState(() {
               _mlInsights = insights;
@@ -379,7 +384,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       // 4. Todos
       final todos = await StorageService.getTodos(widget.username);
-      final completedTodos = todos.where((t) => !t.isDeleted && t.isDone).toList();
+      final completedTodos =
+          todos.where((t) => !t.isDeleted && t.isDone).toList();
       final plannedTodos = todos.where((t) => !t.isDeleted).toList();
       final sprintCount = completedTodos.where((todo) {
         final due = _effectiveTodoDueEnd(todo);
@@ -1273,6 +1279,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                                     colorScheme, isWide),
                                                 _buildOverviewInsightPanels(
                                                     colorScheme, isWide),
+                                                if (_mlInsights.isNotEmpty) ...[
+                                                  const SizedBox(height: 36),
+                                                  _buildSectionTitle(
+                                                      'AI 深度洞察',
+                                                      Icons
+                                                          .auto_awesome_rounded,
+                                                      colorScheme),
+                                                  const SizedBox(height: 16),
+                                                  _buildMLInsightsSection(
+                                                      colorScheme),
+                                                ],
                                                 _buildMedalWall(
                                                     colorScheme, isWide),
                                                 if (_dimension ==
@@ -1330,6 +1347,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                       _buildRangeSummary(colorScheme, isWide),
                                       _buildOverviewInsightPanels(
                                           colorScheme, isWide),
+                                      if (_mlInsights.isNotEmpty) ...[
+                                        const SizedBox(height: 36),
+                                        _buildSectionTitle(
+                                            'AI 深度洞察',
+                                            Icons.auto_awesome_rounded,
+                                            colorScheme),
+                                        const SizedBox(height: 16),
+                                        _buildMLInsightsSection(colorScheme),
+                                      ],
                                       _buildMedalWall(colorScheme, isWide),
                                       if (_dimension ==
                                           TimelineDimension.daily) ...[
@@ -1990,11 +2016,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       DateTime rangeStart;
       switch (_dimension) {
         case TimelineDimension.daily:
-          rangeStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+          rangeStart = DateTime(
+              _selectedDate.year, _selectedDate.month, _selectedDate.day);
           break;
         case TimelineDimension.weekly:
-          rangeStart = _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
-          rangeStart = DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
+          rangeStart =
+              _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+          rangeStart =
+              DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
           break;
         case TimelineDimension.monthly:
           rangeStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
@@ -2021,7 +2050,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       );
     }).toList();
   }
-
 
   Widget _buildMedalWall(ColorScheme cs, bool isWide) {
     final medals = _earnedMedals();
@@ -2058,7 +2086,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               ),
               child: Column(
                 children: [
-                  Icon(Icons.emoji_events_outlined, size: 48, color: cs.outline),
+                  Icon(Icons.emoji_events_outlined,
+                      size: 48, color: cs.outline),
                   const SizedBox(height: 12),
                   Text(
                     '继续努力，您即将获得第一个勋章！',
@@ -2149,7 +2178,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ),
     );
   }
-
 
   String _formatMedalTime(DateTime? time) {
     if (time == null) return _getDateRangeString();
@@ -2860,14 +2888,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         _buildHourlyRhythm(cs),
         fillHeight: isWide,
       ),
-      if (_mlInsights.isNotEmpty)
-        _buildMasonryInsightPanel(
-          'AI 洞察',
-          Icons.auto_awesome_rounded,
-          cs,
-          _buildMLInsightsPanel(cs, fillHeight: isWide),
-          fillHeight: isWide,
-        ),
     ];
 
     if (!isWide) {
@@ -3264,57 +3284,18 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     );
   }
 
-  Widget _buildMLInsightsPanel(ColorScheme cs, {bool fillHeight = false}) {
-    if (_mlInsights.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerLow.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+  Widget _buildMLInsightsSection(ColorScheme cs) {
+    return SizedBox(
+      height: 150,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        itemCount: _mlInsights.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, index) => SizedBox(
+          width: 260,
+          child: _buildInsightItem(_mlInsights[index], cs),
         ),
-        child: Text('正在分析数据...',
-            style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            cs.primary.withValues(alpha: 0.08),
-            cs.tertiary.withValues(alpha: 0.08),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
-      ),
-      child: Column(
-        mainAxisAlignment: fillHeight
-            ? MainAxisAlignment.spaceBetween
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ..._mlInsights.take(fillHeight ? 4 : 3).map((insight) =>
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildInsightItem(insight, cs),
-            ),
-          ),
-          if (_mlInsights.length > 3 && !fillHeight)
-            Text(
-              '更多 ${_mlInsights.length - 3} 条洞察...',
-              style: TextStyle(
-                fontSize: 11,
-                color: cs.primary.withValues(alpha: 0.7),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -3326,73 +3307,99 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             ? Colors.orange
             : Colors.grey;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(insight.icon, size: 16, color: cs.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                insight.title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: confidenceColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${(insight.confidence * 100).toStringAsFixed(0)}%',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: confidenceColor,
-                ),
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.primary.withValues(alpha: 0.06),
+            cs.tertiary.withValues(alpha: 0.06),
           ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(height: 6),
-        Text(
-          insight.description,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.4,
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-        if (insight.supportingData.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: insight.supportingData.map((data) =>
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
+                  color: cs.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(insight.icon, size: 18, color: cs.primary),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      insight.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    Text(
+                      insight.category == 'focus'
+                          ? '专注分析'
+                          : insight.category == 'completion'
+                              ? '完成分析'
+                              : insight.category == 'efficiency'
+                                  ? '效率分析'
+                                  : '模式分析',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(5),
                 ),
                 child: Text(
-                  data,
+                  '${(insight.confidence * 100).toStringAsFixed(0)}%',
                   style: TextStyle(
-                    fontSize: 10,
-                    color: cs.onSurfaceVariant,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: confidenceColor,
                   ),
                 ),
               ),
-            ).toList(),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Text(
+              insight.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.3,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
-      ],
+      ),
     );
   }
 

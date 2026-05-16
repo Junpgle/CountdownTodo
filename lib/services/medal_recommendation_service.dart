@@ -1284,19 +1284,17 @@ class MedalRecommendationService {
         break;
 
       case 'weekend_warrior':
-        final wkMins = summary.weekendFocusMinutes;
-        earned = wkMins >= 300;
-        progress = (wkMins / 300).clamp(0.0, 1.0);
-        stepsRemaining = earned ? 0 : (300 - wkMins).clamp(1, 300);
-        nextMilestone = earned ? '已获得' : '周末累计专注 $wkMins 分钟，需 300 分钟';
+        earned = summary.weekendFocusMinutes >= 300;
+        progress = (summary.weekendFocusMinutes / 300).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '周末累计专注超 5 小时即可获得';
         break;
 
       case 'productivity_spike':
-        final peakDay = summary.mostProductiveDayCompletedCount;
-        earned = peakDay >= 10;
-        progress = (peakDay / 10).clamp(0.0, 1.0);
-        stepsRemaining = earned ? 0 : (10 - peakDay).clamp(1, 10);
-        nextMilestone = earned ? '已获得' : '单日最高完成 $peakDay 个，需 10 个';
+        earned = summary.mostProductiveDayCompletedCount >= 10;
+        progress = (summary.mostProductiveDayCompletedCount / 10).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '单日完成任务数量达标即可获得';
         break;
 
       case 'perfect_week':
@@ -1358,9 +1356,7 @@ class MedalRecommendationService {
             : (1.0 - summary.interruptionRate) *
                 (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned
-            ? '已获得'
-            : '分心 ${(summary.interruptionRate * 100).toStringAsFixed(0)}%，需 ≤10% 且连续活跃 ≥7 天';
+        nextMilestone = earned ? '已获得' : '保持低分心率连续 7 天即可获得';
         break;
 
       case 'knowledge_glutton':
@@ -1416,9 +1412,7 @@ class MedalRecommendationService {
           earned = maxInHour >= 5;
           progress = (maxInHour / 5).clamp(0.0, 1.0);
           stepsRemaining = earned ? 0 : 1;
-          nextMilestone = earned
-              ? '已获得'
-              : '单小时最高 $maxInHour 次，需单日连续 5 个番茄钟';
+          nextMilestone = earned ? '已获得' : '单日内连续 5 个番茄钟即可获得';
         }
         break;
 
@@ -1528,29 +1522,20 @@ class MedalRecommendationService {
       case 'habit_streak_100':
         progress = (summary.consecutiveActiveDays / 100).clamp(0.0, 1.0);
         earned = summary.consecutiveActiveDays >= 100;
-        stepsRemaining = earned ? 0 : (100 - summary.consecutiveActiveDays);
-        nextMilestone = earned
-            ? '已获得'
-            : '当前连续 ${summary.consecutiveActiveDays} 天，需 100 天';
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '连续活跃 100 天即可获得';
         break;
       case 'habit_weekly_streak_10':
-        {
-          final streak = summary.consecutiveActiveDays;
-          // 连续活跃70天 = 10周每天活跃，必然满足"每周至少活跃5天"
-          earned = streak >= 70;
-          progress = (streak / 70).clamp(0.0, 1.0);
-          stepsRemaining = earned ? 0 : (70 - streak).clamp(1, 70);
-          nextMilestone = earned
-              ? '已获得'
-              : '连续活跃 $streak 天，需 70 天（10 周 × 每天）';
-        }
+        earned = summary.consecutiveActiveDays >= 70;
+        progress = (summary.consecutiveActiveDays / 70).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '连续 10 周每周活跃即可获得';
         break;
       case 'habit_monthly_champion':
-        final monthDays = summary.monthlyActiveDays;
-        earned = monthDays >= 28;
-        progress = (monthDays / 28).clamp(0.0, 1.0);
-        stepsRemaining = earned ? 0 : (28 - monthDays);
-        nextMilestone = earned ? '已获得' : '本月活跃 $monthDays 天，需达 28 天';
+        earned = summary.monthlyActiveDays >= 28;
+        progress = (summary.monthlyActiveDays / 28).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '本月活跃 28 天即可获得';
         break;
       case 'habit_year_companion':
         {
@@ -1562,10 +1547,8 @@ class MedalRecommendationService {
               : 0;
           progress = (spanDays / 365).clamp(0.0, 1.0);
           earned = spanDays >= 365;
-          stepsRemaining = earned ? 0 : (365 - spanDays).clamp(1, 365);
-          nextMilestone = earned
-              ? '已获得'
-              : '已使用 $spanDays 天，需满 365 天';
+          stepsRemaining = earned ? 0 : 1;
+          nextMilestone = earned ? '已获得' : '累计使用 365 天即可获得';
         }
         break;
       case 'habit_streak_resurrection':
@@ -1574,18 +1557,13 @@ class MedalRecommendationService {
         nextMilestone = '断签后的强势回归';
         break;
       case 'habit_weekend_pro':
-        {
-          final wkMins = summary.weekendFocusMinutes;
-          final streak = summary.consecutiveActiveDays;
-          // 连续活跃28天=覆盖4个连续周末; 4个周末各~4h高强度≈960分钟
-          final targetMins = 960;
-          earned = streak >= 28 && wkMins >= targetMins;
-          progress = ((streak / 28) * (wkMins / targetMins)).clamp(0.0, 1.0);
-          stepsRemaining = earned ? 0 : 1;
-          nextMilestone = earned
-              ? '已获得'
-              : '连续活跃 $streak 天，周末专注累计 $wkMins 分钟，需 4 周 × 4h';
-        }
+        earned = summary.consecutiveActiveDays >= 28 &&
+            summary.weekendFocusMinutes >= 960;
+        progress = ((summary.consecutiveActiveDays / 28) *
+                (summary.weekendFocusMinutes / 960))
+            .clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned ? '已获得' : '连续 4 个周末高强度专注即可获得';
         break;
       case 'habit_rhythm_master':
         earned = summary.consecutiveActiveDays >= 7;
