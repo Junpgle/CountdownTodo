@@ -499,6 +499,102 @@ class TimelineService {
           '力量',
           '减脂'
         ],
+        '学习/备考': [
+          '学习',
+          '复习',
+          '备考',
+          '刷题',
+          '做题',
+          '看书',
+          '背诵',
+          '记忆',
+          '练习',
+          '听课',
+          '网课',
+          '上课',
+          '自习',
+          '预习',
+          '巩固',
+          '默写',
+          '听写'
+        ],
+        '阅读/写作': ['阅读', '写作', '作文', '文章', '读后感', '读书', '书目', '书单', '摘抄', '笔记'],
+        '设计/创作': [
+          '设计',
+          '创作',
+          '画画',
+          '绘画',
+          '视频',
+          '剪辑',
+          '制图',
+          '摄影',
+          'ps',
+          'photoshop',
+          'pr',
+          'ae',
+          '剪映'
+        ],
+        '会议/汇报': [
+          '开会',
+          '会议',
+          '例会',
+          '周会',
+          '汇报',
+          '述职',
+          '总结',
+          '复盘',
+          '讨论',
+          '沟通',
+          '同步',
+          '面试',
+          '宣讲',
+          '培训',
+          '演讲',
+          '答辩',
+          '展示',
+          '演示',
+          'demo',
+          'presentation',
+        ],
+        '生活/日常': [
+          '取快递',
+          '取餐',
+          '取外卖',
+          '取件',
+          '拿快递',
+          '拿外卖',
+          '买菜',
+          '做饭',
+          '煮饭',
+          '吃饭',
+          '早餐',
+          '午餐',
+          '晚餐',
+          '洗碗',
+          '打扫',
+          '收拾',
+          '整理',
+          '洗衣服',
+          '晾衣服',
+          '洗澡',
+          '洗漱',
+          '睡觉',
+          '起床',
+          '出门',
+          '回家',
+          '通勤',
+          '坐车',
+          '地铁',
+          '公交',
+          '购物',
+          '买',
+          '缴费',
+          '办证',
+          '报到',
+          '签到',
+          '打卡',
+          '值班',
+        ],
       };
 
       for (var title in allTitles) {
@@ -583,11 +679,11 @@ class TimelineService {
           }
 
           if (!isExisting && wordEntry.value > 1) {
-            final dynamicLabel = wordEntry.key.toUpperCase();
+            final dynamicLabel = wordEntry.key;
             subjectDist[dynamicLabel] = (subjectDist[dynamicLabel] ?? 0) +
                 (wordEntry.value / totalItems);
             distributed += wordEntry.value;
-            if (subjectDist.length >= 8) break; // Limit categories for UI
+            if (subjectDist.length >= 8) break;
           }
         }
 
@@ -621,6 +717,55 @@ class TimelineService {
       final consecutiveDays =
           await _calculateConsecutiveActiveDays(db, start, end);
 
+      // 11b. Active days in the current calendar month
+      final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = monthStart.add(const Duration(days: 32));
+      final monthEndSafe =
+          monthEnd.isAfter(now) ? now.add(const Duration(days: 1)) : monthEnd;
+      final monthStartMs = monthStart.millisecondsSinceEpoch;
+      final monthEndMs = monthEndSafe.millisecondsSinceEpoch;
+      final monthRows = await db.rawQuery(
+        'SELECT COUNT(DISTINCT day) as cnt FROM ('
+        'SELECT strftime(\'%Y-%m-%d\', datetime(created_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND created_at >= ? AND created_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(updated_at / 1000, \'unixepoch\', \'localtime\')) as day FROM todos WHERE is_deleted = 0 AND is_completed = 1 AND updated_at >= ? AND updated_at < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'UNION SELECT strftime(\'%Y-%m-%d\', datetime(timestamp / 1000, \'unixepoch\', \'localtime\')) as day FROM search_history WHERE timestamp >= ? AND timestamp < ?'
+        ') WHERE day IS NOT NULL',
+        [
+          monthStartMs,
+          monthEndMs,
+          monthStartMs,
+          monthEndMs,
+          monthStartMs,
+          monthEndMs,
+          monthStartMs,
+          monthEndMs,
+          monthStartMs,
+          monthEndMs
+        ],
+      );
+      final monthlyActiveDays =
+          monthRows.isNotEmpty ? (monthRows.first['cnt'] as int? ?? 0) : 0;
+
+      // 11c. Weekend focus minutes (Saturday + Sunday)
+      final weekendRows = await db.rawQuery(
+        'SELECT COALESCE(SUM(dur), 0) as total FROM ('
+        'SELECT actual_duration as dur FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        "AND strftime('%w', datetime(start_time / 1000, 'unixepoch', 'localtime')) IN ('0', '6') "
+        'UNION ALL '
+        'SELECT (end_time - start_time) / 1000 as dur FROM time_logs '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        "AND strftime('%w', datetime(start_time / 1000, 'unixepoch', 'localtime')) IN ('0', '6')"
+        ')',
+        [startMs, endMs, startMs, endMs],
+      );
+      final weekendFocusMinutes = weekendRows.isNotEmpty
+          ? ((weekendRows.first['total'] as num? ?? 0).toDouble() / 60).round()
+          : 0;
+
       final todoCreated = todoStats.first['created'] as int? ?? 0;
       final todoCompleted = todoStats.first['completed'] as int? ?? 0;
       final completionRate = todoCreated > 0
@@ -638,6 +783,8 @@ class TimelineService {
         todoCompletedCount: todoCompleted,
         todoCompletionRate: completionRate,
         consecutiveActiveDays: consecutiveDays,
+        monthlyActiveDays: monthlyActiveDays,
+        weekendFocusMinutes: weekendFocusMinutes,
         totalFocusMinutes: totalSecs ~/ 60,
         countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
         countdownEditedCount: 0,
@@ -787,6 +934,8 @@ class TimelineSummary {
   final int todoCompletedCount;
   final double todoCompletionRate;
   final int consecutiveActiveDays;
+  final int monthlyActiveDays;
+  final int weekendFocusMinutes;
   final int totalFocusMinutes;
   final int countdownCreatedCount;
   final int countdownEditedCount;
@@ -829,6 +978,8 @@ class TimelineSummary {
     required this.todoCompletedCount,
     this.todoCompletionRate = 0.0,
     this.consecutiveActiveDays = 0,
+    this.monthlyActiveDays = 0,
+    this.weekendFocusMinutes = 0,
     this.totalFocusMinutes = 0,
     required this.countdownCreatedCount,
     required this.countdownEditedCount,

@@ -13,6 +13,7 @@ class PomodoroScreen extends StatefulWidget {
 
   /// 0 = 工作台（默认），1 = 统计看板
   final int initialTab;
+
   /// 0 = 日，1 = 周，2 = 月，3 = 年
   final int initialDimension;
 
@@ -55,9 +56,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       // 🚀 性能优化：只有在确实需要刷新 UI 时才 setState
       if (!_tabController.indexIsChanging) {
         if (_tabController.index == 1) {
-          try { _statsKey.currentState?.reload(); } catch (_) {}
+          try {
+            _statsKey.currentState?.reload();
+          } catch (_) {}
         } else {
-          try { _workbenchState?.reload(); } catch (_) {}
+          try {
+            _workbenchState?.reload();
+          } catch (_) {}
         }
         if (mounted && !_disposed) setState(() {});
       }
@@ -69,7 +74,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       debugPrint(
           '[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
       if (widget.initialTab == 0) {
-        try { _workbenchState?.reload(); } catch (_) {}
+        try {
+          _workbenchState?.reload();
+        } catch (_) {}
         debugPrint(
             '[PomodoroScreen] requested workbench reload from postFrameCallback');
       }
@@ -141,20 +148,27 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
-                child: PomodoroWorkbench(
-                  key: _workbenchKeyLandscape,
-                  username: widget.username,
-                  onPhaseChanged: (phase) {
-                    if (!_disposed && mounted && _currentPhase != phase) {
-                      setState(() => _currentPhase = phase);
-                    }
-                  },
-                  onReady: () {
-                    if (!_disposed && mounted && !_workbenchReady) {
-                      setState(() => _workbenchReady = true);
-                    }
-                  },
-                ),
+                  child: PomodoroWorkbench(
+                    key: _workbenchKeyLandscape,
+                    username: widget.username,
+                    onPhaseChanged: (phase) {
+                      if (!_disposed && mounted && _currentPhase != phase) {
+                        setState(() => _currentPhase = phase);
+                      }
+                    },
+                    onReady: () {
+                      if (!_disposed && mounted && !_workbenchReady) {
+                        setState(() => _workbenchReady = true);
+                      }
+                    },
+                    onRecordAdded: () {
+                      if (!_disposed && mounted) {
+                        try {
+                          _statsKey.currentState?.reload();
+                        } catch (_) {}
+                      }
+                    },
+                  ),
                 ),
               ),
 
@@ -162,7 +176,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               // Only show the right column when the timer is idle/finished to avoid distraction
               if (showLandscapeStats)
                 Container(
-                  width: 420, // Increased width for better visibility on wide screens
+                  width:
+                      420, // Increased width for better visibility on wide screens
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
@@ -215,11 +230,11 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                                 borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(4),
-                                child: PomodoroStats(
-                                    key: _statsKey,
-                                    username: widget.username,
-                                    initialDimension: widget.initialDimension,
-                                    isCompact: true),
+                              child: PomodoroStats(
+                                  key: _statsKey,
+                                  username: widget.username,
+                                  initialDimension: widget.initialDimension,
+                                  isCompact: true),
                             ),
                           ),
                         ],
@@ -258,6 +273,13 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                     onReady: () {
                       if (!_disposed && mounted && !_workbenchReady) {
                         setState(() => _workbenchReady = true);
+                      }
+                    },
+                    onRecordAdded: () {
+                      if (!_disposed && mounted) {
+                        try {
+                          _statsKey.currentState?.reload();
+                        } catch (_) {}
                       }
                     },
                   ),

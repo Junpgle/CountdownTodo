@@ -11,13 +11,18 @@ import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../screens/home_settings_screen.dart';
+import '../services/todo_classification_service.dart';
+import '../services/time_estimation_service.dart';
+import '../services/suggestion_feedback_service.dart';
 import '../utils/page_transitions.dart';
+import 'dart:async';
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
   final Function(List<TodoItem>)? onTodosBatchAdded;
-  final Function(List<Map<String, dynamic>>, String?, String?, String?, String?)?
-  onLLMResultsParsed;
+  final Function(
+          List<Map<String, dynamic>>, String?, String?, String?, String?)?
+      onLLMResultsParsed;
   final List<TodoGroup> todoGroups;
   final String? initialGroupId;
   final String? initialTeamUuid;
@@ -73,6 +78,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   late AnimationController _dotsController;
 
+  // Time estimation state
+  TimeEstimationResult? _estimationResult;
+  TodoClassificationSuggestion? _classificationSuggestion;
+  Timer? _estimationDebounce;
+  DateTime? _suggestedDueDate;
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +94,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat();
+    _titleCtrl.addListener(_onTitleChanged);
+    _remarkCtrl.addListener(_onTitleChanged);
     _loadCategoryDefaults().then((_) {
       if (_selectedGroupId != null &&
           _categoryReminderDefaults.containsKey(_selectedGroupId)) {
@@ -173,7 +186,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final username = await StorageService.getLoginSession();
     if (username != null) {
       final defaults =
-      await StorageService.getCategoryReminderMinutes(username);
+          await StorageService.getCategoryReminderMinutes(username);
       setState(() {
         _username = username;
         _categoryReminderDefaults = defaults;
@@ -183,6 +196,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   @override
   void dispose() {
+    _titleCtrl.removeListener(_onTitleChanged);
+    _remarkCtrl.removeListener(_onTitleChanged);
+    _estimationDebounce?.cancel();
     _titleCtrl.dispose();
     _remarkCtrl.dispose();
     _aiInputCtrl.dispose();
@@ -191,42 +207,106 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     super.dispose();
   }
 
+  void _onTitleChanged() {
+    _estimationDebounce?.cancel();
+    final text = _titleCtrl.text.trim();
+    if (text.length < 2) {
+      if (mounted &&
+          (_estimationResult != null || _classificationSuggestion != null)) {
+        setState(() {
+          _estimationResult = null;
+          _suggestedDueDate = null;
+          _classificationSuggestion = null;
+        });
+      }
+      return;
+    }
+    _estimationDebounce = Timer(const Duration(milliseconds: 500), () async {
+      final result = await TimeEstimationService.estimate(
+        text,
+        groupId: _selectedGroupId,
+      );
+      if (mounted) {
+        final classification = await TodoClassificationService.recommendForText(
+          title: text,
+          remark: _remarkCtrl.text,
+          groups: widget.todoGroups,
+          categoryReminderDefaults: _categoryReminderDefaults,
+          dueDate: _dueDate,
+        );
+        setState(() {
+          _estimationResult = result;
+          _classificationSuggestion = classification;
+          // Suggest due date (don't auto-fill)
+          if (!_isAllDay) {
+            _suggestedDueDate =
+                _createdAt.add(Duration(minutes: result.estimatedMinutes));
+          }
+        });
+      }
+    });
+  }
+
   RecurrenceType _parseRecurrenceType(String? type) {
     switch (type) {
-      case 'daily': return RecurrenceType.daily;
-      case 'weekly': return RecurrenceType.weekly;
-      case 'monthly': return RecurrenceType.monthly;
-      case 'yearly': return RecurrenceType.yearly;
-      case 'customDays': return RecurrenceType.customDays;
-      default: return RecurrenceType.none;
+      case 'daily':
+        return RecurrenceType.daily;
+      case 'weekly':
+        return RecurrenceType.weekly;
+      case 'monthly':
+        return RecurrenceType.monthly;
+      case 'yearly':
+        return RecurrenceType.yearly;
+      case 'customDays':
+        return RecurrenceType.customDays;
+      default:
+        return RecurrenceType.none;
     }
   }
 
   String _getRecurrenceLabel(RecurrenceType r) {
     switch (r) {
-      case RecurrenceType.none: return "不循环";
-      case RecurrenceType.daily: return "每天重复";
-      case RecurrenceType.weekly: return "每周重复";
-      case RecurrenceType.monthly: return "每月重复";
-      case RecurrenceType.yearly: return "每年重复";
-      case RecurrenceType.weekdays: return "工作日";
-      case RecurrenceType.customDays: return "间隔 ${_customDays ?? '?'} 天";
-      default: return "不循环";
+      case RecurrenceType.none:
+        return "不循环";
+      case RecurrenceType.daily:
+        return "每天重复";
+      case RecurrenceType.weekly:
+        return "每周重复";
+      case RecurrenceType.monthly:
+        return "每月重复";
+      case RecurrenceType.yearly:
+        return "每年重复";
+      case RecurrenceType.weekdays:
+        return "工作日";
+      case RecurrenceType.customDays:
+        return "间隔 ${_customDays ?? '?'} 天";
+      default:
+        return "不循环";
     }
   }
 
   String _getReminderText(int minutes) {
-    switch(minutes) {
-      case 0: return "不提醒";
-      case 5: return "提前 5 分钟";
-      case 10: return "提前 10 分钟";
-      case 15: return "提前 15 分钟";
-      case 30: return "提前 30 分钟";
-      case 45: return "提前 45 分钟";
-      case 60: return "提前 1 小时";
-      case 120: return "提前 2 小时";
-      case 1440: return "提前 1 天";
-      default: return "提前 $minutes 分钟";
+    switch (minutes) {
+      case 0:
+        return "不提醒";
+      case 5:
+        return "提前 5 分钟";
+      case 10:
+        return "提前 10 分钟";
+      case 15:
+        return "提前 15 分钟";
+      case 30:
+        return "提前 30 分钟";
+      case 45:
+        return "提前 45 分钟";
+      case 60:
+        return "提前 1 小时";
+      case 120:
+        return "提前 2 小时";
+      case 1440:
+        return "提前 1 天";
+      default:
+        return "提前 $minutes 分钟";
     }
   }
 
@@ -237,13 +317,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       if (result.startTime != null) {
         _createdAt = result.startTime!;
         if (result.isAllDay) {
-          _createdAt = DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 0, 0);
+          _createdAt =
+              DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 0, 0);
         }
       }
       if (result.endTime != null) {
         _dueDate = result.endTime;
       } else if (result.startTime != null && result.isAllDay) {
-        _dueDate = DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 23, 59);
+        _dueDate =
+            DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 23, 59);
       }
       _isAllDay = result.isAllDay;
       _recurrence = result.recurrence;
@@ -257,7 +339,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Future<void> _doSmartParse() async {
     if (_aiInputCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
       return;
     }
     setState(() => _isParsing = true);
@@ -274,22 +357,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_parsedResults.isNotEmpty) {
       if (widget.onLLMResultsParsed != null && _parsedResults.length > 1) {
         final maps = _parsedResults.map((e) => e.toMap()).toList();
-        final currentTeamName = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name : null;
-        widget.onLLMResultsParsed!(maps, null, _aiInputCtrl.text, _selectedTeamUuid, currentTeamName);
+        final currentTeamName = _selectedTeamUuid != null
+            ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name
+            : null;
+        widget.onLLMResultsParsed!(
+            maps, null, _aiInputCtrl.text, _selectedTeamUuid, currentTeamName);
         return;
       }
 
       _applyParsedResult(_parsedResults[0]);
       setState(() => _selectedTabIndex = 0);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("解析成功，共${_parsedResults.length}个待办"), duration: const Duration(seconds: 2)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("解析成功，共${_parsedResults.length}个待办"),
+            duration: const Duration(seconds: 2)));
       }
     }
   }
 
   Future<void> _doLLMParse() async {
     if (_aiInputCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
       return;
     }
 
@@ -302,13 +391,18 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           title: const Text("未配置大模型"),
           content: const Text("使用大模型识别需要先配置API地址和密钥，是否前往设置？"),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("去配置")),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text("取消")),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text("去配置")),
           ],
         ),
       );
       if (goToSettings == true && mounted) {
-        Navigator.of(context).push(PageTransitions.slideHorizontal(const SettingsPage()));
+        Navigator.of(context)
+            .push(PageTransitions.slideHorizontal(const SettingsPage()));
       }
       return;
     }
@@ -323,8 +417,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           _isParsing = false;
           _currentOriginalText = _aiInputCtrl.text;
         });
-        final currentTeamName = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name : null;
-        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text, _selectedTeamUuid, currentTeamName);
+        final currentTeamName = _selectedTeamUuid != null
+            ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name
+            : null;
+        widget.onLLMResultsParsed!(results, null, _aiInputCtrl.text,
+            _selectedTeamUuid, currentTeamName);
         return;
       }
 
@@ -333,8 +430,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           title: result['title'] ?? _aiInputCtrl.text,
           remark: result['remark'],
           isAllDay: result['isAllDay'] ?? false,
-          startTime: result['startTime'] != null ? DateTime.tryParse(result['startTime']) : null,
-          endTime: result['endTime'] != null ? DateTime.tryParse(result['endTime']) : null,
+          startTime: result['startTime'] != null
+              ? DateTime.tryParse(result['startTime'])
+              : null,
+          endTime: result['endTime'] != null
+              ? DateTime.tryParse(result['endTime'])
+              : null,
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
           reminderMinutes: result['reminderMinutes'],
@@ -353,25 +454,31 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _applyParsedResult(_parsedResults[0]);
         setState(() => _selectedTabIndex = 0);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("大模型解析成功，共${_parsedResults.length}个待办"), duration: const Duration(seconds: 2)));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text("大模型解析成功，共${_parsedResults.length}个待办"),
+              duration: const Duration(seconds: 2)));
         }
       }
     } catch (e) {
       setState(() => _isParsing = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("大模型解析失败: $e")));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("大模型解析失败: $e")));
       }
     }
   }
 
   Future<void> _addTodo() async {
     if (_titleCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
       return;
     }
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
-    final selectedTeam = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull : null;
+    final selectedTeam = _selectedTeamUuid != null
+        ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
+        : null;
 
     final todo = TodoItem(
       title: _titleCtrl.text,
@@ -400,10 +507,22 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_parsedResults.isEmpty) return;
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
-    final selectedTeam = _selectedTeamUuid != null ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull : null;
+    final selectedTeam = _selectedTeamUuid != null
+        ? _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull
+        : null;
 
-    final List<TodoItem> todos = _parsedResults.map((r) {
-      return TodoItem(
+    final List<TodoItem> todos = [];
+    for (final r in _parsedResults) {
+      final classification = await TodoClassificationService.recommendForText(
+        title: r.title,
+        remark: r.remark ?? '',
+        groups: widget.todoGroups,
+        categoryReminderDefaults: _categoryReminderDefaults,
+        dueDate: r.endTime,
+      );
+      final suggestedGroupId =
+          classification.confidence >= 0.20 ? classification.groupId : null;
+      todos.add(TodoItem(
         title: r.title,
         recurrence: r.recurrence,
         customIntervalDays: r.customIntervalDays,
@@ -413,13 +532,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         remark: r.remark,
         originalText: _currentOriginalText,
         imagePath: persistentImagePath,
-        reminderMinutes: r.reminderMinutes ?? _reminderMinutes,
+        groupId: suggestedGroupId,
+        reminderMinutes: r.reminderMinutes ??
+            (suggestedGroupId != null
+                ? classification.reminderMinutes
+                : _reminderMinutes),
         teamUuid: _selectedTeamUuid,
         teamName: selectedTeam?.name,
         creatorName: _username,
         collabType: _collabType,
-      );
-    }).toList();
+      ));
+    }
 
     if (widget.onTodosBatchAdded != null) {
       widget.onTodosBatchAdded!(todos);
@@ -461,16 +584,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 decoration: BoxDecoration(
                   color: isSelected ? colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(6),
-                  boxShadow: isSelected ? [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 1))
-                  ] : [],
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1))
+                        ]
+                      : [],
                 ),
                 child: Text(
                   labels[index],
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected ? colorScheme.primary : colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -519,11 +649,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  Text(title,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -571,12 +705,21 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
     if (pickedDate != null) {
       if (_isAllDay) {
-        setState(() => _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0));
+        setState(() {
+          _createdAt =
+              DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0);
+          _updateSuggestedDueDate();
+        });
       } else {
         if (!mounted) return;
-        final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_createdAt));
+        final pickedTime = await showTimePicker(
+            context: context, initialTime: TimeOfDay.fromDateTime(_createdAt));
         if (pickedTime != null) {
-          setState(() => _createdAt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+          setState(() {
+            _createdAt = DateTime(pickedDate.year, pickedDate.month,
+                pickedDate.day, pickedTime.hour, pickedTime.minute);
+            _updateSuggestedDueDate();
+          });
         }
       }
     }
@@ -591,22 +734,346 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
     if (pickedDate != null) {
       if (_isAllDay) {
-        setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 23, 59));
+        setState(() {
+          _dueDate = DateTime(
+              pickedDate.year, pickedDate.month, pickedDate.day, 23, 59);
+          _suggestedDueDate = null;
+        });
       } else {
         if (!mounted) return;
-        final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
+        final pickedTime = await showTimePicker(
+            context: context,
+            initialTime: TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
         if (pickedTime != null) {
-          setState(() => _dueDate = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute));
+          setState(() {
+            _dueDate = DateTime(pickedDate.year, pickedDate.month,
+                pickedDate.day, pickedTime.hour, pickedTime.minute);
+            _suggestedDueDate = null;
+          });
         }
       }
     }
   }
 
+  /// Re-compute suggested due date when start time changes
+  void _updateSuggestedDueDate() {
+    if (_estimationResult != null && !_isAllDay) {
+      _suggestedDueDate = _createdAt
+          .add(Duration(minutes: _estimationResult!.estimatedMinutes));
+    }
+  }
+
+  bool get _hasAISuggestions =>
+      _estimationResult != null || _classificationSuggestion != null;
+
+  void _acceptDueDateSuggestion() {
+    if (_suggestedDueDate != null) {
+      setState(() {
+        _dueDate = _suggestedDueDate;
+        _suggestedDueDate = null;
+      });
+    }
+  }
+
+  Widget _buildAISuggestionCard() {
+    if (!_hasAISuggestions) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+
+    final est = _estimationResult;
+    final clsSug = _classificationSuggestion;
+    final hasDueDate = _suggestedDueDate != null && !_isAllDay;
+
+    // Check if classification suggestion is meaningful
+    final hasNewGroup = clsSug != null &&
+        clsSug.hasGroup &&
+        clsSug.groupId != _selectedGroupId;
+    final hasClassification =
+        hasNewGroup || (clsSug != null && clsSug.tags.isNotEmpty);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primaryContainer.withValues(alpha: 0.4),
+            cs.primaryContainer.withValues(alpha: 0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with a "Pro" feel
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [cs.primary, cs.secondary],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'AI INSIGHT',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '智能建议',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withValues(alpha: 0.8),
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () {
+                  _recordNegativeClassificationFeedback();
+                  setState(() {
+                    _estimationResult = null;
+                    _suggestedDueDate = null;
+                    _classificationSuggestion = null;
+                  });
+                },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  '忽略',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: cs.onSurface.withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Duration suggestion
+          if (est != null)
+            _buildSuggestionItem(
+              icon: Icons.timer_outlined,
+              label: '预估耗时: ~${_formatDuration(est.estimatedMinutes)}',
+              sub: _estimationConfidenceLabel(est),
+              subColor: _estimationConfidenceColor(est),
+              showAccept: false,
+            ),
+
+          // Due date suggestion
+          if (hasDueDate)
+            _buildSuggestionItem(
+              icon: Icons.calendar_today_rounded,
+              label:
+                  "建议截止: ${DateFormat('MM-dd HH:mm').format(_suggestedDueDate!)}",
+              showAccept: true,
+              onAccept: _acceptDueDateSuggestion,
+              accentColor: Colors.deepOrangeAccent,
+            ),
+
+          // Classification suggestion
+          if (hasClassification && clsSug != null) ...[
+            _buildSuggestionItem(
+              icon: Icons.auto_graph_rounded,
+              label: '分类与标签建议',
+              showAccept: true,
+              onAccept: _applyClassificationSuggestion,
+              accentColor: cs.primary,
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (hasNewGroup)
+                    _buildMiniChip(
+                      Icons.folder_special_rounded,
+                      clsSug.groupName ?? '未分类',
+                      Colors.amber.shade700,
+                    ),
+                  _buildMiniChip(
+                    Icons.priority_high_rounded,
+                    clsSug.priorityLabel,
+                    clsSug.priority >= 4 ? Colors.redAccent : Colors.blueGrey,
+                  ),
+                  ...clsSug.tags.map(
+                    (tag) => _buildMiniChip(Icons.tag_rounded, tag, cs.primary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionItem({
+    required IconData icon,
+    required String label,
+    String? sub,
+    Color? subColor,
+    required bool showAccept,
+    VoidCallback? onAccept,
+    Color? accentColor,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: (accentColor ?? cs.primary).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 14, color: accentColor ?? cs.primary),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withValues(alpha: 0.9),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (sub != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        sub,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: subColor?.withValues(alpha: 0.7) ?? Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (showAccept)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onAccept,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (accentColor ?? cs.primary).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: (accentColor ?? cs.primary).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    '采纳',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: accentColor ?? cs.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.15), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color.withValues(alpha: 0.9),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  String _estimationConfidenceLabel(TimeEstimationResult est) {
+    final pct = (est.confidence * 100).round();
+    if (est.confidence >= 0.6) return '高置信度 $pct%';
+    if (est.confidence >= 0.35) return '中置信度 $pct%';
+    return '低置信度 $pct%';
+  }
+
+  Color _estimationConfidenceColor(TimeEstimationResult est) {
+    if (est.confidence >= 0.6) return Colors.green;
+    if (est.confidence >= 0.35) return Colors.orange;
+    return Colors.grey;
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bgColor = theme.brightness == Brightness.light ? const Color(0xFFF2F2F7) : theme.colorScheme.surface;
+    final bgColor = theme.brightness == Brightness.light
+        ? const Color(0xFFF2F2F7)
+        : theme.colorScheme.surface;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -626,7 +1093,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         actions: [
           TextButton(
             onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
-            child: const Text("完成", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            child: const Text("完成",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
           const SizedBox(width: 8),
         ],
@@ -638,6 +1106,110 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             : _buildAIRecognitionTab(key: const ValueKey('ai')),
       ),
     );
+  }
+
+  String _formatDuration(int minutes) {
+    if (minutes >= 60) {
+      final h = minutes ~/ 60;
+      final m = minutes % 60;
+      return m > 0 ? '$h小时$m分钟' : '$h小时';
+    }
+    return '$minutes分钟';
+  }
+
+  List<String> _extractKeywords() {
+    final text = _titleCtrl.text.trim().toLowerCase();
+    final tokens = <String>[];
+    for (final m in RegExp(r'[a-z0-9]+').allMatches(text)) {
+      if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
+    }
+    for (final m in RegExp(r'[一-鿿]+').allMatches(text)) {
+      final seg = m.group(0)!;
+      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length - 1; i++) {
+        tokens.add(seg.substring(i, i + 2));
+      }
+    }
+    return tokens;
+  }
+
+  void _applyClassificationSuggestion() {
+    final suggestion = _classificationSuggestion;
+    if (suggestion == null) return;
+    final kws = _extractKeywords();
+    // Record positive feedback
+    if (suggestion.hasGroup) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: true,
+      );
+    }
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}', accepted: true,
+    );
+    for (final tag in suggestion.tags) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'tag',
+        suggestedValue: tag, accepted: true,
+      );
+    }
+    setState(() {
+      if (suggestion.hasGroup) {
+        _selectedGroupId = suggestion.groupId;
+      }
+      if (suggestion.reminderMinutes != null) {
+        _reminderMinutes = suggestion.reminderMinutes!;
+      }
+      _classificationSuggestion = null;
+    });
+  }
+
+  void _recordNegativeClassificationFeedback() {
+    final suggestion = _classificationSuggestion;
+    if (suggestion == null) return;
+    final kws = _extractKeywords();
+    if (suggestion.hasGroup) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: false,
+      );
+    }
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}', accepted: false,
+    );
+    for (final tag in suggestion.tags) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'tag',
+        suggestedValue: tag, accepted: false,
+      );
+    }
+  }
+
+  /// Record user's manual group selection as positive feedback,
+  /// and negative feedback for the AI-suggested group if different.
+  void _recordUserGroupChoice(String? chosenGroupId) {
+    if (chosenGroupId == null) return;
+    final kws = _extractKeywords();
+    if (kws.isEmpty) return;
+
+    // Positive feedback for user's choice
+    SuggestionFeedbackService.record(
+      keywords: kws, suggestionType: 'group',
+      suggestedValue: chosenGroupId, accepted: true,
+    );
+
+    // Negative feedback for AI suggestion if user chose differently
+    final suggestion = _classificationSuggestion;
+    if (suggestion != null &&
+        suggestion.hasGroup &&
+        suggestion.groupId != chosenGroupId) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: suggestion.groupId!, accepted: false,
+      );
+    }
   }
 
   Widget _buildManualInputTab({Key? key}) {
@@ -654,16 +1226,22 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextField(
                   controller: _titleCtrl,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  decoration: const InputDecoration(hintText: "准备做些什么？", border: InputBorder.none),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(
+                      hintText: "准备做些什么？", border: InputBorder.none),
                 ),
+                _buildAISuggestionCard(),
                 const Divider(height: 1),
                 TextField(
                   controller: _remarkCtrl,
@@ -672,7 +1250,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   minLines: 1,
                   decoration: InputDecoration(
                     hintText: "补充细节或备注...",
-                    hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
+                    hintStyle:
+                        TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
                     border: InputBorder.none,
                   ),
                 ),
@@ -683,10 +1262,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     padding: const EdgeInsets.only(bottom: 8),
                     child: TextButton.icon(
                       onPressed: _pickAttachmentImage,
-                      icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+                      icon: const Icon(Icons.add_photo_alternate_outlined,
+                          size: 20),
                       label: const Text("添加图片"),
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                         visualDensity: VisualDensity.compact,
                         foregroundColor: Colors.grey.shade600,
                       ),
@@ -706,7 +1287,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                               height: 140,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
                                 height: 80,
                                 alignment: Alignment.center,
                                 color: Colors.grey.shade100,
@@ -719,7 +1301,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           top: 8,
                           right: 8,
                           child: IconButton.filled(
-                            onPressed: () => setState(() => _selectedImagePath = null),
+                            onPressed: () =>
+                                setState(() => _selectedImagePath = null),
                             icon: const Icon(Icons.close, size: 16),
                             style: IconButton.styleFrom(
                               backgroundColor: Colors.black45,
@@ -741,10 +1324,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("时间与提醒", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text("时间与提醒",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               Row(
                 children: [
-                  const Text("全天事件", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const Text("全天事件",
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(width: 6),
                   SizedBox(
                     height: 24, // 紧凑的Switch
@@ -754,11 +1339,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         setState(() {
                           _isAllDay = val;
                           if (_isAllDay) {
-                            _createdAt = DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 0, 0);
+                            _createdAt = DateTime(_createdAt.year,
+                                _createdAt.month, _createdAt.day, 0, 0);
                             if (_dueDate != null) {
-                              _dueDate = DateTime(_dueDate!.year, _dueDate!.month, _dueDate!.day, 23, 59);
+                              _dueDate = DateTime(_dueDate!.year,
+                                  _dueDate!.month, _dueDate!.day, 23, 59);
                             } else {
-                              _dueDate = DateTime(_createdAt.year, _createdAt.month, _createdAt.day, 23, 59);
+                              _dueDate = DateTime(_createdAt.year,
+                                  _createdAt.month, _createdAt.day, 23, 59);
                             }
                           }
                         });
@@ -772,17 +1360,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildSquareTile(
+              Expanded(
+                  child: _buildSquareTile(
                 title: "开始时间",
-                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_createdAt),
+                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
+                    .format(_createdAt),
                 icon: Icons.play_circle_fill,
                 color: Colors.blueAccent,
                 onTap: _pickStartTime,
               )),
               const SizedBox(width: 12),
-              Expanded(child: _buildSquareTile(
+              Expanded(
+                  child: _buildSquareTile(
                 title: "截止时间",
-                subtitle: _dueDate == null ? "未设置" : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm').format(_dueDate!),
+                subtitle: _dueDate == null
+                    ? "未设置"
+                    : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
+                        .format(_dueDate!),
                 icon: Icons.stop_circle_rounded,
                 color: Colors.deepOrangeAccent,
                 onTap: _pickEndTime,
@@ -792,34 +1386,47 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildPopupSquareTile<int>(
+              Expanded(
+                  child: _buildPopupSquareTile<int>(
                 title: "任务提醒",
                 subtitle: _getReminderText(_reminderMinutes),
                 icon: Icons.notifications_active_rounded,
                 color: Colors.purpleAccent,
                 value: _reminderMinutes,
-                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440].map((m) =>
-                    PopupMenuItem(value: m, child: Text(_getReminderText(m)))
-                ).toList(),
+                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
+                    .map((m) => PopupMenuItem(
+                        value: m, child: Text(_getReminderText(m))))
+                    .toList(),
                 onSelected: (v) => setState(() => _reminderMinutes = v),
               )),
               const SizedBox(width: 12),
-              Expanded(child: _buildPopupSquareTile<RecurrenceType>(
+              Expanded(
+                  child: _buildPopupSquareTile<RecurrenceType>(
                 title: "循环规则",
                 subtitle: _getRecurrenceLabel(_recurrence),
                 icon: Icons.replay_rounded,
                 color: Colors.teal,
                 value: _recurrence,
-                items: [RecurrenceType.none, RecurrenceType.daily, RecurrenceType.weekly, RecurrenceType.monthly, RecurrenceType.yearly, RecurrenceType.weekdays, RecurrenceType.customDays].map((r) =>
-                    PopupMenuItem(value: r, child: Text(_getRecurrenceLabel(r)))
-                ).toList(),
+                items: [
+                  RecurrenceType.none,
+                  RecurrenceType.daily,
+                  RecurrenceType.weekly,
+                  RecurrenceType.monthly,
+                  RecurrenceType.yearly,
+                  RecurrenceType.weekdays,
+                  RecurrenceType.customDays
+                ]
+                    .map((r) => PopupMenuItem(
+                        value: r, child: Text(_getRecurrenceLabel(r))))
+                    .toList(),
                 onSelected: (v) => setState(() => _recurrence = v),
               )),
             ],
           ),
 
           // --- 循环附加选项 (条件显示) ---
-          if (_recurrence == RecurrenceType.customDays || _recurrence != RecurrenceType.none)
+          if (_recurrence == RecurrenceType.customDays ||
+              _recurrence != RecurrenceType.none)
             Container(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -842,10 +1449,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                             textAlign: TextAlign.center,
                             decoration: InputDecoration(
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                             ),
-                            onChanged: (val) => setState(() => _customDays = int.tryParse(val)),
+                            onChanged: (val) =>
+                                setState(() => _customDays = int.tryParse(val)),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -862,7 +1472,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         firstDate: DateTime.now(),
                         lastDate: DateTime(2100),
                       );
-                      if (picked != null) setState(() => _recurrenceEndDate = picked);
+                      if (picked != null)
+                        setState(() => _recurrenceEndDate = picked);
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -871,10 +1482,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         Row(
                           children: [
                             Text(
-                              _recurrenceEndDate == null ? "未指定" : DateFormat('yyyy-MM-dd').format(_recurrenceEndDate!),
-                              style: TextStyle(color: _recurrenceEndDate == null ? Colors.grey : Theme.of(context).colorScheme.primary),
+                              _recurrenceEndDate == null
+                                  ? "未指定"
+                                  : DateFormat('yyyy-MM-dd')
+                                      .format(_recurrenceEndDate!),
+                              style: TextStyle(
+                                  color: _recurrenceEndDate == null
+                                      ? Colors.grey
+                                      : Theme.of(context).colorScheme.primary),
                             ),
-                            const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+                            const Icon(Icons.chevron_right,
+                                color: Colors.grey, size: 20),
                           ],
                         ),
                       ],
@@ -887,54 +1505,82 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
           // --- 3. 组织归属网格 (2xN) ---
           if (widget.todoGroups.isNotEmpty || _teams.isNotEmpty) ...[
-            const Text("组织与协作", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text("组织与协作",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(
               children: [
                 if (widget.todoGroups.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String>(
+                  Expanded(
+                      child: _buildPopupSquareTile<String>(
                     title: "归属文件夹",
-                    subtitle: _selectedGroupId == null ? "未分类" : (widget.todoGroups.where((g) => g.id == _selectedGroupId).firstOrNull?.name ?? '未知'),
+                    subtitle: _selectedGroupId == null
+                        ? "未分类"
+                        : (widget.todoGroups
+                                .where((g) => g.id == _selectedGroupId)
+                                .firstOrNull
+                                ?.name ??
+                            '未知'),
                     icon: Icons.folder_rounded,
                     color: Colors.amber.shade600,
                     // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
                     value: _selectedGroupId ?? "__none__",
                     items: [
-                      const PopupMenuItem<String>(value: "__none__", child: Text("未分类")),
-                      ...widget.todoGroups.where((g) => !g.isDeleted).map((g) => PopupMenuItem(value: g.id, child: Text(g.name)))
+                      const PopupMenuItem<String>(
+                          value: "__none__", child: Text("未分类")),
+                      ...widget.todoGroups.where((g) => !g.isDeleted).map((g) =>
+                          PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
-                    onSelected: (v) => setState(() {
-                      _selectedGroupId = v == "__none__" ? null : v;
-                      if (_selectedGroupId != null && _categoryReminderDefaults.containsKey(_selectedGroupId)) {
-                        _reminderMinutes = _categoryReminderDefaults[_selectedGroupId]!;
-                      } else if (_selectedGroupId == null) {
-                        _reminderMinutes = 5;
-                      }
-                    }),
+                    onSelected: (v) {
+                      final newGroupId = v == "__none__" ? null : v;
+                      _recordUserGroupChoice(newGroupId);
+                      setState(() {
+                        _selectedGroupId = newGroupId;
+                        if (_selectedGroupId != null &&
+                            _categoryReminderDefaults
+                                .containsKey(_selectedGroupId)) {
+                          _reminderMinutes =
+                              _categoryReminderDefaults[_selectedGroupId]!;
+                        } else if (_selectedGroupId == null) {
+                          _reminderMinutes = 5;
+                        }
+                      });
+                    },
                   )),
                 if (widget.todoGroups.isNotEmpty && _teams.isNotEmpty)
                   const SizedBox(width: 12),
                 if (_teams.isNotEmpty)
-                  Expanded(child: _buildPopupSquareTile<String>(
+                  Expanded(
+                      child: _buildPopupSquareTile<String>(
                     title: "团队归属",
-                    subtitle: _selectedTeamUuid == null ? "个人私有" : (_teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name ?? '未知'),
+                    subtitle: _selectedTeamUuid == null
+                        ? "个人私有"
+                        : (_teams
+                                .where((t) => t.uuid == _selectedTeamUuid)
+                                .firstOrNull
+                                ?.name ??
+                            '未知'),
                     icon: Icons.groups_rounded,
                     color: Colors.indigoAccent,
                     // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
                     value: _selectedTeamUuid ?? "__none__",
                     items: [
-                      const PopupMenuItem<String>(value: "__none__", child: Text("个人私有 (仅自己可见)")),
-                      ..._teams.map((t) => PopupMenuItem(value: t.uuid, child: Text(t.name)))
+                      const PopupMenuItem<String>(
+                          value: "__none__", child: Text("个人私有 (仅自己可见)")),
+                      ..._teams.map((t) =>
+                          PopupMenuItem(value: t.uuid, child: Text(t.name)))
                     ],
                     onSelected: (v) => setState(() {
                       _selectedTeamUuid = v == "__none__" ? null : v;
-                      _selectedTeamName = _teams.where((t) => t.uuid == _selectedTeamUuid).firstOrNull?.name;
+                      _selectedTeamName = _teams
+                          .where((t) => t.uuid == _selectedTeamUuid)
+                          .firstOrNull
+                          ?.name;
                     }),
                   )),
               ],
             ),
-            if (_selectedTeamUuid != null)
-              _buildCompactTeamSection(),
+            if (_selectedTeamUuid != null) _buildCompactTeamSection(),
             const SizedBox(height: 24),
           ],
 
@@ -951,12 +1597,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+        border: Border.all(
+            color:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text("完成规则", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
+          Text("完成规则",
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500)),
           SizedBox(
             width: 160,
             child: _buildCustomSegmentedControl(
@@ -980,17 +1631,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        color: Theme.of(context)
+            .colorScheme
+            .primaryContainer
+            .withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
             if (results == null || results.isEmpty) return;
-            final typedResults = results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            final typedResults = results
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
             setState(() => _pendingTodoConfirm = null);
             StorageService.clearPendingTodoConfirm();
             if (widget.onLLMResultsParsed != null) {
-              widget.onLLMResultsParsed!(typedResults, imagePath, null, null, null);
+              widget.onLLMResultsParsed!(
+                  typedResults, imagePath, null, null, null);
             }
           },
           child: Padding(
@@ -1009,11 +1666,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(Icons.checklist_rounded,
-                            color: Theme.of(context).colorScheme.primary, size: 24),
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24),
                       ),
                     ),
                   )
@@ -1022,7 +1683,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(Icons.checklist_rounded,
@@ -1053,7 +1717,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   ),
                 ),
                 Icon(Icons.chevron_right_rounded,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 20),
               ],
             ),
           ),
@@ -1070,28 +1735,36 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       child: Column(
         children: [
           // 🚀 待确认的图片识别待办入口
-          if (_pendingTodoConfirm != null)
-            _buildPendingTodoCard(),
+          if (_pendingTodoConfirm != null) _buildPendingTodoCard(),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
+              ],
             ),
             child: Column(
               children: [
                 Row(
                   children: [
-                    Icon(Icons.auto_awesome, color: Theme.of(context).colorScheme.primary),
+                    Icon(Icons.auto_awesome,
+                        color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 8),
-                    const Text("用自然语言描述你的计划", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text("用自然语言描述你的计划",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: TextField(
@@ -1112,7 +1785,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       child: OutlinedButton.icon(
                         onPressed: _isParsing ? null : _doSmartParse,
                         icon: const Icon(Icons.bolt, size: 18),
-                        label: _isParsing ? _buildBouncingDots() : const Text("本地速认"),
+                        label: _isParsing
+                            ? _buildBouncingDots()
+                            : const Text("本地速认"),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1120,7 +1795,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       child: FilledButton.icon(
                         onPressed: _isParsing ? null : _doLLMParse,
                         icon: const Icon(Icons.memory, size: 18),
-                        label: _isParsing ? _buildBouncingDots() : const Text("大模型深思"),
+                        label: _isParsing
+                            ? _buildBouncingDots()
+                            : const Text("大模型深思"),
                       ),
                     ),
                   ],
@@ -1136,7 +1813,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10)
+                ],
               ),
               child: Column(
                 children: [
@@ -1145,34 +1826,50 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     children: [
                       Text(
                         "解析结果 (${_currentParseIndex + 1}/${_parsedResults.length})",
-                        style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold),
                       ),
                       Row(
                         children: [
                           IconButton(
                             icon: const Icon(Icons.arrow_back_ios, size: 16),
-                            onPressed: _currentParseIndex > 0 ? () {
-                              setState(() => _currentParseIndex--);
-                              _applyParsedResult(_parsedResults[_currentParseIndex]);
-                            } : null,
+                            onPressed: _currentParseIndex > 0
+                                ? () {
+                                    setState(() => _currentParseIndex--);
+                                    _applyParsedResult(
+                                        _parsedResults[_currentParseIndex]);
+                                  }
+                                : null,
                           ),
                           IconButton(
                             icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                            onPressed: _currentParseIndex < _parsedResults.length - 1 ? () {
-                              setState(() => _currentParseIndex++);
-                              _applyParsedResult(_parsedResults[_currentParseIndex]);
-                            } : null,
+                            onPressed:
+                                _currentParseIndex < _parsedResults.length - 1
+                                    ? () {
+                                        setState(() => _currentParseIndex++);
+                                        _applyParsedResult(
+                                            _parsedResults[_currentParseIndex]);
+                                      }
+                                    : null,
                           ),
                         ],
                       )
                     ],
                   ),
                   const Divider(),
-                  _buildParseResultRow("待办", _parsedResults[_currentParseIndex].title),
-                  _buildParseResultRow("时间", _parsedResults[_currentParseIndex].startTime != null
-                      ? DateFormat('MM-dd HH:mm').format(_parsedResults[_currentParseIndex].startTime!)
-                      : "未指定"),
-                  _buildParseResultRow("重复", _getRecurrenceLabel(_parsedResults[_currentParseIndex].recurrence)),
+                  _buildParseResultRow(
+                      "待办", _parsedResults[_currentParseIndex].title),
+                  _buildParseResultRow(
+                      "时间",
+                      _parsedResults[_currentParseIndex].startTime != null
+                          ? DateFormat('MM-dd HH:mm').format(
+                              _parsedResults[_currentParseIndex].startTime!)
+                          : "未指定"),
+                  _buildParseResultRow(
+                      "重复",
+                      _getRecurrenceLabel(
+                          _parsedResults[_currentParseIndex].recurrence)),
                 ],
               ),
             ),
@@ -1187,8 +1884,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 60, child: Text(label, style: const TextStyle(color: Colors.grey))),
-          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
+          SizedBox(
+              width: 60,
+              child: Text(label, style: const TextStyle(color: Colors.grey))),
+          Expanded(
+              child: Text(value,
+                  style: const TextStyle(fontWeight: FontWeight.w500))),
         ],
       ),
     );
@@ -1205,7 +1906,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             final double value = _dotsController.value;
             final double delay = index * 0.2;
             final double animationValue = (value + delay) % 1.0;
-            final double scale = 0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
+            final double scale =
+                0.5 + 0.5 * (1.0 - (animationValue - 0.5).abs() * 2.0);
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 3),
               child: Transform.scale(
@@ -1213,7 +1915,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 child: Container(
                   width: 6,
                   height: 6,
-                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle),
                 ),
               ),
             );

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
+import '../services/suggestion_feedback_service.dart';
 import '../models/chat_message.dart';
 import '../services/ai_action_parser.dart';
 import '../services/ai_chat_service.dart';
@@ -32,6 +33,7 @@ class TodoChatScreen extends StatefulWidget {
   final List<Team> teams;
   final List<CountdownItem> countdowns;
   final List<PomodoroTag> pomodoroTags;
+  final List<AiTodoAction> initialCategorizationActions;
   final Function(TodoItem)? onTodoInserted;
   final Function(List<TodoItem>)? onTodosBatchInserted;
   final Function(List<TodoItem>)? onTodosUpdated;
@@ -51,6 +53,7 @@ class TodoChatScreen extends StatefulWidget {
     this.teams = const [],
     this.countdowns = const [],
     this.pomodoroTags = const [],
+    this.initialCategorizationActions = const [],
     this.onTodoInserted,
     this.onTodosBatchInserted,
     this.onTodosUpdated,
@@ -94,6 +97,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   Map<String, int> _categoryReminderDefaults = {};
   List<TodoPlanBlock> _planBlocks = [];
   Completer<void>? _cancelGeneration;
+  bool _classificationSuggestionInjected = false;
 
   // 🚀 宽屏适配相关
   bool _sidebarVisible = true;
@@ -298,10 +302,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _customInjectStart = DateTime(start.year, start.month, start.day);
       _customInjectEnd = DateTime(end.year, end.month, end.day);
       _injectMoreContext = false;
-      _liveSmartContextPreview = _buildSmartContextPreview(_inputCtrl.text.trim());
+      _liveSmartContextPreview =
+          _buildSmartContextPreview(_inputCtrl.text.trim());
       _liveActionProtocolPreview =
           _buildActionProtocolPreview(_inputCtrl.text.trim());
-      _liveEstimatedTokens = _estimateTokensForPendingInput(_inputCtrl.text.trim());
+      _liveEstimatedTokens =
+          _estimateTokensForPendingInput(_inputCtrl.text.trim());
     });
   }
 
@@ -422,8 +428,41 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final history = await ChatStorageService.loadHistory(_activeSessionId);
     if (mounted) {
       setState(() => _messages = history);
+      _injectInitialCategorizationSuggestion();
       _scrollToBottom();
     }
+  }
+
+  void _injectInitialCategorizationSuggestion() {
+    if (_classificationSuggestionInjected ||
+        widget.initialCategorizationActions.isEmpty ||
+        _pendingActionMessages.isNotEmpty) {
+      return;
+    }
+    _classificationSuggestionInjected = true;
+    final actions = widget.initialCategorizationActions;
+    final lines = actions.map((action) {
+      final groupName = action.metadata['groupName']?.toString() ??
+          _getGroupName(action.groupId);
+      final priority = action.metadata['priorityLabel']?.toString();
+      final tags = action.metadata['tags'] is List
+          ? (action.metadata['tags'] as List).map((e) => e.toString()).toList()
+          : const <String>[];
+      final extra = [
+        if (priority != null && priority.isNotEmpty) priority,
+        if (tags.isNotEmpty) tags.join('、'),
+      ].join(' · ');
+      return '- ${action.title ?? '未命名待办'} -> $groupName${extra.isEmpty ? '' : ' ($extra)'}';
+    }).join('\n');
+
+    _messages.add(
+      ChatMessage(
+        role: ChatRole.assistant,
+        content: '打开时我先做了一轮待办分类扫描，建议这样整理：\n\n$lines',
+        todoActions: actions,
+      ),
+    );
+    _actionRailCollapsed = false;
   }
 
   Future<void> _loadPromptSettings() async {
@@ -2700,6 +2739,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                             ],
                           ),
                         ),
+                      _buildClassificationMetadata(todo),
                       _buildChangeSummary(todo),
                       if (_isDangerousAction(todo))
                         Padding(
@@ -2827,6 +2867,58 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildClassificationMetadata(AiTodoAction action) {
+    final priority = action.metadata['priorityLabel']?.toString();
+    final rawTags = action.metadata['tags'];
+    final tags = rawTags is List
+        ? rawTags.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : const <String>[];
+    if ((priority == null || priority.isEmpty) && tags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 28, top: 6),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          if (priority != null && priority.isNotEmpty)
+            _buildMiniMetaChip(Icons.flag_rounded, priority, Colors.orange),
+          ...tags.map(
+            (tag) => _buildMiniMetaChip(
+                Icons.sell_outlined, tag, colorScheme.primary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniMetaChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2986,7 +3078,54 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.isIgnored = true;
       action.isSelected = false;
     });
+    _recordIgnoreFeedback(action);
     _saveHistorySilently();
+  }
+
+  void _recordIgnoreFeedback(AiTodoAction action) {
+    if (action.type != AiTodoActionType.categorizeTodo) return;
+    final title = action.title ?? '';
+    if (title.isEmpty) return;
+    final kws = _extractActionKeywords(title);
+    if (kws.isEmpty) return;
+    if (action.groupId != null) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'group',
+        suggestedValue: action.groupId!, accepted: false,
+      );
+    }
+    final priority = action.metadata['priority'];
+    if (priority != null) {
+      SuggestionFeedbackService.record(
+        keywords: kws, suggestionType: 'priority',
+        suggestedValue: '$priority', accepted: false,
+      );
+    }
+    final tags = action.metadata['tags'];
+    if (tags is List) {
+      for (final tag in tags) {
+        SuggestionFeedbackService.record(
+          keywords: kws, suggestionType: 'tag',
+          suggestedValue: tag.toString(), accepted: false,
+        );
+      }
+    }
+  }
+
+  List<String> _extractActionKeywords(String text) {
+    final lower = text.toLowerCase();
+    final tokens = <String>[];
+    for (final m in RegExp(r'[a-z0-9]+').allMatches(lower)) {
+      if (m.group(0)!.length >= 2) tokens.add(m.group(0)!);
+    }
+    for (final m in RegExp(r'[一-鿿]+').allMatches(lower)) {
+      final seg = m.group(0)!;
+      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length - 1; i++) {
+        tokens.add(seg.substring(i, i + 2));
+      }
+    }
+    return tokens;
   }
 
   Future<void> _editAction(AiTodoAction action) async {
@@ -4218,8 +4357,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                               _liveActionProtocolPreview =
                                   _buildActionProtocolPreview(
                                       _inputCtrl.text.trim());
-                              _liveEstimatedTokens = _estimateTokensForPendingInput(
-                                  _inputCtrl.text.trim());
+                              _liveEstimatedTokens =
+                                  _estimateTokensForPendingInput(
+                                      _inputCtrl.text.trim());
                             });
                           },
                           style: TextButton.styleFrom(
@@ -4353,8 +4493,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           _buildSmartContextPreview(_inputCtrl.text.trim());
                       _liveActionProtocolPreview =
                           _buildActionProtocolPreview(_inputCtrl.text.trim());
-                      _liveEstimatedTokens =
-                          _estimateTokensForPendingInput(_inputCtrl.text.trim());
+                      _liveEstimatedTokens = _estimateTokensForPendingInput(
+                          _inputCtrl.text.trim());
                     }),
                   ),
                   const SizedBox(width: 4),

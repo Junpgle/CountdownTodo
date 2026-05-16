@@ -16,6 +16,9 @@ import '../services/pomodoro_service.dart';
 import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../services/medal_recommendation_service.dart';
+import '../services/timeline_ml_service.dart';
+import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
 
@@ -63,6 +66,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   int _courseCount = 0;
   int _maxDailyCourseCount = 0;
   List<MapEntry<String, int>> _topScreenApps = [];
+
+  // ML Medal Recommendation System
+  TimelineSummary? _allTimeSummary;
+  MedalRecommendation? _allTimeRecommendation;
+  MedalRecommendation? _medalRecommendation; // Range-specific
+  List<MedalProgress> _earnedThisSession = [];
+
+  // ML Timeline Insights
+  List<TimelineMLInsight> _mlInsights = [];
 
   @override
   void initState() {
@@ -254,14 +266,212 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _topScreenApps = appUsage.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           _topScreenApps = _topScreenApps.take(5).toList();
+
+          // Calculate ML Medal Recommendations
+          _medalRecommendation = MedalRecommendationService.getRecommendations(
+            summary,
+            totalSecs ~/ 60,
+            completedTodos.length,
+            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            earlyCount,
+            sprintCount,
+            coursesByDay.values.fold(0, (sum, v) => sum + v),
+            coursesByDay.values.isEmpty
+                ? 0
+                : coursesByDay.values.reduce(math.max),
+            screenTotal,
+            productiveScreen,
+            distractionScreen,
+          );
+
+          // Get earned medals in this session (this time period)
+          _earnedThisSession = _medalRecommendation?.earnedMedals ?? [];
+
           _isLoading = false;
         });
+
+        // Async ML insights generation
+        TimelineMLService.instance
+            .generateInsights(
+          username: widget.username,
+          summary: summary,
+          totalFocusMinutes: totalSecs ~/ 60,
+          completedCount: completedTodos.length,
+          totalCount: plannedTodos.isEmpty
+              ? completedTodos.length
+              : plannedTodos.length,
+          screenTimeSeconds: screenTotal,
+          productiveScreenSeconds: productiveScreen,
+          distractionScreenSeconds: distractionScreen,
+          earlyCompletionCount: earlyCount,
+          deadlineSprintCount: sprintCount,
+          startDate: start,
+          endDate: end,
+        )
+            .then((insights) {
+          if (mounted && insights.isNotEmpty) {
+            setState(() {
+              _mlInsights = insights;
+            });
+          }
+        });
+
+        // Async ML enhancement for range-specific recommendations
+        final allMedals = _medalRecommendation?.allMedals;
+        if (allMedals != null) {
+          MedalRecommendationService.recommendNextML(
+            allMedals,
+            summary,
+            totalSecs ~/ 60,
+            completedTodos.length,
+            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            earlyCount,
+            sprintCount,
+            screenTotal,
+            productiveScreen,
+            distractionScreen,
+          ).then((mlResult) {
+            if (mounted && mlResult.topRecommendations.isNotEmpty) {
+              setState(() {
+                _medalRecommendation = mlResult;
+              });
+            }
+          });
+        }
+
+        // Trigger All-time medal calculation if not yet loaded
+        if (_allTimeRecommendation == null) {
+          _loadAllTimeMedalData();
+        }
+
         _animationController.forward(from: 0.0);
       }
     } catch (e) {
       debugPrint('Error loading insight data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadAllTimeMedalData() async {
+    try {
+      final start = DateTime(2020);
+      final end = DateTime.now().add(const Duration(days: 1));
+
+      // 1. Get Global Timeline Summary
+      final summary = await TimelineService.instance
+          .getSummaryForRange(widget.username, start, end);
+
+      // 2. Get Global Focus Time
+      final records = await PomodoroService.getRecordsInRange(start, end);
+      int totalSecs = records.fold(0, (sum, r) => sum + r.effectiveDuration);
+
+      // 3. Screen Time
+      final screenStats = await StorageService.getScreenTimeHistory();
+      int screenTotal = 0;
+      int productiveScreen = 0;
+      int distractionScreen = 0;
+
+      for (var stats in screenStats.values) {
+        for (var item in stats) {
+          final appName = item['app_name']?.toString() ?? '未知应用';
+          final duration = (item['duration'] as num?)?.toInt() ?? 0;
+          final cat = _guessScreenCategory(appName);
+          screenTotal += duration;
+          if (_isProductiveScreenCategory(cat)) productiveScreen += duration;
+          if (_isDistractionScreenCategory(cat)) distractionScreen += duration;
+        }
+      }
+
+      // 4. Todos
+      final todos = await StorageService.getTodos(widget.username);
+      final completedTodos =
+          todos.where((t) => !t.isDeleted && t.isDone).toList();
+      final plannedTodos = todos.where((t) => !t.isDeleted).toList();
+      final sprintCount = completedTodos.where((todo) {
+        final due = _effectiveTodoDueEnd(todo);
+        if (due == null) return false;
+        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
+        final diff = due.difference(doneAt);
+        return !diff.isNegative && diff.inHours <= 24;
+      }).length;
+      final earlyCount = completedTodos.where((todo) {
+        final due = _effectiveTodoDueEnd(todo);
+        if (due == null) return false;
+        final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
+        return due.difference(doneAt).inHours >= 24;
+      }).length;
+
+      // 5. Courses
+      final courses = await CourseService.getAllCourses(widget.username);
+      final Map<String, int> coursesByDay = {};
+      for (final course in courses) {
+        coursesByDay[course.date] = (coursesByDay[course.date] ?? 0) + 1;
+      }
+
+      final recommendation = MedalRecommendationService.getRecommendations(
+        summary,
+        totalSecs ~/ 60,
+        completedTodos.length,
+        plannedTodos.length,
+        earlyCount,
+        sprintCount,
+        courses.length,
+        coursesByDay.values.isEmpty ? 0 : coursesByDay.values.reduce(math.max),
+        screenTotal,
+        productiveScreen,
+        distractionScreen,
+      );
+
+      if (mounted) {
+        setState(() {
+          _allTimeSummary = summary;
+          _allTimeRecommendation = recommendation;
+        });
+      }
+
+      // Async ML enhancement for all-time recommendations
+      MedalRecommendationService.recommendNextML(
+        recommendation.allMedals,
+        summary,
+        totalSecs ~/ 60,
+        completedTodos.length,
+        plannedTodos.length,
+        earlyCount,
+        sprintCount,
+        screenTotal,
+        productiveScreen,
+        distractionScreen,
+      ).then((mlResult) {
+        if (mounted && mlResult.topRecommendations.isNotEmpty) {
+          setState(() {
+            _allTimeRecommendation = mlResult;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading all-time medal data: $e');
+    }
+  }
+
+  void _navigateToMedalWall() {
+    // 勋章墙必须展示全纪录统计，不能受当前时段切换影响
+    if (_allTimeRecommendation == null || _allTimeSummary == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在汇总全纪录数据，请稍候...')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MedalWallPage(
+          recommendation: _allTimeRecommendation!,
+          earnedThisSession: _earnedThisSession,
+          summary: _allTimeSummary!,
+        ),
+      ),
+    );
   }
 
   String _getScreenCategoryForApp({
@@ -1069,6 +1279,17 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                                     colorScheme, isWide),
                                                 _buildOverviewInsightPanels(
                                                     colorScheme, isWide),
+                                                if (_mlInsights.isNotEmpty) ...[
+                                                  const SizedBox(height: 36),
+                                                  _buildSectionTitle(
+                                                      'AI 深度洞察',
+                                                      Icons
+                                                          .auto_awesome_rounded,
+                                                      colorScheme),
+                                                  const SizedBox(height: 16),
+                                                  _buildMLInsightsSection(
+                                                      colorScheme),
+                                                ],
                                                 _buildMedalWall(
                                                     colorScheme, isWide),
                                                 if (_dimension ==
@@ -1126,6 +1347,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                                       _buildRangeSummary(colorScheme, isWide),
                                       _buildOverviewInsightPanels(
                                           colorScheme, isWide),
+                                      if (_mlInsights.isNotEmpty) ...[
+                                        const SizedBox(height: 36),
+                                        _buildSectionTitle(
+                                            'AI 深度洞察',
+                                            Icons.auto_awesome_rounded,
+                                            colorScheme),
+                                        const SizedBox(height: 16),
+                                        _buildMLInsightsSection(colorScheme),
+                                      ],
                                       _buildMedalWall(colorScheme, isWide),
                                       if (_dimension ==
                                           TimelineDimension.daily) ...[
@@ -1767,306 +1997,183 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         IconData icon,
         Color color
       })> _earnedMedals() {
-    final summary = _summary;
-    if (summary == null) return const [];
-    final earnedAt = summary.actualEndTime ??
-        summary.latestTodoCompletionTime ??
-        summary.longestPomodoroDate ??
-        _selectedDate;
-    final badges = <({
-      String title,
-      String desc,
-      DateTime? earnedAt,
-      IconData icon,
-      Color color
-    })>[];
-    if (summary.pomodoroCount >= 1) {
-      badges.add((
-        title: '专注启动者',
-        desc: '记录 ${summary.pomodoroCount} 次专注',
-        earnedAt: earnedAt,
-        icon: Icons.play_circle_outline_rounded,
-        color: Colors.green
-      ));
-    }
-    if (_totalFocusMinutes >= 120) {
-      badges.add((
-        title: '两小时守门员',
-        desc: '累计专注 ${_formatMinutes(_totalFocusMinutes)}',
-        earnedAt: earnedAt,
-        icon: Icons.hourglass_bottom_rounded,
-        color: Colors.blue
-      ));
-    }
-    if (_totalFocusMinutes >= 480) {
-      badges.add((
-        title: '八小时长征',
-        desc: '累计专注 ${_formatMinutes(_totalFocusMinutes)}',
-        earnedAt: earnedAt,
-        icon: Icons.terrain_rounded,
-        color: Colors.brown
-      ));
-    }
-    if (summary.deepWorkCount > 0) {
-      badges.add((
-        title: '深度工作者',
-        desc: '${summary.deepWorkCount} 次深度专注',
-        earnedAt: summary.longestPomodoroDate ?? earnedAt,
-        icon: Icons.diamond_outlined,
-        color: Colors.purple
-      ));
-    }
-    if (summary.longestPomodoroMinutes >= 90) {
-      badges.add((
-        title: '长专注选手',
-        desc: '单次专注 ${summary.longestPomodoroMinutes} 分钟',
-        earnedAt: summary.longestPomodoroDate ?? earnedAt,
-        icon: Icons.workspace_premium_rounded,
-        color: Colors.amber
-      ));
-    }
-    if (summary.interruptionRate <= 0.1 && summary.pomodoroCount >= 3) {
-      badges.add((
-        title: '稳定输出',
-        desc: '中断率 ${_formatPercent(summary.interruptionRate)}',
-        earnedAt: earnedAt,
-        icon: Icons.shield_moon_rounded,
-        color: Colors.indigoAccent
-      ));
-    }
-    if (_completedCount >= 1) {
-      badges.add((
-        title: '任务收割者',
-        desc: '完成 $_completedCount 个任务',
-        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
-        icon: Icons.task_alt_rounded,
-        color: Colors.green
-      ));
-    }
-    if (_totalCount > 0 && _completedCount / _totalCount >= 0.8) {
-      badges.add((
-        title: '计划兑现者',
-        desc: '完成率 ${_formatPercent(_completedCount / _totalCount)}',
-        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
-        icon: Icons.fact_check_outlined,
-        color: Colors.lightGreen
-      ));
-    }
-    if (_earlyCompletionCount > 0) {
-      badges.add((
-        title: '提前交付者',
-        desc: '提前完成 $_earlyCompletionCount 项',
-        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
-        icon: Icons.rocket_launch_outlined,
-        color: Colors.cyan
-      ));
-    }
-    if (_deadlineSprintCount > 0) {
-      badges.add((
-        title: 'DDL驯服者',
-        desc: '截止前完成 $_deadlineSprintCount 项',
-        earnedAt: summary.latestTodoCompletionTime ?? earnedAt,
-        icon: Icons.flag_outlined,
-        color: Colors.redAccent
-      ));
-    }
-    final hasRhythm = summary.hourlyDistribution.any((v) => v > 0);
-    if (hasRhythm && (summary.peakHour >= 20 || summary.peakHour <= 5)) {
-      badges.add((
-        title: '深夜效率王',
-        desc: '${summary.peakHour}:00 产出最高',
-        earnedAt: earnedAt,
-        icon: Icons.nightlight_round,
-        color: Colors.indigo
-      ));
-    } else if (hasRhythm) {
-      badges.add((
-        title: '黄金${summary.peakHour}点',
-        desc: '你的高效窗口',
-        earnedAt: earnedAt,
-        icon: Icons.wb_sunny_outlined,
-        color: Colors.orange
-      ));
-    }
-    if (summary.subjectDistribution.length >= 4) {
-      badges.add((
-        title: '学习多面手',
-        desc: '覆盖 ${summary.subjectDistribution.length} 个主题',
-        earnedAt: earnedAt,
-        icon: Icons.hub_outlined,
-        color: Colors.teal
-      ));
-    }
-    final topSubject = summary.topSubject;
-    final topSubjectRatio = _subjectRatio(summary, topSubject);
-    if (topSubject != '全能型' && topSubjectRatio >= 45) {
-      badges.add((
-        title: '主线推进者',
-        desc: '$topSubject 占 $topSubjectRatio%',
-        earnedAt: earnedAt,
-        icon: Icons.route_outlined,
-        color: Colors.deepPurple
-      ));
-    }
-    if (summary.searchCount >= 3) {
-      badges.add((
-        title: '知识侦察兵',
-        desc: '${summary.searchCount} 次知识检索',
-        earnedAt: summary.lastSearchTime ?? earnedAt,
-        icon: Icons.travel_explore_rounded,
-        color: Colors.teal
-      ));
-    }
-    if (summary.examPrepCount >= 3) {
-      badges.add((
-        title: '备考冲刺者',
-        desc: '${summary.examPrepCount} 次备考信号',
-        earnedAt: earnedAt,
-        icon: Icons.school_outlined,
-        color: Colors.red
-      ));
-    }
-    if (summary.consecutiveActiveDays >= 3) {
-      badges.add((
-        title: '长跑型选手',
-        desc: _buildConsecutiveActiveLabel(summary.consecutiveActiveDays),
-        earnedAt: earnedAt,
-        icon: Icons.local_fire_department_outlined,
-        color: Colors.deepOrange
-      ));
-    }
-    if (_courseCount >= 1) {
-      badges.add((
-        title: '课表同行者',
-        desc: '记录 $_courseCount 节课',
-        earnedAt: earnedAt,
-        icon: Icons.event_note_outlined,
-        color: Colors.blueGrey
-      ));
-    }
-    if (_maxDailyCourseCount >= 5) {
-      badges.add((
-        title: '满课生存者',
-        desc: '最满一天 $_maxDailyCourseCount 节课',
-        earnedAt: earnedAt,
-        icon: Icons.view_day_outlined,
-        color: Colors.deepOrange
-      ));
-    }
-    if (_screenTimeSeconds > 0 &&
-        _productiveScreenSeconds / _screenTimeSeconds >= 0.5) {
-      badges.add((
-        title: '屏幕掌控者',
-        desc:
-            '生产力应用 ${_formatPercent(_productiveScreenSeconds / _screenTimeSeconds)}',
-        earnedAt: earnedAt,
-        icon: Icons.desktop_windows_outlined,
-        color: Colors.blueGrey
-      ));
-    }
-    if (_screenTimeSeconds > 0 &&
-        _distractionScreenSeconds / _screenTimeSeconds <= 0.15) {
-      badges.add((
-        title: '低分心模式',
-        desc:
-            '分心应用 ${_formatPercent(_distractionScreenSeconds / _screenTimeSeconds)}',
-        earnedAt: earnedAt,
-        icon: Icons.visibility_off_outlined,
-        color: Colors.grey
-      ));
-    }
+    // 这里的预览只展示当前时段内“第一次获得”的新勋章
+    final rangeTarget = _medalRecommendation;
+    final allTimeTarget = _allTimeRecommendation;
+    if (rangeTarget == null) return const [];
 
-    return badges;
+    return rangeTarget.earnedMedals.where((p) {
+      // 如果全记录数据还没好，先展示当前的（保底逻辑）
+      if (allTimeTarget == null) return true;
+
+      // 在全记录中查找对应的勋章
+      final allTimeProgress = allTimeTarget.allMedals.firstWhere(
+        (mp) => mp.medal.id == p.medal.id,
+        orElse: () => p,
+      );
+
+      // 计算当前时段的开始时间
+      DateTime rangeStart;
+      switch (_dimension) {
+        case TimelineDimension.daily:
+          rangeStart = DateTime(
+              _selectedDate.year, _selectedDate.month, _selectedDate.day);
+          break;
+        case TimelineDimension.weekly:
+          rangeStart =
+              _selectedDate.subtract(Duration(days: _selectedDate.weekday - 1));
+          rangeStart =
+              DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
+          break;
+        case TimelineDimension.monthly:
+          rangeStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
+          break;
+        case TimelineDimension.yearly:
+          rangeStart = DateTime(_selectedDate.year, 1, 1);
+          break;
+      }
+
+      // 如果全量统计显示这个勋章是在当前选定时段之前获得的，就不要在预览里重复展示了
+      if (allTimeProgress.earned && allTimeProgress.firstEarnedAt != null) {
+        if (allTimeProgress.firstEarnedAt!.isBefore(rangeStart)) {
+          return false;
+        }
+      }
+      return true;
+    }).map((p) {
+      return (
+        title: p.medal.title,
+        desc: p.medal.description,
+        earnedAt: p.earnedAt ?? p.firstEarnedAt,
+        icon: p.medal.icon,
+        color: p.medal.color,
+      );
+    }).toList();
   }
 
   Widget _buildMedalWall(ColorScheme cs, bool isWide) {
     final medals = _earnedMedals();
-    if (medals.isEmpty) return const SizedBox();
 
     return Padding(
       padding: const EdgeInsets.only(top: 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('勋章墙', Icons.emoji_events_outlined, cs),
-          const SizedBox(height: 14),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: medals.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: isWide ? 3 : 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              mainAxisExtent: 104,
-            ),
-            itemBuilder: (context, index) {
-              final medal = medals[index];
-              return Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.3)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionHeader('勋章墙', Icons.emoji_events_outlined, cs),
+              // "进入勋章墙" 按钮
+              if (_medalRecommendation != null)
+                ElevatedButton.icon(
+                  onPressed: () => _navigateToMedalWall(),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  label: const Text('全部勋章'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cs.primaryContainer,
+                    foregroundColor: cs.onPrimaryContainer,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: medal.color.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(medal.icon, color: medal.color, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            medal.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            medal.desc,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '获得于 ${_formatMedalTime(medal.earnedAt)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color:
-                                  cs.onSurfaceVariant.withValues(alpha: 0.64),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+            ],
           ),
+          const SizedBox(height: 14),
+          if (medals.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.emoji_events_outlined,
+                      size: 48, color: cs.outline),
+                  const SizedBox(height: 12),
+                  Text(
+                    '继续努力，您即将获得第一个勋章！',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: medals.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isWide ? 3 : 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 104,
+              ),
+              itemBuilder: (context, index) {
+                final medal = medals[index];
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: medal.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(medal.icon, color: medal.color, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              medal.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              medal.desc,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '获得于 ${_formatMedalTime(medal.earnedAt)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color:
+                                    cs.onSurfaceVariant.withValues(alpha: 0.64),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -3171,6 +3278,125 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 ),
               );
             }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMLInsightsSection(ColorScheme cs) {
+    return SizedBox(
+      height: 150,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        itemCount: _mlInsights.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, index) => SizedBox(
+          width: 260,
+          child: _buildInsightItem(_mlInsights[index], cs),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInsightItem(TimelineMLInsight insight, ColorScheme cs) {
+    final confidenceColor = insight.confidence >= 0.7
+        ? Colors.green
+        : insight.confidence >= 0.5
+            ? Colors.orange
+            : Colors.grey;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.primary.withValues(alpha: 0.06),
+            cs.tertiary.withValues(alpha: 0.06),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(insight.icon, size: 18, color: cs.primary),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      insight.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    Text(
+                      insight.category == 'focus'
+                          ? '专注分析'
+                          : insight.category == 'completion'
+                              ? '完成分析'
+                              : insight.category == 'efficiency'
+                                  ? '效率分析'
+                                  : '模式分析',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: confidenceColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  '${(insight.confidence * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: confidenceColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: Text(
+              insight.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.3,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
       ),

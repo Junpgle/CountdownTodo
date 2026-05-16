@@ -1,0 +1,45 @@
+name: Create Release Draft
+
+on:
+  push:
+    paths:
+      - 'update_manifest.json'
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  create-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          echo "tag=v$(jq -r '.version_name' update_manifest.json)" >> $GITHUB_OUTPUT
+          echo "name=v$(jq -r '.version_name' update_manifest.json)" >> $GITHUB_OUTPUT
+
+      - name: Generate release body
+        run: |
+          jq -r '
+            "# \(.update_info.title)\n\n\(.update_info.description)\n\n## 更新日志\n" +
+            (.changelog_history[0] |
+              "### \(.version_name) (\(.date))\n" +
+              (.items | map("- \(.)") | join("\n"))
+            )
+          ' update_manifest.json > release_body.md
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.name }}
+          body_path: release_body.md
+          draft: true
+          prerelease: false
+          make_latest: false
+          fail_on_unmatched_files: true

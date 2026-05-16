@@ -188,7 +188,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 26, // V26: 修复 pomodoro_tags/pomodoro_records 缺少冲突字段
+          version: 28, // V28: 新增分类建议反馈学习表
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -202,6 +202,46 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 28) {
+              try {
+                await db.execute('''
+                  CREATE TABLE IF NOT EXISTS suggestion_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keyword TEXT NOT NULL,
+                    suggestion_type TEXT NOT NULL,
+                    suggested_value TEXT NOT NULL,
+                    accepted INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL DEFAULT 0
+                  )
+                ''');
+                await db.execute(
+                    'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
+                    'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
+                debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
+              } catch (e) {
+                debugPrint('⚠️ Database: 创建 suggestion_feedback 表失败: $e');
+              }
+            }
+            if (oldVersion < 27) {
+              try {
+                await db.execute('''
+                  CREATE TABLE IF NOT EXISTS medal_recommendations (
+                    medal_id TEXT PRIMARY KEY,
+                    alpha REAL DEFAULT 1.0,
+                    beta_ REAL DEFAULT 1.0,
+                    impression_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    last_shown_at INTEGER DEFAULT 0,
+                    last_outcome_at INTEGER DEFAULT 0,
+                    feature_score_cache REAL DEFAULT 0.0,
+                    updated_at INTEGER DEFAULT 0
+                  )
+                ''');
+                debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
+              } catch (e) {
+                debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
+              }
+            }
             if (oldVersion < 26) {
               try {
                 for (var table in ['pomodoro_tags', 'pomodoro_records']) {
@@ -1159,6 +1199,21 @@ class DatabaseHelper {
         created_at $integerType,
         updated_at $integerType,
         device_id $jsonType
+      )
+    ''');
+
+    // 14. 创建勋章推荐 ML 跟踪表
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS medal_recommendations (
+        medal_id TEXT PRIMARY KEY,
+        alpha REAL DEFAULT 1.0,
+        beta_ REAL DEFAULT 1.0,
+        impression_count INTEGER DEFAULT 0,
+        success_count INTEGER DEFAULT 0,
+        last_shown_at INTEGER DEFAULT 0,
+        last_outcome_at INTEGER DEFAULT 0,
+        feature_score_cache REAL DEFAULT 0.0,
+        updated_at INTEGER DEFAULT 0
       )
     ''');
   }

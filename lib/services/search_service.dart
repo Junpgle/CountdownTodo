@@ -20,6 +20,7 @@ import '../screens/time_log_screen.dart';
 import 'course_service.dart';
 import '../screens/screen_time_detail_screen.dart';
 import '../screens/course_screens.dart';
+import '../screens/personal_timeline_screen.dart';
 
 class SearchResultWithScore {
   final SearchResult result;
@@ -950,8 +951,8 @@ class SearchService {
         type: SearchResultType.recommend,
         extraData: {
           'action': 'navigate', 
-          'route': '/pomodoro/stats',
-          'initialDimension': 1 // 🚀 1 代表周视图
+          'route': '/personal_timeline',
+          'initialDimension': 0 // 🚀 1 代表周视图
         },
       ));
     }
@@ -1226,6 +1227,16 @@ class SearchNavigationHandler {
           username: username, 
           initialTab: 1, 
           initialDimension: dim
+        );
+        break;
+      case '/personal_timeline':
+        final dimIndex = data['initialDimension'] as int? ?? 0;
+        final dim = dimIndex >= 0 && dimIndex < TimelineDimension.values.length
+            ? TimelineDimension.values[dimIndex]
+            : TimelineDimension.daily;
+        page = PersonalTimelineScreen(
+          username: username,
+          initialDimension: dim,
         );
         break;
       case '/time_log/manual':
