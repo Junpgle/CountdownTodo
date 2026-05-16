@@ -27,6 +27,7 @@ class PomodoroWorkbench extends StatefulWidget {
   final String username;
   final ValueChanged<PomodoroPhase> onPhaseChanged;
   final VoidCallback? onReady;
+  final VoidCallback? onRecordAdded;
 
   // New: allow the workbench to render in a compact mode (used by landscape side column)
   final bool isCompact;
@@ -36,6 +37,7 @@ class PomodoroWorkbench extends StatefulWidget {
     required this.username,
     required this.onPhaseChanged,
     this.onReady,
+    this.onRecordAdded,
     this.isCompact = false,
   });
 
@@ -1315,6 +1317,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         status: PomodoroRecordStatus.switched,
         deviceId: _deviceId.isNotEmpty ? _deviceId : null,
       ));
+      widget.onRecordAdded?.call();
     }
 
     _currentSessionUuid = const Uuid().v4();
@@ -1484,6 +1487,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
     );
     await PomodoroService.addRecord(record);
+    widget.onRecordAdded?.call();
     if (completed == true && _boundTodo != null && _boundTodo!.id.isNotEmpty) {
       StorageService.getTodos(widget.username).then((allTodos) async {
         final idx = allTodos.indexWhere((t) => t.id == _boundTodo!.id);
@@ -1623,6 +1627,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             status: PomodoroRecordStatus.interrupted,
             deviceId: _deviceId.isNotEmpty ? _deviceId : null,
           ));
+          widget.onRecordAdded?.call();
         }
         NotificationService.cancelNotification();
         NotificationService.cancelReminder(40001);
