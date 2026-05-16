@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'medal_bandit_service.dart';
 import 'medal_feature_extractor.dart';
@@ -1049,7 +1050,7 @@ class MedalRecommendationService {
       // === 原有勋章逻辑 ===
       case 'focus_starter':
         earned = summary.pomodoroCount >= 1;
-        progress = earned ? 1.0 : (summary.pomodoroCount.toDouble());
+        progress = earned ? 1.0 : (summary.pomodoroCount.clamp(0, 1).toDouble());
         stepsRemaining = earned ? 0 : 1;
         nextMilestone = earned ? '已获得' : '需要 1 次 Pomodoro';
         if (earned) {
@@ -1283,15 +1284,19 @@ class MedalRecommendationService {
         break;
 
       case 'weekend_warrior':
-        earned = totalFocusMinutes >= 300;
-        progress = (totalFocusMinutes / 300).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '周末还需专注 ${300 - totalFocusMinutes} 分钟';
+        final wkMins = summary.weekendFocusMinutes;
+        earned = wkMins >= 300;
+        progress = (wkMins / 300).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : (300 - wkMins).clamp(1, 300);
+        nextMilestone = earned ? '已获得' : '周末累计专注 $wkMins 分钟，需 300 分钟';
         break;
 
       case 'productivity_spike':
-        earned = completedCount >= 10;
-        progress = (completedCount / 10).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '单日最高完成 $completedCount 个';
+        final peakDay = summary.mostProductiveDayCompletedCount;
+        earned = peakDay >= 10;
+        progress = (peakDay / 10).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : (10 - peakDay).clamp(1, 10);
+        nextMilestone = earned ? '已获得' : '单日最高完成 $peakDay 个，需 10 个';
         break;
 
       case 'perfect_week':
@@ -1313,9 +1318,30 @@ class MedalRecommendationService {
         break;
 
       case 'steady_pulse':
-        earned = summary.consecutiveActiveDays >= 5;
-        progress = (summary.consecutiveActiveDays / 5).clamp(0.0, 1.0);
-        nextMilestone = '保持专注节奏';
+        {
+          final trend = summary.dailyTrend;
+          final streak = summary.consecutiveActiveDays;
+          bool stable = false;
+          if (trend.length >= 5) {
+            final last5 = trend.sublist(trend.length - 5);
+            final mean = last5.fold<double>(0, (a, b) => a + b) / 5;
+            if (mean > 0) {
+              final variance = last5
+                  .map((v) => (v - mean) * (v - mean))
+                  .fold<double>(0, (a, b) => a + b) / 5;
+              final cv = sqrt(variance) / mean;
+              stable = cv < 0.2;
+            }
+          }
+          earned = stable && streak >= 5;
+          progress = earned
+              ? 1.0
+              : (streak / 5).clamp(0.0, 0.9) * (stable ? 1.0 : 0.6);
+          stepsRemaining = earned ? 0 : 1;
+          nextMilestone = earned
+              ? '已获得'
+              : '每日专注时长波动较大，需连续 5 天保持稳定';
+        }
         break;
 
       case 'efficiency_demon':
@@ -1325,9 +1351,16 @@ class MedalRecommendationService {
         break;
 
       case 'screen_time_slayer':
-        earned = summary.interruptionRate <= 0.1;
-        progress = 1.0 - summary.interruptionRate;
-        nextMilestone = '自律掌控者';
+        earned = summary.interruptionRate <= 0.1 &&
+            summary.consecutiveActiveDays >= 7;
+        progress = earned
+            ? 1.0
+            : (1.0 - summary.interruptionRate) *
+                (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
+        stepsRemaining = earned ? 0 : 1;
+        nextMilestone = earned
+            ? '已获得'
+            : '分心 ${(summary.interruptionRate * 100).toStringAsFixed(0)}%，需 ≤10% 且连续活跃 ≥7 天';
         break;
 
       case 'knowledge_glutton':
@@ -1377,9 +1410,16 @@ class MedalRecommendationService {
         break;
 
       case 'focus_streak_5':
-        earned = summary.pomodoroCount >= 5;
-        progress = (summary.pomodoroCount / 5).clamp(0.0, 1.0);
-        nextMilestone = '专注火力全开';
+        {
+          final hourly = summary.hourlyDistribution;
+          final maxInHour = hourly.isEmpty ? 0 : hourly.reduce(max);
+          earned = maxInHour >= 5;
+          progress = (maxInHour / 5).clamp(0.0, 1.0);
+          stepsRemaining = earned ? 0 : 1;
+          nextMilestone = earned
+              ? '已获得'
+              : '单小时最高 $maxInHour 次，需单日连续 5 个番茄钟';
+        }
         break;
 
       case 'multi_tasker':
@@ -1488,12 +1528,22 @@ class MedalRecommendationService {
       case 'habit_streak_100':
         progress = (summary.consecutiveActiveDays / 100).clamp(0.0, 1.0);
         earned = summary.consecutiveActiveDays >= 100;
-        nextMilestone = earned ? '已获得' : '当前连续 $completedCount 天，需 100 天';
+        stepsRemaining = earned ? 0 : (100 - summary.consecutiveActiveDays);
+        nextMilestone = earned
+            ? '已获得'
+            : '当前连续 ${summary.consecutiveActiveDays} 天，需 100 天';
         break;
       case 'habit_weekly_streak_10':
-        progress = (summary.consecutiveActiveDays / 70).clamp(0.0, 1.0);
-        earned = summary.consecutiveActiveDays >= 70;
-        nextMilestone = earned ? '已获得' : '需连续 10 周活跃';
+        {
+          final streak = summary.consecutiveActiveDays;
+          // 连续活跃70天 = 10周每天活跃，必然满足"每周至少活跃5天"
+          earned = streak >= 70;
+          progress = (streak / 70).clamp(0.0, 1.0);
+          stepsRemaining = earned ? 0 : (70 - streak).clamp(1, 70);
+          nextMilestone = earned
+              ? '已获得'
+              : '连续活跃 $streak 天，需 70 天（10 周 × 每天）';
+        }
         break;
       case 'habit_monthly_champion':
         final monthDays = summary.monthlyActiveDays;
@@ -1503,9 +1553,20 @@ class MedalRecommendationService {
         nextMilestone = earned ? '已获得' : '本月活跃 $monthDays 天，需达 28 天';
         break;
       case 'habit_year_companion':
-        progress = (summary.consecutiveActiveDays / 365).clamp(0.0, 1.0);
-        earned = summary.consecutiveActiveDays >= 365;
-        nextMilestone = '年度陪伴勋章';
+        {
+          final spanDays = summary.actualStartTime != null &&
+                  summary.actualEndTime != null
+              ? summary.actualEndTime!
+                  .difference(summary.actualStartTime!)
+                  .inDays
+              : 0;
+          progress = (spanDays / 365).clamp(0.0, 1.0);
+          earned = spanDays >= 365;
+          stepsRemaining = earned ? 0 : (365 - spanDays).clamp(1, 365);
+          nextMilestone = earned
+              ? '已获得'
+              : '已使用 $spanDays 天，需满 365 天';
+        }
         break;
       case 'habit_streak_resurrection':
         earned = summary.consecutiveActiveDays >= 7;
@@ -1513,9 +1574,18 @@ class MedalRecommendationService {
         nextMilestone = '断签后的强势回归';
         break;
       case 'habit_weekend_pro':
-        earned = totalFocusMinutes > 1000 && summary.consecutiveActiveDays > 10;
-        progress = 0.8;
-        nextMilestone = '周末也绝不断更';
+        {
+          final wkMins = summary.weekendFocusMinutes;
+          final streak = summary.consecutiveActiveDays;
+          // 连续活跃28天=覆盖4个连续周末; 4个周末各~4h高强度≈960分钟
+          final targetMins = 960;
+          earned = streak >= 28 && wkMins >= targetMins;
+          progress = ((streak / 28) * (wkMins / targetMins)).clamp(0.0, 1.0);
+          stepsRemaining = earned ? 0 : 1;
+          nextMilestone = earned
+              ? '已获得'
+              : '连续活跃 $streak 天，周末专注累计 $wkMins 分钟，需 4 周 × 4h';
+        }
         break;
       case 'habit_rhythm_master':
         earned = summary.consecutiveActiveDays >= 7;

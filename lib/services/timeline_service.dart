@@ -644,6 +644,23 @@ class TimelineService {
           ? (monthRows.first['cnt'] as int? ?? 0)
           : 0;
 
+      // 11c. Weekend focus minutes (Saturday + Sunday)
+      final weekendRows = await db.rawQuery(
+        'SELECT COALESCE(SUM(dur), 0) as total FROM ('
+        'SELECT actual_duration as dur FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        "AND strftime('%w', datetime(start_time / 1000, 'unixepoch', 'localtime')) IN ('0', '6') "
+        'UNION ALL '
+        'SELECT (end_time - start_time) / 1000 as dur FROM time_logs '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        "AND strftime('%w', datetime(start_time / 1000, 'unixepoch', 'localtime')) IN ('0', '6')"
+        ')',
+        [startMs, endMs, startMs, endMs],
+      );
+      final weekendFocusMinutes = weekendRows.isNotEmpty
+          ? ((weekendRows.first['total'] as num? ?? 0).toDouble() / 60).round()
+          : 0;
+
       final todoCreated = todoStats.first['created'] as int? ?? 0;
       final todoCompleted = todoStats.first['completed'] as int? ?? 0;
       final completionRate = todoCreated > 0
@@ -662,6 +679,7 @@ class TimelineService {
         todoCompletionRate: completionRate,
         consecutiveActiveDays: consecutiveDays,
         monthlyActiveDays: monthlyActiveDays,
+        weekendFocusMinutes: weekendFocusMinutes,
         totalFocusMinutes: totalSecs ~/ 60,
         countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
         countdownEditedCount: 0,
@@ -812,6 +830,7 @@ class TimelineSummary {
   final double todoCompletionRate;
   final int consecutiveActiveDays;
   final int monthlyActiveDays;
+  final int weekendFocusMinutes;
   final int totalFocusMinutes;
   final int countdownCreatedCount;
   final int countdownEditedCount;
@@ -855,6 +874,7 @@ class TimelineSummary {
     this.todoCompletionRate = 0.0,
     this.consecutiveActiveDays = 0,
     this.monthlyActiveDays = 0,
+    this.weekendFocusMinutes = 0,
     this.totalFocusMinutes = 0,
     required this.countdownCreatedCount,
     required this.countdownEditedCount,
