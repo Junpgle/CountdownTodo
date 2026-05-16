@@ -17,6 +17,7 @@ import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
+import '../services/timeline_ml_service.dart';
 import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
@@ -71,6 +72,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   MedalRecommendation? _allTimeRecommendation;
   MedalRecommendation? _medalRecommendation; // Range-specific
   List<MedalProgress> _earnedThisSession = [];
+
+  // ML Timeline Insights
+  List<TimelineMLInsight> _mlInsights = [];
 
   @override
   void initState() {
@@ -283,6 +287,28 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _earnedThisSession = _medalRecommendation?.earnedMedals ?? [];
 
           _isLoading = false;
+        });
+
+        // Async ML insights generation
+        TimelineMLService.instance.generateInsights(
+          username: widget.username,
+          summary: summary,
+          totalFocusMinutes: totalSecs ~/ 60,
+          completedCount: completedTodos.length,
+          totalCount: plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+          screenTimeSeconds: screenTotal,
+          productiveScreenSeconds: productiveScreen,
+          distractionScreenSeconds: distractionScreen,
+          earlyCompletionCount: earlyCount,
+          deadlineSprintCount: sprintCount,
+          startDate: start,
+          endDate: end,
+        ).then((insights) {
+          if (mounted && insights.isNotEmpty) {
+            setState(() {
+              _mlInsights = insights;
+            });
+          }
         });
 
         // Async ML enhancement for range-specific recommendations
@@ -2834,6 +2860,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         _buildHourlyRhythm(cs),
         fillHeight: isWide,
       ),
+      if (_mlInsights.isNotEmpty)
+        _buildMasonryInsightPanel(
+          'AI 洞察',
+          Icons.auto_awesome_rounded,
+          cs,
+          _buildMLInsightsPanel(cs, fillHeight: isWide),
+          fillHeight: isWide,
+        ),
     ];
 
     if (!isWide) {
@@ -3227,6 +3261,138 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMLInsightsPanel(ColorScheme cs, {bool fillHeight = false}) {
+    if (_mlInsights.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ),
+        child: Text('正在分析数据...',
+            style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6))),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            cs.primary.withValues(alpha: 0.08),
+            cs.tertiary.withValues(alpha: 0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        mainAxisAlignment: fillHeight
+            ? MainAxisAlignment.spaceBetween
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ..._mlInsights.take(fillHeight ? 4 : 3).map((insight) =>
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildInsightItem(insight, cs),
+            ),
+          ),
+          if (_mlInsights.length > 3 && !fillHeight)
+            Text(
+              '更多 ${_mlInsights.length - 3} 条洞察...',
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.primary.withValues(alpha: 0.7),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightItem(TimelineMLInsight insight, ColorScheme cs) {
+    final confidenceColor = insight.confidence >= 0.7
+        ? Colors.green
+        : insight.confidence >= 0.5
+            ? Colors.orange
+            : Colors.grey;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(insight.icon, size: 16, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                insight.title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: confidenceColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${(insight.confidence * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: confidenceColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          insight.description,
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.4,
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+        if (insight.supportingData.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: insight.supportingData.map((data) =>
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  data,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ).toList(),
+          ),
+        ],
+      ],
     );
   }
 
