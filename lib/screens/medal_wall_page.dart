@@ -28,7 +28,7 @@ class _MedalWallPageState extends State<MedalWallPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _pageController = PageController();
   }
 
@@ -108,7 +108,21 @@ class _MedalWallPageState extends State<MedalWallPage>
                             emptyMessage: '还没有获得任何勋章',
                           ),
 
-                          // Tab 3: 全部
+                          // Tab 3: 未获得（按进度排序）
+                          _buildMedalTab(
+                            context,
+                            widget.recommendation.allMedals
+                                .where((m) => !m.earned)
+                                .toList()
+                              ..sort(
+                                  (a, b) => b.progress.compareTo(a.progress)),
+                            isEmpty: widget.recommendation.allMedals
+                                .where((m) => !m.earned)
+                                .isEmpty,
+                            emptyMessage: '全部勋章已获得！',
+                          ),
+
+                          // Tab 4: 全部
                           _buildMedalTab(
                             context,
                             widget.recommendation.allMedals,
@@ -235,6 +249,7 @@ class _MedalWallPageState extends State<MedalWallPage>
               const Tab(text: '推荐'),
               Tab(text: '本周(${widget.earnedThisSession.length})'),
               const Tab(text: '已获'),
+              const Tab(text: '未获'),
               const Tab(text: '全部'),
             ],
           ),
