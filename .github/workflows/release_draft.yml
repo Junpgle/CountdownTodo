@@ -4,9 +4,6 @@ on:
   push:
     paths:
       - 'update_manifest.json'
-    branches:
-      - master
-      - main
 
 permissions:
   contents: write
@@ -20,8 +17,9 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          echo "tag=v$(jq -r '.version_name' update_manifest.json)" >> $GITHUB_OUTPUT
-          echo "name=v$(jq -r '.version_name' update_manifest.json)" >> $GITHUB_OUTPUT
+          tag="v$(jq -r '.version_name' update_manifest.json)"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          echo "name=$tag" >> $GITHUB_OUTPUT
 
       - name: Generate release body
         run: |
@@ -33,13 +31,21 @@ jobs:
             )
           ' update_manifest.json > release_body.md
 
-      - name: Create draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.name }}
-          body_path: release_body.md
-          draft: true
-          prerelease: false
-          make_latest: false
-          fail_on_unmatched_files: true
+      - name: Create or update draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "$tag" --json body 2>/dev/null; then
+            old_body=$(gh release view "$tag" --json body -q '.body')
+            new_body=$(cat release_body.md)
+            if [ "$old_body" = "$new_body" ]; then
+              echo "Release $tag exists and body unchanged, skipping."
+            else
+              echo "Release $tag exists but body changed, updating..."
+              gh release edit "$tag" --notes-file release_body.md --draft
+            fi
+          else
+            echo "Creating new draft release $tag..."
+            gh release create "$tag" --title "$tag" --notes-file release_body.md --draft
+          fi
