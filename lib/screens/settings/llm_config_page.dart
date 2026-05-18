@@ -411,6 +411,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       _visionPromptCtrl.text = LLMConfig.defaultVisionPrompt;
     }
 
+    final hasAnyApiKey = [
+      _zhipuApiKey,
+      _mimoApiKey,
+      _deepseekApiKey,
+      _nvidiaNimApiKey,
+      config?.apiKey ?? '',
+    ].any((key) => key.trim().isNotEmpty);
+    _currentStep = hasAnyApiKey ? 2 : 0;
+
     // 根据已选模型确定各自的服务商
     if (_customTextModels.any((m) => m.id == _selectedTextModel)) {
       _selectedTextModelProvider = 'custom';
