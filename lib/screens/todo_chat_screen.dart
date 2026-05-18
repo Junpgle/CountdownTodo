@@ -863,12 +863,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       _scrollToBottom();
       _generateSessionTitle();
     } catch (e) {
-      setState(() {
-        _streamingContent = '';
-        _isLoading = false;
-        _cancelGeneration = null;
-      });
       if (mounted) {
+        setState(() {
+          _streamingContent = '';
+          _isLoading = false;
+          _cancelGeneration = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('AI回复失败: $e')),
         );
