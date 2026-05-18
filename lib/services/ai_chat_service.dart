@@ -129,7 +129,7 @@ class AiChatService {
       }
 
       var buffer = '';
-      late bool streamDone;
+      var streamDone = false;
       await for (final chunk in response.stream.transform(utf8.decoder)) {
         if (cancelToken?.isCompleted == true) {
           cancelled = true;
@@ -172,16 +172,27 @@ class AiChatService {
             if (delta == null) continue;
 
             final finishReason = choice['finish_reason']?.toString();
-
-            final streamChunk = AiChatStreamChunk(
-              reasoningContent: delta['reasoning_content'] as String? ?? '',
-              content: delta['content'] as String? ?? '',
-            );
-            if (streamChunk.content.isNotEmpty ||
-                streamChunk.reasoningContent.isNotEmpty) {
-              emittedCount++;
-              yield streamChunk;
+            if (finishReason != null &&
+                finishReason.isNotEmpty &&
+                finishReason != 'null') {
+              streamDone = true;
             }
+
+            final content = delta['content'] as String? ?? '';
+            final reasoningContent =
+                delta['reasoning_content'] as String? ?? '';
+            final hasReasoningContent = reasoningContent.isNotEmpty;
+            final hasContent = content.isNotEmpty;
+
+            if (hasContent || hasReasoningContent) {
+              emittedCount++;
+              yield AiChatStreamChunk(
+                reasoningContent: reasoningContent,
+                content: content,
+              );
+            }
+
+            if (streamDone) break;
           } catch (e) {
             lastError = '$e';
           }
