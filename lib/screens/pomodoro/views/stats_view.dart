@@ -574,6 +574,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 Text(timeLabel, style: const TextStyle(fontSize: 10, color: Colors.grey)),
                 if (tagNames != null) ...[const SizedBox(width: 6), Flexible(child: Text(tagNames, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.grey)))],
               ]),
+              if (s.note != null && s.note!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(s.note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
             ])),
             const SizedBox(width: 8),
             Text(PomodoroService.formatDuration(s.effectiveDuration), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -592,13 +596,19 @@ class PomodoroStatsState extends State<PomodoroStats> {
             title: Text(s.todoTitle ?? '自由专注', style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Row(children: [
-                Text(timeLabel, style: const TextStyle(fontSize: 13)),
-                if (tagNames != null) ...[const SizedBox(width: 8), Flexible(child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
-                  child: Text(tagNames, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-                ))],
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text(timeLabel, style: const TextStyle(fontSize: 13)),
+                  if (tagNames != null) ...[const SizedBox(width: 8), Flexible(child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
+                    child: Text(tagNames, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                  ))],
+                ]),
+                if (s.note != null && s.note!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(s.note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
               ]),
             ),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -700,6 +710,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     List<String> editTags = List.from(session.tagUuids);
     String? editTodoUuid = session.todoUuid;
     String? editTodoTitle = session.todoTitle;
+    String editNote = session.note ?? '';
 
     await showModalBottomSheet(
       context: context,
@@ -802,6 +813,62 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     );
                   }).toList(),
                 ),
+                const SizedBox(height: 16),
+                const Text('备注', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final ctrl = TextEditingController(text: editNote);
+                    final result = await showDialog<String>(
+                      context: ctx,
+                      builder: (dctx) => AlertDialog(
+                        title: const Text('编辑备注'),
+                        content: TextField(
+                          controller: ctrl,
+                          maxLines: 5,
+                          minLines: 3,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            hintText: '记录专注的收获…',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('取消')),
+                          FilledButton(onPressed: () => Navigator.pop(dctx, ctrl.text), child: const Text('保存')),
+                        ],
+                      ),
+                    );
+                    if (result != null) {
+                      sd(() => editNote = result);
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.note_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          editNote.isEmpty ? '点击添加备注' : editNote,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: editNote.isEmpty ? Colors.grey : null,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.edit_outlined, size: 18),
+                    ]),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -811,7 +878,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         uuid: session.uuid, todoUuid: editTodoUuid, todoTitle: editTodoTitle, tagUuids: editTags,
                         startTime: session.startTime, endTime: session.endTime, plannedDuration: session.plannedDuration,
                         actualDuration: session.actualDuration, status: session.status, deviceId: session.deviceId,
-                        planBlockId: session.planBlockId,
+                        planBlockId: session.planBlockId, note: editNote.isNotEmpty ? editNote : null,
                         isDeleted: session.isDeleted, version: session.version + 1, createdAt: session.createdAt,
                         updatedAt: DateTime.now().millisecondsSinceEpoch,
                       );

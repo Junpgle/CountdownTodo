@@ -105,6 +105,7 @@ class PomodoroRecord {
   PomodoroRecordStatus status;
   String? deviceId;
   String? planBlockId; // 🚀 新增：关联规划块 ID
+  String? note; // 专注备注
   bool isDeleted;
   int version;
   int createdAt;
@@ -124,6 +125,7 @@ class PomodoroRecord {
     this.status = PomodoroRecordStatus.completed,
     this.deviceId,
     this.planBlockId,
+    this.note,
     this.isDeleted = false,
     this.version = 1,
     int? createdAt,
@@ -156,6 +158,7 @@ class PomodoroRecord {
       'status': _statusStr(status),
       'device_id': deviceId,
       'plan_block_id': planBlockId,
+      'note': note,
       'is_deleted': isDeleted ? 1 : 0,
       'version': version,
       'created_at': createdAt,
@@ -191,6 +194,7 @@ class PomodoroRecord {
       status: _parseStatus(j['status']),
       deviceId: j['device_id']?.toString(),
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
+      note: j['note']?.toString(),
       isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
       version: (j['version'] as num?)?.toInt() ?? 1,
       createdAt: _ms(j['created_at']),
@@ -313,6 +317,7 @@ class PomodoroRunState {
   int accumulatedMs;
   int pauseStartMs;
   String? planBlockId; // 🚀 新增：关联规划块 ID
+  String? note; // 专注备注
 
   PomodoroRunState({
     this.phase = PomodoroPhase.idle,
@@ -333,6 +338,7 @@ class PomodoroRunState {
     this.accumulatedMs = 0,
     this.pauseStartMs = 0,
     this.planBlockId,
+    this.note,
   })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [];
 
@@ -356,6 +362,7 @@ class PomodoroRunState {
         'accumulated_ms': accumulatedMs,
         'pause_start_ms': pauseStartMs,
         'plan_block_id': planBlockId,
+        'note': note,
       };
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
@@ -391,6 +398,7 @@ class PomodoroRunState {
       pauseStartMs:
           ((j['pause_start_ms'] ?? j['pauseStartMs']) as num?)?.toInt() ?? 0,
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
+      note: j['note']?.toString(),
     );
   }
 }
@@ -744,6 +752,7 @@ class PomodoroService {
             'status': _statusStr(r.status),
             'device_id': r.deviceId,
             'plan_block_id': r.planBlockId,
+            'note': r.note,
             'is_deleted': r.isDeleted ? 1 : 0,
             'version': r.version,
             'created_at': r.createdAt,
@@ -802,6 +811,7 @@ class PomodoroService {
           'status': _statusStr(record.status),
           'device_id': record.deviceId,
           'plan_block_id': record.planBlockId,
+          'note': record.note,
           'is_deleted': record.isDeleted ? 1 : 0,
           'version': record.version,
           'created_at': record.createdAt,
@@ -1205,6 +1215,13 @@ class PomodoroService {
     return (records: yesterday, isToday: false);
   }
 
+  /// 查询绑定到指定 todoUuid 的所有专注记录
+  static Future<List<PomodoroRecord>> getRecordsByTodoUuid(
+      String todoUuid) async {
+    final all = await getRecords();
+    return all.where((r) => r.todoUuid == todoUuid).toList();
+  }
+
   static Future<List<PomodoroRecord>> getSessions() => getRecords();
   static Future<void> addSession(PomodoroRecord session) => addRecord(session);
   static Future<List<PomodoroRecord>> getSessionsInRange(
@@ -1232,6 +1249,7 @@ class PomodoroService {
         status: updated.status,
         deviceId: updated.deviceId ?? old.deviceId,
         planBlockId: updated.planBlockId,
+        note: updated.note,
         isDeleted: updated.isDeleted,
         version: (updated.version <= old.version)
             ? (old.version + 1)
@@ -1255,6 +1273,7 @@ class PomodoroService {
         status: updated.status,
         deviceId: updated.deviceId,
         planBlockId: updated.planBlockId,
+        note: updated.note,
         isDeleted: updated.isDeleted,
         version: updated.version,
         createdAt: updated.createdAt,
@@ -1282,6 +1301,7 @@ class PomodoroService {
         actualDuration: old.actualDuration,
         status: old.status,
         deviceId: old.deviceId,
+        note: old.note,
         isDeleted: true,
         version: old.version + 1,
         createdAt: old.createdAt,

@@ -188,7 +188,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 28, // V28: 新增分类建议反馈学习表
+          version: 29, // V29: pomodoro_records 新增 note 字段
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -202,6 +202,19 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 29) {
+              try {
+                final info = await db
+                    .rawQuery("PRAGMA table_info(pomodoro_records)");
+                if (!info.any((row) => row['name'] == 'note')) {
+                  await db.execute(
+                      "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;");
+                  debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
+                }
+              } catch (e) {
+                debugPrint('⚠️ Database: 新增 note 字段失败: $e');
+              }
+            }
             if (oldVersion < 28) {
               try {
                 await db.execute('''
@@ -1072,6 +1085,7 @@ class DatabaseHelper {
         status $textType,
         device_id $jsonType,
         plan_block_id TEXT,
+        note TEXT,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,

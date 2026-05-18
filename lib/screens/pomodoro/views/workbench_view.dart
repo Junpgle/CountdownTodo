@@ -88,6 +88,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   String _userId = '';
   String _appVersion = 'unknown';
 
+  // ── 专注备注 ──
+  String _currentNote = '';
+
   // ── 跨端感知 ──
   final _syncService = PomodoroSyncService();
   StreamSubscription? _crossDeviceSub;
@@ -799,6 +802,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _pausedAtMs = saved.pausedAtMs ?? 0;
           _accumulatedMs = saved.accumulatedMs ?? 0;
           _pauseStartMs = saved.pauseStartMs;
+          _currentNote = saved.note ?? '';
         });
         _syncService.setLocalFocusing(true);
         widget.onPhaseChanged(_phase);
@@ -1274,6 +1278,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
     final started = startResult.state;
     _currentSessionUuid = started.sessionUuid;
+    _currentNote = '';
 
     setState(() {
       _phase = PomodoroPhase.focusing;
@@ -1316,10 +1321,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         actualDuration: actualSeconds,
         status: PomodoroRecordStatus.switched,
         deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+        note: _currentNote.isNotEmpty ? _currentNote : null,
       ));
       widget.onRecordAdded?.call();
     }
 
+    _currentNote = '';
     _currentSessionUuid = const Uuid().v4();
     final isCountUpNow = _settings.mode == TimerMode.countUp;
     if (isCountUpNow) {
@@ -1485,6 +1492,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       actualDuration: editedDuration,
       status: PomodoroRecordStatus.completed,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     );
     await PomodoroService.addRecord(record);
     widget.onRecordAdded?.call();
@@ -1626,6 +1634,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             actualDuration: actualSeconds,
             status: PomodoroRecordStatus.interrupted,
             deviceId: _deviceId.isNotEmpty ? _deviceId : null,
+            note: _currentNote.isNotEmpty ? _currentNote : null,
           ));
           widget.onRecordAdded?.call();
         }
@@ -1707,6 +1716,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             },
             child: const Text('保存'),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showNoteDialog() {
+    final ctrl = TextEditingController(text: _currentNote);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('专注备注'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 5,
+          minLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '记录这次专注的感想、收获…',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () async {
+                setState(() => _currentNote = ctrl.text);
+                Navigator.pop(ctx);
+                await _saveCurrentRunState();
+              },
+              child: const Text('保存')),
         ],
       ),
     );
@@ -1939,6 +1980,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       pausedAtMs: _pausedAtMs,
       accumulatedMs: _accumulatedMs,
       pauseStartMs: _pauseStartMs,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     ));
   }
 
@@ -2204,6 +2246,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   onTap: () =>
                       _showBindTodoDialog(isSwitching: _boundTodo != null),
                 ),
+                const SizedBox(height: 12),
+                _buildNoteButton(contentColor),
                 const Spacer(flex: 2),
               ],
               _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
@@ -2411,9 +2455,63 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           boundTodo: _boundTodo,
           contentColor: contentColor,
           onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null)),
-      const SizedBox(height: 24),
+      const SizedBox(height: 16),
+      _buildNoteButton(contentColor),
+      const SizedBox(height: 16),
       _buildActions(false, isFocusing, isRemoteWatching, contentColor),
     ]);
+  }
+
+  Widget _buildNoteButton(Color contentColor) {
+    return InkWell(
+      onTap: _showNoteDialog,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: _currentNote.isEmpty
+              ? contentColor.withValues(alpha: 0.08)
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _currentNote.isEmpty
+                ? contentColor.withValues(alpha: 0.15)
+                : Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _currentNote.isEmpty
+                  ? Icons.note_add_outlined
+                  : Icons.note_rounded,
+              size: 16,
+              color: _currentNote.isEmpty
+                  ? contentColor.withValues(alpha: 0.6)
+                  : Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                _currentNote.isEmpty ? '添加备注' : _currentNote,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: _currentNote.isEmpty
+                      ? contentColor.withValues(alpha: 0.6)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildImmersiveTimerWidget() {

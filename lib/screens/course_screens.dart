@@ -3313,11 +3313,36 @@ class CourseDetailScreen extends StatelessWidget {
   }
 }
 
-class TodoDetailScreen extends StatelessWidget {
+class TodoDetailScreen extends StatefulWidget {
   final TodoItem todo;
   const TodoDetailScreen({super.key, required this.todo});
 
+  @override
+  State<TodoDetailScreen> createState() => _TodoDetailScreenState();
+}
+
+class _TodoDetailScreenState extends State<TodoDetailScreen> {
+  List<PomodoroRecord> _focusRecords = [];
+  bool _loadingRecords = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFocusRecords();
+  }
+
+  Future<void> _loadFocusRecords() async {
+    final records = await PomodoroService.getRecordsByTodoUuid(widget.todo.id);
+    if (mounted) {
+      setState(() {
+        _focusRecords = records;
+        _loadingRecords = false;
+      });
+    }
+  }
+
   String _getRecurrenceText() {
+    final todo = widget.todo;
     switch (todo.recurrence) {
       case RecurrenceType.none:
         return '不重复';
@@ -3340,6 +3365,7 @@ class TodoDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final todo = widget.todo;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -3550,7 +3576,81 @@ class TodoDetailScreen extends StatelessWidget {
               }),
             ]),
 
+            if (!_loadingRecords && _focusRecords.isNotEmpty)
+              _buildSection(context, "专注记录 (${_focusRecords.length})", [
+                ..._focusRecords.take(20).map((r) => _buildFocusRecordRow(r)),
+                if (_focusRecords.length > 20)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '仅显示最近 20 条',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ),
+              ]),
+
             const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFocusRecordRow(PomodoroRecord r) {
+    final startLocal =
+        DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
+    final durationMin = r.effectiveDuration ~/ 60;
+    final statusIcon = r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+    final statusColor = r.isCompleted ? Colors.green : Colors.orange;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PomodoroDetailScreen(
+                record: r,
+                tags: [],
+              ),
+            ),
+          );
+        },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(statusIcon, size: 20, color: statusColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${DateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (r.note != null && r.note!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      r.note!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -3763,6 +3863,28 @@ class PomodoroDetailScreen extends StatelessWidget {
           if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
             const Divider(),
             _buildDetailRow(Icons.task_alt, '关联待办', record.todoTitle!),
+          ],
+          if (record.note != null && record.note!.isNotEmpty) ...[
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.note_rounded, color: Colors.grey),
+                  const SizedBox(width: 16),
+                  const Text('备注', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  const Spacer(),
+                  Flexible(
+                    child: Text(
+                      record.note!,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           const Divider(),
           _buildDetailRow(
