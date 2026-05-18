@@ -58,14 +58,31 @@ class AiChatService {
       }
     }
 
-    if (systemParts.isEmpty) return messages;
+    // 确保角色严格交替 user/assistant/user/assistant
+    final alternated = <Map<String, String>>[];
+    String? lastRole;
+    for (final msg in others) {
+      final role = msg['role'] ?? 'user';
+      if (role == lastRole) {
+        final last = alternated.removeLast();
+        alternated.add({
+          'role': role,
+          'content': '${last['content']}\n\n${msg['content'] ?? ''}',
+        });
+      } else {
+        alternated.add({...msg});
+        lastRole = role;
+      }
+    }
+
+    if (systemParts.isEmpty) return alternated;
 
     return [
       {
         'role': 'system',
         'content': systemParts.join('\n\n---\n\n'),
       },
-      ...others,
+      ...alternated,
     ];
   }
 
