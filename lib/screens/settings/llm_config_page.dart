@@ -377,7 +377,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _selectedTextModel = textModelId;
       } else if (customTextMatch != null) {
         _selectedTextModel = customTextMatch.id;
-      } else if (textModelId != null && textModelId.isNotEmpty) {
+      } else if (textModelId.isNotEmpty) {
         _selectedTextModel = textModelId;
       } else {
         _selectedTextModel = null;
@@ -387,13 +387,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _selectedVisionModel = visionModelId;
       } else if (customVisionMatch != null) {
         _selectedVisionModel = customVisionMatch.id;
-      } else if (visionModelId != null && visionModelId.isNotEmpty) {
+      } else if (visionModelId.isNotEmpty) {
         _selectedVisionModel = visionModelId;
       } else {
         _selectedVisionModel = null;
       }
 
-      if (savedProvider != null && savedProvider.isNotEmpty) {
+      if (savedProvider.isNotEmpty) {
         _selectedTextModelProvider = savedProvider;
       }
     } else {
@@ -425,7 +425,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     if (preset != null) return preset.provider;
     final visionPreset = visionModels.where((m) => m.id == modelId).firstOrNull;
     if (visionPreset != null) return visionPreset.provider;
-    if (_selectedTextModelProvider != 'zhipu') return _selectedTextModelProvider;
+    if (_selectedTextModelProvider != 'zhipu') {
+      return _selectedTextModelProvider;
+    }
     return 'zhipu';
   }
 
@@ -564,85 +566,118 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     }
   }
 
+  bool _useWideLayout(double width) => width >= 820;
+
+  double _responsiveItemWidth(
+    double maxWidth, {
+    required int itemCount,
+    double minWidth = 280,
+    double spacing = 12,
+    int maxColumns = 2,
+  }) {
+    if (maxWidth.isInfinite) return minWidth;
+    final columns = (maxWidth / (minWidth + spacing))
+        .floor()
+        .clamp(1, itemCount.clamp(1, maxColumns));
+    return (maxWidth - spacing * (columns - 1)) / columns;
+  }
+
   // ==================== Step 1: 选择服务商 ====================
 
   Widget _buildStep1Provider() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '本应用基于 OpenAI API 兼容接口开发，已深度适配以下大模型平台。文本模型和视觉模型可以来自不同服务商，自由混搭。',
-          style: TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.5),
-        ),
-        const SizedBox(height: 12),
-        // 快速跳转链接
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final providerCards = [
+          _buildProviderInfoCard(
+            name: '智谱AI',
+            description: '国内领先AI平台，提供多种免费模型',
+            features: ['免费模型可用', '中文能力出色', '200K上下文'],
+            color: Colors.orange,
+            icon: Icons.auto_awesome,
+          ),
+          _buildProviderInfoCard(
+            name: '小米MiMo',
+            description: '万亿参数全模态模型，Agent能力媲美Claude Opus',
+            features: ['1M超长上下文', '全模态感知', '深度推理'],
+            color: Colors.blue,
+            icon: Icons.smart_toy,
+          ),
+          _buildProviderInfoCard(
+            name: 'DeepSeek',
+            description: '高性能推理模型，支持思维链和超长输出',
+            features: ['1M上下文', '384K输出', '深度思考'],
+            color: Colors.green,
+            icon: Icons.psychology,
+          ),
+          _buildProviderInfoCard(
+            name: '自定义 OpenAI 兼容',
+            description: '接入任意 OpenAI API 兼容的服务',
+            features: ['自由配置', '支持第三方平台'],
+            color: Colors.grey,
+            icon: Icons.settings,
+          ),
+        ];
+        final cardWidth = _responsiveItemWidth(
+          constraints.maxWidth,
+          itemCount: providerCards.length,
+          minWidth: 260,
+          maxColumns: constraints.maxWidth >= 1080 ? 4 : 2,
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildQuickLink(
-              label: '智谱AI开放平台',
-              icon: Icons.open_in_new,
-              color: Colors.orange,
-              url:
-                  'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
+            Text(
+              '本应用基于 OpenAI API 兼容接口开发，已深度适配以下大模型平台。文本模型和视觉模型可以来自不同服务商，自由混搭。',
+              style:
+                  TextStyle(fontSize: 13, color: Colors.grey[700], height: 1.5),
             ),
-            _buildQuickLink(
-              label: '小米MiMo开放平台',
-              icon: Icons.open_in_new,
-              color: Colors.blue,
-              url: 'https://platform.xiaomimimo.com',
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildQuickLink(
+                  label: '智谱AI开放平台',
+                  icon: Icons.open_in_new,
+                  color: Colors.orange,
+                  url:
+                      'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
+                ),
+                _buildQuickLink(
+                  label: '小米MiMo开放平台',
+                  icon: Icons.open_in_new,
+                  color: Colors.blue,
+                  url: 'https://platform.xiaomimimo.com',
+                ),
+                _buildQuickLink(
+                  label: 'DeepSeek开放平台',
+                  icon: Icons.open_in_new,
+                  color: Colors.green,
+                  url: 'https://platform.deepseek.com',
+                ),
+              ],
             ),
-            _buildQuickLink(
-              label: 'DeepSeek开放平台',
-              icon: Icons.open_in_new,
-              color: Colors.green,
-              url: 'https://platform.deepseek.com',
+            const SizedBox(height: 20),
+            Text(
+              '支持的服务商',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: providerCards
+                  .map((card) => SizedBox(width: cardWidth, child: card))
+                  .toList(),
             ),
           ],
-        ),
-        const SizedBox(height: 20),
-        Text(
-          '支持的服务商',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildProviderInfoCard(
-          name: '智谱AI',
-          description: '国内领先AI平台，提供多种免费模型',
-          features: ['免费模型可用', '中文能力出色', '200K上下文'],
-          color: Colors.orange,
-          icon: Icons.auto_awesome,
-        ),
-        const SizedBox(height: 10),
-        _buildProviderInfoCard(
-          name: '小米MiMo',
-          description: '万亿参数全模态模型，Agent能力媲美Claude Opus',
-          features: ['1M超长上下文', '全模态感知', '深度推理'],
-          color: Colors.blue,
-          icon: Icons.smart_toy,
-        ),
-        const SizedBox(height: 10),
-        _buildProviderInfoCard(
-          name: 'DeepSeek',
-          description: '高性能推理模型，支持思维链和超长输出',
-          features: ['1M上下文', '384K输出', '深度思考'],
-          color: Colors.green,
-          icon: Icons.psychology,
-        ),
-        const SizedBox(height: 10),
-        _buildProviderInfoCard(
-          name: '自定义 OpenAI 兼容',
-          description: '接入任意 OpenAI API 兼容的服务',
-          features: ['自由配置', '支持第三方平台'],
-          color: Colors.grey,
-          icon: Icons.settings,
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -693,8 +728,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(f,
-                                style: TextStyle(
-                                    fontSize: 11, color: color)),
+                                style: TextStyle(fontSize: 11, color: color)),
                           ))
                       .toList(),
                 ),
@@ -754,62 +788,84 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   // ==================== Step 2: 配置 API Key ====================
 
   Widget _buildStep2ApiKey() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '配置您需要使用的 API Key。文本模型和视觉模型可以来自不同服务商，请按需填写。',
-          style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
-        ),
-        const SizedBox(height: 16),
-        _buildProviderKeyField(
-          provider: 'zhipu',
-          name: '智谱AI',
-          color: Colors.orange,
-          apiKey: _zhipuApiKey,
-          onChanged: (val) => _zhipuApiKey = val,
-          url:
-              'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
-          linkLabel: '→ 前往智谱AI开放平台申请',
-        ),
-        const SizedBox(height: 12),
-        _buildProviderKeyField(
-          provider: 'mimo',
-          name: '小米MiMo',
-          color: Colors.blue,
-          apiKey: _mimoApiKey,
-          onChanged: (val) => _mimoApiKey = val,
-          url: 'https://platform.xiaomimimo.com',
-          linkLabel: '→ 前往小米MiMo开放平台申请',
-        ),
-        const SizedBox(height: 12),
-        _buildProviderKeyField(
-          provider: 'deepseek',
-          name: 'DeepSeek',
-          color: Colors.green,
-          apiKey: _deepseekApiKey,
-          onChanged: (val) => _deepseekApiKey = val,
-          url: 'https://platform.deepseek.com',
-          linkLabel: '→ 前往DeepSeek开放平台申请',
-        ),
-        const SizedBox(height: 12),
-        _buildNvidiaNimKeyField(),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isTesting ? null : _testConnection,
-            icon: _isTesting
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.wifi_tethering, size: 18),
-            label: Text(_isTesting ? '测试连接' : '测试当前选中模型的连接'),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final keyFields = [
+          _buildProviderKeyField(
+            provider: 'zhipu',
+            name: '智谱AI',
+            color: Colors.orange,
+            apiKey: _zhipuApiKey,
+            onChanged: (val) => _zhipuApiKey = val,
+            url:
+                'https://www.bigmodel.cn/invite?icode=VCykXNmHhts4csYPy2wX3LC%2Fk7jQAKmT1mpEiZXXnFw%3D',
+            linkLabel: '→ 前往智谱AI开放平台申请',
           ),
-        ),
-      ],
+          _buildProviderKeyField(
+            provider: 'mimo',
+            name: '小米MiMo',
+            color: Colors.blue,
+            apiKey: _mimoApiKey,
+            onChanged: (val) => _mimoApiKey = val,
+            url: 'https://platform.xiaomimimo.com',
+            linkLabel: '→ 前往小米MiMo开放平台申请',
+          ),
+          _buildProviderKeyField(
+            provider: 'deepseek',
+            name: 'DeepSeek',
+            color: Colors.green,
+            apiKey: _deepseekApiKey,
+            onChanged: (val) => _deepseekApiKey = val,
+            url: 'https://platform.deepseek.com',
+            linkLabel: '→ 前往DeepSeek开放平台申请',
+          ),
+          _buildNvidiaNimKeyField(),
+        ];
+        final fieldWidth = _responsiveItemWidth(
+          constraints.maxWidth,
+          itemCount: keyFields.length,
+          minWidth: 320,
+          maxColumns: 2,
+        );
+        final wide = _useWideLayout(constraints.maxWidth);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '配置您需要使用的 API Key。文本模型和视觉模型可以来自不同服务商，请按需填写。',
+              style:
+                  TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: keyFields
+                  .map((field) => SizedBox(width: fieldWidth, child: field))
+                  .toList(),
+            ),
+            const SizedBox(height: 16),
+            Align(
+              alignment: wide ? Alignment.centerRight : Alignment.centerLeft,
+              child: SizedBox(
+                width: wide ? 320 : double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isTesting ? null : _testConnection,
+                  icon: _isTesting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering, size: 18),
+                  label: Text(_isTesting ? '测试连接' : '测试当前选中模型的连接'),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -845,29 +901,33 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               const SizedBox(width: 8),
               Text(name,
                   style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: color)),
+                      fontWeight: FontWeight.w600, fontSize: 14, color: color)),
               const Spacer(),
-              InkWell(
-                onTap: () async {
-                  try {
-                    await launchUrl(Uri.parse(url),
-                        mode: LaunchMode.platformDefault);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('无法打开链接: $e')),
-                      );
-                    }
-                  }
-                },
-                child: Text(
-                  linkLabel,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color,
-                    decoration: TextDecoration.underline,
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    onTap: () async {
+                      try {
+                        await launchUrl(Uri.parse(url),
+                            mode: LaunchMode.platformDefault);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('无法打开链接: $e')),
+                          );
+                        }
+                      }
+                    },
+                    child: Text(
+                      linkLabel,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: color,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -876,8 +936,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           const SizedBox(height: 10),
           TextField(
             controller: TextEditingController(text: apiKey)
-              ..selection =
-                  TextSelection.collapsed(offset: apiKey.length),
+              ..selection = TextSelection.collapsed(offset: apiKey.length),
             obscureText: true,
             decoration: InputDecoration(
               hintText: '输入 $name API Key（留空则跳过）',
@@ -914,37 +973,42 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: _nvidiaNimApiKey.isNotEmpty ? Colors.green : Colors.grey[300],
+                  color: _nvidiaNimApiKey.isNotEmpty
+                      ? Colors.green
+                      : Colors.grey[300],
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
               Text('NVIDIA NIM',
                   style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: color)),
+                      fontWeight: FontWeight.w600, fontSize: 14, color: color)),
               const Spacer(),
-              InkWell(
-                onTap: () async {
-                  try {
-                    await launchUrl(
-                        Uri.parse('https://build.nvidia.com'),
-                        mode: LaunchMode.platformDefault);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('无法打开链接: $e')),
-                      );
-                    }
-                  }
-                },
-                child: Text(
-                  '→ 前往 NVIDIA Build 申请',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color,
-                    decoration: TextDecoration.underline,
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    onTap: () async {
+                      try {
+                        await launchUrl(Uri.parse('https://build.nvidia.com'),
+                            mode: LaunchMode.platformDefault);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('无法打开链接: $e')),
+                          );
+                        }
+                      }
+                    },
+                    child: Text(
+                      '→ 前往 NVIDIA Build 申请',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: color,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1007,7 +1071,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           .where((m) => m.provider == 'nvidia_nim')
           .map((m) => m.id)
           .toSet();
-      final newModels = models.where((id) => !existingIds.contains(id)).toList();
+      final newModels =
+          models.where((id) => !existingIds.contains(id)).toList();
       if (newModels.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('模型列表已是最新')),
@@ -1029,20 +1094,22 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             width: double.maxFinite,
             height: 300,
             child: ListView(
-              children: models.map((id) => ListTile(
-                dense: true,
-                title: Text(id, style: const TextStyle(fontSize: 13)),
-                trailing: TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    setState(() {
-                      _selectedTextModel = id;
-                      _selectedTextModelProvider = 'nvidia_nim';
-                    });
-                  },
-                  child: const Text('选用'),
-                ),
-              )).toList(),
+              children: models
+                  .map((id) => ListTile(
+                        dense: true,
+                        title: Text(id, style: const TextStyle(fontSize: 13)),
+                        trailing: TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            setState(() {
+                              _selectedTextModel = id;
+                              _selectedTextModelProvider = 'nvidia_nim';
+                            });
+                          },
+                          child: const Text('选用'),
+                        ),
+                      ))
+                  .toList(),
             ),
           ),
           actions: [
@@ -1065,35 +1132,26 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   // ==================== Step 3: 选择模型 ====================
 
   Widget _buildStep3Models() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '分别选择文本模型和视觉模型的服务商及模型，支持混搭。',
-          style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
-        ),
-
-        const SizedBox(height: 20),
-
-        // 文本模型选择
-        _buildModelSection(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = _useWideLayout(constraints.maxWidth);
+        final textModelSection = _buildModelSection(
           title: '文本模型',
           selectedProvider: _selectedTextModelProvider,
           onProviderChanged: (provider) {
             setState(() {
               _selectedTextModelProvider = provider;
-              // 清空不属于新服务商的模型
               if (provider != 'custom') {
-                final ok = textModels.any(
-                        (m) => m.id == _selectedTextModel && m.provider == provider) ||
-                    (_selectedTextModel != null &&
-                        _selectedTextModelProvider == provider);
+                final ok = textModels.any((m) =>
+                    m.id == _selectedTextModel && m.provider == provider);
                 if (!ok) _selectedTextModel = null;
               }
               _updateApiKeyDisplay();
             });
           },
-          models: textModels.where((m) => m.provider == _selectedTextModelProvider).toList(),
+          models: textModels
+              .where((m) => m.provider == _selectedTextModelProvider)
+              .toList(),
           selectedModelId: _selectedTextModel,
           onModelChanged: (val) {
             setState(() {
@@ -1102,94 +1160,140 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             });
           },
           customModels: _customTextModels,
-          selectedIsCustom: _customTextModels.any((m) => m.id == _selectedTextModel),
+          selectedIsCustom:
+              _customTextModels.any((m) => m.id == _selectedTextModel),
           onCustomTap: (m) => setState(() => _selectedTextModel = m.id),
           onCustomEdit: _showEditCustomTextModelDialog,
           onCustomDelete: _deleteCustomTextModel,
           onAddCustom: _showAddCustomTextModelDialog,
           customLabel: '自定义文本模型',
-        ),
-
-        const SizedBox(height: 24),
-
-        // 视觉模型选择
-        _buildModelSection(
+        );
+        final visionModelSection = _buildModelSection(
           title: '视觉模型',
           selectedProvider: _selectedVisionModelProvider,
           onProviderChanged: (provider) {
             setState(() {
               _selectedVisionModelProvider = provider;
               if (provider != 'custom') {
-                final ok = visionModels.any((m) => m.id == _selectedVisionModel && m.provider == provider);
+                final ok = visionModels.any((m) =>
+                    m.id == _selectedVisionModel && m.provider == provider);
                 if (!ok) _selectedVisionModel = null;
               }
             });
           },
-          models: visionModels.where((m) => m.provider == _selectedVisionModelProvider).toList(),
+          models: visionModels
+              .where((m) => m.provider == _selectedVisionModelProvider)
+              .toList(),
           selectedModelId: _selectedVisionModel,
           onModelChanged: (val) {
             setState(() => _selectedVisionModel = val);
           },
           customModels: _customVisionModels,
-          selectedIsCustom: _customVisionModels.any((m) => m.id == _selectedVisionModel),
+          selectedIsCustom:
+              _customVisionModels.any((m) => m.id == _selectedVisionModel),
           onCustomTap: (m) => setState(() => _selectedVisionModel = m.id),
           onCustomEdit: _showEditCustomVisionModelDialog,
           onCustomDelete: _deleteCustomVisionModel,
           onAddCustom: _showAddCustomVisionModelDialog,
           customLabel: '自定义视觉模型',
-        ),
+        );
 
-        const SizedBox(height: 16),
-
-        // 高级设置
-        ExpansionTile(
-          title: Text('高级设置 (自定义Prompt)',
-              style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('文本识别 Prompt（可用变量: {now} {input}）',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _textPromptCtrl,
-              maxLines: 6,
-              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.all(10),
-              ),
+            Text(
+              '分别选择文本模型和视觉模型的服务商及模型，支持混搭。',
+              style:
+                  TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
             ),
-            const SizedBox(height: 12),
-            Text('图片识别 Prompt（可用变量: {now}）',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _visionPromptCtrl,
-              maxLines: 6,
-              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.all(10),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _textPromptCtrl.text = LLMConfig.defaultTextPrompt;
-                    _visionPromptCtrl.text = LLMConfig.defaultVisionPrompt;
-                  });
-                },
-                icon: const Icon(Icons.restore, size: 14),
-                label: const Text('恢复默认', style: TextStyle(fontSize: 12)),
-              ),
-            ),
+            const SizedBox(height: 20),
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: textModelSection),
+                  const SizedBox(width: 20),
+                  Expanded(child: visionModelSection),
+                ],
+              )
+            else ...[
+              textModelSection,
+              const SizedBox(height: 24),
+              visionModelSection,
+            ],
+            const SizedBox(height: 16),
+            _buildPromptSettings(wide: wide),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPromptSettings({required bool wide}) {
+    final textPrompt = _buildPromptField(
+      label: '文本识别 Prompt（可用变量: {now} {input}）',
+      controller: _textPromptCtrl,
+    );
+    final visionPrompt = _buildPromptField(
+      label: '图片识别 Prompt（可用变量: {now}）',
+      controller: _visionPromptCtrl,
+    );
+
+    return ExpansionTile(
+      title: Text('高级设置 (自定义Prompt)',
+          style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      children: [
+        if (wide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: textPrompt),
+              const SizedBox(width: 16),
+              Expanded(child: visionPrompt),
+            ],
+          )
+        else ...[
+          textPrompt,
+          const SizedBox(height: 12),
+          visionPrompt,
+        ],
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _textPromptCtrl.text = LLMConfig.defaultTextPrompt;
+                _visionPromptCtrl.text = LLMConfig.defaultVisionPrompt;
+              });
+            },
+            icon: const Icon(Icons.restore, size: 14),
+            label: const Text('恢复默认', style: TextStyle(fontSize: 12)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPromptField({
+    required String label,
+    required TextEditingController controller,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          maxLines: 6,
+          style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+          decoration: InputDecoration(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            contentPadding: const EdgeInsets.all(10),
+          ),
         ),
       ],
     );
@@ -1211,11 +1315,36 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     required String customLabel,
   }) {
     final providerOptions = [
-      {'key': 'zhipu', 'name': '智谱AI', 'color': Colors.orange, 'icon': Icons.auto_awesome},
-      {'key': 'mimo', 'name': '小米MiMo', 'color': Colors.blue, 'icon': Icons.smart_toy},
-      {'key': 'deepseek', 'name': 'DeepSeek', 'color': Colors.green, 'icon': Icons.psychology},
-      {'key': 'nvidia_nim', 'name': 'NVIDIA NIM', 'color': Colors.cyan, 'icon': Icons.workspace_premium},
-      {'key': 'custom', 'name': '自定义', 'color': Colors.grey, 'icon': Icons.settings},
+      {
+        'key': 'zhipu',
+        'name': '智谱AI',
+        'color': Colors.orange,
+        'icon': Icons.auto_awesome
+      },
+      {
+        'key': 'mimo',
+        'name': '小米MiMo',
+        'color': Colors.blue,
+        'icon': Icons.smart_toy
+      },
+      {
+        'key': 'deepseek',
+        'name': 'DeepSeek',
+        'color': Colors.green,
+        'icon': Icons.psychology
+      },
+      {
+        'key': 'nvidia_nim',
+        'name': 'NVIDIA NIM',
+        'color': Colors.cyan,
+        'icon': Icons.workspace_premium
+      },
+      {
+        'key': 'custom',
+        'name': '自定义',
+        'color': Colors.grey,
+        'icon': Icons.settings
+      },
     ];
 
     return Column(
@@ -1256,12 +1385,15 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 ),
                 child: Column(
                   children: [
-                    Icon(icon, color: isSelected ? color : Colors.grey[500], size: 28),
+                    Icon(icon,
+                        color: isSelected ? color : Colors.grey[500], size: 28),
                     const SizedBox(height: 6),
                     Text(name,
                         style: TextStyle(
                             fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             color: isSelected ? color : Colors.grey[700])),
                   ],
                 ),
@@ -1307,7 +1439,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                         value: m.id,
                         child: Row(
                           children: [
-                            Text(m.name, style: const TextStyle(fontSize: 13)),
+                            Expanded(
+                              child: Text(
+                                m.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
                             if (m.isPaid) ...[
                               const SizedBox(width: 6),
                               Container(
@@ -1319,7 +1457,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                                 ),
                                 child: Text('付费',
                                     style: TextStyle(
-                                        fontSize: 9, color: Colors.orange[800])),
+                                        fontSize: 9,
+                                        color: Colors.orange[800])),
                               ),
                             ],
                           ],
@@ -1332,7 +1471,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           if (models.any((m) => m.id == selectedModelId)) ...[
             const SizedBox(height: 6),
             () {
-              final selected = models.firstWhere((m) => m.id == selectedModelId);
+              final selected =
+                  models.firstWhere((m) => m.id == selectedModelId);
               return _buildModelInfo(
                   selected.description,
                   selected.context ?? selected.context,
@@ -1347,8 +1487,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     );
   }
 
-  Widget _buildModelInfo(
-      String description, String context, String maxOutput) {
+  Widget _buildModelInfo(String description, String context, String maxOutput) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1428,7 +1567,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             ),
             const SizedBox(width: 4),
             IconButton(
-              icon: Icon(Icons.delete_outline, size: 16, color: Colors.red[400]),
+              icon:
+                  Icon(Icons.delete_outline, size: 16, color: Colors.red[400]),
               onPressed: onDelete,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -1492,87 +1632,107 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Stepper(
-              currentStep: _currentStep,
-              onStepContinue: () {
-                if (_currentStep < 2) {
-                  setState(() => _currentStep++);
-                } else {
-                  _saveConfig();
-                }
-              },
-              onStepCancel: () {
-                if (_currentStep > 0) {
-                  setState(() => _currentStep--);
-                }
-              },
-              onStepTapped: (step) {
-                // 只允许点击已完成的步骤或当前步骤
-                if (step <= _currentStep) {
-                  setState(() => _currentStep = step);
-                }
-              },
-              controlsBuilder: (context, details) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: Row(
-                    children: [
-                      if (_currentStep < 2)
-                        FilledButton.icon(
-                          onPressed: details.onStepContinue,
-                          icon: const Icon(Icons.arrow_forward, size: 18),
-                          label: const Text('下一步'),
-                        )
-                      else
-                        FilledButton.icon(
-                          onPressed: _isTesting ? null : details.onStepContinue,
-                          icon: const Icon(Icons.save, size: 18),
-                          label: const Text('保存配置'),
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = _useWideLayout(constraints.maxWidth);
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: Stepper(
+                      type:
+                          wide ? StepperType.horizontal : StepperType.vertical,
+                      margin: wide
+                          ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
+                          : null,
+                      currentStep: _currentStep,
+                      onStepContinue: () {
+                        if (_currentStep < 2) {
+                          setState(() => _currentStep++);
+                        } else {
+                          _saveConfig();
+                        }
+                      },
+                      onStepCancel: () {
+                        if (_currentStep > 0) {
+                          setState(() => _currentStep--);
+                        }
+                      },
+                      onStepTapped: (step) {
+                        // 只允许点击已完成的步骤或当前步骤
+                        if (step <= _currentStep) {
+                          setState(() => _currentStep = step);
+                        }
+                      },
+                      controlsBuilder: (context, details) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 20),
+                          child: Row(
+                            mainAxisAlignment: wide
+                                ? MainAxisAlignment.end
+                                : MainAxisAlignment.start,
+                            children: [
+                              if (_currentStep < 2)
+                                FilledButton.icon(
+                                  onPressed: details.onStepContinue,
+                                  icon:
+                                      const Icon(Icons.arrow_forward, size: 18),
+                                  label: const Text('下一步'),
+                                )
+                              else
+                                FilledButton.icon(
+                                  onPressed: _isTesting
+                                      ? null
+                                      : details.onStepContinue,
+                                  icon: const Icon(Icons.save, size: 18),
+                                  label: const Text('保存配置'),
+                                ),
+                              if (_currentStep > 0) ...[
+                                const SizedBox(width: 12),
+                                OutlinedButton.icon(
+                                  onPressed: details.onStepCancel,
+                                  icon: const Icon(Icons.arrow_back, size: 18),
+                                  label: const Text('上一步'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                      steps: [
+                        Step(
+                          title: const Text('选择服务商'),
+                          content: _buildStep1Provider(),
+                          isActive: _currentStep >= 0,
+                          state: _currentStep > 0
+                              ? StepState.complete
+                              : StepState.indexed,
                         ),
-                      if (_currentStep > 0) ...[
-                        const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          onPressed: details.onStepCancel,
-                          icon: const Icon(Icons.arrow_back, size: 18),
-                          label: const Text('上一步'),
+                        Step(
+                          title: const Text('配置 API Key'),
+                          content: _buildStep2ApiKey(),
+                          isActive: _currentStep >= 1,
+                          state: _currentStep > 1
+                              ? StepState.complete
+                              : _currentStep == 1
+                                  ? StepState.indexed
+                                  : StepState.disabled,
+                        ),
+                        Step(
+                          title: const Text('选择模型'),
+                          content: _buildStep3Models(),
+                          isActive: _currentStep >= 2,
+                          state: _currentStep == 2
+                              ? StepState.indexed
+                              : StepState.disabled,
                         ),
                       ],
-                    ],
+                    ),
                   ),
                 );
               },
-              steps: [
-                Step(
-                  title: const Text('选择服务商'),
-                  content: _buildStep1Provider(),
-                  isActive: _currentStep >= 0,
-                  state: _currentStep > 0
-                      ? StepState.complete
-                      : StepState.indexed,
-                ),
-                Step(
-                  title: const Text('配置 API Key'),
-                  content: _buildStep2ApiKey(),
-                  isActive: _currentStep >= 1,
-                  state: _currentStep > 1
-                      ? StepState.complete
-                      : _currentStep == 1
-                          ? StepState.indexed
-                          : StepState.disabled,
-                ),
-                Step(
-                  title: const Text('选择模型'),
-                  content: _buildStep3Models(),
-                  isActive: _currentStep >= 2,
-                  state: _currentStep == 2
-                      ? StepState.indexed
-                      : StepState.disabled,
-                ),
-              ],
             ),
     );
   }
-
 
   Widget _buildChip(String label) {
     return Container(
@@ -1587,7 +1747,6 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       ),
     );
   }
-
 
   Future<void> _showAddCustomTextModelDialog(
       {CustomTextModel? existing}) async {
