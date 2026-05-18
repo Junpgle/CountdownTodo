@@ -416,6 +416,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     if (preset != null) return preset.provider;
     final visionPreset = visionModels.where((m) => m.id == modelId).firstOrNull;
     if (visionPreset != null) return visionPreset.provider;
+    if (_selectedTextModelProvider != 'zhipu') return _selectedTextModelProvider;
     return 'zhipu';
   }
 
@@ -1025,12 +1026,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                 trailing: TextButton(
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _nvidiaNimApiKey = _nvidiaNimApiKey;
                     setState(() {
-                      if (textModels.any((m) => m.id == id)) {
-                        _selectedTextModel = id;
-                        _selectedTextModelProvider = 'nvidia_nim';
-                      }
+                      _selectedTextModel = id;
+                      _selectedTextModelProvider = 'nvidia_nim';
                     });
                   },
                   child: const Text('选用'),
@@ -1077,7 +1075,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
               _selectedTextModelProvider = provider;
               // 清空不属于新服务商的模型
               if (provider != 'custom') {
-                final ok = textModels.any((m) => m.id == _selectedTextModel && m.provider == provider);
+                final ok = textModels.any(
+                        (m) => m.id == _selectedTextModel && m.provider == provider) ||
+                    (_selectedTextModel != null &&
+                        _selectedTextModelProvider == provider);
                 if (!ok) _selectedTextModel = null;
               }
               _updateApiKeyDisplay();
