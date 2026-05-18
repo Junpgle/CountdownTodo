@@ -129,11 +129,13 @@ class AiChatService {
       }
 
       var buffer = '';
+      late bool streamDone;
       await for (final chunk in response.stream.transform(utf8.decoder)) {
         if (cancelToken?.isCompleted == true) {
           cancelled = true;
           break;
         }
+        if (streamDone) break;
         buffer += chunk;
         while (true) {
           final newlineIdx = buffer.indexOf('\n');
@@ -149,7 +151,10 @@ class AiChatService {
           }
 
           final data = trimmed.substring(5).trim();
-          if (data == '[DONE]') break;
+          if (data == '[DONE]') {
+            streamDone = true;
+            break;
+          }
 
           chunkCount++;
           try {
