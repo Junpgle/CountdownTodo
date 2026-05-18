@@ -18,13 +18,14 @@ class AiChatService {
       'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
   static const Map<String, String> providerBaseUrls = {
+    'zhipu': 'https://open.bigmodel.cn/api/paas/v4',
+    'mimo': 'https://api.xiaomimimo.com/v1',
+    'deepseek': 'https://api.deepseek.com',
     'nvidia_nim': 'https://integrate.api.nvidia.com/v1',
   };
 
   static String trimSlash(String value) {
-    return value.endsWith('/')
-        ? value.substring(0, value.length - 1)
-        : value;
+    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
 
   static String resolveChatUrl(String provider, String apiUrl) {
@@ -113,9 +114,7 @@ class AiChatService {
 
       final body = <String, dynamic>{
         'model': model,
-        'messages': isNvidiaNim
-            ? normalizeMessagesForNim(messages)
-            : messages,
+        'messages': isNvidiaNim ? normalizeMessagesForNim(messages) : messages,
         'temperature': temperature,
         'max_tokens': maxTokens,
         'stream': true,
@@ -277,9 +276,21 @@ class AiChatService {
   }
 
   static Future<List<String>> fetchNvidiaNimModels(String apiKey) async {
+    return fetchProviderModels(provider: 'nvidia_nim', apiKey: apiKey);
+  }
+
+  static Future<List<String>> fetchProviderModels({
+    required String provider,
+    required String apiKey,
+  }) async {
+    final baseUrl = providerBaseUrls[provider];
+    if (baseUrl == null) {
+      throw Exception('该服务商暂不支持拉取模型列表');
+    }
+
     final response = await http
         .get(
-          Uri.parse('${providerBaseUrls['nvidia_nim']!}/models'),
+          Uri.parse('${trimSlash(baseUrl)}/models'),
           headers: _headers(apiKey),
         )
         .timeout(const Duration(seconds: 20));

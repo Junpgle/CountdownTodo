@@ -61,6 +61,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   String? _selectedVisionModel;
   List<CustomTextModel> _customTextModels = [];
   List<CustomVisionModel> _customVisionModels = [];
+  final Map<String, List<TextModelInfo>> _fetchedTextModelsByProvider = {};
+  final Map<String, List<VisionModelInfo>> _fetchedVisionModelsByProvider = {};
   String _zhipuApiKey = '';
   String _mimoApiKey = '';
   String _deepseekApiKey = '';
@@ -346,6 +348,12 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     _mimoApiKey = await LLMService.getProviderApiKey('mimo');
     _deepseekApiKey = await LLMService.getProviderApiKey('deepseek');
     _nvidiaNimApiKey = await LLMService.getProviderApiKey('nvidia_nim');
+    for (final provider in providers.keys) {
+      _setFetchedProviderModels(
+        provider,
+        await LLMService.getProviderModels(provider),
+      );
+    }
 
     if (config != null) {
       _presetApiKeyCtrl.text = config.apiKey;
@@ -423,12 +431,81 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     if (modelId == null) return 'zhipu';
     final preset = textModels.where((m) => m.id == modelId).firstOrNull;
     if (preset != null) return preset.provider;
+    final fetchedTextModel = _fetchedTextModelsByProvider.values
+        .expand((models) => models)
+        .where((m) => m.id == modelId)
+        .firstOrNull;
+    if (fetchedTextModel != null) return fetchedTextModel.provider;
     final visionPreset = visionModels.where((m) => m.id == modelId).firstOrNull;
     if (visionPreset != null) return visionPreset.provider;
+    final fetchedVisionModel = _fetchedVisionModelsByProvider.values
+        .expand((models) => models)
+        .where((m) => m.id == modelId)
+        .firstOrNull;
+    if (fetchedVisionModel != null) {
+      return fetchedVisionModel.provider;
+    }
     if (_selectedTextModelProvider != 'zhipu') {
       return _selectedTextModelProvider;
     }
     return 'zhipu';
+  }
+
+  List<TextModelInfo> _getTextModelsForProvider(String provider) {
+    final presetModels = textModels.where((m) => m.provider == provider);
+    final byId = <String, TextModelInfo>{
+      for (final model in presetModels) model.id: model,
+      for (final model in _fetchedTextModelsByProvider[provider] ?? [])
+        model.id: model,
+    };
+    return byId.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  List<VisionModelInfo> _getVisionModelsForProvider(String provider) {
+    final presetModels = visionModels.where((m) => m.provider == provider);
+    final byId = <String, VisionModelInfo>{
+      for (final model in presetModels) model.id: model,
+      for (final model in _fetchedVisionModelsByProvider[provider] ?? [])
+        model.id: model,
+    };
+    return byId.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  void _setFetchedProviderModels(String provider, List<String> modelIds) {
+    final normalized = modelIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    _fetchedTextModelsByProvider[provider] = normalized
+        .map(
+          (id) => TextModelInfo(
+            id: id,
+            name: id,
+            description: '${providers[provider]?['name'] ?? provider} 拉取的可用模型',
+            context: '-',
+            maxOutput: '-',
+            isPaid: true,
+            provider: provider,
+          ),
+        )
+        .toList();
+    _fetchedVisionModelsByProvider[provider] = normalized
+        .map(
+          (id) => VisionModelInfo(
+            id: id,
+            name: id,
+            description: '${providers[provider]?['name'] ?? provider} 拉取的可用模型',
+            context: '-',
+            maxOutput: '-',
+            isPaid: true,
+            provider: provider,
+          ),
+        )
+        .toList();
   }
 
   void _updateApiKeyDisplay() {
@@ -1032,64 +1109,80 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             ),
             onChanged: (val) => _nvidiaNimApiKey = val,
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _fetchNvidiaNimModels(),
-              icon: const Icon(Icons.cloud_download_outlined, size: 16),
-              label: const Text('拉取 NVIDIA NIM 模型列表'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: color,
-                side: BorderSide(color: color.withValues(alpha: 0.4)),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Future<void> _fetchNvidiaNimModels() async {
-    if (_nvidiaNimApiKey.isEmpty) {
+  Future<void> _fetchProviderModels(String provider) async {
+    final apiKey = switch (provider) {
+      'mimo' => _mimoApiKey,
+      'deepseek' => _deepseekApiKey,
+      'nvidia_nim' => _nvidiaNimApiKey,
+      _ => _zhipuApiKey,
+    };
+    final providerName = providers[provider]?['name'] ?? provider;
+
+    if (apiKey.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先输入 NVIDIA NIM API Key')),
+          SnackBar(content: Text('请先在上一步填写 $providerName API Key')),
         );
       }
       return;
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在拉取模型列表...')),
+        SnackBar(content: Text('正在拉取 $providerName 模型列表...')),
       );
     }
     try {
-      final models = await AiChatService.fetchNvidiaNimModels(_nvidiaNimApiKey);
+      final models = await AiChatService.fetchProviderModels(
+        provider: provider,
+        apiKey: apiKey,
+      );
       if (!mounted) return;
       final existingIds = textModels
-          .where((m) => m.provider == 'nvidia_nim')
+          .where((m) => m.provider == provider)
           .map((m) => m.id)
           .toSet();
       final newModels =
           models.where((id) => !existingIds.contains(id)).toList();
+      _setFetchedProviderModels(provider, models);
+      await LLMService.saveProviderModels(provider, models);
+      if (!mounted) return;
+
+      setState(() {
+        _selectedTextModelProvider = provider;
+        _selectedVisionModelProvider = provider;
+        final fetchedTextModels = _fetchedTextModelsByProvider[provider] ?? [];
+        final fetchedVisionModels =
+            _fetchedVisionModelsByProvider[provider] ?? [];
+        if (_selectedTextModel == null && fetchedTextModels.isNotEmpty) {
+          _selectedTextModel = fetchedTextModels.first.id;
+        }
+        if (_selectedVisionModel == null && fetchedVisionModels.isNotEmpty) {
+          _selectedVisionModel = fetchedVisionModels.first.id;
+        }
+      });
+
       if (newModels.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('模型列表已是最新')),
+          SnackBar(content: Text('$providerName 模型列表已是最新')),
         );
         return;
       }
       final count = newModels.length;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发现 $count 个新模型，请查看控制台日志')),
+        SnackBar(content: Text('已拉取 $count 个 $providerName 模型')),
       );
       for (final id in newModels) {
-        debugPrint('[NVIDIA NIM] 可用模型: $id');
+        debugPrint('[$providerName] 可用模型: $id');
       }
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('可用 NVIDIA NIM 模型'),
+          title: Text('可用 $providerName 模型'),
           content: SizedBox(
             width: double.maxFinite,
             height: 300,
@@ -1103,7 +1196,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                             Navigator.pop(ctx);
                             setState(() {
                               _selectedTextModel = id;
-                              _selectedTextModelProvider = 'nvidia_nim';
+                              _selectedTextModelProvider = provider;
+                              _selectedVisionModel = id;
+                              _selectedVisionModelProvider = provider;
                             });
                           },
                           child: const Text('选用'),
@@ -1123,7 +1218,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拉取失败: $e')),
+          SnackBar(content: Text('$providerName 模型列表拉取失败: $e')),
         );
       }
     }
@@ -1142,16 +1237,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             setState(() {
               _selectedTextModelProvider = provider;
               if (provider != 'custom') {
-                final ok = textModels.any((m) =>
-                    m.id == _selectedTextModel && m.provider == provider);
+                final ok = _getTextModelsForProvider(provider)
+                    .any((m) => m.id == _selectedTextModel);
                 if (!ok) _selectedTextModel = null;
               }
               _updateApiKeyDisplay();
             });
           },
-          models: textModels
-              .where((m) => m.provider == _selectedTextModelProvider)
-              .toList(),
+          models: _getTextModelsForProvider(_selectedTextModelProvider),
           selectedModelId: _selectedTextModel,
           onModelChanged: (val) {
             setState(() {
@@ -1175,15 +1268,13 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
             setState(() {
               _selectedVisionModelProvider = provider;
               if (provider != 'custom') {
-                final ok = visionModels.any((m) =>
-                    m.id == _selectedVisionModel && m.provider == provider);
+                final ok = _getVisionModelsForProvider(provider)
+                    .any((m) => m.id == _selectedVisionModel);
                 if (!ok) _selectedVisionModel = null;
               }
             });
           },
-          models: visionModels
-              .where((m) => m.provider == _selectedVisionModelProvider)
-              .toList(),
+          models: _getVisionModelsForProvider(_selectedVisionModelProvider),
           selectedModelId: _selectedVisionModel,
           onModelChanged: (val) {
             setState(() => _selectedVisionModel = val);
@@ -1403,6 +1494,20 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         ),
 
         const SizedBox(height: 14),
+
+        if (selectedProvider != 'custom') ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () => _fetchProviderModels(selectedProvider),
+              icon: const Icon(Icons.cloud_download_outlined, size: 16),
+              label: Text(
+                '拉取${providers[selectedProvider]?['name'] ?? selectedProvider}模型列表',
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
 
         // 自定义模型 or 预设模型下拉
         if (selectedProvider == 'custom') ...[
