@@ -79,7 +79,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _chatModel = '';
   String _chatApiKey = '';
   String _chatApiUrl = '';
+  String _chatProvider = '';
   String _globalModelName = '';
+  String _globalProvider = '';
   String _lastRequestSmartContext = '';
   String _pendingManualOriginalText = '';
   String _pendingManualSmartContext = '';
@@ -485,8 +487,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           _chatModel = config['model'] ?? '';
           _chatApiKey = config['apiKey'] ?? '';
           _chatApiUrl = config['apiUrl'] ?? '';
+          _chatProvider = config['provider'] ?? '';
         }
         _globalModelName = globalConfig?.model ?? '';
+        _globalProvider = globalConfig?.provider ?? '';
       });
     }
   }
@@ -669,6 +673,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     String model = _chatModel;
     String apiKey = _chatApiKey;
     String apiUrl = _chatApiUrl;
+    String provider = _chatProvider;
 
     if (model.isEmpty || apiKey.isEmpty) {
       final globalConfig = await LLMService.getConfig();
@@ -676,6 +681,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         model = globalConfig.model;
         apiKey = globalConfig.apiKey;
         apiUrl = globalConfig.apiUrl;
+        provider = globalConfig.provider;
       } else {
         if (!mounted) return;
         final goToSettings = await showDialog<bool>(
@@ -749,6 +755,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         model: model,
         messages: apiMessages,
         deepThinking: _deepThinking,
+        provider: provider,
         cancelToken: _cancelGeneration,
       )) {
         if (chunk.reasoningContent.isNotEmpty) {
@@ -2073,10 +2080,25 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
   }
 
+  static const Map<String, String> providerLabels = {
+    'zhipu': '智谱AI',
+    'mimo': '小米MiMo',
+    'deepseek': 'DeepSeek',
+    'nvidia_nim': 'NVIDIA NIM',
+    'custom': '自定义',
+  };
+
   Widget _buildModelSelector() {
     final inheritedModel =
         _globalModelName.isNotEmpty ? _globalModelName : '未配置';
-    String label = _chatModel.isNotEmpty ? _chatModel : '继承: $inheritedModel';
+    final inheritedProvider = _globalProvider.isNotEmpty
+        ? providerLabels[_globalProvider] ?? _globalProvider
+        : '';
+    final labelSuffix = inheritedProvider.isNotEmpty ? ' ($inheritedProvider)' : '';
+    final labelPrefix = _chatModel.isNotEmpty ? '' : '继承: ';
+    String label = _chatModel.isNotEmpty
+        ? _chatModel
+        : '$labelPrefix$inheritedModel$labelSuffix';
 
     return PopupMenuButton<String>(
       tooltip: '模型配置',
@@ -2126,7 +2148,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '继承全局配置: $inheritedModel',
+                  '继承全局配置: $inheritedModel$labelSuffix',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -2195,7 +2217,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         _chatModel = '';
         _chatApiKey = '';
         _chatApiUrl = '';
+        _chatProvider = '';
         _globalModelName = globalConfig?.model ?? '';
+        _globalProvider = globalConfig?.provider ?? '';
       });
     }
   }
@@ -2224,6 +2248,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               'https://open.bigmodel.cn/api/paas/v4/chat/completions'
           : _chatApiUrl,
     );
+    String customProvider = _chatProvider.isNotEmpty
+        ? _chatProvider
+        : globalConfig?.provider ?? '';
     bool useCustom = _chatModel.isNotEmpty;
 
     await showDialog(
@@ -2288,6 +2315,29 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: providerLabels.containsKey(customProvider)
+                        ? customProvider
+                        : null,
+                    decoration: InputDecoration(
+                      labelText: '提供商 (可选)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: providerLabels.entries
+                        .map((e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Text(e.value),
+                            ))
+                        .toList(),
+                    onChanged: useCustom
+                        ? (val) {
+                            setDialogState(() => customProvider = val ?? '');
+                          }
+                        : null,
+                  ),
                 ],
               ),
             ),
@@ -2307,7 +2357,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       _chatModel = '';
                       _chatApiKey = '';
                       _chatApiUrl = '';
+                      _chatProvider = '';
                       _globalModelName = globalConfig?.model ?? '';
+                      _globalProvider = globalConfig?.provider ?? '';
                     });
                   }
                   if (ctx.mounted) Navigator.pop(ctx);
@@ -2337,13 +2389,20 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                         apiUrl: apiUrlCtrl.text.trim().isEmpty
                             ? null
                             : apiUrlCtrl.text.trim(),
+                        provider: useCustom && customProvider.isNotEmpty
+                            ? customProvider
+                            : null,
                       );
                       if (mounted) {
                         setState(() {
                           _chatModel = modelCtrl.text.trim();
                           _chatApiKey = apiKeyCtrl.text.trim();
                           _chatApiUrl = apiUrlCtrl.text.trim();
+                          _chatProvider = useCustom && customProvider.isNotEmpty
+                              ? customProvider
+                              : '';
                           _globalModelName = globalConfig?.model ?? '';
+                          _globalProvider = globalConfig?.provider ?? '';
                         });
                       }
                       if (ctx.mounted) Navigator.pop(ctx);

@@ -17,12 +17,65 @@ class AiChatService {
   static const String defaultApiUrl =
       'https://open.bigmodel.cn/api/paas/v4/chat/completions';
 
+  static const Map<String, String> providerBaseUrls = {
+    'nvidia_nim': 'https://integrate.api.nvidia.com/v1',
+  };
+
+  static String trimSlash(String value) {
+    return value.endsWith('/')
+        ? value.substring(0, value.length - 1)
+        : value;
+  }
+
+  static String resolveChatUrl(String provider, String apiUrl) {
+    if (provider == 'nvidia_nim') {
+      final base = trimSlash(
+          apiUrl.isNotEmpty ? apiUrl : providerBaseUrls['nvidia_nim']!);
+      return '$base/chat/completions';
+    }
+    return apiUrl.isEmpty ? defaultApiUrl : apiUrl;
+  }
+
+  static String maskKey(String key) {
+    if (key.length <= 12) return '***';
+    return '${key.substring(0, 8)}...${key.substring(key.length - 4)}';
+  }
+
+  static List<Map<String, String>> normalizeMessagesForNim(
+    List<Map<String, String>> messages,
+  ) {
+    final systemParts = <String>[];
+    final others = <Map<String, String>>[];
+
+    for (final msg in messages) {
+      if (msg['role'] == 'system') {
+        final content = msg['content'];
+        if (content != null && content.trim().isNotEmpty) {
+          systemParts.add(content.trim());
+        }
+      } else {
+        others.add(msg);
+      }
+    }
+
+    if (systemParts.isEmpty) return messages;
+
+    return [
+      {
+        'role': 'system',
+        'content': systemParts.join('\n\n---\n\n'),
+      },
+      ...others,
+    ];
+  }
+
   static Stream<AiChatStreamChunk> streamChat({
     required String apiUrl,
     required String apiKey,
     required String model,
     required List<Map<String, String>> messages,
     required bool deepThinking,
+    String provider = 'zhipu',
     double temperature = 0.7,
     int maxTokens = 2000,
     Duration timeout = const Duration(seconds: 60),
@@ -35,23 +88,44 @@ class AiChatService {
     var cancelled = false;
 
     try {
-      final request = http.Request('POST', Uri.parse(_resolveApiUrl(apiUrl)));
+      final resolvedUrl = resolveChatUrl(provider, apiUrl);
+      final request = http.Request('POST', Uri.parse(resolvedUrl));
       request.headers.addAll(_headers(apiKey));
-      request.body = jsonEncode({
+
+      final bool isNvidiaNim = provider == 'nvidia_nim';
+
+      final body = <String, dynamic>{
         'model': model,
-        'messages': messages,
+        'messages': isNvidiaNim
+            ? normalizeMessagesForNim(messages)
+            : messages,
         'temperature': temperature,
         'max_tokens': maxTokens,
         'stream': true,
-        'stream_options': {'include_usage': true},
-        'thinking': {
+      };
+
+      if (isNvidiaNim) {
+        if (model.startsWith('deepseek-ai/deepseek-v4')) {
+          body['reasoning_effort'] = deepThinking ? 'high' : 'none';
+        }
+      } else {
+        body['stream_options'] = {'include_usage': true};
+        body['thinking'] = {
           'type': deepThinking ? 'enabled' : 'disabled',
-        },
-      });
+        };
+      }
+
+      request.body = jsonEncode(body);
 
       final response = await client.send(request).timeout(timeout);
       if (response.statusCode != 200) {
-        throw Exception('请求失败: ${response.statusCode}');
+        final errorBody = await response.stream.bytesToString();
+        throw Exception(
+          '请求失败: ${response.statusCode}\n'
+          'URL: $resolvedUrl\n'
+          'Model: $model\n'
+          'Body: $errorBody',
+        );
       }
 
       var buffer = '';
@@ -75,7 +149,7 @@ class AiChatService {
           }
 
           final data = trimmed.substring(5).trim();
-          if (data == '[DONE]') continue;
+          if (data == '[DONE]') break;
 
           chunkCount++;
           try {
@@ -88,8 +162,11 @@ class AiChatService {
             final choices = json['choices'] as List?;
             if (choices == null || choices.isEmpty) continue;
 
-            final delta = choices[0]['delta'] as Map<String, dynamic>?;
+            final choice = choices[0] as Map<String, dynamic>;
+            final delta = choice['delta'] as Map<String, dynamic>?;
             if (delta == null) continue;
+
+            final finishReason = choice['finish_reason']?.toString();
 
             final streamChunk = AiChatStreamChunk(
               reasoningContent: delta['reasoning_content'] as String? ?? '',
@@ -121,25 +198,39 @@ class AiChatService {
     required String apiKey,
     required String model,
     required List<Map<String, String>> messages,
+    String provider = 'zhipu',
     double temperature = 0.5,
     int maxTokens = 30,
     Duration timeout = const Duration(seconds: 10),
   }) async {
+    final resolvedUrl = resolveChatUrl(provider, apiUrl);
+
+    final body = <String, dynamic>{
+      'model': model,
+      'messages': messages,
+      'temperature': temperature,
+      'max_tokens': maxTokens,
+    };
+
+    if (provider == 'nvidia_nim') {
+      body['messages'] = normalizeMessagesForNim(messages);
+    }
+
     final response = await http
         .post(
-          Uri.parse(_resolveApiUrl(apiUrl)),
+          Uri.parse(resolvedUrl),
           headers: _headers(apiKey),
-          body: jsonEncode({
-            'model': model,
-            'messages': messages,
-            'temperature': temperature,
-            'max_tokens': maxTokens,
-          }),
+          body: jsonEncode(body),
         )
         .timeout(timeout);
 
     if (response.statusCode != 200) {
-      throw Exception('请求失败: ${response.statusCode}');
+      throw Exception(
+        '请求失败: ${response.statusCode}\n'
+        'URL: $resolvedUrl\n'
+        'Model: $model\n'
+        'Body: ${response.body}',
+      );
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -152,11 +243,33 @@ class AiChatService {
     return (message?['content'] as String?) ?? '';
   }
 
+  static Future<List<String>> fetchNvidiaNimModels(String apiKey) async {
+    final response = await http
+        .get(
+          Uri.parse('${providerBaseUrls['nvidia_nim']!}/models'),
+          headers: _headers(apiKey),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        '拉取模型失败: ${response.statusCode} ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = data['data'] as List;
+
+    return list
+        .map((e) => e['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
   static Map<String, String> _headers(String apiKey) => {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $apiKey',
       };
-
-  static String _resolveApiUrl(String apiUrl) =>
-      apiUrl.isEmpty ? defaultApiUrl : apiUrl;
 }

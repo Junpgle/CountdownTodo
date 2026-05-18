@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
 
 class TextModelInfo {
@@ -63,6 +64,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   String _zhipuApiKey = '';
   String _mimoApiKey = '';
   String _deepseekApiKey = '';
+  String _nvidiaNimApiKey = '';
   String _selectedTextModelProvider = 'zhipu';
   String _selectedVisionModelProvider = 'zhipu';
   int _currentStep = 0;
@@ -80,6 +82,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     'deepseek': {
       'name': 'DeepSeek',
       'apiUrl': 'https://api.deepseek.com/chat/completions',
+    },
+    'nvidia_nim': {
+      'name': 'NVIDIA NIM',
+      'apiUrl': 'https://integrate.api.nvidia.com/v1/chat/completions',
     },
   };
 
@@ -227,6 +233,25 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       isPaid: true,
       provider: 'deepseek',
     ),
+    // === NVIDIA NIM 模型 ===
+    TextModelInfo(
+      id: 'deepseek-ai/deepseek-v4-pro',
+      name: 'NVIDIA DeepSeek-V4-Pro',
+      description: 'NVIDIA NIM 托管的 DeepSeek-V4-Pro',
+      context: '1M',
+      maxOutput: '384K',
+      isPaid: true,
+      provider: 'nvidia_nim',
+    ),
+    TextModelInfo(
+      id: 'deepseek-ai/deepseek-v4-flash',
+      name: 'NVIDIA DeepSeek-V4-Flash',
+      description: 'NVIDIA NIM 托管的 DeepSeek-V4-Flash',
+      context: '1M',
+      maxOutput: '384K',
+      isPaid: true,
+      provider: 'nvidia_nim',
+    ),
   ];
 
   static const List<VisionModelInfo> visionModels = [
@@ -320,6 +345,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     _zhipuApiKey = await LLMService.getProviderApiKey('zhipu');
     _mimoApiKey = await LLMService.getProviderApiKey('mimo');
     _deepseekApiKey = await LLMService.getProviderApiKey('deepseek');
+    _nvidiaNimApiKey = await LLMService.getProviderApiKey('nvidia_nim');
 
     if (config != null) {
       _presetApiKeyCtrl.text = config.apiKey;
@@ -403,6 +429,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       _presetApiKeyCtrl.text = switch (provider) {
         'mimo' => _mimoApiKey,
         'deepseek' => _deepseekApiKey,
+        'nvidia_nim' => _nvidiaNimApiKey,
         _ => _zhipuApiKey,
       };
     }
@@ -419,6 +446,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _customTextModels.where((m) => m.id == _selectedTextModel).firstOrNull;
     if (customText != null) return customText.apiUrl;
     final provider = _getModelProvider(_selectedTextModel);
+    if (provider == 'nvidia_nim') {
+      return 'https://integrate.api.nvidia.com/v1';
+    }
     return providers[provider]?['apiUrl'] ?? providers['zhipu']!['apiUrl']!;
   }
 
@@ -489,7 +519,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       return;
     }
 
+    final provider = _getModelProvider(_selectedTextModel);
     final config = LLMConfig(
+      provider: provider,
       apiKey: _getEffectiveApiKey(),
       model: _getEffectiveModelId(),
       visionModel: _getEffectiveVisionModelId(),
@@ -508,6 +540,9 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
     }
     if (_deepseekApiKey.isNotEmpty) {
       await LLMService.saveProviderApiKey('deepseek', _deepseekApiKey);
+    }
+    if (_nvidiaNimApiKey.isNotEmpty) {
+      await LLMService.saveProviderApiKey('nvidia_nim', _nvidiaNimApiKey);
     }
 
     await LLMService.saveConfig(config);
@@ -747,6 +782,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           url: 'https://platform.deepseek.com',
           linkLabel: '→ 前往DeepSeek开放平台申请',
         ),
+        const SizedBox(height: 12),
+        _buildNvidiaNimKeyField(),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
@@ -847,6 +884,175 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildNvidiaNimKeyField() {
+    final color = Colors.cyan;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+        borderRadius: BorderRadius.circular(12),
+        color: color.withValues(alpha: 0.03),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _nvidiaNimApiKey.isNotEmpty ? Colors.green : Colors.grey[300],
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('NVIDIA NIM',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: color)),
+              const Spacer(),
+              InkWell(
+                onTap: () async {
+                  try {
+                    await launchUrl(
+                        Uri.parse('https://build.nvidia.com'),
+                        mode: LaunchMode.platformDefault);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('无法打开链接: $e')),
+                      );
+                    }
+                  }
+                },
+                child: Text(
+                  '→ 前往 NVIDIA Build 申请',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: TextEditingController(text: _nvidiaNimApiKey)
+              ..selection =
+                  TextSelection.collapsed(offset: _nvidiaNimApiKey.length),
+            obscureText: true,
+            decoration: InputDecoration(
+              hintText: '输入 NVIDIA NIM API Key（nvapi-...）',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
+              prefixIcon: const Icon(Icons.key, size: 18),
+            ),
+            onChanged: (val) => _nvidiaNimApiKey = val,
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _fetchNvidiaNimModels(),
+              icon: const Icon(Icons.cloud_download_outlined, size: 16),
+              label: const Text('拉取 NVIDIA NIM 模型列表'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: color,
+                side: BorderSide(color: color.withValues(alpha: 0.4)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _fetchNvidiaNimModels() async {
+    if (_nvidiaNimApiKey.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先输入 NVIDIA NIM API Key')),
+        );
+      }
+      return;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在拉取模型列表...')),
+      );
+    }
+    try {
+      final models = await AiChatService.fetchNvidiaNimModels(_nvidiaNimApiKey);
+      if (!mounted) return;
+      final existingIds = textModels
+          .where((m) => m.provider == 'nvidia_nim')
+          .map((m) => m.id)
+          .toSet();
+      final newModels = models.where((id) => !existingIds.contains(id)).toList();
+      if (newModels.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('模型列表已是最新')),
+        );
+        return;
+      }
+      final count = newModels.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('发现 $count 个新模型，请查看控制台日志')),
+      );
+      for (final id in newModels) {
+        debugPrint('[NVIDIA NIM] 可用模型: $id');
+      }
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('可用 NVIDIA NIM 模型'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: ListView(
+              children: models.map((id) => ListTile(
+                dense: true,
+                title: Text(id, style: const TextStyle(fontSize: 13)),
+                trailing: TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _nvidiaNimApiKey = _nvidiaNimApiKey;
+                    setState(() {
+                      if (textModels.any((m) => m.id == id)) {
+                        _selectedTextModel = id;
+                        _selectedTextModelProvider = 'nvidia_nim';
+                      }
+                    });
+                  },
+                  child: const Text('选用'),
+                ),
+              )).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('拉取失败: $e')),
+        );
+      }
+    }
   }
 
   // ==================== Step 3: 选择模型 ====================
@@ -998,6 +1204,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
       {'key': 'zhipu', 'name': '智谱AI', 'color': Colors.orange, 'icon': Icons.auto_awesome},
       {'key': 'mimo', 'name': '小米MiMo', 'color': Colors.blue, 'icon': Icons.smart_toy},
       {'key': 'deepseek', 'name': 'DeepSeek', 'color': Colors.green, 'icon': Icons.psychology},
+      {'key': 'nvidia_nim', 'name': 'NVIDIA NIM', 'color': Colors.cyan, 'icon': Icons.workspace_premium},
       {'key': 'custom', 'name': '自定义', 'color': Colors.grey, 'icon': Icons.settings},
     ];
 
