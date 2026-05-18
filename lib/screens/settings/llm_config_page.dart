@@ -362,6 +362,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
       final textModelId = config.model;
       final visionModelId = config.visionModel;
+      final savedProvider = config.provider;
 
       final textModelExists = textModels.any((m) => m.id == textModelId);
       final customTextMatch =
@@ -376,6 +377,8 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _selectedTextModel = textModelId;
       } else if (customTextMatch != null) {
         _selectedTextModel = customTextMatch.id;
+      } else if (textModelId != null && textModelId.isNotEmpty) {
+        _selectedTextModel = textModelId;
       } else {
         _selectedTextModel = null;
       }
@@ -384,8 +387,14 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         _selectedVisionModel = visionModelId;
       } else if (customVisionMatch != null) {
         _selectedVisionModel = customVisionMatch.id;
+      } else if (visionModelId != null && visionModelId.isNotEmpty) {
+        _selectedVisionModel = visionModelId;
       } else {
         _selectedVisionModel = null;
+      }
+
+      if (savedProvider != null && savedProvider.isNotEmpty) {
+        _selectedTextModelProvider = savedProvider;
       }
     } else {
       _selectedTextModel = 'glm-4.7-flash';
