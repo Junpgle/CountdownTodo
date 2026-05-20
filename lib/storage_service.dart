@@ -20,6 +20,8 @@ import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
 class StorageService {
+  static final Set<String> recentlyResolvedUuids = {};
+
   static SharedPreferences? _prefs;
   static Future<SharedPreferences> get prefs async {
     if (_prefs != null) return _prefs!;
@@ -3453,14 +3455,19 @@ class StorageService {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
             if (sItem.hasConflict && !localItem.hasConflict) {
-              // Server still has conflict but local was resolved — sync conflict metadata only
-              localItem.hasConflict = true;
-              localItem.serverVersionData = sItem.serverVersionData;
-              hasChanges = true;
+              if (recentlyResolvedUuids.contains(localItem.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved todo: ${localItem.id}');
+              } else {
+                // Server still has conflict but local was resolved — sync conflict metadata only
+                localItem.hasConflict = true;
+                localItem.serverVersionData = sItem.serverVersionData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localItem.hasConflict) {
               // Server cleared conflict (resolved from another device) — accept cleared state
               localItem.hasConflict = false;
               localItem.serverVersionData = null;
+              recentlyResolvedUuids.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3500,12 +3507,17 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localGroup = allLocalGroups[idx];
             if (sItem.hasConflict && !localGroup.hasConflict) {
-              localGroup.hasConflict = true;
-              localGroup.conflictData = sItem.conflictData;
-              hasChanges = true;
+              if (recentlyResolvedUuids.contains(localGroup.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved group: ${localGroup.id}');
+              } else {
+                localGroup.hasConflict = true;
+                localGroup.conflictData = sItem.conflictData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localGroup.hasConflict) {
               localGroup.hasConflict = false;
               localGroup.conflictData = null;
+              recentlyResolvedUuids.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3543,12 +3555,17 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localCountdown = allLocalCountdowns[idx];
             if (sItem.hasConflict && !localCountdown.hasConflict) {
-              localCountdown.hasConflict = true;
-              localCountdown.conflictData = sItem.conflictData;
-              hasChanges = true;
+              if (recentlyResolvedUuids.contains(localCountdown.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved countdown: ${localCountdown.id}');
+              } else {
+                localCountdown.hasConflict = true;
+                localCountdown.conflictData = sItem.conflictData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localCountdown.hasConflict) {
               localCountdown.hasConflict = false;
               localCountdown.conflictData = null;
+              recentlyResolvedUuids.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3624,8 +3641,12 @@ class StorageService {
       if (conflicts.isNotEmpty) {
         final conflictDetectionEnabled = await getConflictDetectionEnabled();
         for (final c in conflicts) {
-          final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
+          final itemId = (c.item['uuid'] ?? c.item['id'] ?? '').toString();
           if (itemId.isEmpty) continue;
+          if (recentlyResolvedUuids.contains(itemId)) {
+            debugPrint('⏭️ [MemoryShield] Skipping re-flag of recently resolved item in conflicts: $itemId');
+            continue;
+          }
           final serverVersion = c.conflictWith;
           if (c.type == 'schedule_conflict' &&
               todosIndexMap.containsKey(itemId)) {
@@ -3772,6 +3793,13 @@ class StorageService {
       // 9. 🚀 关键：如果数据发生了变动，触发全局刷新通知
       if (hasChanges) {
         triggerRefresh();
+      }
+
+      // 10. 🛡️ 内存守卫：同步成功后，自动从锁定集合中清理掉在最新 conflicts 中不再包含的 ID
+      final serverConflictIds = conflicts.map((c) => (c.item['uuid'] ?? c.item['id'] ?? '').toString()).toSet();
+      recentlyResolvedUuids.removeWhere((id) => !serverConflictIds.contains(id));
+      if (recentlyResolvedUuids.isNotEmpty) {
+        debugPrint('🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids');
       }
 
       return {
@@ -4876,6 +4904,8 @@ class StorageService {
     await prefs.remove(key);
 
     triggerRefresh();
+    recentlyResolvedUuids.add(uuid);
+    debugPrint('🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid');
   }
 }
 

@@ -362,9 +362,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   Future<void> _loadTeamConflictCounts() async {
     try {
       final results = await Future.wait([
-        StorageService.getTodos(widget.username, includeDeleted: false),
+        StorageService.getTodos(widget.username, includeDeleted: true),
         StorageService.getTodoGroups(widget.username),
-        StorageService.getCountdowns(widget.username, includeDeleted: false),
+        StorageService.getCountdowns(widget.username, includeDeleted: true),
       ]);
 
       final allItems = results.expand((x) => x).toList();

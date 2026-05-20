@@ -1331,6 +1331,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Future<void> _batchResolveGhostConflicts(List<dynamic> items) async {
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1348,7 +1349,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
 
     if (confirmed != true) return;
-
     setState(() => _isLoading = true);
 
     try {
@@ -1401,19 +1401,25 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
       // 3. 批量持久化（每种类型仅写入一次）
       final saves = <Future>[];
-      if (todosChanged)
+      if (todosChanged) {
         saves.add(StorageService.saveTodos(widget.username, allTodos,
             sync: false,
             isSyncSource: true,
             recomputeScheduleConflicts: false));
-      if (groupsChanged)
+      }
+      if (groupsChanged) {
         saves.add(StorageService.saveTodoGroups(widget.username, allGroups,
             sync: false, isSyncSource: true));
-      if (countdownsChanged)
+      }
+      if (countdownsChanged) {
         saves.add(StorageService.saveCountdowns(widget.username, allCountdowns,
             sync: false, isSyncSource: true));
+      }
 
-      if (saves.isNotEmpty) await Future.wait(saves);
+      if (saves.isNotEmpty) {
+        await Future.wait(saves);
+        Future.microtask(() => StorageService.syncData(widget.username));
+      }
     } catch (e) {
       debugPrint("批量修复失败: $e");
     }
@@ -1422,7 +1428,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     await _loadConflicts();
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text("损坏的冲突已批量修复")),
       );
     }
@@ -2098,6 +2104,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Future<void> _batchAcceptServer() async {
     if (_selectedConflictIds.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isBatchApplying = true);
 
     try {
@@ -2158,8 +2165,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         }
       }
 
+      if (successCount > 0) {
+        Future.microtask(() => StorageService.syncData(widget.username));
+      }
+
       if (mounted) {
-        final messenger = ScaffoldMessenger.of(context);
         _selectedConflictIds.clear();
         _isBatchMode = false;
         await _loadConflicts();
@@ -2174,7 +2184,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -2276,6 +2286,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   Future<void> _batchApplyRecommendedExecute() async {
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isBatchApplying = true);
 
     try {
@@ -2354,7 +2365,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         final message = scheduleSkippedCount > 0
             ? '已应用推荐方案，成功处理 $successCount 项版本冲突；$scheduleSkippedCount 项时间冲突需单独处理'
             : '已应用推荐方案，成功处理 $successCount 项冲突';
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(message),
             backgroundColor: Colors.green,
@@ -2363,7 +2374,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('批量操作失败: $e'), backgroundColor: Colors.red),
         );
       }
@@ -2547,13 +2558,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                             onPressed: _isApplyingScheduleFix
                                 ? null
                                 : () async {
+                                    final messenger = ScaffoldMessenger.of(context);
                                     Navigator.pop(sheetContext);
                                     await StorageService
                                         .ignoreLocalScheduleConflict(
                                             widget.username, item);
                                     await _loadConflicts();
                                     if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    messenger.showSnackBar(
                                       const SnackBar(
                                         content: Text('已保留现有时间安排，不再提示这组冲突'),
                                       ),
@@ -3200,6 +3212,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     BuildContext? popContext,
   }) async {
     if (updates.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
     setState(() => _isApplyingScheduleFix = true);
     try {
       final allTodos =
@@ -3215,8 +3228,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       }
       if (appliedCount == 0) return;
       await StorageService.saveTodos(widget.username, allTodos);
+
+      if (appliedCount > 0) {
+        Future.microtask(() => StorageService.syncData(widget.username));
+      }
+
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
       if (popContext != null && popContext.mounted) {
         Navigator.pop(popContext);
       } else if (mounted) {
@@ -3228,7 +3245,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       await _loadConflicts();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text('处理失败: $e'), backgroundColor: Colors.red),
       );
     } finally {
@@ -3863,6 +3880,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         widget.onResolved();
+        Future.microtask(() => StorageService.syncData(widget.username));
         if (!widget.isEmbedded) {
           Navigator.pop(context);
         }
@@ -3928,6 +3946,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         widget.onResolved();
+        Future.microtask(() => StorageService.syncData(widget.username));
         if (!widget.isEmbedded) {
           Navigator.pop(context);
         }
