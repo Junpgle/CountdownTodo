@@ -1114,6 +1114,34 @@ class StorageService {
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
       _inflightTodoRequests.clear();
+
+      // 🚀 针对各自独立团队待办（collabType == 1），同步写入 todo_completions
+      if (!isSyncSource) {
+        try {
+          final localPrefs = await prefs;
+          final int userId = localPrefs.getInt('current_user_id') ?? 0;
+          if (userId > 0) {
+            final compBatch = db.batch();
+            for (var item in dedupeList) {
+              if (item.collabType == 1) {
+                compBatch.insert(
+                    'todo_completions',
+                    {
+                      'todo_uuid': item.id,
+                      'user_id': userId,
+                      'is_completed': item.isDone ? 1 : 0,
+                      'updated_at': DateTime.now().millisecondsSinceEpoch,
+                    },
+                    conflictAlgorithm: ConflictAlgorithm.replace);
+              }
+            }
+            await compBatch.commit(noResult: true);
+          }
+        } catch (e) {
+          debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
+        }
+      }
+
       debugPrint(
           '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
     }
@@ -1608,6 +1636,27 @@ class StorageService {
           'original_text': item.originalText,
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+
+    // 2.1 针对各自独立团队待办（collabType == 1），同步在本地 todo_completions 表中为当前用户写入/更新完成状态
+    if (item.collabType == 1) {
+      try {
+        final localPrefs = await prefs;
+        final int userId = localPrefs.getInt('current_user_id') ?? 0;
+        if (userId > 0) {
+          await db.insert(
+              'todo_completions',
+              {
+                'todo_uuid': item.id,
+                'user_id': userId,
+                'is_completed': item.isDone ? 1 : 0,
+                'updated_at': DateTime.now().millisecondsSinceEpoch,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      } catch (e) {
+        debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
+      }
+    }
 
     // 3. 补齐 Oplog，确保离线更新能被同步
     await db.insert('op_logs', {

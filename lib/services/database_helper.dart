@@ -1555,43 +1555,53 @@ class DatabaseHelper {
     bool includeConflictData = false,
   }) async {
     final db = await instance.database;
+    final prefs = await SharedPreferences.getInstance();
+    final int userId = prefs.getInt('current_user_id') ?? 0;
+
     final whereParts = <String>[];
     final whereArgs = <Object?>[];
 
     if (where != null && where.isNotEmpty) {
       whereParts.add(where);
     } else if (!includeDeleted) {
-      whereParts.add('is_deleted IS NOT 1');
+      whereParts.add('t.is_deleted IS NOT 1');
     }
     if (uuids != null && uuids.isNotEmpty) {
       whereParts.add(
-        'uuid IN (${List.filled(uuids.length, '?').join(', ')})',
+        't.uuid IN (${List.filled(uuids.length, '?').join(', ')})',
       );
       whereArgs.addAll(uuids);
     }
 
+    final List<String> projectedColumns = _todoBaseColumns.map((col) {
+      if (col == 'is_completed') {
+        return 'CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed';
+      }
+      return 't.$col AS $col';
+    }).toList();
+
     final sql = StringBuffer()..write('SELECT ');
     if (inlineTextColumns) {
       sql
-        ..write(_todoBaseColumns.join(', '))
-        ..write(', content, remark');
+        ..write(projectedColumns.join(', '))
+        ..write(', t.content AS content, t.remark AS remark');
       if (includeConflictData) {
-        sql.write(', conflict_data');
+        sql.write(', t.conflict_data AS conflict_data');
       }
     } else {
       sql
-        ..write(_todoBaseColumns.join(', '))
-        ..write(', LENGTH(content) AS _content_length')
-        ..write(', LENGTH(remark) AS _remark_length');
+        ..write(projectedColumns.join(', '))
+        ..write(', LENGTH(t.content) AS _content_length')
+        ..write(', LENGTH(t.remark) AS _remark_length');
       if (includeConflictData) {
-        sql.write(', LENGTH(conflict_data) AS _conflict_length');
+        sql.write(', LENGTH(t.conflict_data) AS _conflict_length');
       }
     }
-    sql.write(' FROM todos');
+    sql.write(' FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = $userId');
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }
-    sql.write(' ORDER BY updated_at DESC');
+    sql.write(' ORDER BY t.updated_at DESC');
     if (limit != null) {
       sql.write(' LIMIT $limit');
     }
