@@ -372,6 +372,7 @@ class FloatWindowService {
         plannedDuration: saved.plannedFocusSeconds,
         actualDuration: actualSecs,
         status: PomodoroRecordStatus.completed,
+        note: saved.note,
       );
 
       await PomodoroService.addRecord(record);
@@ -388,6 +389,21 @@ class FloatWindowService {
         }
       }
     } else if (action == 'abandon') {
+      final actualSecs = ((now - saved.sessionStartMs) ~/ 1000);
+      if (actualSecs > 5) {
+        await PomodoroService.addRecord(PomodoroRecord(
+          uuid: saved.sessionUuid,
+          todoUuid: saved.todoUuid,
+          todoTitle: saved.todoTitle,
+          tagUuids: saved.tagUuids,
+          startTime: saved.sessionStartMs,
+          endTime: now,
+          plannedDuration: saved.plannedFocusSeconds,
+          actualDuration: actualSecs,
+          status: PomodoroRecordStatus.interrupted,
+          note: saved.note,
+        ));
+      }
       PomodoroSyncService().sendStopSignal();
     }
 

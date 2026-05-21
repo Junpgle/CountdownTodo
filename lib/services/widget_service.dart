@@ -39,6 +39,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
 }
 
 class WidgetService {
+  static const String _widgetPackage = 'com.math_quiz.junpgle.com.math_quiz_app';
   static const String androidWidgetName = 'TodoWidgetProvider';
   static const String todoOnlyWidgetName = 'TodoOnlyWidgetProvider';
   static const String courseOnlyWidgetName = 'CourseOnlyWidgetProvider';
@@ -248,25 +249,34 @@ class WidgetService {
     });
 
     await Future.wait(widgetWrites);
+    debugPrint('✅ [WidgetService] Widget data saved, now updating widgets...');
+
     try {
-      // 更新所有小部件
-      await Future.wait([
-        HomeWidget.updateWidget(androidName: androidWidgetName),
-        HomeWidget.updateWidget(androidName: todoOnlyWidgetName),
-        HomeWidget.updateWidget(androidName: courseOnlyWidgetName),
-        HomeWidget.updateWidget(androidName: countdownOnlyWidgetName),
-        HomeWidget.updateWidget(androidName: focusOnlyWidgetName),
+      // 使用 qualifiedAndroidName 传入完整类名，避免 debug 构建中 applicationId 带 .debug 后缀导致 Class.forName 失败
+      final results = await Future.wait([
+        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$androidWidgetName').catchError((e) {
+          debugPrint('⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
+          return false;
+        }),
+        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName').catchError((e) {
+          debugPrint('⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
+          return false;
+        }),
+        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName').catchError((e) {
+          debugPrint('⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
+          return false;
+        }),
+        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName').catchError((e) {
+          debugPrint('⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
+          return false;
+        }),
+        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName').catchError((e) {
+          debugPrint('⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+          return false;
+        }),
       ]);
+      debugPrint('✅ [WidgetService] All widgets updated: $results');
     } catch (e) {
-      final message = e.toString();
-      if (Platform.isAndroid &&
-          (message.contains('TodoWidgetProvider') ||
-              message.contains('ClassNotFoundException'))) {
-        _widgetUpdateDisabled = true;
-        debugPrint(
-            '⚠️ [WidgetService] Android Widget provider unavailable in current build; disable further widget updates.');
-        return;
-      }
       debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
     }
   }

@@ -1,5 +1,14 @@
 // 1. 先配置 Kotlin 和 Android 编译选项
 subprojects {
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "androidx.glance") {
+                useVersion("1.1.1")
+                because("home_widget 0.9.0 declares androidx.glance:glance-appwidget:1.+, whose latest alpha requires AGP 9.1 and compileSdk 37.")
+            }
+        }
+    }
+
     plugins.withId("org.jetbrains.kotlin.android") {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> {
             jvmToolchain(17)

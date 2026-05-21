@@ -321,6 +321,7 @@ class ApiService {
           'server_pomodoros': data['server_pomodoro_records'] ?? [],
           'server_tags': data['server_pomodoro_tags'] ?? [],
           'server_plan_blocks': data['server_plan_blocks'] ?? [],
+          'joined_team_uuids': data['joined_team_uuids'],
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {
