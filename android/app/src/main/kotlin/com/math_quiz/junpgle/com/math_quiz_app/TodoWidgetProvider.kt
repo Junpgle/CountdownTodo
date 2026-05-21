@@ -110,11 +110,10 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         }
         localPrefs.edit().putString("last_widget_mode", widgetMode).apply()
 
-        // 🚀 动态嗅探系统深色模式
-        val isDarkMode = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val tabActiveColor = android.graphics.Color.parseColor(if (isDarkMode) "#F9FAFB" else "#111827")
-        val tabInactiveColor = android.graphics.Color.parseColor(if (isDarkMode) "#6B7280" else "#9CA3AF")
-        val bgColor = android.graphics.Color.parseColor(if (isDarkMode) "#1E1E1E" else "#FFFFFF")
+        // 🚀 使用系统动态色彩配置，完全与暗色模式逻辑解耦
+        val tabActiveColor = context.getColor(R.color.widget_tab_active_text)
+        val tabInactiveColor = context.getColor(R.color.widget_text_secondary)
+        val bgColor = context.getColor(R.color.widget_bg)
 
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo)
@@ -130,6 +129,12 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             views.setOnClickPendingIntent(R.id.tab_course, getTabIntent(context, 1, appWidgetIds))
             views.setOnClickPendingIntent(R.id.tab_countdown, getTabIntent(context, 2, appWidgetIds))
             views.setOnClickPendingIntent(R.id.tab_timelog, getTabIntent(context, 3, appWidgetIds))
+
+            // 🚀 核心优化：动态设置当前活动 Tab 的高光胶囊药丸背景
+            views.setInt(R.id.tab_todo, "setBackgroundResource", if (currentTab == 0) R.drawable.widget_tab_active_pill else 0)
+            views.setInt(R.id.tab_course, "setBackgroundResource", if (currentTab == 1) R.drawable.widget_tab_active_pill else 0)
+            views.setInt(R.id.tab_countdown, "setBackgroundResource", if (currentTab == 2) R.drawable.widget_tab_active_pill else 0)
+            views.setInt(R.id.tab_timelog, "setBackgroundResource", if (currentTab == 3) R.drawable.widget_tab_active_pill else 0)
 
             views.setTextColor(R.id.tab_todo, if (currentTab == 0) tabActiveColor else tabInactiveColor)
             views.setTextColor(R.id.tab_course, if (currentTab == 1) tabActiveColor else tabInactiveColor)

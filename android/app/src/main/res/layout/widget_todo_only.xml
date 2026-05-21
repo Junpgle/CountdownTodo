@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- 动态背景层 -->
+    <ImageView
+        android:id="@+id/widget_bg_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_bg_modern"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:id="@+id/main_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="14dp">
+
+        <!-- 标题区域，动态文本色与精美字号 -->
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="待办清单"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14.5sp"
+            android:textStyle="bold"
+            android:paddingBottom="10dp"
+            android:includeFontPadding="false" />
+
+        <!-- 待办列表 -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ListView
+                android:id="@+id/list_todos"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@null"
+                android:scrollbars="none"
+                android:overScrollMode="never" />
+
+            <TextView
+                android:id="@+id/empty_todos"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="暂无待办事项"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp"
+                android:visibility="gone"
+                android:includeFontPadding="false" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

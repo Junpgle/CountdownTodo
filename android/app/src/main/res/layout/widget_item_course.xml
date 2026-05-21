@@ -2,12 +2,71 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:paddingVertical="8dp">
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:minHeight="40dp"
+    android:paddingVertical="5dp"
+    android:paddingHorizontal="4dp">
 
-    <TextView android:id="@+id/course_date" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/>
-    <TextView android:id="@+id/course_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/>
-    <TextView android:id="@+id/course_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="2dp"/>
-    <TextView android:id="@+id/course_room" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="11sp" android:layout_marginTop="1dp" />
+    <!-- 优化1：左侧彩条改为精致固定高度 42dp，垂直居中对齐，彻底避免 RemoteViews 高度测量冲突与截断 -->
+    <FrameLayout
+        android:layout_width="3dp"
+        android:layout_height="42dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginEnd="10dp"
+        android:background="@color/widget_text_accent" />
 
+    <!-- 优化2：用户指定的极致清爽四行垂直信息流展示，行行独立，永不遮挡 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+ 
+        <!-- 第一行：x 天后 | 5月25日 (日期) -->
+        <TextView
+            android:id="@+id/course_date"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"/>
+ 
+        <!-- 第二行：课程名称 (课程名称) -->
+        <TextView
+            android:id="@+id/course_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2.5dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:includeFontPadding="false"/>
+ 
+        <!-- 第三行：课程地点 (课程地点) -->
+        <TextView
+            android:id="@+id/course_room"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2.5dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:includeFontPadding="false"/>
+
+        <!-- 第四行：时间 (时间) -->
+        <TextView
+            android:id="@+id/course_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10.5sp"
+            android:layout_marginTop="2dp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 </LinearLayout>

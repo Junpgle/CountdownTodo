@@ -362,9 +362,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   Future<void> _loadTeamConflictCounts() async {
     try {
       final results = await Future.wait([
-        StorageService.getTodos(widget.username, includeDeleted: false),
-        StorageService.getTodoGroups(widget.username),
-        StorageService.getCountdowns(widget.username, includeDeleted: false),
+        StorageService.getTodos(widget.username, includeDeleted: true),
+        StorageService.getTodoGroups(widget.username, includeDeleted: true),
+        StorageService.getCountdowns(widget.username, includeDeleted: true),
       ]);
 
       final allItems = results.expand((x) => x).toList();
@@ -376,6 +376,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         String? teamUuid;
 
         if (item is TodoItem) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           if (!item.hasConflict) continue;
           // 🚀 对齐 ConflictInboxScreen：跳过全天任务的冲突
           if (item.isAllDayTask) continue;
@@ -390,15 +391,17 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   p is Map &&
                   !TodoItem.fromJson(Map<String, dynamic>.from(p))
                       .isAllDayTask);
-              if (!hasValidPeer) continue;
+              if (!hasValidPeer) continue; // 🚀 使用 continue 跳过当前有冲突但均非有效对等体的任务
             }
           }
           hasConflict = true;
           teamUuid = item.teamUuid;
         } else if (item is TodoGroup) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           hasConflict = item.hasConflict;
           teamUuid = item.teamUuid;
         } else if (item is CountdownItem) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           hasConflict = item.hasConflict;
           teamUuid = item.teamUuid;
         }
@@ -752,6 +755,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                       username: widget.username,
                       copyInviteText: _copyTeamInviteText,
                       copyInviteCode: _copyInviteCode,
+                      onDeleteTeam: _confirmDeleteTeam,
+                      onLeaveTeam: _confirmLeaveTeam,
                       key: ValueKey(_selectedTeam!.uuid), // 强制刷新
                     ),
             ),
@@ -2025,13 +2030,17 @@ class _TeamDetailView extends StatefulWidget {
   final String username;
   final Future<void> Function(Team team) copyInviteText;
   final Future<void> Function(Team team) copyInviteCode;
+  final void Function(Team team) onDeleteTeam;
+  final void Function(Team team) onLeaveTeam;
   const _TeamDetailView(
       {super.key,
       required this.team,
       required this.onRefresh,
       required this.username,
       required this.copyInviteText,
-      required this.copyInviteCode});
+      required this.copyInviteCode,
+      required this.onDeleteTeam,
+      required this.onLeaveTeam});
 
   @override
   State<_TeamDetailView> createState() => _TeamDetailViewState();
@@ -2120,7 +2129,9 @@ class _TeamDetailViewState extends State<_TeamDetailView>
               _TeamSettingsView(
                   team: widget.team,
                   onRefresh: widget.onRefresh,
-                  copyInviteCode: widget.copyInviteCode),
+                  copyInviteCode: widget.copyInviteCode,
+                  onDeleteTeam: widget.onDeleteTeam,
+                  onLeaveTeam: widget.onLeaveTeam),
             ],
           ),
         ),
@@ -2297,10 +2308,14 @@ class _TeamSettingsView extends StatelessWidget {
   final Team team;
   final VoidCallback onRefresh;
   final Future<void> Function(Team team) copyInviteCode;
+  final void Function(Team team) onDeleteTeam;
+  final void Function(Team team) onLeaveTeam;
   const _TeamSettingsView(
       {required this.team,
       required this.onRefresh,
-      required this.copyInviteCode});
+      required this.copyInviteCode,
+      required this.onDeleteTeam,
+      required this.onLeaveTeam});
 
   @override
   Widget build(BuildContext context) {
@@ -2352,9 +2367,7 @@ class _TeamSettingsView extends StatelessWidget {
             color: Colors.redAccent,
             title: '解散团队',
             subtitle: '删除所有团队任务与成员，此操作不可逆',
-            onTap: () {
-              // 触发解散弹窗
-            },
+            onTap: () => onDeleteTeam(team),
           ),
         ] else ...[
           const SizedBox(height: 32),
@@ -2364,9 +2377,7 @@ class _TeamSettingsView extends StatelessWidget {
             color: Colors.orange,
             title: '退出团队',
             subtitle: '退出后将不再接收此团队的任务同步',
-            onTap: () {
-              // 触发退出弹窗
-            },
+            onTap: () => onLeaveTeam(team),
           ),
         ],
       ],

@@ -49,6 +49,7 @@ class ChatStorageService {
   static const String _chatModelKey = 'chat_model';
   static const String _chatApiKeyKey = 'chat_api_key';
   static const String _chatApiUrlKey = 'chat_api_url';
+  static const String _chatProviderKey = 'chat_provider';
   static const String _deepThinkingKey = 'chat_deep_thinking';
 
   // 🚀 私有助手：获取隔离的存储 Key
@@ -299,10 +300,12 @@ class ChatStorageService {
     final mKey = await _getScopedKey(_chatModelKey);
     final kKey = await _getScopedKey(_chatApiKeyKey);
     final uKey = await _getScopedKey(_chatApiUrlKey);
+    final pKey = await _getScopedKey(_chatProviderKey);
 
     String? model = prefs.getString(mKey);
     String? apiKey = prefs.getString(kKey);
     String? apiUrl = prefs.getString(uKey);
+    String? provider = prefs.getString(pKey);
 
     // 迁移检查
     if (model == null) {
@@ -329,6 +332,7 @@ class ChatStorageService {
       'apiKey': apiKey ?? '',
       'apiUrl':
           apiUrl ?? 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      'provider': provider ?? '',
     };
   }
 
@@ -336,16 +340,19 @@ class ChatStorageService {
     required String model,
     required String apiKey,
     String? apiUrl,
+    String? provider,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final mKey = await _getScopedKey(_chatModelKey);
     final kKey = await _getScopedKey(_chatApiKeyKey);
     final uKey = await _getScopedKey(_chatApiUrlKey);
+    final pKey = await _getScopedKey(_chatProviderKey);
 
     if (model.isEmpty) {
       await prefs.remove(mKey);
       await prefs.remove(kKey);
       await prefs.remove(uKey);
+      await prefs.remove(pKey);
     } else {
       await prefs.setString(mKey, model);
       if (apiKey.isNotEmpty) {
@@ -353,6 +360,9 @@ class ChatStorageService {
       }
       if (apiUrl != null && apiUrl.isNotEmpty) {
         await prefs.setString(uKey, apiUrl);
+      }
+      if (provider != null && provider.isNotEmpty) {
+        await prefs.setString(pKey, provider);
       }
     }
   }
@@ -362,9 +372,11 @@ class ChatStorageService {
     final mKey = await _getScopedKey(_chatModelKey);
     final kKey = await _getScopedKey(_chatApiKeyKey);
     final uKey = await _getScopedKey(_chatApiUrlKey);
+    final pKey = await _getScopedKey(_chatProviderKey);
     await prefs.remove(mKey);
     await prefs.remove(kKey);
     await prefs.remove(uKey);
+    await prefs.remove(pKey);
   }
 
   static Future<bool> isDeepThinkingEnabled() async {

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:initialLayout="@layout/widget_todo"
-    android:previewLayout="@layout/widget_todo"
-    android:description="@string/widget_desc_todo"
+    android:initialLayout="@layout/widget_course_only"
+    android:previewLayout="@layout/widget_course_only"
+    android:description="@string/widget_desc_course_only"
     android:minWidth="110dp"
     android:minHeight="110dp"
     android:targetCellWidth="2"

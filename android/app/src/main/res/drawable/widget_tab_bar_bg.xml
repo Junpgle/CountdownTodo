@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 标签条凹槽背景，使用动态中灰底色 -->
+    <solid android:color="@color/widget_tab_bar_bg" />
+    <!-- 胶囊样式的大圆角 -->
+    <corners android:radius="14dp" />
+</shape>

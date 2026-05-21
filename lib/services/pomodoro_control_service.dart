@@ -243,6 +243,7 @@ class PomodoroControlService {
       status: status,
       deviceId: deviceId,
       planBlockId: state.planBlockId,
+      note: state.note,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {

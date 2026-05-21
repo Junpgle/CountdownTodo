@@ -20,6 +20,24 @@ import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
 class StorageService {
+  static final Set<String> recentlyResolvedUuids = {};
+  static final Map<String, DateTime> recentlyResolvedTimes = {};
+
+  static bool isRecentlyResolved(String uuid) {
+    if (!recentlyResolvedUuids.contains(uuid)) return false;
+    final time = recentlyResolvedTimes[uuid];
+    if (time == null) return true;
+    // 🛡️ [MemoryShield] 竞态阻断锁自动超时阈值定为 30 秒。
+    // 超过该时间则认定之前的竞态场景早已结束，自动解锁，以防用户离线等极端同步失败情况下产生死锁。
+    if (DateTime.now().difference(time).inSeconds > 30) {
+      recentlyResolvedUuids.remove(uuid);
+      recentlyResolvedTimes.remove(uuid);
+      debugPrint('🔓 [MemoryShield] Timeout auto-released recently resolved item: $uuid');
+      return false;
+    }
+    return true;
+  }
+
   static SharedPreferences? _prefs;
   static Future<SharedPreferences> get prefs async {
     if (_prefs != null) return _prefs!;
@@ -1114,6 +1132,34 @@ class StorageService {
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
       _inflightTodoRequests.clear();
+
+      // 🚀 针对各自独立团队待办（collabType == 1），同步写入 todo_completions
+      if (!isSyncSource) {
+        try {
+          final localPrefs = await prefs;
+          final int userId = localPrefs.getInt('current_user_id') ?? 0;
+          if (userId > 0) {
+            final compBatch = db.batch();
+            for (var item in dedupeList) {
+              if (item.collabType == 1) {
+                compBatch.insert(
+                    'todo_completions',
+                    {
+                      'todo_uuid': item.id,
+                      'user_id': userId,
+                      'is_completed': item.isDone ? 1 : 0,
+                      'updated_at': DateTime.now().millisecondsSinceEpoch,
+                    },
+                    conflictAlgorithm: ConflictAlgorithm.replace);
+              }
+            }
+            await compBatch.commit(noResult: true);
+          }
+        } catch (e) {
+          debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
+        }
+      }
+
       debugPrint(
           '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
     }
@@ -1609,6 +1655,27 @@ class StorageService {
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    // 2.1 针对各自独立团队待办（collabType == 1），同步在本地 todo_completions 表中为当前用户写入/更新完成状态
+    if (item.collabType == 1) {
+      try {
+        final localPrefs = await prefs;
+        final int userId = localPrefs.getInt('current_user_id') ?? 0;
+        if (userId > 0) {
+          await db.insert(
+              'todo_completions',
+              {
+                'todo_uuid': item.id,
+                'user_id': userId,
+                'is_completed': item.isDone ? 1 : 0,
+                'updated_at': DateTime.now().millisecondsSinceEpoch,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      } catch (e) {
+        debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
+      }
+    }
+
     // 3. 补齐 Oplog，确保离线更新能被同步
     await db.insert('op_logs', {
       'op_type': 'UPSERT',
@@ -2031,16 +2098,80 @@ class StorageService {
   /// 🚀 Uni-Sync 4.0: 当被移出团队时，彻底清理本地缓存的相关数据
   static Future<void> clearTeamItems(String teamUuid) async {
     final db = await DatabaseHelper.instance.database;
-    final batch = db.batch();
+    final now = DateTime.now().millisecondsSinceEpoch;
 
-    // 1. 从 SQLite 删除 (级联清理独立完成状态与核心业务表)
-    batch.execute(
-        'DELETE FROM todo_completions WHERE todo_uuid IN (SELECT uuid FROM todos WHERE team_uuid = ?)',
-        [teamUuid]);
-    batch.delete('todos', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-    batch.delete('todo_groups', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-    batch.delete('countdowns', where: 'team_uuid = ?', whereArgs: [teamUuid]);
-    await batch.commit(noResult: true);
+    // 1. 软删除 (标记 isDeleted，通过同步传播到服务器)
+    await db.rawUpdate(
+        "UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid]);
+    await db.rawUpdate(
+        "UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid]);
+    await db.rawUpdate(
+        "UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid]);
+
+    // 🚀 关键：为软删除的项创建 op_log，使同步引擎能将删除传播到服务端
+    final deletedTodos = await db.query('todos',
+        columns: ['uuid', 'version', 'updated_at'],
+        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+        whereArgs: [teamUuid, now]);
+    for (var row in deletedTodos) {
+      await db.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'todos',
+        'target_uuid': row['uuid'],
+        'data_json': jsonEncode({
+          'uuid': row['uuid'],
+          'is_deleted': true,
+          'version': row['version'],
+          'updated_at': row['updated_at'],
+        }),
+        'timestamp': now,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+    }
+    final deletedGroups = await db.query('todo_groups',
+        columns: ['uuid', 'version', 'updated_at'],
+        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+        whereArgs: [teamUuid, now]);
+    for (var row in deletedGroups) {
+      await db.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'todo_groups',
+        'target_uuid': row['uuid'],
+        'data_json': jsonEncode({
+          'uuid': row['uuid'],
+          'is_deleted': true,
+          'version': row['version'],
+          'updated_at': row['updated_at'],
+        }),
+        'timestamp': now,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+    }
+    final deletedCountdowns = await db.query('countdowns',
+        columns: ['uuid', 'version', 'updated_at'],
+        where: 'team_uuid = ? AND is_deleted = 1 AND updated_at = ?',
+        whereArgs: [teamUuid, now]);
+    for (var row in deletedCountdowns) {
+      await db.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'countdowns',
+        'target_uuid': row['uuid'],
+        'data_json': jsonEncode({
+          'uuid': row['uuid'],
+          'is_deleted': true,
+          'version': row['version'],
+          'updated_at': row['updated_at'],
+        }),
+        'timestamp': now,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+    }
 
     // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
     final prefs = await SharedPreferences.getInstance();
@@ -3205,6 +3336,23 @@ class StorageService {
         }
       }
 
+      // 🚀 提取当前团队列表，用于孤立检测和合并防御
+      final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
+      Set<String> currentTeams = joinedTeamUuids != null
+          ? joinedTeamUuids.map((e) => e.toString()).toSet()
+          : <String>{};
+
+      // 🚀 补充：当 joinedTeamUuids 为 null 时，从本地 teams 表构建已知团队集合
+      // 用于防复活守卫判断团队是否已解散
+      if (joinedTeamUuids == null) {
+        try {
+          final localTeamRows = await db.query('teams', columns: ['uuid']);
+          final localKnownTeams = localTeamRows.map((r) => r['uuid'].toString()).toSet();
+          // 合并到 currentTeams 中，使孤立检测和防复活守卫也能受益
+          currentTeams = localKnownTeams;
+        } catch (_) {}
+      }
+
       if (response['success'] == true) {
         // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
         // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
@@ -3285,10 +3433,7 @@ class StorageService {
         }
 
         // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
-        final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
         if (joinedTeamUuids != null) {
-          final Set<String> currentTeams =
-              joinedTeamUuids.map((e) => e.toString()).toSet();
 
           // 获取本地所有存在的 team_uuid (联合查询：待办、倒计时、文件夹)
           final localTeamRows = await db.rawQuery('''
@@ -3340,7 +3485,7 @@ class StorageService {
 
       // 6. 🛡️ 数据合并逻辑 (LWW - Last Write Wins) — O(1) HashMap lookup
 
-      // 🚀 核心修复：获取本地忽略表，防止“僵尸数据”复活
+      // 🚀 核心修复：获取本地忽略表，防止”僵尸数据”复活
       final ignoredRows = await db.query('ignored_remote_items');
       final Set<String> ignoredUuids =
           ignoredRows.map((e) => e['uuid'].toString()).toSet();
@@ -3364,6 +3509,20 @@ class StorageService {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
           continue;
         }
+        // 🚀 核心防御：非所属团队的数据处理（防止退出/被踢后数据回流）
+        if (sItem.teamUuid != null &&
+            sItem.teamUuid!.isNotEmpty &&
+            joinedTeamUuids != null &&
+            !currentTeams.contains(sItem.teamUuid)) {
+          if (sItem.isDeleted) {
+            // 服务端已标记删除 → 接受，让删除传播到客户端
+            debugPrint('✅ [合并接受] UUID: ${sItem.id} 团队已解散，接受删除标记');
+          } else {
+            // 服务端未删除 → 跳过，防止已删除的待办被复活
+            debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            continue;
+          }
+        }
         final serverDeviceId = serverRaw['device_id']?.toString();
         final bool isUpdatedByOtherDevice = serverDeviceId != null &&
             serverDeviceId.isNotEmpty &&
@@ -3374,11 +3533,33 @@ class StorageService {
           debugPrint(
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
-          // 防回滚：本地已删除且更“新”时，拒绝服务端旧的未删除数据复活
+          // 防回滚：本地已删除且更”新”时，拒绝服务端旧的未删除数据复活
           if (local.isDeleted &&
               !sItem.isDeleted &&
               local.updatedAt > sItem.updatedAt &&
               local.version >= sItem.version) {
+            continue;
+          }
+
+          // 🚀 核心防护：本地已删除的团队待办，拒绝服务端未删除版本复活
+          // 团队解散后，服务端可能因时序问题返回旧的未删除版本
+          if (local.isDeleted &&
+              !sItem.isDeleted &&
+              local.teamUuid != null &&
+              local.teamUuid!.isNotEmpty &&
+              sItem.version <= local.version) {
+            debugPrint('🛡️ [防复活] UUID: ${sItem.id} 本地已删除(V:${local.version})，服务端未删除(V:${sItem.version})，拒绝复活');
+            continue;
+          }
+          // 🚀 补充防护：已解散团队的已删除待办，无条件拒绝未删除版本复活
+          // 通过 currentTeams 判断团队是否已解散（兼容 joinedTeamUuids 为 null 的情况）
+          if (local.isDeleted &&
+              !sItem.isDeleted &&
+              local.teamUuid != null &&
+              local.teamUuid!.isNotEmpty &&
+              currentTeams.isNotEmpty &&
+              !currentTeams.contains(local.teamUuid)) {
+            debugPrint('🛡️ [防复活-强拦截] UUID: ${sItem.id} 团队 ${local.teamUuid} 已解散(currentTeams=$currentTeams)，拒绝未删除版本复活');
             continue;
           }
 
@@ -3404,14 +3585,20 @@ class StorageService {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
             if (sItem.hasConflict && !localItem.hasConflict) {
-              // Server still has conflict but local was resolved — sync conflict metadata only
-              localItem.hasConflict = true;
-              localItem.serverVersionData = sItem.serverVersionData;
-              hasChanges = true;
+              if (isRecentlyResolved(localItem.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved todo: ${localItem.id}');
+              } else {
+                // Server still has conflict but local was resolved — sync conflict metadata only
+                localItem.hasConflict = true;
+                localItem.serverVersionData = sItem.serverVersionData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localItem.hasConflict) {
               // Server cleared conflict (resolved from another device) — accept cleared state
               localItem.hasConflict = false;
               localItem.serverVersionData = null;
+              recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3438,8 +3625,39 @@ class StorageService {
           debugPrint('🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 已忽略');
           continue;
         }
+        if (sItem.teamUuid != null &&
+            sItem.teamUuid!.isNotEmpty &&
+            joinedTeamUuids != null &&
+            !currentTeams.contains(sItem.teamUuid)) {
+          if (sItem.isDeleted) {
+            debugPrint('✅ [合并接受] 文件夹 UUID: ${sItem.id} 团队已解散，接受删除标记');
+          } else {
+            debugPrint('🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            continue;
+          }
+        }
         if (groupsIndexMap.containsKey(sItem.id)) {
           final idx = groupsIndexMap[sItem.id]!;
+          final localGroupForGuard = allLocalGroups[idx];
+          // 🚀 核心防护：本地已删除的团队文件夹，拒绝服务端未删除版本复活
+          if (localGroupForGuard.isDeleted &&
+              !sItem.isDeleted &&
+              localGroupForGuard.teamUuid != null &&
+              localGroupForGuard.teamUuid!.isNotEmpty &&
+              sItem.version <= localGroupForGuard.version) {
+            debugPrint('🛡️ [防复活] 文件夹 UUID: ${sItem.id} 本地已删除，拒绝复活');
+            continue;
+          }
+          // 🚀 补充防护：已解散团队的已删除文件夹，无条件拒绝未删除版本复活
+          if (localGroupForGuard.isDeleted &&
+              !sItem.isDeleted &&
+              localGroupForGuard.teamUuid != null &&
+              localGroupForGuard.teamUuid!.isNotEmpty &&
+              currentTeams.isNotEmpty &&
+              !currentTeams.contains(localGroupForGuard.teamUuid)) {
+            debugPrint('🛡️ [防复活-强拦截] 文件夹 UUID: ${sItem.id} 团队已解散，拒绝未删除版本复活');
+            continue;
+          }
           if (sItem.isDeleted ||
               sItem.version > allLocalGroups[idx].version ||
               sItem.updatedAt > allLocalGroups[idx].updatedAt) {
@@ -3451,12 +3669,18 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localGroup = allLocalGroups[idx];
             if (sItem.hasConflict && !localGroup.hasConflict) {
-              localGroup.hasConflict = true;
-              localGroup.conflictData = sItem.conflictData;
-              hasChanges = true;
+              if (isRecentlyResolved(localGroup.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved group: ${localGroup.id}');
+              } else {
+                localGroup.hasConflict = true;
+                localGroup.conflictData = sItem.conflictData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localGroup.hasConflict) {
               localGroup.hasConflict = false;
               localGroup.conflictData = null;
+              recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3481,8 +3705,39 @@ class StorageService {
           debugPrint('🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 已忽略');
           continue;
         }
+        if (sItem.teamUuid != null &&
+            sItem.teamUuid!.isNotEmpty &&
+            joinedTeamUuids != null &&
+            !currentTeams.contains(sItem.teamUuid)) {
+          if (sItem.isDeleted) {
+            debugPrint('✅ [合并接受] 倒计时 UUID: ${sItem.id} 团队已解散，接受删除标记');
+          } else {
+            debugPrint('🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+            continue;
+          }
+        }
         if (countdownsIndexMap.containsKey(sItem.id)) {
           final idx = countdownsIndexMap[sItem.id]!;
+          final localCountdownForGuard = allLocalCountdowns[idx];
+          // 🚀 核心防护：本地已删除的团队倒计时，拒绝服务端未删除版本复活
+          if (localCountdownForGuard.isDeleted &&
+              !sItem.isDeleted &&
+              localCountdownForGuard.teamUuid != null &&
+              localCountdownForGuard.teamUuid!.isNotEmpty &&
+              sItem.version <= localCountdownForGuard.version) {
+            debugPrint('🛡️ [防复活] 倒计时 UUID: ${sItem.id} 本地已删除，拒绝复活');
+            continue;
+          }
+          // 🚀 补充防护：已解散团队的已删除倒计时，无条件拒绝未删除版本复活
+          if (localCountdownForGuard.isDeleted &&
+              !sItem.isDeleted &&
+              localCountdownForGuard.teamUuid != null &&
+              localCountdownForGuard.teamUuid!.isNotEmpty &&
+              currentTeams.isNotEmpty &&
+              !currentTeams.contains(localCountdownForGuard.teamUuid)) {
+            debugPrint('🛡️ [防复活-强拦截] 倒计时 UUID: ${sItem.id} 团队已解散，拒绝未删除版本复活');
+            continue;
+          }
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
               sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
@@ -3494,12 +3749,18 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localCountdown = allLocalCountdowns[idx];
             if (sItem.hasConflict && !localCountdown.hasConflict) {
-              localCountdown.hasConflict = true;
-              localCountdown.conflictData = sItem.conflictData;
-              hasChanges = true;
+              if (isRecentlyResolved(localCountdown.id)) {
+                debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved countdown: ${localCountdown.id}');
+              } else {
+                localCountdown.hasConflict = true;
+                localCountdown.conflictData = sItem.conflictData;
+                hasChanges = true;
+              }
             } else if (!sItem.hasConflict && localCountdown.hasConflict) {
               localCountdown.hasConflict = false;
               localCountdown.conflictData = null;
+              recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3575,8 +3836,12 @@ class StorageService {
       if (conflicts.isNotEmpty) {
         final conflictDetectionEnabled = await getConflictDetectionEnabled();
         for (final c in conflicts) {
-          final itemId = c.item['uuid'] ?? c.item['id'] ?? '';
+          final itemId = (c.item['uuid'] ?? c.item['id'] ?? '').toString();
           if (itemId.isEmpty) continue;
+          if (isRecentlyResolved(itemId)) {
+            debugPrint('⏭️ [MemoryShield] Skipping re-flag of recently resolved item in conflicts: $itemId');
+            continue;
+          }
           final serverVersion = c.conflictWith;
           if (c.type == 'schedule_conflict' &&
               todosIndexMap.containsKey(itemId)) {
@@ -3723,6 +3988,14 @@ class StorageService {
       // 9. 🚀 关键：如果数据发生了变动，触发全局刷新通知
       if (hasChanges) {
         triggerRefresh();
+      }
+
+      // 10. 🛡️ 内存守卫：同步成功后，自动从锁定集合中清理掉在最新 conflicts 中不再包含的 ID
+      final serverConflictIds = conflicts.map((c) => (c.item['uuid'] ?? c.item['id'] ?? '').toString()).toSet();
+      recentlyResolvedUuids.removeWhere((id) => !serverConflictIds.contains(id));
+      recentlyResolvedTimes.removeWhere((id, _) => !serverConflictIds.contains(id));
+      if (recentlyResolvedUuids.isNotEmpty) {
+        debugPrint('🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids');
       }
 
       return {
@@ -4827,6 +5100,9 @@ class StorageService {
     await prefs.remove(key);
 
     triggerRefresh();
+    recentlyResolvedUuids.add(uuid);
+    recentlyResolvedTimes[uuid] = DateTime.now();
+    debugPrint('🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid (with timestamp)');
   }
 }
 

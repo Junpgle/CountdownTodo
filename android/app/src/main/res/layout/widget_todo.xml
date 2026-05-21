@@ -13,30 +13,77 @@
         android:scaleType="fitXY"
         android:contentDescription="@null" />
 
-    <!-- 🚀 优化1：大幅增加四周边界，提供舒适的全局呼吸感 -->
+    <!-- 全局容器，带舒适的内呼吸距 -->
     <LinearLayout
         android:id="@+id/main_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="14dp"
         android:paddingVertical="14dp">
 
-        <!-- 顶栏区域 -->
-        <!-- 🚀 优化2：增加 Tab 和下方列表之间的留白 paddingBottom -->
+        <!-- 顶栏区域：高保真胶囊式分段 Tab 栏 -->
         <LinearLayout
             android:id="@+id/tabs_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingBottom="12dp"
+            android:background="@drawable/widget_tab_bar_bg"
+            android:padding="3dp"
+            android:layout_marginBottom="12dp"
             android:weightSum="4">
-            <TextView android:id="@+id/tab_todo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="待办" android:textColor="#111827" android:textSize="14sp" android:textStyle="bold" />
-            <TextView android:id="@+id/tab_course" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="课程" android:textColor="#9CA3AF" android:textSize="14sp" />
-            <TextView android:id="@+id/tab_countdown" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="倒数" android:textColor="#9CA3AF" android:textSize="14sp" />
-            <TextView android:id="@+id/tab_timelog" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="专注" android:textColor="#9CA3AF" android:textSize="14sp" />
+            
+            <TextView 
+                android:id="@+id/tab_todo" 
+                android:layout_width="0dp" 
+                android:layout_height="wrap_content" 
+                android:layout_weight="1" 
+                android:gravity="center" 
+                android:text="待办" 
+                android:textColor="@color/widget_text_secondary" 
+                android:textSize="12.5sp" 
+                android:textStyle="bold"
+                android:paddingVertical="7dp"
+                android:includeFontPadding="false" />
+                
+            <TextView 
+                android:id="@+id/tab_course" 
+                android:layout_width="0dp" 
+                android:layout_height="wrap_content" 
+                android:layout_weight="1" 
+                android:gravity="center" 
+                android:text="课程" 
+                android:textColor="@color/widget_text_secondary" 
+                android:textSize="12.5sp"
+                android:paddingVertical="7dp"
+                android:includeFontPadding="false" />
+                
+            <TextView 
+                android:id="@+id/tab_countdown" 
+                android:layout_width="0dp" 
+                android:layout_height="wrap_content" 
+                android:layout_weight="1" 
+                android:gravity="center" 
+                android:text="倒数" 
+                android:textColor="@color/widget_text_secondary" 
+                android:textSize="12.5sp"
+                android:paddingVertical="7dp"
+                android:includeFontPadding="false" />
+                
+            <TextView 
+                android:id="@+id/tab_timelog" 
+                android:layout_width="0dp" 
+                android:layout_height="wrap_content" 
+                android:layout_weight="1" 
+                android:gravity="center" 
+                android:text="专注" 
+                android:textColor="@color/widget_text_secondary" 
+                android:textSize="12.5sp"
+                android:paddingVertical="7dp"
+                android:includeFontPadding="false" />
         </LinearLayout>
 
+        <!-- 主页面容器 -->
         <FrameLayout
             android:id="@+id/page_container"
             android:layout_width="match_parent"
@@ -44,34 +91,153 @@
             android:layout_weight="1">
 
             <!-- Page 0: 待办清单 -->
-            <FrameLayout android:id="@+id/page_todos" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="visible">
-                <ListView android:id="@+id/list_todos" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@null" android:scrollbars="none" android:overScrollMode="never" />
-                <TextView android:id="@+id/empty_todos" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="暂无待办事项" android:textColor="#9CA3AF" android:textSize="13sp" android:visibility="gone"/>
+            <FrameLayout 
+                android:id="@+id/page_todos" 
+                android:layout_width="match_parent" 
+                android:layout_height="match_parent" 
+                android:visibility="visible">
+                <ListView 
+                    android:id="@+id/list_todos" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:divider="@null" 
+                    android:scrollbars="none" 
+                    android:overScrollMode="never" />
+                <TextView 
+                    android:id="@+id/empty_todos" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:gravity="center" 
+                    android:text="暂无待办事项" 
+                    android:textColor="@color/widget_text_secondary" 
+                    android:textSize="13sp" 
+                    android:visibility="gone"/>
             </FrameLayout>
 
             <!-- Page 1: 课程提醒 -->
-            <FrameLayout android:id="@+id/page_courses" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone">
-                <ListView android:id="@+id/list_courses" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@null" android:scrollbars="none" android:overScrollMode="never" />
-                <TextView android:id="@+id/empty_courses" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="近期暂无课程" android:textColor="#6B7280" android:textSize="14sp" android:textStyle="bold" android:visibility="gone"/>
+            <FrameLayout 
+                android:id="@+id/page_courses" 
+                android:layout_width="match_parent" 
+                android:layout_height="match_parent" 
+                android:visibility="gone">
+                <ListView 
+                    android:id="@+id/list_courses" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:divider="@null" 
+                    android:scrollbars="none" 
+                    android:overScrollMode="never" />
+                <TextView 
+                    android:id="@+id/empty_courses" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:gravity="center" 
+                    android:text="近期暂无课程" 
+                    android:textColor="@color/widget_text_secondary" 
+                    android:textSize="13sp" 
+                    android:textStyle="bold" 
+                    android:visibility="gone"/>
             </FrameLayout>
 
             <!-- Page 2: 倒数日 -->
-            <FrameLayout android:id="@+id/page_countdowns" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone">
-                <ListView android:id="@+id/list_countdowns" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@null" android:scrollbars="none" android:overScrollMode="never" />
-                <TextView android:id="@+id/empty_countdowns" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="暂无目标倒数" android:textColor="#9CA3AF" android:textSize="13sp" android:visibility="gone"/>
+            <FrameLayout 
+                android:id="@+id/page_countdowns" 
+                android:layout_width="match_parent" 
+                android:layout_height="match_parent" 
+                android:visibility="gone">
+                <ListView 
+                    android:id="@+id/list_countdowns" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:divider="@null" 
+                    android:scrollbars="none" 
+                    android:overScrollMode="never" />
+                <TextView 
+                    android:id="@+id/empty_countdowns" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:gravity="center" 
+                    android:text="暂无目标倒数" 
+                    android:textColor="@color/widget_text_secondary" 
+                    android:textSize="13sp" 
+                    android:visibility="gone"/>
             </FrameLayout>
 
             <!-- Page 3: 专注记录 -->
-            <LinearLayout android:id="@+id/page_timelogs" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:visibility="gone">
-                <LinearLayout android:id="@+id/focus_active_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="6dp" android:layout_marginBottom="8dp" android:visibility="gone">
-                    <TextView android:id="@+id/focus_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" />
-                    <TextView android:id="@+id/focus_timer" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#3B82F6" android:textSize="20sp" android:textStyle="bold" android:layout_marginTop="2dp" />
-                    <TextView android:id="@+id/focus_tags" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#10B981" android:textSize="11sp" android:layout_marginTop="1dp" />
+            <LinearLayout 
+                android:id="@+id/page_timelogs" 
+                android:layout_width="match_parent" 
+                android:layout_height="match_parent" 
+                android:orientation="vertical" 
+                android:visibility="gone">
+                
+                <!-- 精美专注卡片背景，外圆角卡片 -->
+                <LinearLayout 
+                    android:id="@+id/focus_active_layout" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="wrap_content" 
+                    android:orientation="vertical" 
+                    android:background="@drawable/widget_focus_active_bg"
+                    android:padding="12dp" 
+                    android:layout_marginBottom="10dp" 
+                    android:visibility="gone">
+                    
+                    <TextView 
+                        android:id="@+id/focus_title" 
+                        android:layout_width="match_parent" 
+                        android:layout_height="wrap_content" 
+                        android:textColor="@color/widget_text_primary" 
+                        android:textSize="13sp" 
+                        android:textStyle="bold"
+                        android:includeFontPadding="false" />
+                        
+                    <TextView 
+                        android:id="@+id/focus_timer" 
+                        android:layout_width="match_parent" 
+                        android:layout_height="wrap_content" 
+                        android:textColor="@color/focus_timer_color" 
+                        android:textSize="22sp" 
+                        android:textStyle="bold" 
+                        android:layout_marginTop="3dp"
+                        android:includeFontPadding="false" />
+                        
+                    <TextView 
+                        android:id="@+id/focus_tags" 
+                        android:layout_width="match_parent" 
+                        android:layout_height="wrap_content" 
+                        android:textColor="@color/focus_tag_text" 
+                        android:textSize="11sp" 
+                        android:layout_marginTop="2dp"
+                        android:includeFontPadding="false" />
                 </LinearLayout>
-                <TextView android:id="@+id/tl_total" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="今日专注: 0 分钟" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginBottom="6dp" android:textStyle="bold"/>
+                
+                <TextView 
+                    android:id="@+id/tl_total" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="wrap_content" 
+                    android:text="今日专注: 0 分钟" 
+                    android:textColor="@color/widget_text_secondary" 
+                    android:textSize="11.5sp" 
+                    android:layout_marginBottom="6dp" 
+                    android:textStyle="bold"
+                    android:includeFontPadding="false" />
 
-                <ListView android:id="@+id/list_timelogs" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@null" android:scrollbars="none" android:overScrollMode="never" />
-                <TextView android:id="@+id/empty_timelogs" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="暂无专注记录" android:textColor="#9CA3AF" android:textSize="13sp" android:visibility="gone"/>
+                <ListView 
+                    android:id="@+id/list_timelogs" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:divider="@null" 
+                    android:scrollbars="none" 
+                    android:overScrollMode="never" />
+                <TextView 
+                    android:id="@+id/empty_timelogs" 
+                    android:layout_width="match_parent" 
+                    android:layout_height="match_parent" 
+                    android:gravity="center" 
+                    android:text="暂无专注记录" 
+                    android:textColor="@color/widget_text_secondary" 
+                    android:textSize="13sp" 
+                    android:visibility="gone"/>
             </LinearLayout>
 
         </FrameLayout>

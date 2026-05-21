@@ -15,6 +15,7 @@ import '../services/llm_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/pomodoro_service.dart';
+import '../screens/course_screens.dart';
 import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
@@ -3516,6 +3517,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   bool _syncFolderToTeam = false;
   List<TodoPlanBlock> _relatedPlanBlocks = [];
   bool _isLoadingPlans = true;
+  List<PomodoroRecord> _focusRecords = [];
+  bool _isLoadingRecords = true;
 
   @override
   void initState() {
@@ -3545,6 +3548,17 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _loadCategoryDefaults();
     _loadTeams();
     _loadRelatedPlans();
+    _loadFocusRecords();
+  }
+
+  Future<void> _loadFocusRecords() async {
+    if (!mounted) return;
+    final records = await PomodoroService.getRecordsByTodoUuid(widget.todo.id);
+    if (!mounted) return;
+    setState(() {
+      _focusRecords = records;
+      _isLoadingRecords = false;
+    });
   }
 
   Future<void> _loadRelatedPlans() async {
@@ -4048,6 +4062,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             const SizedBox(height: 24),
           ],
           _buildPlanBlockSection(),
+          _buildFocusRecordsSection(),
           if (widget.todo.imagePath != null ||
               (widget.todo.originalText != null &&
                   widget.todo.originalText!.isNotEmpty)) ...[
@@ -4132,6 +4147,93 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           const SizedBox(height: 60),
         ]),
       ),
+    );
+  }
+
+  Widget _buildFocusRecordsSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    if (_isLoadingRecords) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+
+    if (_focusRecords.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text("专注记录",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        ..._focusRecords.take(20).map((r) {
+          final startLocal = DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
+          final durationMin = r.effectiveDuration ~/ 60;
+          final statusIcon = r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+          final statusColor = r.isCompleted ? Colors.green : Colors.orange;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PomodoroDetailScreen(
+                      record: r,
+                      tags: [],
+                    ),
+                  ),
+                );
+              },
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(statusIcon, size: 18, color: statusColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${DateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (r.note != null && r.note!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            r.note!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+        if (_focusRecords.length > 20)
+          Text(
+            '仅显示最近 20 条',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+          ),
+        if (_focusRecords.isNotEmpty)
+          const SizedBox(height: 8),
+      ],
     );
   }
 

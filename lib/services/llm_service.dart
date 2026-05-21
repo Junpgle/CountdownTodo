@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LLMConfig {
+  final String provider;
   final String apiKey;
   final String model;
   final String visionModel;
@@ -12,6 +13,7 @@ class LLMConfig {
   final String visionPrompt;
 
   LLMConfig({
+    this.provider = 'zhipu',
     required this.apiKey,
     required this.model,
     String? visionModel,
@@ -143,6 +145,7 @@ class LLMConfig {
 必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
 
   Map<String, dynamic> toJson() => {
+        'provider': provider,
         'api_key': apiKey,
         'model': model,
         'vision_model': visionModel,
@@ -153,6 +156,7 @@ class LLMConfig {
 
   factory LLMConfig.fromJson(Map<String, dynamic> json) {
     return LLMConfig(
+      provider: json['provider']?.toString() ?? 'zhipu',
       apiKey: json['api_key'] ?? '',
       model: json['model'] ?? 'glm-4.7-flash',
       visionModel: json['vision_model'],
@@ -239,6 +243,8 @@ class LLMService {
   static const String _providerApiKeyPrefix = 'provider_api_key_';
   static const String _customTextModelsKey = 'custom_text_models';
   static const String _customVisionModelsKey = 'custom_vision_models';
+  static const String _nvidiaNimModelsKey = 'nvidia_nim_models';
+  static const String _providerModelsPrefix = 'provider_models_';
 
   static Future<LLMConfig?> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
@@ -260,6 +266,10 @@ class LLMService {
   static Future<void> clearConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_configKey);
+    await prefs.remove(_nvidiaNimModelsKey);
+    for (final provider in ['zhipu', 'mimo', 'deepseek', 'nvidia_nim']) {
+      await prefs.remove('$_providerModelsPrefix$provider');
+    }
   }
 
   static Future<String> getZhipuApiKey() async {
@@ -293,6 +303,39 @@ class LLMService {
     // 保持 zhipu 旧 key 同步（向后兼容）
     if (provider == 'zhipu') {
       await prefs.setString(_zhipuApiKeyKey, apiKey);
+    }
+  }
+
+  static Future<List<String>> getNvidiaNimModels() async {
+    return getProviderModels('nvidia_nim');
+  }
+
+  static Future<void> saveNvidiaNimModels(List<String> models) async {
+    await saveProviderModels('nvidia_nim', models);
+  }
+
+  static Future<List<String>> getProviderModels(String provider) async {
+    final prefs = await SharedPreferences.getInstance();
+    final newKeyModels = prefs.getStringList('$_providerModelsPrefix$provider');
+    if (newKeyModels != null) return newKeyModels;
+    if (provider == 'nvidia_nim') {
+      return prefs.getStringList(_nvidiaNimModelsKey) ?? [];
+    }
+    return [];
+  }
+
+  static Future<void> saveProviderModels(
+      String provider, List<String> models) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = models
+        .map((model) => model.trim())
+        .where((model) => model.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    await prefs.setStringList('$_providerModelsPrefix$provider', normalized);
+    if (provider == 'nvidia_nim') {
+      await prefs.setStringList(_nvidiaNimModelsKey, normalized);
     }
   }
 

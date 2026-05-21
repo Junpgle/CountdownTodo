@@ -20,5 +20,18 @@
     <string name="shortcut_band_short">手环</string>
     <string name="shortcut_band_long">手环设置</string>
     <string name="shortcut_band_disabled">手环设置不可用</string>
+    <!-- Desktop Widgets Labels -->
+    <string name="widget_label_todo">CountdownTodo - 组合卡片</string>
+    <string name="widget_label_todo_only">CountdownTodo - 待办列表</string>
+    <string name="widget_label_course_only">CountdownTodo - 课程课表</string>
+    <string name="widget_label_countdown_only">CountdownTodo - 倒数日</string>
+    <string name="widget_label_focus_only">CountdownTodo - 专注计时</string>
+
+    <!-- Desktop Widgets Descriptions -->
+    <string name="widget_desc_todo">包含待办、课程、倒数及专注计时的多功能组合快捷小部件。</string>
+    <string name="widget_desc_todo_only">简约直观的桌面待办列表，支持快速查看及点击勾选完成。</string>
+    <string name="widget_desc_course_only">优雅简洁的课表视图，清晰展示今日课程名称、地点与上课时间。</string>
+    <string name="widget_desc_countdown_only">醒目的桌面倒数纪念日卡片，重点高亮展示天数与目标标题。</string>
+    <string name="widget_desc_focus_only">沉浸式的番茄钟专注计时与今日专注日志记录卡片。</string>
 
 </resources>

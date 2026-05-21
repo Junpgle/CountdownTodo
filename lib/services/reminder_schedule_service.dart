@@ -150,8 +150,11 @@ class ReminderScheduleService {
                 ? '${t.remark!} · $timeStr'
                 : timeStr,
             'notifId': _specialTodoBaseId + i,
+            'type': 'special_todo',
             'todoType': todoType,
+            'timeStr': timeStr,
             'analysisImagePath': t.imagePath,
+            'originalText': t.originalText,
           });
         } else {
           // 普通待办
@@ -168,7 +171,12 @@ class ReminderScheduleService {
             'title': '⏰ ${t.title}',
             'text': text,
             'notifId': _todoBaseId + i,
+            'type': 'upcoming_todo',
+            'timeStr': t.dueDate != null && t.createdDate != null
+                ? '${_hm(refTime)} - ${_hm(t.dueDate!.toLocal())}'
+                : _hm(refTime),
             'analysisImagePath': t.imagePath,
+            'originalText': t.originalText,
           });
         }
       }
@@ -197,6 +205,12 @@ class ReminderScheduleService {
             'title': '📚 ${c.courseName}',
             'text': '${_hm(courseStart)} · ${c.roomName}',
             'notifId': _courseBaseId + i,
+            'type': 'course',
+            'courseName': c.courseName,
+            'room': c.roomName,
+            'timeStr':
+                '${_hm(courseStart)} - ${_hm(DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100))}',
+            'teacher': c.teacherName,
           });
         }
       } catch (e) {
@@ -241,6 +255,8 @@ class ReminderScheduleService {
               '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}${pb.remark != null ? " · ${pb.remark}" : ""}',
           'notifId': _planBlockBaseId + i,
           'type': 'plan_block',
+          'timeStr':
+              '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}',
           'planBlockId': pb.uuid,
           'todoId': pb.todoId,
         });

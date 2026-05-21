@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <solid android:color="#00000000" />
-    <stroke android:width="1.5dp" android:color="#D7CCC8" />
-    <corners android:radius="4dp" />
+    <!-- 2dp 精细浅色边线，使用次级文本色彩作为默认边框底色，视觉非常柔和 -->
+    <stroke android:width="1.8dp" android:color="@color/widget_text_secondary" />
+    <!-- 100dp 圆角使之渲染为完美的现代圆圈复选框 -->
+    <corners android:radius="100dp" />
 </shape>

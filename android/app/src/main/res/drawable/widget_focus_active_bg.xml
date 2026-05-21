@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 正在专注状态的卡片背景，使用动态微淡蓝/深蓝底色 -->
+    <solid android:color="@color/focus_active_bg" />
+    <corners android:radius="16dp" />
+</shape>

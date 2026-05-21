@@ -406,6 +406,15 @@ export default {
             ).bind(tUuid, authUserId).first();
 
             if (!existing) {
+              // 🚀 核心修复：非创建者的团队成员也需要能找到任务（不限制 user_id）
+              if (hasTeamUuid) {
+                existing = await DB.prepare(
+                  `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE uuid = ?`
+                ).bind(tUuid).first();
+              }
+            }
+
+            if (!existing) {
               existing = await DB.prepare(
                 `SELECT id, version, created_at, due_date, created_date, updated_at, uuid${extraColStr} FROM todos WHERE user_id = ? AND content = ? AND (uuid IS NULL OR uuid = '')`
               ).bind(authUserId, tContent).first();
@@ -458,6 +467,19 @@ export default {
               batchStatements.push(stmt.bind(...insertValues));
 
             } else {
+              // 🚀 安全检查：越权尝试拦截（与 Aliyun 后端对齐）
+              const isOwner = existing.user_id === authUserId;
+              const isTeamMember = existing.team_uuid && myTeamUuids.includes(existing.team_uuid);
+              let isDisbandedTeam = false;
+              if (!isOwner && !isTeamMember && existing.team_uuid) {
+                const teamExists = await DB.prepare("SELECT 1 FROM teams WHERE uuid = ?").bind(existing.team_uuid).first();
+                if (!teamExists) isDisbandedTeam = true;
+              }
+              if (!isOwner && !isTeamMember && !isDisbandedTeam) {
+                console.warn(`[拒绝越权修改] 用户 ${authUserId} 试图修改不属于自己的任务 ${tUuid}`);
+                continue;
+              }
+
               const finalDueDate     = hasDueDate       ? tDueDate           : (existing.due_date ?? null);
               const finalCreatedDate = hasCreatedDate   ? tCreatedDate       : (existing.created_date ?? null);
 
@@ -465,13 +487,24 @@ export default {
               const finalCreatedAt    = Math.min(tCreatedAt, existingCreatedAt) || existingCreatedAt;
 
               const existingUpdatedAtMs = normalizeToMs(existing.updated_at);
+
+              // 🚀 核心防护：防止已解散团队的已删除待办被复活
+              let finalIsDeleted = tIsDeleted;
+              if (existing.is_deleted === 1 && tIsDeleted === 0 && existing.team_uuid) {
+                const teamExists = await DB.prepare("SELECT 1 FROM teams WHERE uuid = ?").bind(existing.team_uuid).first();
+                if (!teamExists) {
+                  finalIsDeleted = 1; // 团队已解散，强制保持删除状态
+                  console.log(`[反复活] 任务 ${tUuid} 属于已解散团队 ${existing.team_uuid}，阻止复活`);
+                }
+              }
+
               if (tVersion > existing.version || tUpdatedAtClient > existingUpdatedAtMs || !existing.uuid) {
                 let setClauses = [
                   'uuid = ?', 'content = ?', 'is_completed = ?', 'is_deleted = ?',
                   'created_at = ?', 'updated_at = ?', 'version = ?', 'device_id = ?',
                   'due_date = ?', 'created_date = ?'
                 ];
-                let setValues = [tUuid, tContent, tIsCompleted, tIsDeleted, finalCreatedAt, now, tVersion, device_id, finalDueDate, finalCreatedDate];
+                let setValues = [tUuid, tContent, tIsCompleted, finalIsDeleted, finalCreatedAt, now, tVersion, device_id, finalDueDate, finalCreatedDate];
 
                 if (hasRecurrence) {
                   setClauses.push('recurrence = ?');
@@ -742,6 +775,7 @@ export default {
           server_todo_groups: mappedTodoGroups,
           server_countdowns: mappedCountdowns,
           server_time_logs: mappedTimeLogs,
+          joined_team_uuids: myTeamUuids,
           server_pomodoro_tags: (await DB.prepare("SELECT * FROM pomodoro_tags WHERE user_id = ?").bind(authUserId).all()).results.filter(row => last_sync_time === 0 || normalizeToMs(row.updated_at) >= last_sync_time).map(row => ({
             uuid: row.uuid, name: row.name, color: row.color, is_deleted: row.is_deleted === 1 || row.is_deleted === true, version: row.version, created_at: normalizeToMs(row.created_at), updated_at: normalizeToMs(row.updated_at)
           })),
@@ -1292,9 +1326,14 @@ export default {
         const { team_uuid } = await request.json();
         const team = await DB.prepare("SELECT creator_id FROM teams WHERE uuid = ?").bind(team_uuid).first();
         if (team && team.creator_id !== authUserId) return errorResponse("仅创建者可解散团队", 403);
+        // 软删除团队下的所有待办、倒计时、文件夹，使删除能同步到所有成员
+        const nowMs = Date.now();
         await DB.batch([
           DB.prepare("DELETE FROM teams WHERE uuid = ?").bind(team_uuid),
-          DB.prepare("DELETE FROM team_members WHERE team_uuid = ?").bind(team_uuid)
+          DB.prepare("DELETE FROM team_members WHERE team_uuid = ?").bind(team_uuid),
+          DB.prepare("UPDATE todos SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0").bind(nowMs, team_uuid),
+          DB.prepare("UPDATE countdowns SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0").bind(nowMs, team_uuid),
+          DB.prepare("UPDATE todo_groups SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0").bind(nowMs, team_uuid),
         ]);
         return jsonResponse({ success: true });
       }
