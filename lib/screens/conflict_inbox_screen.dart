@@ -74,7 +74,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final results = await Future.wait([
       StorageService.getTodos(widget.username, includeDeleted: true),
       StorageService.getTodoGroups(widget.username, includeDeleted: true),
-      StorageService.getCountdowns(widget.username),
+      StorageService.getCountdowns(widget.username, includeDeleted: true),
     ]);
 
     final todos = results[0] as List<TodoItem>;
@@ -1356,7 +1356,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       final results = await Future.wait([
         StorageService.getTodos(widget.username, includeDeleted: true),
         StorageService.getTodoGroups(widget.username, includeDeleted: true),
-        StorageService.getCountdowns(widget.username),
+        StorageService.getCountdowns(widget.username, includeDeleted: true),
       ]);
 
       final allTodos = results[0] as List<TodoItem>;

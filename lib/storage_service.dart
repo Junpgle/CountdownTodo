@@ -21,6 +21,22 @@ import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 
 class StorageService {
   static final Set<String> recentlyResolvedUuids = {};
+  static final Map<String, DateTime> recentlyResolvedTimes = {};
+
+  static bool isRecentlyResolved(String uuid) {
+    if (!recentlyResolvedUuids.contains(uuid)) return false;
+    final time = recentlyResolvedTimes[uuid];
+    if (time == null) return true;
+    // 🛡️ [MemoryShield] 竞态阻断锁自动超时阈值定为 30 秒。
+    // 超过该时间则认定之前的竞态场景早已结束，自动解锁，以防用户离线等极端同步失败情况下产生死锁。
+    if (DateTime.now().difference(time).inSeconds > 30) {
+      recentlyResolvedUuids.remove(uuid);
+      recentlyResolvedTimes.remove(uuid);
+      debugPrint('🔓 [MemoryShield] Timeout auto-released recently resolved item: $uuid');
+      return false;
+    }
+    return true;
+  }
 
   static SharedPreferences? _prefs;
   static Future<SharedPreferences> get prefs async {
@@ -3455,7 +3471,7 @@ class StorageService {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
             if (sItem.hasConflict && !localItem.hasConflict) {
-              if (recentlyResolvedUuids.contains(localItem.id)) {
+              if (isRecentlyResolved(localItem.id)) {
                 debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved todo: ${localItem.id}');
               } else {
                 // Server still has conflict but local was resolved — sync conflict metadata only
@@ -3468,6 +3484,7 @@ class StorageService {
               localItem.hasConflict = false;
               localItem.serverVersionData = null;
               recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3507,7 +3524,7 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localGroup = allLocalGroups[idx];
             if (sItem.hasConflict && !localGroup.hasConflict) {
-              if (recentlyResolvedUuids.contains(localGroup.id)) {
+              if (isRecentlyResolved(localGroup.id)) {
                 debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved group: ${localGroup.id}');
               } else {
                 localGroup.hasConflict = true;
@@ -3518,6 +3535,7 @@ class StorageService {
               localGroup.hasConflict = false;
               localGroup.conflictData = null;
               recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3555,7 +3573,7 @@ class StorageService {
           if (!sItem.isDeleted) {
             final localCountdown = allLocalCountdowns[idx];
             if (sItem.hasConflict && !localCountdown.hasConflict) {
-              if (recentlyResolvedUuids.contains(localCountdown.id)) {
+              if (isRecentlyResolved(localCountdown.id)) {
                 debugPrint('⏭️ [MemoryShield] Skipping conflict resurrection for recently resolved countdown: ${localCountdown.id}');
               } else {
                 localCountdown.hasConflict = true;
@@ -3566,6 +3584,7 @@ class StorageService {
               localCountdown.hasConflict = false;
               localCountdown.conflictData = null;
               recentlyResolvedUuids.remove(sItem.id);
+              recentlyResolvedTimes.remove(sItem.id);
               hasChanges = true;
             }
           }
@@ -3643,7 +3662,7 @@ class StorageService {
         for (final c in conflicts) {
           final itemId = (c.item['uuid'] ?? c.item['id'] ?? '').toString();
           if (itemId.isEmpty) continue;
-          if (recentlyResolvedUuids.contains(itemId)) {
+          if (isRecentlyResolved(itemId)) {
             debugPrint('⏭️ [MemoryShield] Skipping re-flag of recently resolved item in conflicts: $itemId');
             continue;
           }
@@ -3798,6 +3817,7 @@ class StorageService {
       // 10. 🛡️ 内存守卫：同步成功后，自动从锁定集合中清理掉在最新 conflicts 中不再包含的 ID
       final serverConflictIds = conflicts.map((c) => (c.item['uuid'] ?? c.item['id'] ?? '').toString()).toSet();
       recentlyResolvedUuids.removeWhere((id) => !serverConflictIds.contains(id));
+      recentlyResolvedTimes.removeWhere((id, _) => !serverConflictIds.contains(id));
       if (recentlyResolvedUuids.isNotEmpty) {
         debugPrint('🛡️ [MemoryShield] Remaining locked items in memory shield: $recentlyResolvedUuids');
       }
@@ -4905,7 +4925,8 @@ class StorageService {
 
     triggerRefresh();
     recentlyResolvedUuids.add(uuid);
-    debugPrint('🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid');
+    recentlyResolvedTimes[uuid] = DateTime.now();
+    debugPrint('🔒 [MemoryShield] Locked recently resolved item in memory shield: $uuid (with timestamp)');
   }
 }
 

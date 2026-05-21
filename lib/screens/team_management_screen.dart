@@ -363,7 +363,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     try {
       final results = await Future.wait([
         StorageService.getTodos(widget.username, includeDeleted: true),
-        StorageService.getTodoGroups(widget.username),
+        StorageService.getTodoGroups(widget.username, includeDeleted: true),
         StorageService.getCountdowns(widget.username, includeDeleted: true),
       ]);
 
@@ -376,6 +376,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         String? teamUuid;
 
         if (item is TodoItem) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           if (!item.hasConflict) continue;
           // 🚀 对齐 ConflictInboxScreen：跳过全天任务的冲突
           if (item.isAllDayTask) continue;
@@ -390,15 +391,17 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   p is Map &&
                   !TodoItem.fromJson(Map<String, dynamic>.from(p))
                       .isAllDayTask);
-              if (!hasValidPeer) continue;
+              if (!hasValidPeer) continue; // 🚀 使用 continue 跳过当前有冲突但均非有效对等体的任务
             }
           }
           hasConflict = true;
           teamUuid = item.teamUuid;
         } else if (item is TodoGroup) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           hasConflict = item.hasConflict;
           teamUuid = item.teamUuid;
         } else if (item is CountdownItem) {
+          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
           hasConflict = item.hasConflict;
           teamUuid = item.teamUuid;
         }
