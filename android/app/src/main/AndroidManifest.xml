@@ -164,5 +164,70 @@
             android:name=".TodoWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
 
+        <!-- ========================================== -->
+        <!-- 🚀 新增：四个独立桌面小部件 -->
+        <!-- ========================================== -->
+
+        <!-- 待办小部件 -->
+        <receiver
+            android:name=".TodoOnlyWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="MARK_TODO_DONE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_only_info" />
+        </receiver>
+        <service
+            android:name=".TodoOnlyWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 课程小部件 -->
+        <receiver
+            android:name=".CourseOnlyWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_course_only_info" />
+        </receiver>
+        <service
+            android:name=".CourseOnlyWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 倒数小部件 -->
+        <receiver
+            android:name=".CountdownOnlyWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_countdown_only_info" />
+        </receiver>
+        <service
+            android:name=".CountdownOnlyWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 专注小部件 -->
+        <receiver
+            android:name=".FocusOnlyWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_focus_only_info" />
+        </receiver>
+        <service
+            android:name=".FocusOnlyWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
     </application>
 </manifest>

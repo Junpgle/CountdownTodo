@@ -40,6 +40,10 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
 
 class WidgetService {
   static const String androidWidgetName = 'TodoWidgetProvider';
+  static const String todoOnlyWidgetName = 'TodoOnlyWidgetProvider';
+  static const String courseOnlyWidgetName = 'CourseOnlyWidgetProvider';
+  static const String countdownOnlyWidgetName = 'CountdownOnlyWidgetProvider';
+  static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
   static bool _initialized = false;
   static bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
@@ -245,7 +249,14 @@ class WidgetService {
 
     await Future.wait(widgetWrites);
     try {
-      await HomeWidget.updateWidget(androidName: androidWidgetName);
+      // 更新所有小部件
+      await Future.wait([
+        HomeWidget.updateWidget(androidName: androidWidgetName),
+        HomeWidget.updateWidget(androidName: todoOnlyWidgetName),
+        HomeWidget.updateWidget(androidName: courseOnlyWidgetName),
+        HomeWidget.updateWidget(androidName: countdownOnlyWidgetName),
+        HomeWidget.updateWidget(androidName: focusOnlyWidgetName),
+      ]);
     } catch (e) {
       final message = e.toString();
       if (Platform.isAndroid &&
