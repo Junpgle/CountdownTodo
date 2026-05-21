@@ -151,6 +151,7 @@
         <!-- ========================================== -->
         <receiver
             android:name=".TodoWidgetProvider"
+            android:label="@string/widget_label_todo"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -171,6 +172,7 @@
         <!-- 待办小部件 -->
         <receiver
             android:name=".TodoOnlyWidgetProvider"
+            android:label="@string/widget_label_todo_only"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -187,6 +189,7 @@
         <!-- 课程小部件 -->
         <receiver
             android:name=".CourseOnlyWidgetProvider"
+            android:label="@string/widget_label_course_only"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -202,6 +205,7 @@
         <!-- 倒数小部件 -->
         <receiver
             android:name=".CountdownOnlyWidgetProvider"
+            android:label="@string/widget_label_countdown_only"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -217,6 +221,7 @@
         <!-- 专注小部件 -->
         <receiver
             android:name=".FocusOnlyWidgetProvider"
+            android:label="@string/widget_label_focus_only"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

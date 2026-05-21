@@ -2,4 +2,18 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- 桌面小部件美化色板 (白天模式) -->
+    <color name="widget_bg">#FCFCFC</color>
+    <color name="widget_stroke">#12000000</color> <!-- 7% 不透明度的黑，极其精细的极窄边框 -->
+    <color name="widget_text_primary">#111827</color>
+    <color name="widget_text_secondary">#6B7280</color>
+    <color name="widget_text_accent">#3B82F6</color>
+    <color name="widget_tab_bar_bg">#F3F4F6</color>
+    <color name="widget_tab_active_bg">#FFFFFF</color>
+    <color name="widget_tab_active_text">#111827</color>
+    <color name="widget_checkbox_tint">#3B82F6</color>
+    <color name="focus_active_bg">#EFF6FF</color>
+    <color name="focus_timer_color">#2563EB</color>
+    <color name="focus_tag_text">#10B981</color>
 </resources>

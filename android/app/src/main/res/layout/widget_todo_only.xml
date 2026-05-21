@@ -18,19 +18,20 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="14dp"
         android:paddingVertical="14dp">
 
-        <!-- 标题区域 -->
+        <!-- 标题区域，动态文本色与精美字号 -->
         <TextView
             android:id="@+id/widget_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="待办清单"
-            android:textColor="#111827"
-            android:textSize="14sp"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14.5sp"
             android:textStyle="bold"
-            android:paddingBottom="12dp" />
+            android:paddingBottom="10dp"
+            android:includeFontPadding="false" />
 
         <!-- 待办列表 -->
         <FrameLayout
@@ -52,9 +53,10 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:text="暂无待办事项"
-                android:textColor="#9CA3AF"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="13sp"
-                android:visibility="gone" />
+                android:visibility="gone"
+                android:includeFontPadding="false" />
         </FrameLayout>
     </LinearLayout>
 </FrameLayout>

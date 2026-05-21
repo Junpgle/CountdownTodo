@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="14dp"
         android:paddingVertical="14dp">
 
         <!-- 标题区域 -->
@@ -27,10 +27,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="课程提醒"
-            android:textColor="#111827"
-            android:textSize="14sp"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14.5sp"
             android:textStyle="bold"
-            android:paddingBottom="12dp" />
+            android:paddingBottom="10dp"
+            android:includeFontPadding="false" />
 
         <!-- 课程列表 -->
         <FrameLayout
@@ -52,10 +53,11 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:text="近期暂无课程"
-                android:textColor="#6B7280"
-                android:textSize="14sp"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp"
                 android:textStyle="bold"
-                android:visibility="gone" />
+                android:visibility="gone"
+                android:includeFontPadding="false" />
         </FrameLayout>
     </LinearLayout>
 </FrameLayout>

@@ -46,9 +46,8 @@ class CountdownOnlyWidgetProvider : HomeWidgetProvider() {
         appWidgetIds: IntArray,
         widgetData: SharedPreferences
     ) {
-        val isDarkMode = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val titleColor = android.graphics.Color.parseColor(if (isDarkMode) "#F9FAFB" else "#111827")
-        val bgColor = android.graphics.Color.parseColor(if (isDarkMode) "#1E1E1E" else "#FFFFFF")
+        val titleColor = context.getColor(R.color.widget_text_primary)
+        val bgColor = context.getColor(R.color.widget_bg)
 
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_countdown_only)

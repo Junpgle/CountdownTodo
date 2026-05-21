@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 悬浮胶囊活动背景，动态适应深/浅色模式 -->
+    <solid android:color="@color/widget_tab_active_bg" />
+    <!-- 圆角稍微小于外围容器，形成精致和谐的内外嵌合 -->
+    <corners android:radius="11dp" />
+</shape>

@@ -60,7 +60,7 @@ class CountdownOnlyRemoteViewsFactory(
 
         val data = itemsData[position]
         val isDarkMode = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val primaryTextColor = Color.parseColor(if (isDarkMode) "#F3F4F6" else "#1F2937")
+        val primaryTextColor = context.getColor(R.color.widget_text_primary)
 
         val views = RemoteViews(context.packageName, R.layout.widget_item_cd)
         views.setCharSequence(R.id.cd_title, "setText", getHtmlSpanned(data.getString("title", "")))

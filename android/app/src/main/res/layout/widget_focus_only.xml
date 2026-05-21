@@ -18,7 +18,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="14dp"
         android:paddingVertical="14dp">
 
         <!-- 标题区域 -->
@@ -27,45 +27,50 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="专注记录"
-            android:textColor="#111827"
-            android:textSize="14sp"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14.5sp"
             android:textStyle="bold"
-            android:paddingBottom="12dp" />
+            android:paddingBottom="10dp"
+            android:includeFontPadding="false" />
 
-        <!-- 专注状态栏 -->
+        <!-- 正在专注卡片 -->
         <LinearLayout
             android:id="@+id/focus_active_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="6dp"
-            android:layout_marginBottom="8dp"
+            android:background="@drawable/widget_focus_active_bg"
+            android:padding="12dp"
+            android:layout_marginBottom="10dp"
             android:visibility="gone">
 
             <TextView
                 android:id="@+id/focus_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#1F2937"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:includeFontPadding="false" />
 
             <TextView
                 android:id="@+id/focus_timer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#3B82F6"
-                android:textSize="20sp"
+                android:textColor="@color/focus_timer_color"
+                android:textSize="22sp"
                 android:textStyle="bold"
-                android:layout_marginTop="2dp" />
+                android:layout_marginTop="3dp"
+                android:includeFontPadding="false" />
 
             <TextView
                 android:id="@+id/focus_tags"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#10B981"
+                android:textColor="@color/focus_tag_text"
                 android:textSize="11sp"
-                android:layout_marginTop="1dp" />
+                android:layout_marginTop="2dp"
+                android:includeFontPadding="false" />
         </LinearLayout>
 
         <!-- 今日专注总时长 -->
@@ -74,10 +79,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="今日专注: 0 分钟"
-            android:textColor="#6B7280"
-            android:textSize="12sp"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="11.5sp"
             android:layout_marginBottom="6dp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:includeFontPadding="false" />
 
         <!-- 专注记录列表 -->
         <FrameLayout
@@ -99,9 +105,10 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:text="暂无专注记录"
-                android:textColor="#9CA3AF"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="13sp"
-                android:visibility="gone" />
+                android:visibility="gone"
+                android:includeFontPadding="false" />
         </FrameLayout>
     </LinearLayout>
 </FrameLayout>

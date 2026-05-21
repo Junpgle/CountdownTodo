@@ -2,12 +2,72 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:paddingVertical="8dp">
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="9dp"
+    android:paddingHorizontal="4dp">
 
-    <TextView android:id="@+id/course_date" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#9CA3AF" android:textSize="11sp" android:textStyle="bold"/>
-    <TextView android:id="@+id/course_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#1F2937" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="2dp"/>
-    <TextView android:id="@+id/course_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="12sp" android:layout_marginTop="2dp"/>
-    <TextView android:id="@+id/course_room" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#6B7280" android:textSize="11sp" android:layout_marginTop="1dp" />
+    <!-- 优化1：日程左侧标志性的微彩条，强化现代手账的日程板块分类感 -->
+    <View
+        android:layout_width="3dp"
+        android:layout_height="40dp"
+        android:layout_marginEnd="10dp"
+        android:background="@color/widget_text_accent" />
 
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- 课程日期 -->
+        <TextView
+            android:id="@+id/course_date"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"/>
+
+        <!-- 课程名称 -->
+        <TextView
+            android:id="@+id/course_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="13.5sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
+
+    <!-- 右侧：上为时间，下为教室，右对齐 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="end"
+        android:layout_marginStart="8dp">
+
+        <!-- 时间 -->
+        <TextView
+            android:id="@+id/course_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="12sp"
+            android:includeFontPadding="false"/>
+
+        <!-- 教室 -->
+        <TextView
+            android:id="@+id/course_room"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"/>
+    </LinearLayout>
 </LinearLayout>
