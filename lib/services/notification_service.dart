@@ -498,6 +498,12 @@ class NotificationService {
           'text': r['text'] ?? '',
           'notifId': r['notifId'],
           if (r['type'] != null) 'type': r['type'],
+          if (r['todoType'] != null) 'todoType': r['todoType'],
+          if (r['courseName'] != null) 'courseName': r['courseName'],
+          if (r['room'] != null) 'room': r['room'],
+          if (r['timeStr'] != null) 'timeStr': r['timeStr'],
+          if (r['teacher'] != null) 'teacher': r['teacher'],
+          if (r['originalText'] != null) 'originalText': r['originalText'],
           if (r['planBlockId'] != null) 'planBlockId': r['planBlockId'],
           if (r['todoId'] != null) 'todoId': r['todoId'],
           if (imagePath != null && imagePath.isNotEmpty)
