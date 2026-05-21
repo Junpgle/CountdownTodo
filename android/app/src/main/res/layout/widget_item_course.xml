@@ -7,8 +7,8 @@
     android:paddingVertical="9dp"
     android:paddingHorizontal="4dp">
 
-    <!-- 优化1：日程左侧标志性的微彩条，强化现代手账的日程板块分类感 -->
-    <View
+    <!-- 优化1：日程左侧标志性的微彩条，强化现代手账的日程板块分类感 (使用 RemoteViews 支持的 FrameLayout) -->
+    <FrameLayout
         android:layout_width="3dp"
         android:layout_height="40dp"
         android:layout_marginEnd="10dp"
