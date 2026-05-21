@@ -126,6 +126,7 @@ class OfficialHolidayWindow {
 
 class CourseCalendarAdjustmentService {
   static const String _prefsKey = 'course_calendar_adjustments_v1';
+  static const int _officialHolidayPromptLeadDays = 7;
   static final DateFormat _df = DateFormat('yyyy-MM-dd');
   static const String official2026SourceName = '国务院办公厅关于2026年部分节假日安排的通知';
   static const String official2026SourceUrl =
@@ -276,11 +277,13 @@ class CourseCalendarAdjustmentService {
     ));
   }
 
-  static Future<OfficialHolidayWindow?> pendingOfficialHolidayWindow() async {
+  static Future<OfficialHolidayWindow?> pendingOfficialHolidayWindow({
+    DateTime? now,
+  }) async {
     final adjustment = await load();
     if (!adjustment.officialHolidayPromptEnabled) return null;
 
-    final now = DateTime.now();
+    final current = now ?? DateTime.now();
     for (final window in officialWindows) {
       if (adjustment.handledOfficialHolidayKeys.contains(window.key) ||
           _isWindowConfigured(adjustment, window)) {
@@ -290,9 +293,10 @@ class CourseCalendarAdjustmentService {
           .map((date) => _df.parseStrict(date))
           .toList()
         ..sort();
-      final first = dates.first.subtract(const Duration(days: 30));
+      final first = dates.first
+          .subtract(const Duration(days: _officialHolidayPromptLeadDays));
       final last = dates.last.add(const Duration(days: 7));
-      if (!now.isBefore(first) && !now.isAfter(last)) return window;
+      if (!current.isBefore(first) && !current.isAfter(last)) return window;
     }
     return null;
   }
