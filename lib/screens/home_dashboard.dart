@@ -1383,20 +1383,49 @@ class _HomeDashboardState extends State<HomeDashboard>
                 if (isProcessing)
                   const SizedBox.shrink()
                 else if (isFailed)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      '重试',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.red,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 忽略按钮
+                      GestureDetector(
+                        onTap: _ignorePendingTodoRecognition,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '忽略',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // 重试按钮
+                      GestureDetector(
+                        onTap: _retryPendingTodoRecognition,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '重试',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 else
                   Icon(
@@ -1426,13 +1455,30 @@ class _HomeDashboardState extends State<HomeDashboard>
       onTodoRecognized: (results, imagePath) {
         if (!mounted) return;
         // 刷新待确认数据
-        _checkPendingTodoConfirm();
-        // 如果识别成功且有结果，打开确认页面
-        if (results.isNotEmpty) {
-          _openPendingTodoConfirm();
-        }
+        _checkPendingTodoConfirm().then((_) {
+          // 如果识别成功且有结果，打开确认页面
+          if (results.isNotEmpty) {
+            _openPendingTodoConfirm();
+          }
+        });
       },
     );
+
+    // 重试完成后刷新首页状态（无论成功或失败）
+    if (mounted) {
+      await _checkPendingTodoConfirm();
+    }
+  }
+
+  /// 忽略图片识别失败
+  Future<void> _ignorePendingTodoRecognition() async {
+    // 清除待确认数据
+    setState(() {
+      _pendingTodoConfirm = null;
+    });
+    await ExternalShareHandler.clearPendingTodoConfirm();
+    // 取消通知
+    await NotificationService.cancelTodoRecognizeNotification();
   }
 
   /// 首页顶部的智能通用 Banner (整合专注、课程、待办)

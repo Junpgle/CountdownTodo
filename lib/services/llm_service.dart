@@ -261,21 +261,62 @@ class LLMService {
   static const Map<String, String> _providerApiUrls = {
     'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
     'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+    'nvidia_nim': 'https://integrate.api.nvidia.com/v1/chat/completions',
+    'deepseek': 'https://api.deepseek.com/chat/completions',
   };
+
+  static const Map<String, String> _modelPrefixProviders = {
+    'glm-': 'zhipu',
+    'mimo-': 'mimo',
+    'nvidia/': 'nvidia_nim',
+    'meta/': 'nvidia_nim',
+    'meta-llama/': 'nvidia_nim',
+    'mistralai/': 'nvidia_nim',
+    'deepseek-ai/': 'nvidia_nim',
+    'google/': 'nvidia_nim',
+    'qwen/': 'nvidia_nim',
+    'microsoft/': 'nvidia_nim',
+  };
+
+  static String _detectProvider(String modelId) {
+    final exact = _visionModelProviders[modelId];
+    if (exact != null) return exact;
+    for (final entry in _modelPrefixProviders.entries) {
+      if (modelId.startsWith(entry.key)) return entry.value;
+    }
+    return '';
+  }
+
+  static Future<String> _findProviderInStoredModels(String modelId) async {
+    for (final provider in _providerApiUrls.keys) {
+      final models = await getProviderModels(provider);
+      if (models.contains(modelId)) return provider;
+    }
+    return '';
+  }
 
   static Future<({String url, String key})> resolveVisionEndpoint(
       String visionModel) async {
-    final provider = _visionModelProviders[visionModel];
-    if (provider != null) {
+    // 1. 前缀/精确匹配
+    final provider = _detectProvider(visionModel);
+    if (provider.isNotEmpty) {
       final url = _providerApiUrls[provider]!;
       final key = await getProviderApiKey(provider);
       return (url: url, key: key);
     }
+    // 2. 自定义视觉模型
     final customModels = await getCustomVisionModels();
     final custom = customModels.where((m) =>
         m.modelId == visionModel || m.id == visionModel).firstOrNull;
     if (custom != null && custom.apiUrl.isNotEmpty) {
       return (url: custom.apiUrl, key: custom.apiKey);
+    }
+    // 3. 遍历已拉取的 provider 模型列表
+    final storedProvider = await _findProviderInStoredModels(visionModel);
+    if (storedProvider.isNotEmpty) {
+      final url = _providerApiUrls[storedProvider]!;
+      final key = await getProviderApiKey(storedProvider);
+      return (url: url, key: key);
     }
     return (url: '', key: '');
   }

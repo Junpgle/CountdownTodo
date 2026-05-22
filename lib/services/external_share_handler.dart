@@ -176,11 +176,6 @@ class ExternalShareHandler {
           status: '正在识别图片...',
         );
 
-        // 通知首页刷新显示进度卡片
-        if (onTodoRecognized != null) {
-          onTodoRecognized([], filePath);
-        }
-
         try {
           final results = await LLMService.parseTodoFromImage(compressedPath)
               .timeout(const Duration(seconds: 90));
@@ -204,8 +199,8 @@ class ExternalShareHandler {
             todoCount: results.length,
           );
 
+          // 通知首页刷新（dialog 已关闭）
           if (onTodoRecognized != null && results.isNotEmpty) {
-            // 传递原始图片路径（用于显示缩略图）
             onTodoRecognized(results, filePath);
           }
         } catch (e) {
@@ -227,12 +222,7 @@ class ExternalShareHandler {
               errorMsg: errorMsg,
             );
 
-            // 通知首页刷新显示失败状态
-            if (onTodoRecognized != null) {
-              onTodoRecognized([], filePath);
-            }
-
-            // 在后台启动重试任务
+            // 在后台启动重试任务（重试完成后会自动通知首页）
             _startBackgroundRetry(
               filePath: filePath,
               compressedPath: compressedPath,
@@ -262,11 +252,6 @@ class ExternalShareHandler {
             await NotificationService.showTodoRecognizeFailed(
               errorMsg: errorMsg,
             );
-
-            // 通知首页刷新显示失败状态
-            if (onTodoRecognized != null) {
-              onTodoRecognized([], filePath);
-            }
 
             await Future.delayed(const Duration(seconds: 3));
             _closeDialogSafely(dialogContext);
@@ -567,7 +552,7 @@ class ExternalShareHandler {
         todoCount: results.length,
       );
 
-      // 通知首页刷新
+      // 通知首页刷新（成功时自动打开确认页面）
       if (onTodoRecognized != null) {
         onTodoRecognized(results, filePath);
       }
@@ -585,11 +570,7 @@ class ExternalShareHandler {
         errorMsg: lastError ?? '未知错误',
       );
 
-      // 通知首页刷新显示失败状态
-      if (onTodoRecognized != null) {
-        onTodoRecognized([], filePath);
-      }
-
+      // 不通知首页刷新，让用户点击重试按钮来手动刷新
       debugPrint("后台重试全部失败: $lastError");
     }
   }
@@ -655,10 +636,7 @@ class ExternalShareHandler {
       status: '正在重新识别...',
     );
 
-    // 通知首页刷新
-    if (onTodoRecognized != null) {
-      onTodoRecognized([], imagePath);
-    }
+    // 不通知首页刷新，让首页通过 _checkPendingTodoConfirm 自动刷新
 
     try {
       final results = await LLMService.parseTodoFromImage(retryPath)
@@ -699,9 +677,7 @@ class ExternalShareHandler {
           errorMsg: '未识别到待办事项',
         );
 
-        if (onTodoRecognized != null) {
-          onTodoRecognized([], imagePath);
-        }
+        // 不通知首页刷新，让用户点击重试按钮来手动刷新
       }
     } catch (e) {
       debugPrint("重试失败: $e");
@@ -718,10 +694,7 @@ class ExternalShareHandler {
         errorMsg: errorMsg,
       );
 
-      // 通知首页刷新
-      if (onTodoRecognized != null) {
-        onTodoRecognized([], imagePath);
-      }
+      // 不通知首页刷新，让用户点击重试按钮来手动刷新
     }
   }
 }
