@@ -166,18 +166,6 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             views.setEmptyView(R.id.list_countdowns, R.id.empty_countdowns)
             views.setEmptyView(R.id.list_timelogs, R.id.empty_timelogs)
 
-            // 🚀 设置待办点击事件模板 (极其重要，配合 Service 里的 FillInIntent)
-            val clickIntent = Intent(context, TodoWidgetProvider::class.java).apply {
-                action = "MARK_TODO_DONE"
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
-            }
-            val clickPendingIntent = PendingIntent.getBroadcast(
-                context, 0, clickIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE // 此处必须是 MUTABLE
-            )
-            views.setPendingIntentTemplate(R.id.list_todos, clickPendingIntent)
-
-
             // 全局跳转模板 (处理课程、倒数的点击，直接打开APP)
             val appIntent = Intent(context, MainActivity::class.java)
             val appPendingIntent = PendingIntent.getActivity(context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)

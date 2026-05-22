@@ -72,15 +72,6 @@ class TodoOnlyRemoteViewsFactory(
         views.setCharSequence(R.id.todo_text, "setText", getHtmlSpanned(if (isDone) "<s>$title</s>" else title))
         views.setTextColor(R.id.todo_text, if (isDone) secondaryTextColor else primaryTextColor)
 
-        val checkedResId = context.resources.getIdentifier(if (isDone) "widget_checkbox_checked" else "widget_checkbox_empty", "drawable", context.packageName)
-        if (checkedResId != 0) views.setImageViewResource(R.id.todo_checkbox, checkedResId)
-
-        val todoId = data.getString("id", "")
-        if (todoId.isNotEmpty()) {
-            val fillInIntent = Intent().apply { putExtra("todo_id", todoId) }
-            views.setOnClickFillInIntent(R.id.todo_checkbox, fillInIntent)
-        }
-
         val dueText = data.getString("due", "")
         if (dueText.isNotEmpty() && !isDone) {
             views.setViewVisibility(R.id.todo_due, View.VISIBLE)
