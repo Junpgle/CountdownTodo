@@ -17,6 +17,12 @@ class ServerChoicePage extends StatefulWidget {
 
 class _ServerChoicePageState extends State<ServerChoicePage> {
   late String _selectedServer;
+  static final DateTime _cloudflareDisableDate = DateTime(2026, 6, 1);
+  static const String _cloudflareDisabledMessage =
+      '该服务器将于2026/06/01禁用，请及时迁移到阿里云服务器';
+
+  bool get _isCloudflareDisabled =>
+      !DateTime.now().isBefore(_cloudflareDisableDate);
 
   @override
   void initState() {
@@ -86,10 +92,14 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                   const SizedBox(height: 16),
                   _buildServerOption(
                     value: 'cloudflare',
-                    title: 'Cloudflare',
-                    subtitle: '更安全',
+                    title: 'Cloudflare（即将禁用）',
+                    subtitle: _isCloudflareDisabled
+                        ? '已禁用，请使用阿里云ECS'
+                        : '2026/06/01 前仍可登录使用',
                     icon: Icons.shield_outlined,
                   ),
+                  const SizedBox(height: 10),
+                  _buildCloudflareWarning(),
                   const SizedBox(height: 8),
                   _buildServerOption(
                     value: 'aliyun',
@@ -116,6 +126,61 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     );
   }
 
+  Widget _buildCloudflareWarning() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade300, width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: Colors.red.shade700, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cloudflare 服务器将于 2026/06/01 禁用',
+                  style: TextStyle(
+                    color: Colors.red.shade800,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '由于开发精力有限，后续将不再同时维护 Cloudflare 与阿里云两套 API 服务。当前及未来的新功能都会优先基于阿里云服务器开发与适配，因此 Cloudflare 线路可能出现不稳定、功能缺失或无法正常使用的情况。',
+                  style: TextStyle(
+                    color: colorScheme.onSurface.withValues(alpha: 0.78),
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '为保证应用体验和代码维护质量，后续版本将逐步移除 App 中与 Cloudflare 服务器相关的旧逻辑。建议尽快迁移并使用阿里云服务器。',
+                  style: TextStyle(
+                    color: Colors.red.shade800,
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildServerOption({
     required String value,
     required String title,
@@ -123,8 +188,15 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     required IconData icon,
   }) {
     final isSelected = _selectedServer == value;
+    final isCloudflare = value == 'cloudflare';
+    final isDisabled = isCloudflare && _isCloudflareDisabled;
+    final baseColor = isDisabled ? Colors.grey[400] : Colors.grey[600];
     return InkWell(
       onTap: () {
+        if (isCloudflare) {
+          _showCloudflareNotice();
+          if (isDisabled) return;
+        }
         setState(() => _selectedServer = value);
       },
       borderRadius: BorderRadius.circular(12),
@@ -151,14 +223,14 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
               isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
               color: isSelected
                   ? Theme.of(context).colorScheme.primary
-                  : Colors.grey[600],
+                  : baseColor,
             ),
             const SizedBox(width: 12),
             Icon(icon,
                 size: 24,
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
-                    : Colors.grey[600]),
+                    : baseColor),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -171,14 +243,14 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
                       fontWeight: FontWeight.bold,
                       color: isSelected
                           ? Theme.of(context).colorScheme.primary
-                          : Colors.black87,
+                          : (isCloudflare ? Colors.grey[600] : Colors.black87),
                     ),
                   ),
                   Text(
                     subtitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey[600],
+                      color: isCloudflare ? Colors.grey[500] : Colors.grey[600],
                     ),
                   ),
                 ],
@@ -194,6 +266,11 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   }
 
   Future<void> _handleServerChange() async {
+    if (_selectedServer == 'cloudflare') {
+      _showCloudflareNotice();
+      if (_isCloudflareDisabled) return;
+    }
+
     if (_selectedServer == widget.initialServerChoice) {
       if (mounted) {
         Navigator.pop(context);
@@ -227,5 +304,11 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
         );
       }
     }
+  }
+
+  void _showCloudflareNotice() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(_cloudflareDisabledMessage)),
+    );
   }
 }

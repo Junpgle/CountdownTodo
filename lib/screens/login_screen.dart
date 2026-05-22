@@ -396,8 +396,9 @@ class _ServerSelector extends StatelessWidget {
           items: [
             DropdownMenuItem(
                 value: 'cloudflare',
-                child: Text('Cloudflare（推荐）',
-                    style: TextStyle(color: _T.primaryLt))),
+                child: Text('Cloudflare（即将禁用）',
+                    style:
+                        TextStyle(color: t.textHint.withValues(alpha: 0.55)))),
             DropdownMenuItem(
                 value: 'aliyun',
                 child: Text('阿里云 ECS', style: TextStyle(color: t.textSec))),
@@ -664,6 +665,9 @@ class _LoginScreenState extends State<LoginScreen>
   final _resetCodeCtrl = TextEditingController();
   final _newPassCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
+  static final DateTime _cloudflareDisableDate = DateTime(2026, 6, 1);
+  static const String _cloudflareDisabledMessage =
+      '该服务器将于2026/06/01禁用，请及时迁移到阿里云服务器';
   int _resetCodeCooldown = 0;
   Timer? _cooldownTimer;
 
@@ -712,11 +716,24 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _loadServerChoice() async {
     final choice = await StorageService.getServerChoice();
+    if (choice == 'cloudflare' &&
+        !DateTime.now().isBefore(_cloudflareDisableDate)) {
+      ApiService.setServerChoice('aliyun');
+      await StorageService.saveServerChoice('aliyun');
+      if (mounted) setState(() => _serverChoice = 'aliyun');
+      return;
+    }
     if (mounted) setState(() => _serverChoice = choice);
   }
 
   void _onServerChoiceChanged(String? val) async {
     if (val == null) return;
+    if (val == 'cloudflare') {
+      _snack(_cloudflareDisabledMessage);
+      if (!DateTime.now().isBefore(_cloudflareDisableDate)) {
+        return;
+      }
+    }
     setState(() => _serverChoice = val);
     ApiService.setServerChoice(val);
     await StorageService.saveServerChoice(val);
