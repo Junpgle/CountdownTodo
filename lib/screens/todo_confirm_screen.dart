@@ -593,6 +593,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       try {
         final imageFile = File(widget.imagePath!);
         if (await imageFile.exists()) {
+          persistentImagePath = widget.imagePath;
           final appDir = await getApplicationSupportDirectory();
           final imageDir = Directory('${appDir.path}/analysis_images');
           if (!await imageDir.exists()) {
