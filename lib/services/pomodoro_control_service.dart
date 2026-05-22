@@ -127,6 +127,7 @@ class PomodoroControlService {
         isPaused: false,
         accumulatedMs: 0,
         pauseStartMs: 0,
+        note: note ?? '',
       );
     }
 

@@ -126,6 +126,7 @@ class IslandDataProvider {
     bool isPaused = false,
     int accumulatedMs = 0,
     int pauseStartMs = 0,
+    String note = '',
   }) async {
     // Check if update is actually needed
     final currentState = endMs > 0 ? 'focusing' : 'idle';
@@ -237,6 +238,7 @@ class IslandDataProvider {
       'isPaused': isPaused,
       'accumulatedMs': accumulatedMs,
       'pauseStartMs': pauseStartMs,
+      'note': note,
     };
 
     // Convert to IslandPayload and build structured format
@@ -313,6 +315,7 @@ class IslandDataProvider {
       'pauseLabel': pauseLabel,
       'isCountdown': p.mode != 1,
       'tags': p.tags,
+      'note': p.note,
       'syncMode': p.isLocal ? 'local' : 'remote',
       'endMs': p.endMs,
       'isPaused': p.isPaused,

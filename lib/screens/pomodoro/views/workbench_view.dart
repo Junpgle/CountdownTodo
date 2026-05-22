@@ -1765,19 +1765,45 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showNoteDialog() {
     final ctrl = TextEditingController(text: _currentNote);
+    final isRemote = _phase == PomodoroPhase.remoteWatching;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('专注备注'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 5,
-          minLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '记录这次专注的感想、收获…',
-            border: OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              maxLines: 5,
+              minLines: 3,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '记录这次专注的感想、收获…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (isRemote) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16,
+                      color: Theme.of(ctx).colorScheme.error),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '当前为远程观看，若发起端不在线，备注可能无法同步',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -2075,6 +2101,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         isPaused: _isPaused,
         accumulatedMs: _accumulatedMs,
         pauseStartMs: _pauseStartMs,
+        note: _currentNote,
       );
     }
   }

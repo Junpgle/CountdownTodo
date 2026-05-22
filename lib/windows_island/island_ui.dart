@@ -2281,6 +2281,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Widget _expandedFocusing() {
     final fd = _currentPayload?['focusData'] as Map?;
     final title = fd?['title']?.toString() ?? (_isCountdown ? '倒计时' : '自由专注');
+    final note = fd?['note']?.toString().trim() ?? '';
     return Container(
       width: 260,
       height: 120,
@@ -2307,7 +2308,29 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(height: 12),
+          if (note.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                note,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.74),
+                  fontSize: 10,
+                  height: 1.15,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+          SizedBox(height: note.isNotEmpty ? 8 : 12),
           Row(
             children: [
               // 完成 → push finishConfirm

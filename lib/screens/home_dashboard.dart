@@ -979,6 +979,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               tags: signal.tags,
               isLocal: false,
               mode: isCountUp ? 1 : 0,
+              note: signal.note ?? '',
             );
           }
         }
@@ -1013,6 +1014,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             timestamp: signal.timestamp ?? _remotePomodoro!.timestamp,
             mode: _remotePomodoro!.mode,
             tags: _remotePomodoro!.tags,
+            note: signal.note ?? _remotePomodoro!.note,
           );
           if (isCountUp) {
             _remotePomodoroRemaining = 0; // 🚀 关键：同步侧归零
@@ -1020,6 +1022,56 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
         if (isCountUp) {
           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
+        }
+        if (Platform.isWindows) {
+          await FloatWindowService.update(
+            endMs: isCountUp
+                ? (_remotePomodoro!.timestamp ??
+                    DateTime.now().millisecondsSinceEpoch)
+                : (_remotePomodoro!.targetEndMs ?? 0),
+            title: _remotePomodoro!.todoTitle ?? '',
+            tags: _remotePomodoro!.tags,
+            isLocal: false,
+            mode: isCountUp ? 1 : 0,
+            note: _remotePomodoro!.note ?? '',
+          );
+        }
+        break;
+
+      case 'UPDATE_NOTE':
+        if (_remotePomodoro == null) return;
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _remotePomodoro!.sessionUuid) {
+          return;
+        }
+        final isCountUp = _remotePomodoro!.mode == 1;
+        setState(() {
+          _remotePomodoro = CrossDevicePomodoroState(
+            action: _remotePomodoro!.action,
+            sessionUuid: _remotePomodoro!.sessionUuid,
+            todoUuid: _remotePomodoro!.todoUuid,
+            todoTitle: _remotePomodoro!.todoTitle,
+            duration: _remotePomodoro!.duration,
+            targetEndMs: _remotePomodoro!.targetEndMs,
+            sourceDevice: _remotePomodoro!.sourceDevice,
+            timestamp: _remotePomodoro!.timestamp,
+            mode: _remotePomodoro!.mode,
+            tags: _remotePomodoro!.tags,
+            note: signal.note ?? '',
+          );
+        });
+        if (Platform.isWindows) {
+          await FloatWindowService.update(
+            endMs: isCountUp
+                ? (_remotePomodoro!.timestamp ??
+                    DateTime.now().millisecondsSinceEpoch)
+                : (_remotePomodoro!.targetEndMs ?? 0),
+            title: _remotePomodoro!.todoTitle ?? '',
+            tags: _remotePomodoro!.tags,
+            isLocal: false,
+            mode: isCountUp ? 1 : 0,
+            note: _remotePomodoro!.note ?? '',
+          );
         }
         break;
     }
