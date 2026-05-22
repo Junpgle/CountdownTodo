@@ -54,7 +54,7 @@ class AiTodoContextBuilder {
         '- update_todo / complete_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo: 必须带 todoId',
       );
       add(
-        '- split_todo / merge_todos / plan_todos: 拆分合并需 sourceTodoId/sourceTodoIds，规划需 todos[]',
+        '- split_todo / merge_todos / plan_todos: 拆分合并需 sourceTodoId/sourceTodoIds，规划需 todos[]。注意：plan_todos仅用于创建全新待办，把已有待办安排到时间必须用create_plan_block',
       );
     }
     if (_matchesAny(userMessage, _planKeywords) ||
@@ -176,14 +176,14 @@ JSON操作块必须且只能使用以下协议：
 唯一合法示例：
 [ACTION_START]
 [
-  {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
+  {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}
 ]
 [ACTION_END]
 
 支持的动作：
 
 - create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
-- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，用于生成新的计划待办
+- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，仅用于创建全新的待办事项；如果用户要求把已有待办安排到具体时间，必须使用create_plan_block
 - create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
 - update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
 - update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
