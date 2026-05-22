@@ -3566,6 +3566,7 @@ class StorageService {
           if (sItem.isDeleted ||
               sItem.version > local.version ||
               sItem.updatedAt > local.updatedAt) {
+            _preserveLocalTodoSourceFields(local, sItem);
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
               updatedTodoIds.add(sItem.id);
@@ -4259,6 +4260,20 @@ class StorageService {
     return result;
   }
 
+  static void _preserveLocalTodoSourceFields(
+      TodoItem local, TodoItem incoming) {
+    if ((incoming.imagePath == null || incoming.imagePath!.isEmpty) &&
+        local.imagePath != null &&
+        local.imagePath!.isNotEmpty) {
+      incoming.imagePath = local.imagePath;
+    }
+    if ((incoming.originalText == null || incoming.originalText!.isEmpty) &&
+        local.originalText != null &&
+        local.originalText!.isNotEmpty) {
+      incoming.originalText = local.originalText;
+    }
+  }
+
   static Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval) {
     return {
       'uuid': interval.todo.id,
@@ -4532,14 +4547,53 @@ class StorageService {
   // ==========================================
 
   /// 保存待确认的待办数据
+  /// [status] 状态: 'processing'(处理中), 'success'(成功), 'failed'(失败)
+  /// [compressedPath] 压缩后的图片路径，用于重试
+  /// [currentAttempt] 当前尝试次数
+  /// [maxAttempts] 最大尝试次数
+  /// [errorMsg] 错误信息（失败时）
   static Future<void> savePendingTodoConfirm({
     required String imagePath,
-    required List<Map<String, dynamic>> results,
+    List<Map<String, dynamic>> results = const [],
+    String status = 'success',
+    String? compressedPath,
+    int currentAttempt = 1,
+    int maxAttempts = 1,
+    String? errorMsg,
   }) async {
     final prefs = await StorageService.prefs;
     final data = jsonEncode({
       'imagePath': imagePath,
       'results': results,
+      'status': status,
+      'compressedPath': compressedPath,
+      'currentAttempt': currentAttempt,
+      'maxAttempts': maxAttempts,
+      'errorMsg': errorMsg,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+  }
+
+  /// 更新待确认待办数据的状态
+  static Future<void> updatePendingTodoConfirmStatus({
+    required String status,
+    int? currentAttempt,
+    int? maxAttempts,
+    String? errorMsg,
+    List<Map<String, dynamic>>? results,
+  }) async {
+    final existing = await getPendingTodoConfirm();
+    if (existing == null) return;
+
+    final prefs = await StorageService.prefs;
+    final data = jsonEncode({
+      ...existing,
+      'status': status,
+      'currentAttempt': currentAttempt ?? existing['currentAttempt'] ?? 1,
+      'maxAttempts': maxAttempts ?? existing['maxAttempts'] ?? 1,
+      'errorMsg': errorMsg ?? existing['errorMsg'],
+      'results': results ?? existing['results'] ?? [],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);

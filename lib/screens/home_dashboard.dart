@@ -415,17 +415,13 @@ class _HomeDashboardState extends State<HomeDashboard>
           _loadAllData();
         },
         onTodoRecognized: (results, imagePath) {
-          // 图片识别到待办，先设置待确认状态（确保首页卡片可见）
-          if (results.isNotEmpty) {
-            setState(() {
-              _pendingTodoConfirm = {
-                'imagePath': imagePath,
-                'results': results,
-              };
-            });
-          }
-          // 再导航到确认页面
-          _navigateToTodoConfirm(results, imagePath, null);
+          // 刷新待确认数据（从 StorageService 获取最新状态）
+          _checkPendingTodoConfirm().then((_) {
+            // 如果识别成功且有结果，自动打开确认页面
+            if (results.isNotEmpty && mounted) {
+              _navigateToTodoConfirm(results, imagePath, null);
+            }
+          });
         },
       );
 
@@ -578,8 +574,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         dueDate: dueDate,
         createdDate: createdDate,
         createdAt: DateTime.now().millisecondsSinceEpoch,
-        imagePath: data['imagePath'], // 📸 关联图片路径
-        originalText: data['originalText'], // 📄 原始分析文本
+        // 📸 关联图片路径（兼容确认页与存储层两种字段名）
+        imagePath: (data['imagePath'] ?? data['image_path']) as String?,
+        // 📄 原始分析文本
+        originalText:
+            (data['originalText'] ?? data['original_text']) as String?,
         teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
         teamName: data['team_name'] ?? teamName, // 🚀 团队名称
       );
@@ -629,9 +628,10 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (pendingData != null) {
       final imagePath = pendingData['imagePath'] as String?;
-      final results = pendingData['results'] as List<dynamic>?;
+      final status = pendingData['status'] as String? ?? 'success';
 
-      if (imagePath != null && results != null && results.isNotEmpty) {
+      // 只要有 imagePath 就显示卡片（支持 processing/retrying/failed/success 状态）
+      if (imagePath != null) {
         // 保存待确认数据，显示入口卡片
         setState(() {
           _pendingTodoConfirm = pendingData;
@@ -1249,9 +1249,46 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
     final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
+    final status = _pendingTodoConfirm!['status'] as String? ?? 'success';
     final todoCount = results?.length ?? 0;
+    final currentAttempt = _pendingTodoConfirm!['currentAttempt'] as int? ?? 1;
+    final maxAttempts = _pendingTodoConfirm!['maxAttempts'] as int? ?? 1;
+    final errorMsg = _pendingTodoConfirm!['errorMsg'] as String?;
 
-    if (todoCount == 0) return const SizedBox.shrink();
+    // 处理中或重试中状态
+    final isProcessing = status == 'processing' || status == 'retrying';
+    // 失败状态
+    final isFailed = status == 'failed';
+    // 成功状态
+    final isSuccess = status == 'success';
+
+    // 成功状态但没有结果，不显示卡片
+    if (isSuccess && todoCount == 0) return const SizedBox.shrink();
+
+    // 根据状态确定图标、标题、副标题
+    IconData statusIcon;
+    Color iconColor;
+    String title;
+    String subtitle;
+
+    if (isProcessing) {
+      statusIcon = Icons.hourglass_top;
+      iconColor = Colors.orange;
+      title = 'AI识别中...';
+      subtitle = '第$currentAttempt/$maxAttempts次尝试，请稍候';
+    } else if (isFailed) {
+      statusIcon = Icons.error_outline;
+      iconColor = Colors.red;
+      title = 'AI识别失败';
+      subtitle = errorMsg != null && errorMsg.length > 30
+          ? '${errorMsg.substring(0, 30)}...'
+          : (errorMsg ?? '点击重试');
+    } else {
+      statusIcon = Icons.check_circle_outline;
+      iconColor = Colors.green;
+      title = 'AI识别完成';
+      subtitle = '发现 $todoCount 个待办，点击查看';
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1260,14 +1297,33 @@ class _HomeDashboardState extends State<HomeDashboard>
         borderRadius: BorderRadius.circular(16),
         elevation: 2,
         child: InkWell(
-          onTap: _openPendingTodoConfirm,
+          onTap: isProcessing
+              ? null // 处理中不允许点击
+              : (isFailed ? _retryPendingTodoRecognition : _openPendingTodoConfirm),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // 图片缩略图
-                if (imagePath != null && File(imagePath).existsSync())
+                // 图片缩略图或状态图标
+                if (isProcessing)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  )
+                else if (imagePath != null && File(imagePath).existsSync())
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.file(
@@ -1291,11 +1347,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.1),
+                      color: iconColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child:
-                        const Icon(Icons.checklist, color: Colors.deepPurple),
+                    child: Icon(statusIcon, color: iconColor),
                   ),
                 const SizedBox(width: 12),
                 // 文字信息
@@ -1304,7 +1359,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AI识别完成',
+                        title,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -1313,26 +1368,70 @@ class _HomeDashboardState extends State<HomeDashboard>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '发现 $todoCount 个待办，点击查看',
+                        subtitle,
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey[600],
+                          color: isFailed ? Colors.red[400] : Colors.grey[600],
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                // 箭头图标
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
+                // 右侧操作按钮
+                if (isProcessing)
+                  const SizedBox.shrink()
+                else if (isFailed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '重试',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red,
+                      ),
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Colors.grey[400],
+                  ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// 重试图片识别
+  Future<void> _retryPendingTodoRecognition() async {
+    // 更新状态为重试中
+    setState(() {
+      _pendingTodoConfirm = {
+        ...?_pendingTodoConfirm,
+        'status': 'retrying',
+      };
+    });
+
+    await ExternalShareHandler.retryTodoRecognition(
+      onTodoRecognized: (results, imagePath) {
+        if (!mounted) return;
+        // 刷新待确认数据
+        _checkPendingTodoConfirm();
+        // 如果识别成功且有结果，打开确认页面
+        if (results.isNotEmpty) {
+          _openPendingTodoConfirm();
+        }
+      },
     );
   }
 
