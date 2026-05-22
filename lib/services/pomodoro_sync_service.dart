@@ -27,6 +27,7 @@ class CrossDevicePomodoroState {
   final String? sourceDevice;
   final int? timestamp;
   final List<String> tags;
+  final String? note; // 专注备注
   final int? mode; // 🚀 新增：0=countdown, 1=countUp
 
   // 🚀 新增：版本更新专属字段
@@ -58,6 +59,7 @@ class CrossDevicePomodoroState {
     this.sourceDevice,
     this.timestamp,
     this.tags = const [],
+    this.note,
     this.mode,
     this.latestVersion,
     this.downloadUrl,
@@ -85,6 +87,7 @@ class CrossDevicePomodoroState {
         sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
         timestamp: _parseInt(j['timestamp']),
         tags: _parseStringList(j['tags']),
+        note: (j['note'] ?? j['focus_note'] ?? j['focusNote'])?.toString(),
         mode: _parseInt(j['mode']),
         latestVersion: j['latest_version']?.toString(),
         downloadUrl: j['download_url']?.toString(),
@@ -127,6 +130,7 @@ class CrossDevicePomodoroState {
         if (duration != null) 'duration': duration,
         if (targetEndMs != null) 'target_end_ms': targetEndMs,
         if (tags.isNotEmpty) 'tags': tags,
+        if (note != null) 'note': note,
         if (mode != null) 'mode': mode,
         if (latestVersion != null) 'latest_version': latestVersion,
         if (downloadUrl != null) 'download_url': downloadUrl,
@@ -469,6 +473,7 @@ class PomodoroSyncService {
     required int targetEndMs,
     required int? mode,
     List<String> tagNames = const [],
+    String? note,
     int? customTimestamp,
   }) {
     _send({
@@ -479,6 +484,7 @@ class PomodoroSyncService {
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
+      if (note != null) 'note': note,
       if (mode != null) 'mode': mode,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
@@ -492,6 +498,7 @@ class PomodoroSyncService {
     required int targetEndMs,
     required int? mode,
     List<String> tagNames = const [],
+    String? note,
     int? customTimestamp,
   }) {
     _send({
@@ -502,6 +509,7 @@ class PomodoroSyncService {
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
+      if (note != null) 'note': note,
       if (mode != null) 'mode': mode,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
@@ -527,18 +535,29 @@ class PomodoroSyncService {
   void sendSwitchSignal(
       {required String? todoUuid,
       required String? todoTitle,
-      required String sessionUuid}) {
+      required String sessionUuid,
+      String? note}) {
     _send({
       'action': 'SWITCH',
       'session_uuid': sessionUuid,
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
+      if (note != null) 'note': note,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
   }
 
   void sendUpdateTagsSignal(List<String> tagNames) {
     _send({'action': 'UPDATE_TAGS', 'tags': tagNames});
+  }
+
+  void sendUpdateNoteSignal({required String sessionUuid, String? note}) {
+    _send({
+      'action': 'UPDATE_NOTE',
+      'session_uuid': sessionUuid,
+      'note': note ?? '',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   void sendPauseSignal({
@@ -565,6 +584,7 @@ class PomodoroSyncService {
     int? mode,
     String? todoUuid,
     String? todoTitle,
+    String? note,
   }) {
     _send({
       'action': 'RESUME',
@@ -576,6 +596,7 @@ class PomodoroSyncService {
       if (mode != null) 'mode': mode,
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
+      if (note != null) 'note': note,
     });
   }
 

@@ -29,6 +29,7 @@ class PomodoroControlService {
     int currentCycle = 1,
     int? durationMinutes,
     String? planBlockId,
+    String? note,
     String? deviceId,
     bool notify = true,
     bool updateFloat = true,
@@ -90,6 +91,7 @@ class PomodoroControlService {
       accumulatedMs: 0,
       pauseStartMs: 0,
       planBlockId: activePlanBlockId,
+      note: note,
     );
 
     PomodoroSyncService.instance.setLocalFocusing(true);
@@ -142,6 +144,7 @@ class PomodoroControlService {
         targetEndMs: end,
         tagNames: tagNames,
         mode: settings.mode.index,
+        note: note,
         customTimestamp: now,
       );
     }
@@ -164,6 +167,7 @@ class PomodoroControlService {
           'plannedFocusSeconds': focusSeconds,
           'isCountUp': isCountUp,
           'mode': settings.mode.index,
+          'note': note,
         }
       ]);
     }

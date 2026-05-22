@@ -1010,9 +1010,12 @@ class PomodoroService {
           // 合并策略：
           // 1. 云端更新时间更新 → 采用云端数据为主
           // 2. 任何情况下：若云端有 tagUuids/todoTitle 而本地没有 → 补全（修复旧记录标签丢失）
-          final cloudNewer = rr.updatedAt > ex.updatedAt;
+          final cloudNewer = rr.updatedAt > ex.updatedAt ||
+              (rr.updatedAt == ex.updatedAt && rr.version > ex.version);
           final needPatch = (rr.tagUuids.isNotEmpty && ex.tagUuids.isEmpty) ||
-              (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null);
+              (rr.todoTitle?.isNotEmpty == true && ex.todoTitle == null) ||
+              (rr.planBlockId?.isNotEmpty == true && ex.planBlockId == null) ||
+              (rr.note?.isNotEmpty == true && ex.note == null);
           if (cloudNewer || needPatch) {
             merged[rr.uuid] = PomodoroRecord(
               uuid: rr.uuid,
@@ -1029,6 +1032,10 @@ class PomodoroService {
                   cloudNewer ? rr.actualDuration : ex.actualDuration,
               status: cloudNewer ? rr.status : ex.status,
               deviceId: rr.deviceId ?? ex.deviceId,
+              planBlockId: cloudNewer
+                  ? (rr.planBlockId ?? ex.planBlockId)
+                  : (ex.planBlockId ?? rr.planBlockId),
+              note: cloudNewer ? (rr.note ?? ex.note) : (ex.note ?? rr.note),
               isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
               version: cloudNewer ? rr.version : ex.version,
               createdAt: ex.createdAt,
@@ -1069,6 +1076,70 @@ class PomodoroService {
 
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
   static const _keyLastRecordDownload = 'pomodoro_last_record_download';
+
+  static Future<bool> mergeRecordsLww(
+      List<PomodoroRecord> remoteRecords) async {
+    if (remoteRecords.isEmpty) return false;
+    final localRecords = await _getAllRecordsRaw();
+    final merged = {for (final r in localRecords) r.uuid: r};
+    var hasChange = false;
+
+    for (final remote in remoteRecords) {
+      final existing = merged[remote.uuid];
+      if (existing == null) {
+        merged[remote.uuid] = remote;
+        hasChange = true;
+        continue;
+      }
+
+      final remoteWins = remote.updatedAt > existing.updatedAt ||
+          (remote.updatedAt == existing.updatedAt &&
+              remote.version > existing.version);
+      final needsPatch =
+          (remote.tagUuids.isNotEmpty && existing.tagUuids.isEmpty) ||
+              (remote.todoTitle?.isNotEmpty == true &&
+                  existing.todoTitle == null) ||
+              (remote.planBlockId?.isNotEmpty == true &&
+                  existing.planBlockId == null) ||
+              (remote.note?.isNotEmpty == true && existing.note == null);
+
+      if (remoteWins) {
+        merged[remote.uuid] = remote;
+        hasChange = true;
+      } else if (needsPatch) {
+        merged[remote.uuid] = PomodoroRecord(
+          uuid: existing.uuid,
+          todoUuid: existing.todoUuid ?? remote.todoUuid,
+          todoTitle: existing.todoTitle ?? remote.todoTitle,
+          tagUuids: existing.tagUuids.isNotEmpty
+              ? existing.tagUuids
+              : remote.tagUuids,
+          startTime: existing.startTime,
+          endTime: existing.endTime,
+          plannedDuration: existing.plannedDuration,
+          actualDuration: existing.actualDuration,
+          status: existing.status,
+          deviceId: existing.deviceId ?? remote.deviceId,
+          planBlockId: existing.planBlockId ?? remote.planBlockId,
+          note: existing.note ?? remote.note,
+          isDeleted: existing.isDeleted,
+          version: existing.version,
+          createdAt: existing.createdAt,
+          updatedAt: existing.updatedAt,
+          hasConflict: existing.hasConflict,
+          conflictData: existing.conflictData,
+        );
+        hasChange = true;
+      }
+    }
+
+    if (hasChange) {
+      final records = merged.values.toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+      await _saveRecords(records);
+    }
+    return hasChange;
+  }
 
   static Future<void> syncRecordsToCloud({
     bool forceFullSync = false,

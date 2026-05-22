@@ -485,6 +485,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _phase = PomodoroPhase.remoteWatching;
           _targetEndMs = isCountUp ? 0 : localTargetEnd; // 仅倒计时需要此标记
           _sessionStartMs = isCountUp ? localSessionStart : 0;
+          _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
           _remainingSeconds = rem;
           _isPaused = isPaused;
           _pausedAtMs = signal.pausedAtMs ?? 0;
@@ -493,6 +494,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = remoteTodo;
           _remoteState = signal;
           _remoteTagNames = signal.tags;
+          _currentNote = signal.note ?? '';
         });
         widget.onPhaseChanged(_phase);
 
@@ -508,6 +510,40 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'UPDATE_TAGS':
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (mounted) setState(() => _remoteTagNames = signal.tags);
+        break;
+
+      case 'UPDATE_NOTE':
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _currentSessionUuid &&
+            signal.sessionUuid != _remoteState?.sessionUuid) {
+          break;
+        }
+        if (_phase != PomodoroPhase.focusing &&
+            _phase != PomodoroPhase.remoteWatching) {
+          break;
+        }
+        if (mounted) {
+          setState(() {
+            _currentNote = signal.note ?? '';
+            if (_phase == PomodoroPhase.remoteWatching) {
+              _remoteState = CrossDevicePomodoroState(
+                action: _remoteState?.action ?? 'SYNC',
+                sessionUuid: _remoteState?.sessionUuid,
+                todoUuid: _remoteState?.todoUuid,
+                todoTitle: _remoteState?.todoTitle,
+                duration: _remoteState?.duration,
+                targetEndMs: _remoteState?.targetEndMs,
+                sourceDevice: _remoteState?.sourceDevice,
+                timestamp: _remoteState?.timestamp,
+                mode: _remoteState?.mode,
+                tags: _remoteState?.tags ?? [],
+                note: _currentNote,
+              );
+            }
+          });
+          await _saveCurrentRunState();
+          _showLocalFloat();
+        }
         break;
 
       case 'PAUSE':
@@ -576,6 +612,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _remainingSeconds = rem;
             _targetEndMs = isCountUp ? 0 : localTargetEnd;
             _sessionStartMs = isCountUp ? localSessionStart : 0;
+            _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
+            if (signal.note != null) _currentNote = signal.note!;
 
             if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
               _boundTodo = TodoItem(
@@ -658,6 +696,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               timestamp: signal.timestamp ?? _remoteState?.timestamp,
               mode: _remoteState?.mode,
               tags: _remoteState?.tags ?? [],
+              note: signal.note ?? _remoteState?.note,
             );
           });
           if (isCountUp) {
@@ -1099,6 +1138,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       pausedAtMs: _pausedAtMs,
       accumulatedMs: _accumulatedMs,
       pauseStartMs: _pauseStartMs,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     ));
     _syncService.sendPauseSignal(
       sessionUuid: _currentSessionUuid,
@@ -1151,6 +1191,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       mode: _settings.mode == TimerMode.countUp ? 1 : 0,
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     );
     await PomodoroService.saveRunState(PomodoroRunState(
       phase: _phase,
@@ -1171,6 +1212,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isPaused: false,
       pausedAtMs: 0,
       accumulatedMs: _accumulatedMs,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     ));
   }
 
@@ -1278,14 +1320,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
     final started = startResult.state;
     _currentSessionUuid = started.sessionUuid;
-    _currentNote = '';
-
     setState(() {
       _phase = PomodoroPhase.focusing;
       _targetEndMs = started.targetEndMs;
       _remainingSeconds = 0;
       _sessionStartMs = started.sessionStartMs;
       _remoteState = null;
+      _currentNote = '';
     });
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
@@ -1337,7 +1378,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _syncService.sendSwitchSignal(
         todoUuid: newTodo?.id,
         todoTitle: newTodo?.title,
-        sessionUuid: _currentSessionUuid);
+        sessionUuid: _currentSessionUuid,
+        note: _currentNote.isNotEmpty ? _currentNote : null);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content:
@@ -1739,13 +1781,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
               onPressed: () async {
                 setState(() => _currentNote = ctrl.text);
                 Navigator.pop(ctx);
                 await _saveCurrentRunState();
+                if (_phase == PomodoroPhase.focusing ||
+                    _phase == PomodoroPhase.remoteWatching) {
+                  _syncService.sendUpdateNoteSignal(
+                    sessionUuid: _currentSessionUuid,
+                    note: _currentNote,
+                  );
+                  _showLocalFloat();
+                }
               },
               child: const Text('保存')),
         ],
@@ -2476,10 +2525,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           border: Border.all(
             color: _currentNote.isEmpty
                 ? contentColor.withValues(alpha: 0.15)
-                : Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.3),
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

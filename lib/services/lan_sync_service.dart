@@ -332,7 +332,8 @@ class LanSyncService {
 
   void _initEncryption() {
     // 使用固定的系统盐值确保所有设备（无论账号）都能解密初始握手和数据传输
-    final keyBytes = sha256.convert(utf8.encode('lan_sync_global_v1_key')).bytes;
+    final keyBytes =
+        sha256.convert(utf8.encode('lan_sync_global_v1_key')).bytes;
     final ivBytes = sha256
         .convert(utf8.encode('lan_sync_global_v1_iv'))
         .bytes
@@ -590,7 +591,8 @@ class LanSyncService {
       }
 
       if (syncConfig.syncCourses) {
-        await _mergeCourses(username, remoteCourses, (count) => coursesSynced = count);
+        await _mergeCourses(
+            username, remoteCourses, (count) => coursesSynced = count);
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并课程完成...');
@@ -743,41 +745,15 @@ class LanSyncService {
   Future<void> _mergePomodoroRecords(
       List<Map<String, dynamic>> remote, Function(int) onChanged) async {
     if (remote.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    final s = prefs.getString('pomodoro_records');
-    final List<PomodoroRecord> localAll = s == null
-        ? []
-        : (jsonDecode(s) as List)
-            .map((e) => PomodoroRecord.fromJson(e))
-            .toList();
-    final Map<String, PomodoroRecord> merged = {
-      for (var r in localAll) r.uuid: r
-    };
-    bool changed = false;
-    for (var r in remote) {
-      final remoteRecord = PomodoroRecord.fromJson(r);
-      final existing = merged[remoteRecord.uuid];
-      if (existing == null) {
-        if (!remoteRecord.isDeleted) {
-          merged[remoteRecord.uuid] = remoteRecord;
-          changed = true;
-        }
-      } else {
-        if (remoteRecord.updatedAt > existing.updatedAt) {
-          merged[remoteRecord.uuid] = remoteRecord;
-          changed = true;
-        }
-      }
-    }
+    final remoteRecords = remote.map(PomodoroRecord.fromJson).toList();
+    final changed = await PomodoroService.mergeRecordsLww(remoteRecords);
     if (changed) {
-      await prefs.setString('pomodoro_records',
-          jsonEncode(merged.values.map((r) => r.toJson()).toList()));
-      onChanged(merged.length);
+      onChanged(remoteRecords.length);
     }
   }
 
-  Future<void> _mergeCourses(String username,
-      List<Map<String, dynamic>> remote, Function(int) onChanged) async {
+  Future<void> _mergeCourses(String username, List<Map<String, dynamic>> remote,
+      Function(int) onChanged) async {
     if (remote.isEmpty) return;
     final local = await CourseService.getAllCourses(username);
     final Map<String, CourseItem> merged = {};
@@ -1096,7 +1072,8 @@ class LanSyncService {
           remotePomodoroTags, (count) => pomodoroTagsSynced = count);
       await _mergePomodoroRecords(
           remotePomodoroRecords, (count) => pomodoroRecordsSynced = count);
-      await _mergeCourses(username, remoteCourses, (count) => coursesSynced = count);
+      await _mergeCourses(
+          username, remoteCourses, (count) => coursesSynced = count);
       _emitProgressValue(1.0);
 
       client.close();
@@ -1125,7 +1102,7 @@ class LanSyncService {
       String fileName = req.uri.queryParameters['name'] ?? 'unknown_file';
       // 移除可能导致路径遍历或非法的文件名字符
       fileName = fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      
+
       final deviceName = req.uri.queryParameters['device'] ?? '未知设备';
 
       _emitProgress('正在接收来自 $deviceName 的文件: $fileName');
@@ -1207,7 +1184,8 @@ class LanSyncService {
         _emitProgress('文件发送成功');
         return LanSyncResult(success: true, message: '文件发送成功');
       } else {
-        return LanSyncResult(success: false, message: '服务器响应错误: ${response.statusCode}');
+        return LanSyncResult(
+            success: false, message: '服务器响应错误: ${response.statusCode}');
       }
     } catch (e) {
       _isSyncing = false;
