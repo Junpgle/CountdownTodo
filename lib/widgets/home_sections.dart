@@ -275,14 +275,17 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
           ),
-          child: ListTile(
-            contentPadding: EdgeInsets.symmetric(
-                horizontal: isTablet ? 24 : 16, vertical: isTablet ? 8 : 4),
-            leading: const Icon(Icons.lock_clock, color: Colors.orange),
-            title: const Text("未开启屏幕时间统计",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text("点击前往开启权限以同步手机使用时长"),
-            onTap: widget.onOpenSettings,
+          child: Material(
+            color: Colors.transparent,
+            child: ListTile(
+              contentPadding: EdgeInsets.symmetric(
+                  horizontal: isTablet ? 24 : 16, vertical: isTablet ? 8 : 4),
+              leading: const Icon(Icons.lock_clock, color: Colors.orange),
+              title: const Text("未开启屏幕时间统计",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text("点击前往开启权限以同步手机使用时长"),
+              onTap: widget.onOpenSettings,
+            ),
           ),
         );
       }

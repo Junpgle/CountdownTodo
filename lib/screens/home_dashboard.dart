@@ -131,6 +131,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     'timeline': true,
   };
   Timer? _courseTimer;
+  final Set<String> _coursesWithScheduledAlarms = {};
+  final Set<int> _activeTodoNotifIds = {};
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
@@ -173,8 +175,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _pendingReloadRequested = false;
   int _loadGeneration = 0;
 
-  static const MethodChannel _notificationChannel =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  final List<StreamSubscription<MethodCall>> _notifSubs = [];
+  bool _navigatingToPomodoro = false;
+  Route<dynamic>? _pomodoroRoute;
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
@@ -303,6 +306,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 冷启动清理残留通知
+    NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
+    NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     _loadSectionPreferences();
     _loadSemesterSettings();
     _generateGreeting();
@@ -324,52 +330,65 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
 
-    // 🚀 桌面端拦截：确保只在移动设备监听通道
+    // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (Platform.isAndroid || Platform.isIOS) {
-      _notificationChannel.setMethodCallHandler((call) async {
-        switch (call.method) {
-          case "markCurrentTodoDone":
-            debugPrint(
-                "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
-            final args = call.arguments;
-            int? notifId;
-            if (args is Map) {
-              notifId = args['notificationId'] as int?;
-            }
-            debugPrint("📱 解析 notifId: $notifId");
-            _markCurrentTodoDone(notifId: notifId);
-            break;
-          case "openTodoConfirm":
-            _checkPendingTodoConfirm();
-            break;
-          case "openShortcut":
-            final shortcutType = call.arguments as String?;
-            debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
-            if (shortcutType != null) {
-              _handleShortcut(shortcutType);
-            }
-            break;
-          case "viewAnalysisImage":
-            final imagePath = call.arguments as String?;
-            if (imagePath != null && mounted) {
-              _showAnalysisImage(imagePath);
-            }
-            break;
-          case "viewOriginalText":
-            final text = call.arguments as String?;
-            if (text != null && mounted) {
-              _showOriginalText(text);
-            }
-            break;
-          case "openPlanBlock":
-            debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
-            if (mounted) {
-              await _handleOpenPlanBlock(call.arguments);
-            }
-            break;
-          // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
+      _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
+        debugPrint(
+            "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+        final args = call.arguments;
+        int? notifId;
+        if (args is Map) {
+          notifId = args['notificationId'] as int?;
         }
-      });
+        debugPrint("📱 解析 notifId: $notifId");
+        _markCurrentTodoDone(notifId: notifId);
+      }));
+      _notifSubs.add(NotificationService.listen('openTodoConfirm', (call) {
+        _checkPendingTodoConfirm();
+      }));
+      _notifSubs.add(NotificationService.listen('openShortcut', (call) {
+        final shortcutType = call.arguments as String?;
+        debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+        if (shortcutType != null) {
+          _handleShortcut(shortcutType);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('viewAnalysisImage', (call) {
+        final imagePath = call.arguments as String?;
+        if (imagePath != null && mounted) {
+          _showAnalysisImage(imagePath);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('viewOriginalText', (call) {
+        final text = call.arguments as String?;
+        if (text != null && mounted) {
+          _showOriginalText(text);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('openPlanBlock', (call) {
+        debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+        if (mounted) {
+          _handleOpenPlanBlock(call.arguments);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
+        debugPrint("🍅 收到 openPomodoro 调用");
+        _navigateToPomodoro();
+      }));
+      _notifSubs.add(NotificationService.listen('openTodoList', (call) {
+        debugPrint("📋 收到 openTodoList 调用");
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      }));
+      // 通知按钮事件：如果不在番茄钟页，先导航过去，
+      // PomodoroScreen 的 listen() 会自动 replay pending 事件。
+      for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
+        _notifSubs.add(NotificationService.listen(action, (call) {
+          debugPrint("🍅 收到 $action");
+          _navigateToPomodoro();
+        }));
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -399,17 +418,13 @@ class _HomeDashboardState extends State<HomeDashboard>
           _loadAllData();
         },
         onTodoRecognized: (results, imagePath) {
-          // 图片识别到待办，先设置待确认状态（确保首页卡片可见）
-          if (results.isNotEmpty) {
-            setState(() {
-              _pendingTodoConfirm = {
-                'imagePath': imagePath,
-                'results': results,
-              };
-            });
-          }
-          // 再导航到确认页面
-          _navigateToTodoConfirm(results, imagePath, null);
+          // 刷新待确认数据（从 StorageService 获取最新状态）
+          _checkPendingTodoConfirm().then((_) {
+            // 如果识别成功且有结果，自动打开确认页面
+            if (results.isNotEmpty && mounted) {
+              _navigateToTodoConfirm(results, imagePath, null);
+            }
+          });
         },
       );
 
@@ -459,6 +474,9 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    for (final sub in _notifSubs) {
+      sub.cancel();
+    }
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -559,8 +577,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         dueDate: dueDate,
         createdDate: createdDate,
         createdAt: DateTime.now().millisecondsSinceEpoch,
-        imagePath: data['imagePath'], // 📸 关联图片路径
-        originalText: data['originalText'], // 📄 原始分析文本
+        // 📸 关联图片路径（兼容确认页与存储层两种字段名）
+        imagePath: (data['imagePath'] ?? data['image_path']) as String?,
+        // 📄 原始分析文本
+        originalText:
+            (data['originalText'] ?? data['original_text']) as String?,
         teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
         teamName: data['team_name'] ?? teamName, // 🚀 团队名称
       );
@@ -610,9 +631,10 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (pendingData != null) {
       final imagePath = pendingData['imagePath'] as String?;
-      final results = pendingData['results'] as List<dynamic>?;
+      final status = pendingData['status'] as String? ?? 'success';
 
-      if (imagePath != null && results != null && results.isNotEmpty) {
+      // 只要有 imagePath 就显示卡片（支持 processing/retrying/failed/success 状态）
+      if (imagePath != null) {
         // 保存待确认数据，显示入口卡片
         setState(() {
           _pendingTodoConfirm = pendingData;
@@ -684,6 +706,37 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  /// 将已有的 PomodoroScreen 带到前台，或 push 新的。
+  /// 用 remove + push 代替 popUntil，避免破坏栈中其他路由。
+  void _navigateToPomodoro() {
+    if (!mounted || _navigatingToPomodoro) return;
+    final nav = Navigator.of(context);
+
+    if (_pomodoroRoute != null) {
+      if (_pomodoroRoute!.isCurrent) return; // 已在栈顶，无需操作
+      // 已有番茄钟页但被其他页面盖住：remove 后重新 push 到顶部
+      try {
+        nav.removeRoute(_pomodoroRoute!);
+      } catch (_) {
+        // route 已被 pop（如用户手动返回），清除引用
+        _pomodoroRoute = null;
+      }
+    }
+
+    // push 新的（或被 remove 的）番茄钟页
+    _navigatingToPomodoro = true;
+    final route = MaterialPageRoute(
+      builder: (_) => PomodoroScreen(username: widget.username),
+      settings: const RouteSettings(name: 'pomodoro'),
+    );
+    _pomodoroRoute = route;
+    nav.push(route).whenComplete(() {
+      _navigatingToPomodoro = false;
+      // 如果是被用户手动 pop 的（不是 removeRoute），清除引用
+      if (_pomodoroRoute == route) _pomodoroRoute = null;
+    });
+  }
+
   /// 处理 App Shortcut 导航
   void _handleShortcut(String shortcutType) {
     if (!mounted) return;
@@ -743,7 +796,16 @@ class _HomeDashboardState extends State<HomeDashboard>
         await StorageService.savePlanBlocks(widget.username, [target],
             sync: true);
       }
-      await _startPlanBlockFocus(target);
+      // 导航到规划页面，由用户手动决定是否开始专注
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TodoPlanScreen(
+            username: widget.username,
+            initialDate: DateTime.now(),
+          ),
+        ),
+      );
       return;
     }
     if (!mounted) return;
@@ -979,6 +1041,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               tags: signal.tags,
               isLocal: false,
               mode: isCountUp ? 1 : 0,
+              note: signal.note ?? '',
             );
           }
         }
@@ -1013,6 +1076,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             timestamp: signal.timestamp ?? _remotePomodoro!.timestamp,
             mode: _remotePomodoro!.mode,
             tags: _remotePomodoro!.tags,
+            note: signal.note ?? _remotePomodoro!.note,
           );
           if (isCountUp) {
             _remotePomodoroRemaining = 0; // 🚀 关键：同步侧归零
@@ -1020,6 +1084,56 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
         if (isCountUp) {
           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
+        }
+        if (Platform.isWindows) {
+          await FloatWindowService.update(
+            endMs: isCountUp
+                ? (_remotePomodoro!.timestamp ??
+                    DateTime.now().millisecondsSinceEpoch)
+                : (_remotePomodoro!.targetEndMs ?? 0),
+            title: _remotePomodoro!.todoTitle ?? '',
+            tags: _remotePomodoro!.tags,
+            isLocal: false,
+            mode: isCountUp ? 1 : 0,
+            note: _remotePomodoro!.note ?? '',
+          );
+        }
+        break;
+
+      case 'UPDATE_NOTE':
+        if (_remotePomodoro == null) return;
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _remotePomodoro!.sessionUuid) {
+          return;
+        }
+        final isCountUp = _remotePomodoro!.mode == 1;
+        setState(() {
+          _remotePomodoro = CrossDevicePomodoroState(
+            action: _remotePomodoro!.action,
+            sessionUuid: _remotePomodoro!.sessionUuid,
+            todoUuid: _remotePomodoro!.todoUuid,
+            todoTitle: _remotePomodoro!.todoTitle,
+            duration: _remotePomodoro!.duration,
+            targetEndMs: _remotePomodoro!.targetEndMs,
+            sourceDevice: _remotePomodoro!.sourceDevice,
+            timestamp: _remotePomodoro!.timestamp,
+            mode: _remotePomodoro!.mode,
+            tags: _remotePomodoro!.tags,
+            note: signal.note ?? '',
+          );
+        });
+        if (Platform.isWindows) {
+          await FloatWindowService.update(
+            endMs: isCountUp
+                ? (_remotePomodoro!.timestamp ??
+                    DateTime.now().millisecondsSinceEpoch)
+                : (_remotePomodoro!.targetEndMs ?? 0),
+            title: _remotePomodoro!.todoTitle ?? '',
+            tags: _remotePomodoro!.tags,
+            isLocal: false,
+            mode: isCountUp ? 1 : 0,
+            note: _remotePomodoro!.note ?? '',
+          );
         }
         break;
     }
@@ -1138,9 +1252,46 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
     final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
+    final status = _pendingTodoConfirm!['status'] as String? ?? 'success';
     final todoCount = results?.length ?? 0;
+    final currentAttempt = _pendingTodoConfirm!['currentAttempt'] as int? ?? 1;
+    final maxAttempts = _pendingTodoConfirm!['maxAttempts'] as int? ?? 1;
+    final errorMsg = _pendingTodoConfirm!['errorMsg'] as String?;
 
-    if (todoCount == 0) return const SizedBox.shrink();
+    // 处理中或重试中状态
+    final isProcessing = status == 'processing' || status == 'retrying';
+    // 失败状态
+    final isFailed = status == 'failed';
+    // 成功状态
+    final isSuccess = status == 'success';
+
+    // 成功状态但没有结果，不显示卡片
+    if (isSuccess && todoCount == 0) return const SizedBox.shrink();
+
+    // 根据状态确定图标、标题、副标题
+    IconData statusIcon;
+    Color iconColor;
+    String title;
+    String subtitle;
+
+    if (isProcessing) {
+      statusIcon = Icons.hourglass_top;
+      iconColor = Colors.orange;
+      title = 'AI识别中...';
+      subtitle = '第$currentAttempt/$maxAttempts次尝试，请稍候';
+    } else if (isFailed) {
+      statusIcon = Icons.error_outline;
+      iconColor = Colors.red;
+      title = 'AI识别失败';
+      subtitle = errorMsg != null && errorMsg.length > 30
+          ? '${errorMsg.substring(0, 30)}...'
+          : (errorMsg ?? '点击重试');
+    } else {
+      statusIcon = Icons.check_circle_outline;
+      iconColor = Colors.green;
+      title = 'AI识别完成';
+      subtitle = '发现 $todoCount 个待办，点击查看';
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1149,14 +1300,33 @@ class _HomeDashboardState extends State<HomeDashboard>
         borderRadius: BorderRadius.circular(16),
         elevation: 2,
         child: InkWell(
-          onTap: _openPendingTodoConfirm,
+          onTap: isProcessing
+              ? null // 处理中不允许点击
+              : (isFailed ? _retryPendingTodoRecognition : _openPendingTodoConfirm),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // 图片缩略图
-                if (imagePath != null && File(imagePath).existsSync())
+                // 图片缩略图或状态图标
+                if (isProcessing)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  )
+                else if (imagePath != null && File(imagePath).existsSync())
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.file(
@@ -1180,11 +1350,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.1),
+                      color: iconColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child:
-                        const Icon(Icons.checklist, color: Colors.deepPurple),
+                    child: Icon(statusIcon, color: iconColor),
                   ),
                 const SizedBox(width: 12),
                 // 文字信息
@@ -1193,7 +1362,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AI识别完成',
+                        title,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -1202,27 +1371,117 @@ class _HomeDashboardState extends State<HomeDashboard>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '发现 $todoCount 个待办，点击查看',
+                        subtitle,
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey[600],
+                          color: isFailed ? Colors.red[400] : Colors.grey[600],
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                // 箭头图标
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
+                // 右侧操作按钮
+                if (isProcessing)
+                  const SizedBox.shrink()
+                else if (isFailed)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 忽略按钮
+                      GestureDetector(
+                        onTap: _ignorePendingTodoRecognition,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '忽略',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 重试按钮
+                      GestureDetector(
+                        onTap: _retryPendingTodoRecognition,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '重试',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    size: 16,
+                    color: Colors.grey[400],
+                  ),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  /// 重试图片识别
+  Future<void> _retryPendingTodoRecognition() async {
+    // 更新状态为重试中
+    setState(() {
+      _pendingTodoConfirm = {
+        ...?_pendingTodoConfirm,
+        'status': 'retrying',
+      };
+    });
+
+    await ExternalShareHandler.retryTodoRecognition(
+      onTodoRecognized: (results, imagePath) {
+        if (!mounted) return;
+        // 刷新待确认数据
+        _checkPendingTodoConfirm().then((_) {
+          // 如果识别成功且有结果，打开确认页面
+          if (results.isNotEmpty) {
+            _openPendingTodoConfirm();
+          }
+        });
+      },
+    );
+
+    // 重试完成后刷新首页状态（无论成功或失败）
+    if (mounted) {
+      await _checkPendingTodoConfirm();
+    }
+  }
+
+  /// 忽略图片识别失败
+  Future<void> _ignorePendingTodoRecognition() async {
+    // 清除待确认数据
+    setState(() {
+      _pendingTodoConfirm = null;
+    });
+    await ExternalShareHandler.clearPendingTodoConfirm();
+    // 取消通知
+    await NotificationService.cancelTodoRecognizeNotification();
   }
 
   /// 首页顶部的智能通用 Banner (整合专注、课程、待办)
@@ -1877,8 +2136,48 @@ class _HomeDashboardState extends State<HomeDashboard>
     return DateTime(day.year, day.month, day.day, hour, minute);
   }
 
+  DateTime? _resolveCourseEndTime(CourseItem course, DateTime now) {
+    final dateText = course.date.trim();
+
+    DateTime? day;
+    if (dateText.isNotEmpty) {
+      try {
+        day = DateFormat('yyyy-MM-dd').parseStrict(dateText);
+      } catch (_) {
+        day = DateTime.tryParse(dateText);
+      }
+    }
+
+    day ??= DateUtils.dateOnly(now)
+        .add(Duration(days: course.weekday - now.weekday));
+
+    final int hour = course.endTime ~/ 100;
+    final int minute = course.endTime % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
+
+    // 🚀 核心优化：取消一开始就将上一轮通知全量物理注销的逻辑
+    // 改为记录上一轮的活跃 ID，本轮计算结束后做差集物理注销
+    final previousTodoIds = Set<int>.from(_activeTodoNotifIds);
+    final newTodoNotifIds = <int>{};
+
+    // ── 获取已注册闹钟，构建课程去重集合 ──
+    try {
+      final scheduled = await NotificationService.getScheduledReminders();
+      for (final r in scheduled) {
+        if (r['type'] == 'course' && r['courseName'] != null) {
+          _coursesWithScheduledAlarms.add(r['courseName'] as String);
+        }
+      }
+    } catch (_) {}
+
+    // ── 课程通知 ────────────────────────────────────────────────
+    const int _courseNotificationId = 12347;
 
     final dashboardData =
         await CourseService.getDashboardCourses(widget.username);
@@ -1889,10 +2188,18 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (var course in courses) {
       try {
         final courseTime = _resolveCourseStartTime(course, now);
-        if (courseTime == null) continue;
-        int diffMinutes = courseTime.difference(now).inMinutes;
+        final courseEndTime = _resolveCourseEndTime(course, now);
+        if (courseTime == null || courseEndTime == null) continue;
 
-        if (diffMinutes >= 0 && diffMinutes <= 20) {
+        // 显示窗口：自上课前 20 分钟起，直到下课结束
+        final isInsideWindow = now.isAfter(courseTime.subtract(const Duration(minutes: 20))) &&
+                               now.isBefore(courseEndTime);
+        if (isInsideWindow) {
+          // 已有定时闹钟的课程不再弹实时活动通知
+          if (_coursesWithScheduledAlarms.contains(course.courseName)) {
+            hasUpcomingCourse = true;
+            break;
+          }
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
             room: course.roomName,
@@ -1909,8 +2216,12 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     }
 
-    if (hasUpcomingCourse) return;
+    // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
+    if (!hasUpcomingCourse) {
+      NotificationService.cancelSpecialTodoNotification(_courseNotificationId);
+    }
 
+    // ── 待办提醒 ────────────────────────────────────────────────
     String detectTodoType(String title) {
       final lowerTitle = title.toLowerCase();
       if (lowerTitle.contains('快递') ||
@@ -1952,8 +2263,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       return 'default';
     }
 
-    // ── 待办提醒 ────────────────────────────────────────────────
-    // 1. 特殊待办 (快递/外卖等): 今天所有的都显示 (保持原逻辑)
+    // 1. 特殊待办 (快递/外卖等): 今天所有的都显示
     final specialTodosToday = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
@@ -1963,17 +2273,18 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     for (final todo in specialTodosToday) {
+      final int notifId = todo.id.hashCode;
+      newTodoNotifIds.add(notifId);
       await NotificationService.showUpcomingTodoNotification(todo);
     }
 
-    // 2. 普通待办 (非全天): 如果即将开始 (例如 30 分钟内)，则上岛显示
+    // 2. 普通待办 (非全天): 在时间段内（提前 30 分钟直到截止时间）均显示为活动状态
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
       final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
 
-      // 排除全天待办 (00:00 - 23:59)
       DateTime localDueDate = t.dueDate!.toLocal();
       DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
               t.createdDate ?? t.createdAt,
@@ -1985,16 +2296,18 @@ class _HomeDashboardState extends State<HomeDashboard>
           localDueDate.minute == 59;
       if (isAllDay) return false;
 
-      // 检查是否即将开始 (提前 30 分钟到甚至已经开始但没结束)
-      // 这里的 logic 可以根据需求调整，通常我们希望在开始前一段时间“上岛”
-      final diff = startDate.difference(now).inMinutes;
-      return diff >= -15 && diff <= 30; // 开始前 30min 到开始后 15min 内显示
+      // 🚀 核心改动：在待办执行的时间段内（提前 30 分钟直到截止时间）皆视为正在活动并在通知栏展示
+      return now.isAfter(startDate.subtract(const Duration(minutes: 30))) &&
+             now.isBefore(localDueDate);
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
+      final int notifId = todo.id.hashCode;
+      newTodoNotifIds.add(notifId);
       await NotificationService.showUpcomingTodoNotification(todo);
     }
 
+    // 3. 全天待办汇总
     final allDayTodos = _todos.where((t) {
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
@@ -2013,6 +2326,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     NotificationService.updateTodoNotification(allDayTodos);
+
+    // 🚀 4. 差集物理取消不再需要的通知
+    final idsToCancel = previousTodoIds.difference(newTodoNotifIds);
+    for (final id in idsToCancel) {
+      await NotificationService.cancelSpecialTodoNotification(id);
+    }
+
+    // 🚀 5. 更新当前的活跃集合
+    _activeTodoNotifIds.clear();
+    _activeTodoNotifIds.addAll(newTodoNotifIds);
   }
 
   Future<void> _checkUpdatesSilently() async {
@@ -2089,6 +2412,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) _timelineRefreshTriggerNotifier.value++;
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
+      // 清理残留的一次性通知
+      NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
+      NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     }
   }
 
@@ -2739,10 +3065,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
-      // 🚀 桌面端拦截
-      if (Platform.isAndroid || Platform.isIOS) {
-        _notificationChannel.invokeMethod('cancelNotification');
-      }
+      NotificationService.cancelSpecialTodoNotification(12345);
     } else {
       NotificationService.updateTodoNotification(activeTodos);
     }

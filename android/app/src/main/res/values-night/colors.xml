@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 桌面小部件美化色板 (深色模式) -->
+    <color name="widget_bg">#1C1C1E</color>
+    <color name="widget_stroke">#1CFFFFFF</color> <!-- 11% 不透明度的白，精致的深色暗光边框 -->
+    <color name="widget_text_primary">#F9FAFB</color>
+    <color name="widget_text_secondary">#9CA3AF</color>
+    <color name="widget_text_accent">#60A5FA</color>
+    <color name="widget_tab_bar_bg">#2C2C2E</color>
+    <color name="widget_tab_active_bg">#3A3A3C</color>
+    <color name="widget_tab_active_text">#F9FAFB</color>
+    <color name="widget_checkbox_tint">#60A5FA</color>
+    <color name="focus_active_bg">#1E293B</color>
+    <color name="focus_timer_color">#60A5FA</color>
+    <color name="focus_tag_text">#34D399</color>
+</resources>

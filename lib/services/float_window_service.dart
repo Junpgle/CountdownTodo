@@ -53,6 +53,7 @@ class FloatWindowService {
   static int _lastMode = 0;
   static int _lastAccumulatedMs = 0;
   static int _lastPauseStartMs = 0;
+  static String _lastNote = '';
 
   // Island creation throttling
   static final int _lastIslandCreateAttemptMs = 0;
@@ -77,8 +78,7 @@ class FloatWindowService {
     if (_initialized) return;
     _initialized = true;
     if (!_isRealIslandEnabled) {
-      debugPrint(
-          '[FloatWindow] Real island disabled on Windows debug build.');
+      debugPrint('[FloatWindow] Real island disabled on Windows debug build.');
       try {
         await IslandManager().destroyCachedIsland('island-1');
       } catch (_) {}
@@ -127,7 +127,8 @@ class FloatWindowService {
 
       if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
         debugPayload.value = payload;
-        debugPrint('[FloatWindow] Routed copied_link payload to debug overlay.');
+        debugPrint(
+            '[FloatWindow] Routed copied_link payload to debug overlay.');
         return;
       }
 
@@ -421,6 +422,7 @@ class FloatWindowService {
     _lastMode = 0;
     _lastAccumulatedMs = 0;
     _lastPauseStartMs = 0;
+    _lastNote = '';
     _dataProvider.resetTrackingState();
   }
 
@@ -442,6 +444,7 @@ class FloatWindowService {
     bool isPaused = false,
     int? accumulatedMs,
     int? pauseStartMs,
+    String? note,
   }) async {
     if (!Platform.isWindows) return;
 
@@ -461,6 +464,7 @@ class FloatWindowService {
         _lastMode = mode ?? _lastMode;
         _lastAccumulatedMs = accumulatedMs ?? _lastAccumulatedMs;
         _lastPauseStartMs = pauseStartMs ?? _lastPauseStartMs;
+        _lastNote = note ?? _lastNote;
       }
     } else {
       if (_lastEndMs == 0) {
@@ -468,6 +472,7 @@ class FloatWindowService {
         _lastTags = const [];
         _lastAccumulatedMs = 0;
         _lastPauseStartMs = 0;
+        _lastNote = '';
       }
     }
 
@@ -509,6 +514,7 @@ class FloatWindowService {
       isPaused: isPaused,
       accumulatedMs: _lastAccumulatedMs,
       pauseStartMs: _lastPauseStartMs,
+      note: _lastNote,
     );
 
     // If null, no update needed
@@ -562,7 +568,7 @@ class FloatWindowService {
     final now = DateTime.now().millisecondsSinceEpoch;
     // Throttle deliveries to at most once every 100ms to avoid clogging the channel
     if (now - _lastDeliveryMs < 100 && structured['state'] == 'focusing') {
-       return;
+      return;
     }
     _lastDeliveryMs = now;
     try {

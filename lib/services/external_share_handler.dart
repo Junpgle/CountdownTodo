@@ -60,6 +60,17 @@ class ExternalShareHandler {
 
     await Future.delayed(const Duration(milliseconds: 500));
 
+    final firstPath = files.first.path;
+    final isValidFile = firstPath.isNotEmpty &&
+        firstPath.contains('.') &&
+        !firstPath.startsWith('countdowntodo://');
+    if (!isValidFile) {
+      debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
+      ReceiveSharingIntent.instance.reset();
+      _isProcessing = false;
+      return;
+    }
+
     if (!context.mounted) {
       _isProcessing = false;
       return;
@@ -131,13 +142,6 @@ class ExternalShareHandler {
           return;
         }
 
-        // 立即显示进度通知上岛
-        await NotificationService.showTodoRecognizeProgress(
-          currentAttempt: 1,
-          maxAttempts: 1,
-          status: '正在识别图片...',
-        );
-
         // 检查原始图片大小
         final fileSize = await file.length();
         if (fileSize > 20 * 1024 * 1024) {
@@ -156,11 +160,20 @@ class ExternalShareHandler {
         statusNotifier.value =
             "图片已压缩 (${(compressedSize / 1024).toStringAsFixed(0)}KB)\n正在调用大模型分析...";
 
-        // 更新通知状态
+        // 保存处理中状态（包含压缩图片路径，用于重试）
+        await StorageService.savePendingTodoConfirm(
+          imagePath: filePath,
+          status: 'processing',
+          compressedPath: compressedPath,
+          currentAttempt: 1,
+          maxAttempts: 1,
+        );
+
+        // 立即显示进度通知上岛
         await NotificationService.showTodoRecognizeProgress(
           currentAttempt: 1,
           maxAttempts: 1,
-          status: '正在分析图片...',
+          status: '正在识别图片...',
         );
 
         try {
@@ -173,10 +186,12 @@ class ExternalShareHandler {
           await Future.delayed(const Duration(milliseconds: 800));
           _closeDialogSafely(dialogContext);
 
-          // 保存待确认数据（通知点击或被中断后可在首页恢复）
+          // 保存成功状态
           await StorageService.savePendingTodoConfirm(
             imagePath: filePath,
             results: results,
+            status: 'success',
+            compressedPath: compressedPath,
           );
 
           // 显示成功通知
@@ -184,8 +199,8 @@ class ExternalShareHandler {
             todoCount: results.length,
           );
 
+          // 通知首页刷新（dialog 已关闭）
           if (onTodoRecognized != null && results.isNotEmpty) {
-            // 传递原始图片路径（用于显示缩略图）
             onTodoRecognized(results, filePath);
           }
         } catch (e) {
@@ -201,7 +216,13 @@ class ExternalShareHandler {
             await Future.delayed(const Duration(milliseconds: 500));
             _closeDialogSafely(dialogContext);
 
-            // 在后台启动重试任务
+            // 保存失败状态（首次尝试）
+            await StorageService.updatePendingTodoConfirmStatus(
+              status: 'failed',
+              errorMsg: errorMsg,
+            );
+
+            // 在后台启动重试任务（重试完成后会自动通知首页）
             _startBackgroundRetry(
               filePath: filePath,
               compressedPath: compressedPath,
@@ -219,10 +240,19 @@ class ExternalShareHandler {
               statusNotifier.value =
                   "❌ 图片识别失败\n${errorMsg.length > 50 ? errorMsg.substring(0, 50) : errorMsg}";
             }
+            // 保存失败状态
+            await StorageService.savePendingTodoConfirm(
+              imagePath: filePath,
+              status: 'failed',
+              compressedPath: compressedPath,
+              errorMsg: errorMsg,
+            );
+
             // 显示失败通知
             await NotificationService.showTodoRecognizeFailed(
               errorMsg: errorMsg,
             );
+
             await Future.delayed(const Duration(seconds: 3));
             _closeDialogSafely(dialogContext);
           }
@@ -453,11 +483,18 @@ class ExternalShareHandler {
       try {
         debugPrint("后台重试第$attempt次...");
 
-        // 更新进度通知
+        // 更新进度通知和状态
         await NotificationService.showTodoRecognizeProgress(
           currentAttempt: attempt + 1,
           maxAttempts: maxRetries + 1,
           status: '正在分析图片...',
+        );
+
+        // 更新待确认状态为重试中
+        await StorageService.updatePendingTodoConfirmStatus(
+          status: 'retrying',
+          currentAttempt: attempt + 1,
+          maxAttempts: maxRetries + 1,
         );
 
         // 尝试不同的图片路径
@@ -474,11 +511,19 @@ class ExternalShareHandler {
         lastError = e.toString();
         debugPrint("后台重试第$attempt次失败: $e");
 
-        // 更新失败通知
+        // 更新失败通知和状态
         await NotificationService.showTodoRecognizeProgress(
           currentAttempt: attempt + 1,
           maxAttempts: maxRetries + 1,
           status: '第$attempt次失败，准备重试...',
+        );
+
+        // 更新状态为失败（准备重试）
+        await StorageService.updatePendingTodoConfirmStatus(
+          status: 'failed',
+          currentAttempt: attempt + 1,
+          maxAttempts: maxRetries + 1,
+          errorMsg: lastError,
         );
 
         // 如果不是最后一次，等待更长时间再重试（指数退避）
@@ -494,10 +539,12 @@ class ExternalShareHandler {
       // 标记文件为已处理
       await _markFileProcessed(fileKey);
 
-      // 保存待确认数据
+      // 保存成功状态
       await StorageService.savePendingTodoConfirm(
         imagePath: filePath,
         results: results,
+        status: 'success',
+        compressedPath: compressedPath,
       );
 
       // 发送成功通知
@@ -505,13 +552,25 @@ class ExternalShareHandler {
         todoCount: results.length,
       );
 
+      // 通知首页刷新（成功时自动打开确认页面）
+      if (onTodoRecognized != null) {
+        onTodoRecognized(results, filePath);
+      }
+
       debugPrint("后台重试成功，已保存${results.length}个待办，等待用户确认");
     } else {
-      // 所有重试都失败
+      // 所有重试都失败，保存最终失败状态
+      await StorageService.updatePendingTodoConfirmStatus(
+        status: 'failed',
+        errorMsg: lastError ?? '未知错误',
+      );
+
+      // 发送失败通知
       await NotificationService.showTodoRecognizeFailed(
         errorMsg: lastError ?? '未知错误',
       );
 
+      // 不通知首页刷新，让用户点击重试按钮来手动刷新
       debugPrint("后台重试全部失败: $lastError");
     }
   }
@@ -525,5 +584,117 @@ class ExternalShareHandler {
   /// 清除待确认的待办数据
   static Future<void> clearPendingTodoConfirm() async {
     await StorageService.clearPendingTodoConfirm();
+  }
+
+  /// 重试图片识别
+  /// [onTodoRecognized] 识别成功回调
+  static Future<void> retryTodoRecognition({
+    Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
+  }) async {
+    final pendingData = await StorageService.getPendingTodoConfirm();
+    if (pendingData == null) {
+      debugPrint("没有待确认的待办数据，无法重试");
+      return;
+    }
+
+    final imagePath = pendingData['imagePath'] as String?;
+    final compressedPath = pendingData['compressedPath'] as String?;
+
+    if (imagePath == null) {
+      debugPrint("图片路径为空，无法重试");
+      return;
+    }
+
+    // 优先使用压缩后的图片路径
+    final retryPath = compressedPath ?? imagePath;
+
+    // 检查图片文件是否存在
+    final file = File(retryPath);
+    if (!await file.exists()) {
+      debugPrint("图片文件不存在: $retryPath");
+      await StorageService.updatePendingTodoConfirmStatus(
+        status: 'failed',
+        errorMsg: '图片文件不存在，请重新分享',
+      );
+      if (onTodoRecognized != null) {
+        onTodoRecognized([], imagePath);
+      }
+      return;
+    }
+
+    // 更新状态为重试中
+    await StorageService.updatePendingTodoConfirmStatus(
+      status: 'retrying',
+      currentAttempt: 1,
+      maxAttempts: 1,
+    );
+
+    // 显示进度通知
+    await NotificationService.showTodoRecognizeProgress(
+      currentAttempt: 1,
+      maxAttempts: 1,
+      status: '正在重新识别...',
+    );
+
+    // 不通知首页刷新，让首页通过 _checkPendingTodoConfirm 自动刷新
+
+    try {
+      final results = await LLMService.parseTodoFromImage(retryPath)
+          .timeout(const Duration(seconds: 90));
+
+      if (results.isNotEmpty) {
+        // 标记文件为已处理
+        final fileKey = await _generateFileKey(imagePath);
+        await _markFileProcessed(fileKey);
+
+        // 保存成功状态
+        await StorageService.savePendingTodoConfirm(
+          imagePath: imagePath,
+          results: results,
+          status: 'success',
+          compressedPath: compressedPath,
+        );
+
+        // 显示成功通知
+        await NotificationService.showTodoRecognizeSuccess(
+          todoCount: results.length,
+        );
+
+        // 通知首页刷新
+        if (onTodoRecognized != null) {
+          onTodoRecognized(results, imagePath);
+        }
+
+        debugPrint("重试成功，已保存${results.length}个待办");
+      } else {
+        // 识别结果为空
+        await StorageService.updatePendingTodoConfirmStatus(
+          status: 'failed',
+          errorMsg: '未识别到待办事项',
+        );
+
+        await NotificationService.showTodoRecognizeFailed(
+          errorMsg: '未识别到待办事项',
+        );
+
+        // 不通知首页刷新，让用户点击重试按钮来手动刷新
+      }
+    } catch (e) {
+      debugPrint("重试失败: $e");
+      String errorMsg = e.toString();
+
+      // 保存失败状态
+      await StorageService.updatePendingTodoConfirmStatus(
+        status: 'failed',
+        errorMsg: errorMsg,
+      );
+
+      // 显示失败通知
+      await NotificationService.showTodoRecognizeFailed(
+        errorMsg: errorMsg,
+      );
+
+      // 不通知首页刷新，让用户点击重试按钮来手动刷新
+    }
   }
 }

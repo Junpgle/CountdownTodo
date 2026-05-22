@@ -133,7 +133,7 @@ class PreferenceSection extends StatelessWidget {
                   title: const Text('云端数据接口线路'),
                   subtitle: Text(
                     serverChoice == 'cloudflare'
-                        ? '当前: Cloudflare (更安全)'
+                        ? '当前: Cloudflare (2026/06/01 即将禁用)'
                         : '当前: 阿里云ECS (更快)',
                     style: const TextStyle(fontSize: 12),
                   ),

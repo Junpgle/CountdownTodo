@@ -12,6 +12,7 @@ import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
@@ -485,6 +486,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _phase = PomodoroPhase.remoteWatching;
           _targetEndMs = isCountUp ? 0 : localTargetEnd; // 仅倒计时需要此标记
           _sessionStartMs = isCountUp ? localSessionStart : 0;
+          _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
           _remainingSeconds = rem;
           _isPaused = isPaused;
           _pausedAtMs = signal.pausedAtMs ?? 0;
@@ -493,6 +495,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = remoteTodo;
           _remoteState = signal;
           _remoteTagNames = signal.tags;
+          _currentNote = signal.note ?? '';
         });
         widget.onPhaseChanged(_phase);
 
@@ -508,6 +511,40 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       case 'UPDATE_TAGS':
         if (_phase != PomodoroPhase.remoteWatching) break;
         if (mounted) setState(() => _remoteTagNames = signal.tags);
+        break;
+
+      case 'UPDATE_NOTE':
+        if (signal.sessionUuid != null &&
+            signal.sessionUuid != _currentSessionUuid &&
+            signal.sessionUuid != _remoteState?.sessionUuid) {
+          break;
+        }
+        if (_phase != PomodoroPhase.focusing &&
+            _phase != PomodoroPhase.remoteWatching) {
+          break;
+        }
+        if (mounted) {
+          setState(() {
+            _currentNote = signal.note ?? '';
+            if (_phase == PomodoroPhase.remoteWatching) {
+              _remoteState = CrossDevicePomodoroState(
+                action: _remoteState?.action ?? 'SYNC',
+                sessionUuid: _remoteState?.sessionUuid,
+                todoUuid: _remoteState?.todoUuid,
+                todoTitle: _remoteState?.todoTitle,
+                duration: _remoteState?.duration,
+                targetEndMs: _remoteState?.targetEndMs,
+                sourceDevice: _remoteState?.sourceDevice,
+                timestamp: _remoteState?.timestamp,
+                mode: _remoteState?.mode,
+                tags: _remoteState?.tags ?? [],
+                note: _currentNote,
+              );
+            }
+          });
+          await _saveCurrentRunState();
+          _showLocalFloat();
+        }
         break;
 
       case 'PAUSE':
@@ -576,6 +613,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             _remainingSeconds = rem;
             _targetEndMs = isCountUp ? 0 : localTargetEnd;
             _sessionStartMs = isCountUp ? localSessionStart : 0;
+            _currentSessionUuid = signal.sessionUuid ?? _currentSessionUuid;
+            if (signal.note != null) _currentNote = signal.note!;
 
             if (signal.todoTitle != null && signal.todoTitle!.isNotEmpty) {
               _boundTodo = TodoItem(
@@ -658,6 +697,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               timestamp: signal.timestamp ?? _remoteState?.timestamp,
               mode: _remoteState?.mode,
               tags: _remoteState?.tags ?? [],
+              note: signal.note ?? _remoteState?.note,
             );
           });
           if (isCountUp) {
@@ -731,6 +771,24 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await prefs.setString(_keySelectedTagUuids, tags.join(','));
     } else {
       await prefs.remove(_keySelectedTagUuids);
+    }
+  }
+
+  Future<List<String>> _recommendedTagUuidsForTodo(TodoItem todo) async {
+    if (_allTags.isEmpty) return const [];
+    try {
+      final records = await PomodoroService.getRecords()
+          .timeout(const Duration(seconds: 2), onTimeout: () => []);
+      return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
+        todo: todo,
+        tags: _allTags,
+        history: records,
+        todoHistory: _todos,
+        groups: _todoGroups,
+      );
+    } catch (e) {
+      debugPrint('[PomodoroWorkbench] recommend tags failed: $e');
+      return const [];
     }
   }
 
@@ -1013,6 +1071,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_notifyTickCount >= 60) {
           _notifyTickCount = 0;
           _pushPomodoroNotification(overrideRemaining: elapsed);
+          await _saveCurrentRunState();
         }
       } else {
         final remaining = ((_targetEndMs - now) / 1000).ceil();
@@ -1031,6 +1090,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           if (_notifyTickCount >= interval) {
             _notifyTickCount = 0;
             _pushPomodoroNotification(overrideRemaining: remaining);
+            await _saveCurrentRunState();
           }
         }
       }
@@ -1099,6 +1159,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       pausedAtMs: _pausedAtMs,
       accumulatedMs: _accumulatedMs,
       pauseStartMs: _pauseStartMs,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     ));
     _syncService.sendPauseSignal(
       sessionUuid: _currentSessionUuid,
@@ -1151,6 +1212,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       mode: _settings.mode == TimerMode.countUp ? 1 : 0,
       todoUuid: _boundTodo?.id,
       todoTitle: _boundTodo?.title,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     );
     await PomodoroService.saveRunState(PomodoroRunState(
       phase: _phase,
@@ -1171,6 +1233,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isPaused: false,
       pausedAtMs: 0,
       accumulatedMs: _accumulatedMs,
+      note: _currentNote.isNotEmpty ? _currentNote : null,
     ));
   }
 
@@ -1272,14 +1335,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         tagUuids: _selectedTagUuids,
         currentCycle: _currentCycle,
         deviceId: _deviceId,
+        note: _currentNote.isNotEmpty ? _currentNote : null,
       );
     } finally {
       _suppressRunStateEvents = false;
     }
     final started = startResult.state;
     _currentSessionUuid = started.sessionUuid;
-    _currentNote = '';
-
     setState(() {
       _phase = PomodoroPhase.focusing;
       _targetEndMs = started.targetEndMs;
@@ -1290,6 +1352,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
     _startTicker();
+    _showLocalFloat();
 
     _persistIdleBoundTodo(null);
   }
@@ -1300,9 +1363,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
 
     final oldTodo = _boundTodo;
+    final oldTagUuids = List<String>.from(_selectedTagUuids);
+    final recommendedTagUuids = newTodo != null
+        ? await _recommendedTagUuidsForTodo(newTodo)
+        : <String>[];
 
     setState(() {
       _boundTodo = newTodo;
+      if (recommendedTagUuids.isNotEmpty) {
+        _selectedTagUuids = recommendedTagUuids;
+      }
       _sessionStartMs = now;
     });
     _pushPomodoroNotification();
@@ -1314,7 +1384,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         uuid: _currentSessionUuid,
         todoUuid: oldTodo?.id,
         todoTitle: oldTodo?.title,
-        tagUuids: List.from(_selectedTagUuids),
+        tagUuids: oldTagUuids,
         startTime: now - actualSeconds * 1000,
         endTime: now,
         plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
@@ -1337,7 +1407,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _syncService.sendSwitchSignal(
         todoUuid: newTodo?.id,
         todoTitle: newTodo?.title,
-        sessionUuid: _currentSessionUuid);
+        sessionUuid: _currentSessionUuid,
+        note: _currentNote.isNotEmpty ? _currentNote : null);
+    if (recommendedTagUuids.isNotEmpty) {
+      final tagNames = _allTags
+          .where((t) => _selectedTagUuids.contains(t.uuid))
+          .map((t) => t.name)
+          .toList();
+      _syncService.sendUpdateTagsSignal(tagNames);
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content:
@@ -1723,29 +1801,61 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showNoteDialog() {
     final ctrl = TextEditingController(text: _currentNote);
+    final isRemote = _phase == PomodoroPhase.remoteWatching;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('专注备注'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 5,
-          minLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '记录这次专注的感想、收获…',
-            border: OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              maxLines: 5,
+              minLines: 3,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '记录这次专注的感想、收获…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (isRemote) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16, color: Theme.of(ctx).colorScheme.error),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '当前为远程观看，若发起端不在线，备注可能无法同步',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
               onPressed: () async {
                 setState(() => _currentNote = ctrl.text);
                 Navigator.pop(ctx);
                 await _saveCurrentRunState();
+                if (_phase == PomodoroPhase.focusing ||
+                    _phase == PomodoroPhase.remoteWatching) {
+                  _syncService.sendUpdateNoteSignal(
+                    sessionUuid: _currentSessionUuid,
+                    note: _currentNote,
+                  );
+                  _showLocalFloat();
+                }
               },
               child: const Text('保存')),
         ],
@@ -1842,6 +1952,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         .primaryContainer
                         .withValues(alpha: 0.3),
                     onTap: () async {
+                      Navigator.pop(ctx);
                       if (_phase == PomodoroPhase.focusing) {
                         await _switchTask(null);
                       } else {
@@ -1849,7 +1960,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         await _persistIdleBoundTodo(null);
                         await _saveCurrentRunState();
                       }
-                      Navigator.pop(ctx);
                     },
                   ),
                   const Divider(height: 1),
@@ -1946,9 +2056,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_phase == PomodoroPhase.focusing) {
           await _switchTask(t);
         } else {
-          setState(() => _boundTodo = t);
+          final recommended = await _recommendedTagUuidsForTodo(t);
+          if (!mounted) return;
+          setState(() {
+            _boundTodo = t;
+            if (recommended.isNotEmpty) {
+              _selectedTagUuids = recommended;
+            }
+          });
           await _persistIdleBoundTodo(t);
           await _saveCurrentRunState();
+          _showLocalFloat();
         }
       },
     );
@@ -2026,6 +2144,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         isPaused: _isPaused,
         accumulatedMs: _accumulatedMs,
         pauseStartMs: _pauseStartMs,
+        note: _currentNote,
       );
     }
   }
@@ -2476,10 +2595,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           border: Border.all(
             color: _currentNote.isEmpty
                 ? contentColor.withValues(alpha: 0.15)
-                : Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.3),
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

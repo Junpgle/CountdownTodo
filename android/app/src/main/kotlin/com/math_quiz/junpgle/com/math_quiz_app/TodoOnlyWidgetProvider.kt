@@ -78,16 +78,6 @@ class TodoOnlyWidgetProvider : HomeWidgetProvider() {
             views.setRemoteAdapter(R.id.list_todos, serviceIntent)
             views.setEmptyView(R.id.list_todos, R.id.empty_todos)
 
-            val clickIntent = Intent(context, TodoOnlyWidgetProvider::class.java).apply {
-                action = "MARK_TODO_DONE"
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
-            }
-            val clickPendingIntent = PendingIntent.getBroadcast(
-                context, 0, clickIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            )
-            views.setPendingIntentTemplate(R.id.list_todos, clickPendingIntent)
-
             val appIntent = Intent(context, MainActivity::class.java)
             val appPendingIntent = PendingIntent.getActivity(context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             views.setOnClickPendingIntent(R.id.widget_root, appPendingIntent)

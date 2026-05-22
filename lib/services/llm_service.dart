@@ -246,6 +246,81 @@ class LLMService {
   static const String _nvidiaNimModelsKey = 'nvidia_nim_models';
   static const String _providerModelsPrefix = 'provider_models_';
 
+  static const Map<String, String> _visionModelProviders = {
+    'glm-4.6v-flash': 'zhipu',
+    'glm-4.1v-thinking-flash': 'zhipu',
+    'glm-4v-flash': 'zhipu',
+    'glm-4.6v': 'zhipu',
+    'glm-ocr': 'zhipu',
+    'autoglm-phone': 'zhipu',
+    'glm-4.1v-thinking-flashx': 'zhipu',
+    'mimo-v2.5': 'mimo',
+    'mimo-v2-omni': 'mimo',
+  };
+
+  static const Map<String, String> _providerApiUrls = {
+    'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+    'nvidia_nim': 'https://integrate.api.nvidia.com/v1/chat/completions',
+    'deepseek': 'https://api.deepseek.com/chat/completions',
+  };
+
+  static const Map<String, String> _modelPrefixProviders = {
+    'glm-': 'zhipu',
+    'mimo-': 'mimo',
+    'nvidia/': 'nvidia_nim',
+    'meta/': 'nvidia_nim',
+    'meta-llama/': 'nvidia_nim',
+    'mistralai/': 'nvidia_nim',
+    'deepseek-ai/': 'nvidia_nim',
+    'google/': 'nvidia_nim',
+    'qwen/': 'nvidia_nim',
+    'microsoft/': 'nvidia_nim',
+  };
+
+  static String _detectProvider(String modelId) {
+    final exact = _visionModelProviders[modelId];
+    if (exact != null) return exact;
+    for (final entry in _modelPrefixProviders.entries) {
+      if (modelId.startsWith(entry.key)) return entry.value;
+    }
+    return '';
+  }
+
+  static Future<String> _findProviderInStoredModels(String modelId) async {
+    for (final provider in _providerApiUrls.keys) {
+      final models = await getProviderModels(provider);
+      if (models.contains(modelId)) return provider;
+    }
+    return '';
+  }
+
+  static Future<({String url, String key})> resolveVisionEndpoint(
+      String visionModel) async {
+    // 1. 前缀/精确匹配
+    final provider = _detectProvider(visionModel);
+    if (provider.isNotEmpty) {
+      final url = _providerApiUrls[provider]!;
+      final key = await getProviderApiKey(provider);
+      return (url: url, key: key);
+    }
+    // 2. 自定义视觉模型
+    final customModels = await getCustomVisionModels();
+    final custom = customModels.where((m) =>
+        m.modelId == visionModel || m.id == visionModel).firstOrNull;
+    if (custom != null && custom.apiUrl.isNotEmpty) {
+      return (url: custom.apiUrl, key: custom.apiKey);
+    }
+    // 3. 遍历已拉取的 provider 模型列表
+    final storedProvider = await _findProviderInStoredModels(visionModel);
+    if (storedProvider.isNotEmpty) {
+      final url = _providerApiUrls[storedProvider]!;
+      final key = await getProviderApiKey(storedProvider);
+      return (url: url, key: key);
+    }
+    return (url: '', key: '');
+  }
+
   static Future<LLMConfig?> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
     final configStr = prefs.getString(_configKey);
@@ -575,9 +650,13 @@ class LLMService {
 
     final prompt = config.visionPrompt.replaceAll('{now}', nowStr);
 
+    final endpoint = await resolveVisionEndpoint(config.visionModel);
+    final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
+    final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
+
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ${config.apiKey}',
+      'Authorization': 'Bearer $visionKey',
     };
 
     final imageUrl = 'data:$mimeType;base64,$base64Image';
@@ -605,7 +684,7 @@ class LLMService {
     base64Image.length;
 
     print('========== LLM 图片识别请求 ==========');
-    print('API: ${config.apiUrl}');
+    print('API: $visionUrl');
     print('Model: ${config.visionModel}');
     print('Image: $imagePath (${(fileSize / 1024).toStringAsFixed(1)}KB)');
     print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
@@ -613,7 +692,7 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(visionUrl),
           headers: headers,
           body: body,
         )

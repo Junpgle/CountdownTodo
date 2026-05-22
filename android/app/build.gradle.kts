@@ -3,7 +3,6 @@ import java.util.regex.Pattern
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -110,13 +109,6 @@ android {
             include("armeabi-v7a", "arm64-v8a", "x86_64")
             isUniversalApk = true  // 同时生成包含所有架构的通用 APK
         }
-    }
-}
-
-kotlin {
-    compilerOptions {
-        // 修复：将复杂的枚举引用改为简单的字符串 "17"，避免 Unresolved reference: dsl 错误
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 

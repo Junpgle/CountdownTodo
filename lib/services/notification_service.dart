@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,59 @@ class NotificationService {
 
   static Future<void>? _initializationFuture;
   static bool _initialized = false;
+
+  // 集中式事件分发：所有原生 MethodChannel 调用统一由此广播
+  static final StreamController<MethodCall> _eventCtrl =
+      StreamController<MethodCall>.broadcast();
+  static bool _channelBound = false;
+
+  // 通用 pending 队列：仅在某 method 无 listener 时入队。
+  static final Map<String, List<MethodCall>> _pendingEvents = {};
+  // method 级 listener 计数
+  static final Map<String, int> _listenerCounts = {};
+
+  /// 尽早绑定原生 MethodChannel handler，应在 main() 中调用。
+  /// 绑定完成后通知 native 侧可以开始发送 pending 事件。
+  static Future<void> bindNativeChannel() async {
+    _ensureChannelBound();
+    try {
+      await _channel.invokeMethod('notificationDartReady');
+    } catch (_) {}
+  }
+
+  /// 订阅指定 method 的通知事件。返回 StreamSubscription，dispose 时 cancel 即可。
+  /// 注册时自动 replay 该 method 的 pending 事件。
+  /// cancel 时自动递减 listener 计数，无需手动调用 unlisten。
+  static StreamSubscription<MethodCall> listen(
+    String method,
+    void Function(MethodCall call) handler,
+  ) {
+    _ensureChannelBound();
+    _listenerCounts[method] = (_listenerCounts[method] ?? 0) + 1;
+    // replay 该 method 的 pending 事件
+    final pending = _pendingEvents.remove(method);
+    if (pending != null) {
+      for (final call in pending) {
+        handler(call);
+      }
+    }
+    final inner = _eventCtrl.stream
+        .where((call) => call.method == method)
+        .listen(handler);
+    return _TrackedSubscription(inner, method);
+  }
+
+  static void _ensureChannelBound() {
+    if (_channelBound) return;
+    _channelBound = true;
+    _channel.setMethodCallHandler((call) async {
+      // 仅在无 listener 时入队，避免已处理事件被重复 replay
+      if ((_listenerCounts[call.method] ?? 0) == 0) {
+        _pendingEvents.putIfAbsent(call.method, () => []).add(call);
+      }
+      _eventCtrl.add(call);
+    });
+  }
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};
@@ -115,7 +169,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
-      await cancelNotification();
+      await cancelQuizNotification();
       return;
     }
 
@@ -180,15 +234,7 @@ class NotificationService {
 
     final int totalCount = todayAllDayTodos.length;
     if (totalCount == 0 || todayAllDayTodos.every((t) => t.isDone)) {
-      try {
-        await _channel.invokeMethod('showOngoingNotification', {
-          'type': 'todo_summary',
-          'totalCount': 0,
-          'completedCount': 0,
-          'pendingCount': 0,
-          'pendingTitles': [],
-        });
-      } catch (e) {}
+      await cancelSpecialTodoNotification(12345);
       return;
     }
 
@@ -753,4 +799,52 @@ class NotificationService {
           'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
     } catch (e) {}
   }
+
+  /// 取消测验进度通知
+  static Future<void> cancelQuizNotification() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      await cancelSpecialTodoNotification(12355);
+    } catch (e) {}
+  }
+}
+
+/// 包装 StreamSubscription，cancel 时自动递减 NotificationService 的 listener 计数。
+class _TrackedSubscription<T> implements StreamSubscription<T> {
+  final StreamSubscription<T> _inner;
+  final String _method;
+
+  _TrackedSubscription(this._inner, this._method);
+
+  @override
+  Future<void> cancel() {
+    NotificationService._listenerCounts[_method] =
+        (NotificationService._listenerCounts[_method] ?? 1) - 1;
+    if ((NotificationService._listenerCounts[_method] ?? 0) <= 0) {
+      NotificationService._listenerCounts.remove(_method);
+    }
+    return _inner.cancel();
+  }
+
+  @override
+  bool get isPaused => _inner.isPaused;
+
+  @override
+  void pause([Future<void>? resumeSignal]) => _inner.pause(resumeSignal);
+
+  @override
+  void resume() => _inner.resume();
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => _inner.asFuture(futureValue);
+
+  @override
+  void onDone(void Function()? handleDone) => _inner.onDone(handleDone);
+
+  @override
+  void onError(Function? handleError) => _inner.onError(handleError);
+
+  @override
+  void onData(void Function(T data)? handleData) =>
+      _inner.onData(handleData);
 }

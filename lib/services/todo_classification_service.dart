@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../models.dart';
 import '../models/ai_todo_action.dart';
+import 'pomodoro_service.dart';
 import 'suggestion_feedback_service.dart';
 
 class TodoClassificationSuggestion {
@@ -80,13 +81,16 @@ class TodoClassificationService {
 
     // Load feedback weights in parallel
     final groupFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens, suggestionType: 'group',
+      keywords: textTokens,
+      suggestionType: 'group',
     );
     final tagFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens, suggestionType: 'tag',
+      keywords: textTokens,
+      suggestionType: 'tag',
     );
     final priorityFeedbackFuture = SuggestionFeedbackService.getAllPosteriors(
-      keywords: textTokens, suggestionType: 'priority',
+      keywords: textTokens,
+      suggestionType: 'priority',
     );
 
     final groupFeedback = await groupFeedbackFuture;
@@ -123,8 +127,7 @@ class TodoClassificationService {
   }) async {
     if (groups.where((g) => !g.isDeleted).isEmpty) return const [];
     // Prioritize unclassified todos (no groupId)
-    final sortedTodos = [...todos]
-      ..sort((a, b) {
+    final sortedTodos = [...todos]..sort((a, b) {
         final aEmpty = (a.groupId == null || a.groupId!.isEmpty) ? 0 : 1;
         final bEmpty = (b.groupId == null || b.groupId!.isEmpty) ? 0 : 1;
         return aEmpty.compareTo(bEmpty);
@@ -140,8 +143,7 @@ class TodoClassificationService {
         categoryReminderDefaults: categoryReminderDefaults,
         dueDate: todo.dueDate,
       );
-      final isUnclassified =
-          todo.groupId == null || todo.groupId!.isEmpty;
+      final isUnclassified = todo.groupId == null || todo.groupId!.isEmpty;
       final minConfidence = isUnclassified ? 0.20 : 0.34;
       if (!suggestion.hasGroup ||
           suggestion.groupId == todo.groupId ||
@@ -168,6 +170,92 @@ class TodoClassificationService {
       if (actions.length >= limit) break;
     }
     return actions;
+  }
+
+  static Future<List<String>> recommendPomodoroTagUuidsForTodo({
+    required TodoItem todo,
+    required List<PomodoroTag> tags,
+    List<PomodoroRecord> history = const [],
+    List<TodoItem> todoHistory = const [],
+    List<TodoGroup> groups = const [],
+    int limit = 3,
+  }) async {
+    final activeTags = tags.where((t) => !t.isDeleted).toList();
+    if (activeTags.isEmpty || limit <= 0) return const [];
+
+    final scores = <String, double>{};
+    void addScore(String uuid, double score) {
+      if (uuid.isEmpty || !activeTags.any((t) => t.uuid == uuid)) return;
+      scores[uuid] = (scores[uuid] ?? 0) + score;
+    }
+
+    final sameTodoRecords = history
+        .where((r) =>
+            !r.isDeleted && r.todoUuid == todo.id && r.tagUuids.isNotEmpty)
+        .toList()
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    for (var i = 0; i < sameTodoRecords.length && i < 12; i++) {
+      final record = sameTodoRecords[i];
+      final recencyBoost = max(0.0, 2.0 - i * 0.15);
+      final durationBoost =
+          min(2.0, (record.effectiveDuration / 1800).clamp(0, 2).toDouble());
+      for (final uuid in record.tagUuids) {
+        addScore(uuid, 7.0 + recencyBoost + durationBoost);
+      }
+    }
+
+    final text = '${todo.title.trim()} ${(todo.remark ?? '').trim()}'.trim();
+    final lowerText = text.toLowerCase();
+    final suggestion = await recommendForText(
+      title: todo.title,
+      remark: todo.remark ?? '',
+      groups: groups,
+      history: todoHistory,
+      dueDate: todo.dueDate,
+    );
+    final suggestedTagNames =
+        suggestion.tags.map(_normalizeTagName).where((e) => e.isNotEmpty);
+
+    for (final tag in activeTags) {
+      final tagName = tag.name.trim();
+      if (tagName.isEmpty) continue;
+      final normalizedTag = _normalizeTagName(tagName);
+
+      if (lowerText.contains(tagName.toLowerCase())) {
+        addScore(tag.uuid, 5.0);
+      }
+
+      for (final suggested in suggestedTagNames) {
+        if (_tagNameMatches(normalizedTag, suggested)) {
+          addScore(tag.uuid, 4.5);
+        }
+      }
+
+      final profile = _tagProfiles[tagName];
+      if (profile != null) {
+        addScore(tag.uuid, _keywordHits(text, profile) * 3.0);
+      }
+
+      final group = groups.cast<TodoGroup?>().firstWhere(
+            (g) => g?.id == todo.groupId,
+            orElse: () => null,
+          );
+      final groupName = group?.name.trim();
+      if (groupName != null &&
+          groupName.isNotEmpty &&
+          _tagNameMatches(normalizedTag, _normalizeTagName(groupName))) {
+        addScore(tag.uuid, 3.0);
+      }
+    }
+
+    if (scores.isEmpty) return const [];
+    final sorted = activeTags.where((t) => scores.containsKey(t.uuid)).toList()
+      ..sort((a, b) {
+        final scoreCompare = scores[b.uuid]!.compareTo(scores[a.uuid]!);
+        if (scoreCompare != 0) return scoreCompare;
+        return a.name.compareTo(b.name);
+      });
+    return sorted.take(limit).map((t) => t.uuid).toList();
   }
 
   static _GroupScore _scoreGroups(
@@ -287,6 +375,14 @@ class TodoClassificationService {
     }
 
     return tags.take(4).toList();
+  }
+
+  static String _normalizeTagName(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+
+  static bool _tagNameMatches(String a, String b) {
+    if (a.isEmpty || b.isEmpty) return false;
+    return a == b || a.contains(b) || b.contains(a);
   }
 
   static String _buildReason(
