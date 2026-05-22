@@ -1065,6 +1065,13 @@ class PomodoroService {
       if (latestTs > 0) {
         final lastDownloadKey = await _getScopedKey(_keyLastRecordDownload);
         await prefs.setInt(lastDownloadKey, latestTs);
+        // 🚀 同步更新 lastUpload，防止 syncRecordsToCloud 的时间窗口
+        // 再次命中刚从云端拉下来的记录，导致上传→广播→下载→上传死循环
+        final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
+        final currentUpload = prefs.getInt(lastUploadKey) ?? 0;
+        if (latestTs > currentUpload) {
+          await prefs.setInt(lastUploadKey, latestTs);
+        }
       }
 
       return hasChange;
@@ -1175,14 +1182,13 @@ class PomodoroService {
             }
           } catch (_) {}
         }
+      } else {
+        // forceFullSync: 上传全量
+        for (final r in all) {
+          dedup[r.uuid] = r;
+        }
       }
 
-      final timeWindowRecords = forceFullSync
-          ? all
-          : all.where((r) => r.updatedAt > lastUpload).toList();
-      for (final r in timeWindowRecords) {
-        dedup[r.uuid] = r;
-      }
       final dirty = dedup.values.toList();
 
       debugPrint(

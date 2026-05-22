@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,54 @@ class NotificationService {
 
   static Future<void>? _initializationFuture;
   static bool _initialized = false;
+
+  // 集中式事件分发：所有原生 MethodChannel 调用统一由此广播
+  static final StreamController<MethodCall> _eventCtrl =
+      StreamController<MethodCall>.broadcast();
+  static bool _channelBound = false;
+
+  // 通用 pending 队列：native 事件在没有业务 listener 时先缓存。
+  // listen() 首次注册时 replay 并清空对应 method 的队列。
+  static final Map<String, List<MethodCall>> _pendingEvents = {};
+
+  /// 尽早绑定原生 MethodChannel handler，应在 main() 中调用。
+  /// 绑定完成后通知 native 侧可以开始发送 pending 事件。
+  static Future<void> bindNativeChannel() async {
+    _ensureChannelBound();
+    try {
+      await _channel.invokeMethod('notificationDartReady');
+    } catch (_) {}
+  }
+
+  /// 订阅指定 method 的通知事件。返回 StreamSubscription，dispose 时 cancel 即可。
+  /// 首次注册时自动 replay 该 method 的 pending 事件（解决冷启动时序问题）。
+  static StreamSubscription<MethodCall> listen(
+    String method,
+    void Function(MethodCall call) handler,
+  ) {
+    _ensureChannelBound();
+    // replay 该 method 的 pending 事件（仅首次，之后清空）
+    final pending = _pendingEvents.remove(method);
+    if (pending != null) {
+      for (final call in pending) {
+        handler(call);
+      }
+    }
+    return _eventCtrl.stream
+        .where((call) => call.method == method)
+        .listen(handler);
+  }
+
+  static void _ensureChannelBound() {
+    if (_channelBound) return;
+    _channelBound = true;
+    _channel.setMethodCallHandler((call) async {
+      // 总是入队：如果还没有业务 listener，事件会暂存；
+      // listen() 首次注册时 replay 并清空，不会重复投递。
+      _pendingEvents.putIfAbsent(call.method, () => []).add(call);
+      _eventCtrl.add(call);
+    });
+  }
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};

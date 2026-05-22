@@ -26,6 +26,7 @@ import 'models.dart';
 import 'services/float_window_service.dart';
 import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
+import 'services/notification_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
@@ -94,6 +95,8 @@ void _configureRuntimeCaches() {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 尽早绑定原生通知 channel，绑定完成后通知 native flush pending 事件
+  await NotificationService.bindNativeChannel();
   _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)

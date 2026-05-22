@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/notification_service.dart';
 import '../services/pomodoro_service.dart';
 import 'pomodoro/widgets/fading_indexed_stack.dart';
 import 'pomodoro/views/workbench_view.dart';
@@ -38,6 +40,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       GlobalKey<PomodoroWorkbenchState>();
   final GlobalKey<PomodoroWorkbenchState> _workbenchKeyLandscape =
       GlobalKey<PomodoroWorkbenchState>();
+  final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _disposed = false;
 
   /// 统一访问当前活跃的 workbench state（portrait 或 landscape）
@@ -82,35 +85,29 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       }
     });
 
-    // 监听通知栏按钮事件
+    // 监听通知栏按钮事件（listen 会自动 replay 冷启动 pending 事件）
     _setupMethodChannelListener();
   }
 
   void _setupMethodChannelListener() {
-    const platform =
-        MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
-    platform.setMethodCallHandler((call) async {
-      debugPrint('[PomodoroScreen] Received method call: ${call.method}');
+    _notifSubs.add(NotificationService.listen('pomodoroFinishEarly', (call) {
+      debugPrint('[PomodoroScreen] Triggering finishEarly from notification');
       if (!mounted || _disposed) return;
-
-      switch (call.method) {
-        case 'pomodoroFinishEarly':
-          debugPrint(
-              '[PomodoroScreen] Triggering finishEarly from notification');
-          _workbenchState?.handleFinishEarly();
-          break;
-        case 'pomodoroAbandon':
-          debugPrint(
-              '[PomodoroScreen] Triggering abandonFocus from notification');
-          _workbenchState?.handleAbandonFocus();
-          break;
-      }
-    });
+      _workbenchState?.handleFinishEarly();
+    }));
+    _notifSubs.add(NotificationService.listen('pomodoroAbandon', (call) {
+      debugPrint('[PomodoroScreen] Triggering abandonFocus from notification');
+      if (!mounted || _disposed) return;
+      _workbenchState?.handleAbandonFocus();
+    }));
   }
 
   @override
   void dispose() {
     _disposed = true;
+    for (final sub in _notifSubs) {
+      sub.cancel();
+    }
     _tabController.dispose();
     super.dispose();
   }

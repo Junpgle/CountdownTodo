@@ -173,6 +173,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         HomeWidgetPlugin.getData(this)
 
         if (launchDeepLink == null) {
+            // 处理从通知栏点击进入番茄钟
+            handlePomodoroResumeFromIntent(intent)
+
+            // 处理从通知栏点击进入待办列表
+            handleTodoResumeFromIntent(intent)
+
             // 处理从通知栏传来的番茄钟动作
             handlePomodoroActionFromIntent(intent)
 
@@ -228,6 +234,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         super.onNewIntent(intent)
+        handlePomodoroResumeFromIntent(intent)
+        handleTodoResumeFromIntent(intent)
         handlePomodoroActionFromIntent(intent)
         handleTodoConfirmFromIntent(intent)
         handleAnalysisImageFromIntent(intent)
@@ -339,6 +347,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     private var pendingShortcut: String? = null
+    private var pendingOpenPomodoro: Boolean = false
+    private var pendingOpenTodoList: Boolean = false
 
     private fun handleShortcutFromIntent(intent: Intent?) {
         val action = intent?.action ?: return
@@ -360,6 +370,53 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         } else {
             pendingShortcut = shortcutType
             Log.d(TAG, "⚡ Saved pending shortcut: $shortcutType")
+        }
+    }
+
+    private fun handlePomodoroResumeFromIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("pomodoro_resume", false) != true) return
+        Log.d(TAG, "🍅 handlePomodoroResumeFromIntent")
+        intent.removeExtra("pomodoro_resume")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openPomodoro", null)
+            Log.d(TAG, "🍅 Invoked openPomodoro to Flutter")
+        } else {
+            pendingOpenPomodoro = true
+            Log.d(TAG, "🍅 Saved pending openPomodoro")
+        }
+    }
+
+    private fun handleTodoResumeFromIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("todo_resume", false) != true) return
+        Log.d(TAG, "📋 handleTodoResumeFromIntent")
+        intent.removeExtra("todo_resume")
+
+        if (methodChannel != null) {
+            methodChannel?.invokeMethod("openTodoList", null)
+            Log.d(TAG, "📋 Invoked openTodoList to Flutter")
+        } else {
+            pendingOpenTodoList = true
+            Log.d(TAG, "📋 Saved pending openTodoList")
+        }
+    }
+
+    /// Dart 侧通知 channel 已就绪，flush 所有待处理的通知事件
+    private fun flushPendingNotificationEvents() {
+        if (pendingOpenPomodoro) {
+            Log.d(TAG, "🍅 Flushing pending openPomodoro")
+            methodChannel?.invokeMethod("openPomodoro", null)
+            pendingOpenPomodoro = false
+        }
+        if (pendingOpenTodoList) {
+            Log.d(TAG, "📋 Flushing pending openTodoList")
+            methodChannel?.invokeMethod("openTodoList", null)
+            pendingOpenTodoList = false
+        }
+        pendingPomodoroAction?.let { action ->
+            Log.d(TAG, "🍅 Flushing pending pomodoroAction: $action")
+            notifyFlutterPomodoroAction(action)
+            pendingPomodoroAction = null
         }
     }
 
@@ -795,8 +852,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             pendingShortcut = null
         }
 
+        // openPomodoro/openTodoList 的 pending 由 notificationDartReady 触发 flush，
+        // 不在这里立即 flush，防止 Dart 侧 handler 尚未就绪时丢失事件。
+
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "notificationDartReady" -> {
+                    Log.d(TAG, "📋 Dart side ready, flushing pending events")
+                    flushPendingNotificationEvents()
+                    result.success(null)
+                }
                 "showOngoingNotification" -> {
                     val args = call.arguments as? Map<String, Any>
                     if (args != null) {
@@ -1984,10 +2049,17 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         originalText: String? = null
     ) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP }
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (channelId == POMODORO_CHANNEL_ID && isOngoing) {
+                putExtra("pomodoro_resume", true)
+            } else if (isTodo && isOngoing) {
+                putExtra("todo_resume", true)
+            }
+        }
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
             this,
-            0,
+            notificationId,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -2208,6 +2280,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         if (channelId == POMODORO_CHANNEL_ID && isOngoing) {
             // 提前完成 - 直接启动Activity
             val finishIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("pomodoro_action", "com.math_quiz.POMODORO_FINISH_EARLY")
             }
             val fPI = PendingIntent.getActivity(
@@ -2224,6 +2297,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
             // 放弃专注 - 直接启动Activity
             val abandonIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra("pomodoro_action", "com.math_quiz.POMODORO_ABANDON")
             }
             val aPI = PendingIntent.getActivity(

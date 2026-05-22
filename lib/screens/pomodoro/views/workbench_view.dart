@@ -12,6 +12,7 @@ import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
@@ -773,6 +774,24 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
   }
 
+  Future<List<String>> _recommendedTagUuidsForTodo(TodoItem todo) async {
+    if (_allTags.isEmpty) return const [];
+    try {
+      final records = await PomodoroService.getRecords()
+          .timeout(const Duration(seconds: 2), onTimeout: () => []);
+      return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
+        todo: todo,
+        tags: _allTags,
+        history: records,
+        todoHistory: _todos,
+        groups: _todoGroups,
+      );
+    } catch (e) {
+      debugPrint('[PomodoroWorkbench] recommend tags failed: $e');
+      return const [];
+    }
+  }
+
   Future<void> _recoverState(PomodoroRunState saved) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final bool isCountUp = saved.mode == TimerMode.countUp;
@@ -1052,6 +1071,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_notifyTickCount >= 60) {
           _notifyTickCount = 0;
           _pushPomodoroNotification(overrideRemaining: elapsed);
+          await _saveCurrentRunState();
         }
       } else {
         final remaining = ((_targetEndMs - now) / 1000).ceil();
@@ -1070,6 +1090,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           if (_notifyTickCount >= interval) {
             _notifyTickCount = 0;
             _pushPomodoroNotification(overrideRemaining: remaining);
+            await _saveCurrentRunState();
           }
         }
       }
@@ -1341,9 +1362,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final actualSeconds = ((now - _sessionStartMs) / 1000).round();
 
     final oldTodo = _boundTodo;
+    final oldTagUuids = List<String>.from(_selectedTagUuids);
+    final recommendedTagUuids = newTodo != null
+        ? await _recommendedTagUuidsForTodo(newTodo)
+        : <String>[];
 
     setState(() {
       _boundTodo = newTodo;
+      if (recommendedTagUuids.isNotEmpty) {
+        _selectedTagUuids = recommendedTagUuids;
+      }
       _sessionStartMs = now;
     });
     _pushPomodoroNotification();
@@ -1355,7 +1383,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         uuid: _currentSessionUuid,
         todoUuid: oldTodo?.id,
         todoTitle: oldTodo?.title,
-        tagUuids: List.from(_selectedTagUuids),
+        tagUuids: oldTagUuids,
         startTime: now - actualSeconds * 1000,
         endTime: now,
         plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
@@ -1380,6 +1408,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         todoTitle: newTodo?.title,
         sessionUuid: _currentSessionUuid,
         note: _currentNote.isNotEmpty ? _currentNote : null);
+    if (recommendedTagUuids.isNotEmpty) {
+      final tagNames = _allTags
+          .where((t) => _selectedTagUuids.contains(t.uuid))
+          .map((t) => t.name)
+          .toList();
+      _syncService.sendUpdateTagsSignal(tagNames);
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content:
@@ -1788,8 +1823,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               Row(
                 children: [
                   Icon(Icons.info_outline,
-                      size: 16,
-                      color: Theme.of(ctx).colorScheme.error),
+                      size: 16, color: Theme.of(ctx).colorScheme.error),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -1917,6 +1951,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         .primaryContainer
                         .withValues(alpha: 0.3),
                     onTap: () async {
+                      Navigator.pop(ctx);
                       if (_phase == PomodoroPhase.focusing) {
                         await _switchTask(null);
                       } else {
@@ -1924,7 +1959,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                         await _persistIdleBoundTodo(null);
                         await _saveCurrentRunState();
                       }
-                      Navigator.pop(ctx);
                     },
                   ),
                   const Divider(height: 1),
@@ -2021,9 +2055,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_phase == PomodoroPhase.focusing) {
           await _switchTask(t);
         } else {
-          setState(() => _boundTodo = t);
+          final recommended = await _recommendedTagUuidsForTodo(t);
+          if (!mounted) return;
+          setState(() {
+            _boundTodo = t;
+            if (recommended.isNotEmpty) {
+              _selectedTagUuids = recommended;
+            }
+          });
           await _persistIdleBoundTodo(t);
           await _saveCurrentRunState();
+          _showLocalFloat();
         }
       },
     );

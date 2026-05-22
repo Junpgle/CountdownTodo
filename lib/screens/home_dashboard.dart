@@ -175,6 +175,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   static const MethodChannel _notificationChannel =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  final List<StreamSubscription<MethodCall>> _notifSubs = [];
+  bool _navigatingToPomodoro = false;
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
@@ -324,52 +326,92 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
 
-    // 🚀 桌面端拦截：确保只在移动设备监听通道
+    // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (Platform.isAndroid || Platform.isIOS) {
-      _notificationChannel.setMethodCallHandler((call) async {
-        switch (call.method) {
-          case "markCurrentTodoDone":
-            debugPrint(
-                "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
-            final args = call.arguments;
-            int? notifId;
-            if (args is Map) {
-              notifId = args['notificationId'] as int?;
-            }
-            debugPrint("📱 解析 notifId: $notifId");
-            _markCurrentTodoDone(notifId: notifId);
-            break;
-          case "openTodoConfirm":
-            _checkPendingTodoConfirm();
-            break;
-          case "openShortcut":
-            final shortcutType = call.arguments as String?;
-            debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
-            if (shortcutType != null) {
-              _handleShortcut(shortcutType);
-            }
-            break;
-          case "viewAnalysisImage":
-            final imagePath = call.arguments as String?;
-            if (imagePath != null && mounted) {
-              _showAnalysisImage(imagePath);
-            }
-            break;
-          case "viewOriginalText":
-            final text = call.arguments as String?;
-            if (text != null && mounted) {
-              _showOriginalText(text);
-            }
-            break;
-          case "openPlanBlock":
-            debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
-            if (mounted) {
-              await _handleOpenPlanBlock(call.arguments);
-            }
-            break;
-          // pomodoroFinishEarly 和 pomodoroAbandon 由 PomodoroScreen 处理
+      _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
+        debugPrint(
+            "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+        final args = call.arguments;
+        int? notifId;
+        if (args is Map) {
+          notifId = args['notificationId'] as int?;
         }
-      });
+        debugPrint("📱 解析 notifId: $notifId");
+        _markCurrentTodoDone(notifId: notifId);
+      }));
+      _notifSubs.add(NotificationService.listen('openTodoConfirm', (call) {
+        _checkPendingTodoConfirm();
+      }));
+      _notifSubs.add(NotificationService.listen('openShortcut', (call) {
+        final shortcutType = call.arguments as String?;
+        debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+        if (shortcutType != null) {
+          _handleShortcut(shortcutType);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('viewAnalysisImage', (call) {
+        final imagePath = call.arguments as String?;
+        if (imagePath != null && mounted) {
+          _showAnalysisImage(imagePath);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('viewOriginalText', (call) {
+        final text = call.arguments as String?;
+        if (text != null && mounted) {
+          _showOriginalText(text);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('openPlanBlock', (call) {
+        debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+        if (mounted) {
+          _handleOpenPlanBlock(call.arguments);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
+        debugPrint("🍅 收到 openPomodoro 调用");
+        if (!mounted || _navigatingToPomodoro) return;
+        final existing = _findPomodoroRoute();
+        if (existing != null) {
+          // 已有番茄钟页（可能被其他页面盖住），带到前台
+          Navigator.of(context).popUntil((route) => route == existing);
+        } else {
+          _navigatingToPomodoro = true;
+          Navigator.of(context)
+              .push(
+                PageTransitions.slideHorizontal(
+                  PomodoroScreen(username: widget.username),
+                ),
+              )
+              .whenComplete(() => _navigatingToPomodoro = false);
+        }
+      }));
+      _notifSubs.add(NotificationService.listen('openTodoList', (call) {
+        debugPrint("📋 收到 openTodoList 调用");
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      }));
+      // 通知按钮事件：如果不在番茄钟页，先导航过去，
+      // PomodoroScreen 的 listen() 会自动 replay pending 事件。
+      for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
+        _notifSubs.add(NotificationService.listen(action, (call) {
+          debugPrint("🍅 收到 $action");
+          if (!mounted || _navigatingToPomodoro) return;
+          final existing = _findPomodoroRoute();
+          if (existing != null) {
+            Navigator.of(context).popUntil((route) => route == existing);
+          } else {
+            _navigatingToPomodoro = true;
+            Navigator.of(context)
+                .push(
+                  PageTransitions.slideHorizontal(
+                    PomodoroScreen(username: widget.username),
+                  ),
+                )
+                .whenComplete(() => _navigatingToPomodoro = false);
+          }
+        }));
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -459,6 +501,9 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    for (final sub in _notifSubs) {
+      sub.cancel();
+    }
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -684,6 +729,19 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
+  /// 在 Navigator 栈中查找已有的 PomodoroScreen 路由
+  Route<dynamic>? _findPomodoroRoute() {
+    Route<dynamic>? found;
+    Navigator.of(context).popUntil((route) {
+      if (route is MaterialPageRoute &&
+          route.builder(context) is PomodoroScreen) {
+        found = route;
+      }
+      return true; // 不实际 pop，只遍历
+    });
+    return found;
+  }
+
   /// 处理 App Shortcut 导航
   void _handleShortcut(String shortcutType) {
     if (!mounted) return;
@@ -743,7 +801,16 @@ class _HomeDashboardState extends State<HomeDashboard>
         await StorageService.savePlanBlocks(widget.username, [target],
             sync: true);
       }
-      await _startPlanBlockFocus(target);
+      // 导航到规划页面，由用户手动决定是否开始专注
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TodoPlanScreen(
+            username: widget.username,
+            initialDate: DateTime.now(),
+          ),
+        ),
+      );
       return;
     }
     if (!mounted) return;
