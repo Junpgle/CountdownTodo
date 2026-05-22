@@ -2136,15 +2136,35 @@ class _HomeDashboardState extends State<HomeDashboard>
     return DateTime(day.year, day.month, day.day, hour, minute);
   }
 
+  DateTime? _resolveCourseEndTime(CourseItem course, DateTime now) {
+    final dateText = course.date.trim();
+
+    DateTime? day;
+    if (dateText.isNotEmpty) {
+      try {
+        day = DateFormat('yyyy-MM-dd').parseStrict(dateText);
+      } catch (_) {
+        day = DateTime.tryParse(dateText);
+      }
+    }
+
+    day ??= DateUtils.dateOnly(now)
+        .add(Duration(days: course.weekday - now.weekday));
+
+    final int hour = course.endTime ~/ 100;
+    final int minute = course.endTime % 100;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    return DateTime(day.year, day.month, day.day, hour, minute);
+  }
+
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
-    // ── 取消上一轮已显示但本轮不再需要的待办通知 ──
+    // 🚀 核心优化：取消一开始就将上一轮通知全量物理注销的逻辑
+    // 改为记录上一轮的活跃 ID，本轮计算结束后做差集物理注销
     final previousTodoIds = Set<int>.from(_activeTodoNotifIds);
-    _activeTodoNotifIds.clear();
-    for (final id in previousTodoIds) {
-      NotificationService.cancelSpecialTodoNotification(id);
-    }
+    final newTodoNotifIds = <int>{};
 
     // ── 获取已注册闹钟，构建课程去重集合 ──
     try {
@@ -2168,11 +2188,13 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (var course in courses) {
       try {
         final courseTime = _resolveCourseStartTime(course, now);
-        if (courseTime == null) continue;
-        int diffMinutes = courseTime.difference(now).inMinutes;
+        final courseEndTime = _resolveCourseEndTime(course, now);
+        if (courseTime == null || courseEndTime == null) continue;
 
-        // 显示窗口：上课前 20 分钟 ~ 上课后 10 分钟
-        if (diffMinutes >= -10 && diffMinutes <= 20) {
+        // 显示窗口：自上课前 20 分钟起，直到下课结束
+        final isInsideWindow = now.isAfter(courseTime.subtract(const Duration(minutes: 20))) &&
+                               now.isBefore(courseEndTime);
+        if (isInsideWindow) {
           // 已有定时闹钟的课程不再弹实时活动通知
           if (_coursesWithScheduledAlarms.contains(course.courseName)) {
             hasUpcomingCourse = true;
@@ -2251,11 +2273,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     for (final todo in specialTodosToday) {
+      final int notifId = todo.id.hashCode;
+      newTodoNotifIds.add(notifId);
       await NotificationService.showUpcomingTodoNotification(todo);
-      _activeTodoNotifIds.add(todo.id.hashCode);
     }
 
-    // 2. 普通待办 (非全天): 开始前 30 分钟 ~ 开始后 15 分钟
+    // 2. 普通待办 (非全天): 在时间段内（提前 30 分钟直到截止时间）均显示为活动状态
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
@@ -2273,13 +2296,15 @@ class _HomeDashboardState extends State<HomeDashboard>
           localDueDate.minute == 59;
       if (isAllDay) return false;
 
-      final diff = startDate.difference(now).inMinutes;
-      return diff >= -15 && diff <= 30;
+      // 🚀 核心改动：在待办执行的时间段内（提前 30 分钟直到截止时间）皆视为正在活动并在通知栏展示
+      return now.isAfter(startDate.subtract(const Duration(minutes: 30))) &&
+             now.isBefore(localDueDate);
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
+      final int notifId = todo.id.hashCode;
+      newTodoNotifIds.add(notifId);
       await NotificationService.showUpcomingTodoNotification(todo);
-      _activeTodoNotifIds.add(todo.id.hashCode);
     }
 
     // 3. 全天待办汇总
@@ -2301,6 +2326,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     NotificationService.updateTodoNotification(allDayTodos);
+
+    // 🚀 4. 差集物理取消不再需要的通知
+    final idsToCancel = previousTodoIds.difference(newTodoNotifIds);
+    for (final id in idsToCancel) {
+      await NotificationService.cancelSpecialTodoNotification(id);
+    }
+
+    // 🚀 5. 更新当前的活跃集合
+    _activeTodoNotifIds.clear();
+    _activeTodoNotifIds.addAll(newTodoNotifIds);
   }
 
   Future<void> _checkUpdatesSilently() async {

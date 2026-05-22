@@ -3387,6 +3387,46 @@ class StorageService {
         } catch (_) {}
       }
 
+      bool isOutsideJoinedTeam(String? teamUuid) {
+        return joinedTeamUuids != null &&
+            teamUuid != null &&
+            teamUuid.isNotEmpty &&
+            !currentTeams.contains(teamUuid);
+      }
+
+      void markLoadedTeamItemsDeleted(String teamUuid) {
+        final cleanupTime = DateTime.now().millisecondsSinceEpoch;
+
+        for (final item in allLocalTodos) {
+          if (item.teamUuid == teamUuid && !item.isDeleted) {
+            item.isDeleted = true;
+            item.version += 1;
+            item.updatedAt = cleanupTime;
+          }
+        }
+        for (final item in allLocalGroups) {
+          if (item.teamUuid == teamUuid && !item.isDeleted) {
+            item.isDeleted = true;
+            item.version += 1;
+            item.updatedAt = cleanupTime;
+          }
+        }
+        for (final item in allLocalCountdowns) {
+          if (item.teamUuid == teamUuid && !item.isDeleted) {
+            item.isDeleted = true;
+            item.version += 1;
+            item.updatedAt = cleanupTime;
+          }
+        }
+        for (final item in allLocalTimeLogs) {
+          if (item.teamUuid == teamUuid && !item.isDeleted) {
+            item.isDeleted = true;
+            item.version += 1;
+            item.updatedAt = cleanupTime;
+          }
+        }
+      }
+
       if (response['success'] == true) {
         // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
         // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
@@ -3491,6 +3531,7 @@ class StorageService {
             if (tUuid != null && !currentTeams.contains(tUuid)) {
               debugPrint("🧹 发现孤立团队数据: $tUuid, 正在清理...");
               await clearTeamItems(tUuid);
+              markLoadedTeamItemsDeleted(tUuid);
               hasChanges = true;
               teamChanged = true;
             }
@@ -3552,19 +3593,10 @@ class StorageService {
           continue;
         }
         // 🚀 核心防御：非所属团队的数据处理（防止退出/被踢后数据回流）
-        if (sItem.teamUuid != null &&
-            sItem.teamUuid!.isNotEmpty &&
-            joinedTeamUuids != null &&
-            !currentTeams.contains(sItem.teamUuid)) {
-          if (sItem.isDeleted) {
-            // 服务端已标记删除 → 接受，让删除传播到客户端
-            debugPrint('✅ [合并接受] UUID: ${sItem.id} 团队已解散，接受删除标记');
-          } else {
-            // 服务端未删除 → 跳过，防止已删除的待办被复活
-            debugPrint(
-                '🚫 [合并跳过] UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
-            continue;
-          }
+        if (isOutsideJoinedTeam(sItem.teamUuid)) {
+          debugPrint(
+              '🚫 [合并跳过] UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+          continue;
         }
         final serverDeviceId = serverRaw['device_id']?.toString();
         final bool isUpdatedByOtherDevice = serverDeviceId != null &&
@@ -3672,17 +3704,10 @@ class StorageService {
           debugPrint('🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 已忽略');
           continue;
         }
-        if (sItem.teamUuid != null &&
-            sItem.teamUuid!.isNotEmpty &&
-            joinedTeamUuids != null &&
-            !currentTeams.contains(sItem.teamUuid)) {
-          if (sItem.isDeleted) {
-            debugPrint('✅ [合并接受] 文件夹 UUID: ${sItem.id} 团队已解散，接受删除标记');
-          } else {
-            debugPrint(
-                '🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
-            continue;
-          }
+        if (isOutsideJoinedTeam(sItem.teamUuid)) {
+          debugPrint(
+              '🚫 [合并跳过] 文件夹 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+          continue;
         }
         if (groupsIndexMap.containsKey(sItem.id)) {
           final idx = groupsIndexMap[sItem.id]!;
@@ -3754,17 +3779,10 @@ class StorageService {
           debugPrint('🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 已忽略');
           continue;
         }
-        if (sItem.teamUuid != null &&
-            sItem.teamUuid!.isNotEmpty &&
-            joinedTeamUuids != null &&
-            !currentTeams.contains(sItem.teamUuid)) {
-          if (sItem.isDeleted) {
-            debugPrint('✅ [合并接受] 倒计时 UUID: ${sItem.id} 团队已解散，接受删除标记');
-          } else {
-            debugPrint(
-                '🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
-            continue;
-          }
+        if (isOutsideJoinedTeam(sItem.teamUuid)) {
+          debugPrint(
+              '🚫 [合并跳过] 倒计时 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+          continue;
         }
         if (countdownsIndexMap.containsKey(sItem.id)) {
           final idx = countdownsIndexMap[sItem.id]!;
@@ -3832,6 +3850,11 @@ class StorageService {
       };
       for (var raw in serverTimeLogs) {
         TimeLogItem sItem = TimeLogItem.fromJson(raw);
+        if (isOutsideJoinedTeam(sItem.teamUuid)) {
+          debugPrint(
+              '🚫 [合并跳过] 时间日志 UUID: ${sItem.id} 团队 ${sItem.teamUuid} 已不在当前团队列表中');
+          continue;
+        }
         if (timeLogsIndexMap.containsKey(sItem.id)) {
           final idx = timeLogsIndexMap[sItem.id]!;
           if (sItem.isDeleted ||
