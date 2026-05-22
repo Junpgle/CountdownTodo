@@ -131,6 +131,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     'timeline': true,
   };
   Timer? _courseTimer;
+  final Set<String> _coursesWithScheduledAlarms = {};
+  final Set<int> _activeTodoNotifIds = {};
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
@@ -173,8 +175,6 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _pendingReloadRequested = false;
   int _loadGeneration = 0;
 
-  static const MethodChannel _notificationChannel =
-      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
   Route<dynamic>? _pomodoroRoute;
@@ -306,6 +306,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 冷启动清理残留通知
+    NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
+    NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     _loadSectionPreferences();
     _loadSemesterSettings();
     _generateGreeting();
@@ -2136,6 +2139,26 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _checkUpcomingEvents() async {
     DateTime now = DateTime.now();
 
+    // ── 取消上一轮已显示但本轮不再需要的待办通知 ──
+    final previousTodoIds = Set<int>.from(_activeTodoNotifIds);
+    _activeTodoNotifIds.clear();
+    for (final id in previousTodoIds) {
+      NotificationService.cancelSpecialTodoNotification(id);
+    }
+
+    // ── 获取已注册闹钟，构建课程去重集合 ──
+    try {
+      final scheduled = await NotificationService.getScheduledReminders();
+      for (final r in scheduled) {
+        if (r['type'] == 'course' && r['courseName'] != null) {
+          _coursesWithScheduledAlarms.add(r['courseName'] as String);
+        }
+      }
+    } catch (_) {}
+
+    // ── 课程通知 ────────────────────────────────────────────────
+    const int _courseNotificationId = 12347;
+
     final dashboardData =
         await CourseService.getDashboardCourses(widget.username);
     List<CourseItem> courses =
@@ -2148,7 +2171,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (courseTime == null) continue;
         int diffMinutes = courseTime.difference(now).inMinutes;
 
-        if (diffMinutes >= 0 && diffMinutes <= 20) {
+        // 显示窗口：上课前 20 分钟 ~ 上课后 10 分钟
+        if (diffMinutes >= -10 && diffMinutes <= 20) {
+          // 已有定时闹钟的课程不再弹实时活动通知
+          if (_coursesWithScheduledAlarms.contains(course.courseName)) {
+            hasUpcomingCourse = true;
+            break;
+          }
           NotificationService.showCourseLiveActivity(
             courseName: course.courseName,
             room: course.roomName,
@@ -2165,8 +2194,12 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     }
 
-    if (hasUpcomingCourse) return;
+    // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
+    if (!hasUpcomingCourse) {
+      NotificationService.cancelSpecialTodoNotification(_courseNotificationId);
+    }
 
+    // ── 待办提醒 ────────────────────────────────────────────────
     String detectTodoType(String title) {
       final lowerTitle = title.toLowerCase();
       if (lowerTitle.contains('快递') ||
@@ -2208,8 +2241,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       return 'default';
     }
 
-    // ── 待办提醒 ────────────────────────────────────────────────
-    // 1. 特殊待办 (快递/外卖等): 今天所有的都显示 (保持原逻辑)
+    // 1. 特殊待办 (快递/外卖等): 今天所有的都显示
     final specialTodosToday = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
@@ -2220,16 +2252,16 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     for (final todo in specialTodosToday) {
       await NotificationService.showUpcomingTodoNotification(todo);
+      _activeTodoNotifIds.add(todo.id.hashCode);
     }
 
-    // 2. 普通待办 (非全天): 如果即将开始 (例如 30 分钟内)，则上岛显示
+    // 2. 普通待办 (非全天): 开始前 30 分钟 ~ 开始后 15 分钟
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
       final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
 
-      // 排除全天待办 (00:00 - 23:59)
       DateTime localDueDate = t.dueDate!.toLocal();
       DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
               t.createdDate ?? t.createdAt,
@@ -2241,16 +2273,16 @@ class _HomeDashboardState extends State<HomeDashboard>
           localDueDate.minute == 59;
       if (isAllDay) return false;
 
-      // 检查是否即将开始 (提前 30 分钟到甚至已经开始但没结束)
-      // 这里的 logic 可以根据需求调整，通常我们希望在开始前一段时间“上岛”
       final diff = startDate.difference(now).inMinutes;
-      return diff >= -15 && diff <= 30; // 开始前 30min 到开始后 15min 内显示
+      return diff >= -15 && diff <= 30;
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
       await NotificationService.showUpcomingTodoNotification(todo);
+      _activeTodoNotifIds.add(todo.id.hashCode);
     }
 
+    // 3. 全天待办汇总
     final allDayTodos = _todos.where((t) {
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
@@ -2345,6 +2377,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) _timelineRefreshTriggerNotifier.value++;
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
+      // 清理残留的一次性通知
+      NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
+      NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     }
   }
 
@@ -2995,10 +3030,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }).toList();
 
     if (activeTodos.isEmpty || activeTodos.every((t) => t.isDone)) {
-      // 🚀 桌面端拦截
-      if (Platform.isAndroid || Platform.isIOS) {
-        _notificationChannel.invokeMethod('cancelNotification');
-      }
+      NotificationService.cancelSpecialTodoNotification(12345);
     } else {
       NotificationService.updateTodoNotification(activeTodos);
     }

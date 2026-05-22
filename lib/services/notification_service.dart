@@ -169,7 +169,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
-      await cancelNotification();
+      await cancelQuizNotification();
       return;
     }
 
@@ -234,15 +234,7 @@ class NotificationService {
 
     final int totalCount = todayAllDayTodos.length;
     if (totalCount == 0 || todayAllDayTodos.every((t) => t.isDone)) {
-      try {
-        await _channel.invokeMethod('showOngoingNotification', {
-          'type': 'todo_summary',
-          'totalCount': 0,
-          'completedCount': 0,
-          'pendingCount': 0,
-          'pendingTitles': [],
-        });
-      } catch (e) {}
+      await cancelSpecialTodoNotification(12345);
       return;
     }
 
@@ -805,6 +797,14 @@ class NotificationService {
     try {
       await _channel.invokeMethod(
           'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
+    } catch (e) {}
+  }
+
+  /// 取消测验进度通知
+  static Future<void> cancelQuizNotification() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    try {
+      await cancelSpecialTodoNotification(12355);
     } catch (e) {}
   }
 }

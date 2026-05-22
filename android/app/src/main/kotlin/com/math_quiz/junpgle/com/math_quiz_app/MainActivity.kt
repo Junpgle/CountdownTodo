@@ -69,6 +69,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val SPECIAL_TODO_NOTIFICATION_ID = 12352 // 🚴 特殊待办独立通知 ID
     private val TODO_RECOGNIZE_NOTIFICATION_ID = 12353 // 📸 图片识别待办通知 ID
     private val UPDATE_NOTIFICATION_ID = 12354 // 🚀 版本更新通知 ID
+    private val QUIZ_NOTIFICATION_ID = 12355 // 🧮 测验进度通知 ID
     private val ALERT_COURSE_ID   = 12348 // 🔔 课程普通提醒
     private val ALERT_TODO_ID     = 12349 // 🔔 待办普通提醒
     private val ALERT_POMO_START_ID = 12350 // 🔔 番茄开始普通提醒
@@ -1615,7 +1616,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             color = color,
             currentStep = if (isOver) totalCount else currentIndex + 1,
             totalSteps = totalCount,
-            isTodo = false
+            isTodo = false,
+            notificationId = QUIZ_NOTIFICATION_ID
         )
     }
 
