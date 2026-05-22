@@ -25,9 +25,10 @@ class NotificationService {
       StreamController<MethodCall>.broadcast();
   static bool _channelBound = false;
 
-  // 通用 pending 队列：native 事件在没有业务 listener 时先缓存。
-  // listen() 首次注册时 replay 并清空对应 method 的队列。
+  // 通用 pending 队列：仅在某 method 无 listener 时入队。
   static final Map<String, List<MethodCall>> _pendingEvents = {};
+  // method 级 listener 计数
+  static final Map<String, int> _listenerCounts = {};
 
   /// 尽早绑定原生 MethodChannel handler，应在 main() 中调用。
   /// 绑定完成后通知 native 侧可以开始发送 pending 事件。
@@ -39,31 +40,35 @@ class NotificationService {
   }
 
   /// 订阅指定 method 的通知事件。返回 StreamSubscription，dispose 时 cancel 即可。
-  /// 首次注册时自动 replay 该 method 的 pending 事件（解决冷启动时序问题）。
+  /// 注册时自动 replay 该 method 的 pending 事件。
+  /// cancel 时自动递减 listener 计数，无需手动调用 unlisten。
   static StreamSubscription<MethodCall> listen(
     String method,
     void Function(MethodCall call) handler,
   ) {
     _ensureChannelBound();
-    // replay 该 method 的 pending 事件（仅首次，之后清空）
+    _listenerCounts[method] = (_listenerCounts[method] ?? 0) + 1;
+    // replay 该 method 的 pending 事件
     final pending = _pendingEvents.remove(method);
     if (pending != null) {
       for (final call in pending) {
         handler(call);
       }
     }
-    return _eventCtrl.stream
+    final inner = _eventCtrl.stream
         .where((call) => call.method == method)
         .listen(handler);
+    return _TrackedSubscription(inner, method);
   }
 
   static void _ensureChannelBound() {
     if (_channelBound) return;
     _channelBound = true;
     _channel.setMethodCallHandler((call) async {
-      // 总是入队：如果还没有业务 listener，事件会暂存；
-      // listen() 首次注册时 replay 并清空，不会重复投递。
-      _pendingEvents.putIfAbsent(call.method, () => []).add(call);
+      // 仅在无 listener 时入队，避免已处理事件被重复 replay
+      if ((_listenerCounts[call.method] ?? 0) == 0) {
+        _pendingEvents.putIfAbsent(call.method, () => []).add(call);
+      }
       _eventCtrl.add(call);
     });
   }
@@ -802,4 +807,44 @@ class NotificationService {
           'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
     } catch (e) {}
   }
+}
+
+/// 包装 StreamSubscription，cancel 时自动递减 NotificationService 的 listener 计数。
+class _TrackedSubscription<T> implements StreamSubscription<T> {
+  final StreamSubscription<T> _inner;
+  final String _method;
+
+  _TrackedSubscription(this._inner, this._method);
+
+  @override
+  Future<void> cancel() {
+    NotificationService._listenerCounts[_method] =
+        (NotificationService._listenerCounts[_method] ?? 1) - 1;
+    if ((NotificationService._listenerCounts[_method] ?? 0) <= 0) {
+      NotificationService._listenerCounts.remove(_method);
+    }
+    return _inner.cancel();
+  }
+
+  @override
+  bool get isPaused => _inner.isPaused;
+
+  @override
+  void pause([Future<void>? resumeSignal]) => _inner.pause(resumeSignal);
+
+  @override
+  void resume() => _inner.resume();
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => _inner.asFuture(futureValue);
+
+  @override
+  void onDone(void Function()? handleDone) => _inner.onDone(handleDone);
+
+  @override
+  void onError(Function? handleError) => _inner.onError(handleError);
+
+  @override
+  void onData(void Function(T data)? handleData) =>
+      _inner.onData(handleData);
 }

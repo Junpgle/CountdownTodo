@@ -177,6 +177,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
+  Route<dynamic>? _pomodoroRoute;
   int _todoUpdateSignal = 0; // 🚀 协同更新信号
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
@@ -369,21 +370,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }));
       _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
         debugPrint("🍅 收到 openPomodoro 调用");
-        if (!mounted || _navigatingToPomodoro) return;
-        final existing = _findPomodoroRoute();
-        if (existing != null) {
-          // 已有番茄钟页（可能被其他页面盖住），带到前台
-          Navigator.of(context).popUntil((route) => route == existing);
-        } else {
-          _navigatingToPomodoro = true;
-          Navigator.of(context)
-              .push(
-                PageTransitions.slideHorizontal(
-                  PomodoroScreen(username: widget.username),
-                ),
-              )
-              .whenComplete(() => _navigatingToPomodoro = false);
-        }
+        _navigateToPomodoro();
       }));
       _notifSubs.add(NotificationService.listen('openTodoList', (call) {
         debugPrint("📋 收到 openTodoList 调用");
@@ -396,20 +383,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
         _notifSubs.add(NotificationService.listen(action, (call) {
           debugPrint("🍅 收到 $action");
-          if (!mounted || _navigatingToPomodoro) return;
-          final existing = _findPomodoroRoute();
-          if (existing != null) {
-            Navigator.of(context).popUntil((route) => route == existing);
-          } else {
-            _navigatingToPomodoro = true;
-            Navigator.of(context)
-                .push(
-                  PageTransitions.slideHorizontal(
-                    PomodoroScreen(username: widget.username),
-                  ),
-                )
-                .whenComplete(() => _navigatingToPomodoro = false);
-          }
+          _navigateToPomodoro();
         }));
       }
     }
@@ -729,17 +703,35 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  /// 在 Navigator 栈中查找已有的 PomodoroScreen 路由
-  Route<dynamic>? _findPomodoroRoute() {
-    Route<dynamic>? found;
-    Navigator.of(context).popUntil((route) {
-      if (route is MaterialPageRoute &&
-          route.builder(context) is PomodoroScreen) {
-        found = route;
+  /// 将已有的 PomodoroScreen 带到前台，或 push 新的。
+  /// 用 remove + push 代替 popUntil，避免破坏栈中其他路由。
+  void _navigateToPomodoro() {
+    if (!mounted || _navigatingToPomodoro) return;
+    final nav = Navigator.of(context);
+
+    if (_pomodoroRoute != null) {
+      if (_pomodoroRoute!.isCurrent) return; // 已在栈顶，无需操作
+      // 已有番茄钟页但被其他页面盖住：remove 后重新 push 到顶部
+      try {
+        nav.removeRoute(_pomodoroRoute!);
+      } catch (_) {
+        // route 已被 pop（如用户手动返回），清除引用
+        _pomodoroRoute = null;
       }
-      return true; // 不实际 pop，只遍历
+    }
+
+    // push 新的（或被 remove 的）番茄钟页
+    _navigatingToPomodoro = true;
+    final route = MaterialPageRoute(
+      builder: (_) => PomodoroScreen(username: widget.username),
+      settings: const RouteSettings(name: 'pomodoro'),
+    );
+    _pomodoroRoute = route;
+    nav.push(route).whenComplete(() {
+      _navigatingToPomodoro = false;
+      // 如果是被用户手动 pop 的（不是 removeRoute），清除引用
+      if (_pomodoroRoute == route) _pomodoroRoute = null;
     });
-    return found;
   }
 
   /// 处理 App Shortcut 导航

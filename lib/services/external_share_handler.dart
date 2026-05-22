@@ -60,6 +60,17 @@ class ExternalShareHandler {
 
     await Future.delayed(const Duration(milliseconds: 500));
 
+    final firstPath = files.first.path;
+    final isValidFile = firstPath.isNotEmpty &&
+        firstPath.contains('.') &&
+        !firstPath.startsWith('countdowntodo://');
+    if (!isValidFile) {
+      debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
+      ReceiveSharingIntent.instance.reset();
+      _isProcessing = false;
+      return;
+    }
+
     if (!context.mounted) {
       _isProcessing = false;
       return;

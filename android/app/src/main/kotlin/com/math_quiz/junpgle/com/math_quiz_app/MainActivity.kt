@@ -162,38 +162,50 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // ── 在 super.onCreate 之前恢复 pending 状态 ──
+        // configureFlutterEngine 在 super.onCreate 内部执行，必须在此之前恢复，
+        // 否则 pendingDeepLink/pendingTodoConfirm 等标志在 channel 初始化时仍为空。
+        if (savedInstanceState != null) {
+            pendingOpenPomodoro = savedInstanceState.getBoolean(STATE_PENDING_POMODORO, false)
+            pendingOpenTodoList = savedInstanceState.getBoolean(STATE_PENDING_TODO_LIST, false)
+            pendingPomodoroAction = savedInstanceState.getString(STATE_PENDING_POMODORO_ACTION)
+            pendingTodoConfirm = savedInstanceState.getBoolean(STATE_PENDING_TODO_CONFIRM, false)
+            pendingAnalysisImagePath = savedInstanceState.getString(STATE_PENDING_ANALYSIS_IMAGE)
+            val planNotifId = savedInstanceState.getInt(STATE_PENDING_PLAN_NOTIF_ID, -1)
+            pendingPlanBlockNotifId = if (planNotifId != -1) planNotifId else null
+            pendingPlanBlockId = savedInstanceState.getString(STATE_PENDING_PLAN_ID)
+            pendingPlanBlockTodoId = savedInstanceState.getString(STATE_PENDING_PLAN_TODO_ID)
+            pendingShortcut = savedInstanceState.getString(STATE_PENDING_SHORTCUT)
+            pendingDeepLink = savedInstanceState.getString(STATE_PENDING_DEEP_LINK)
+
+            // 上次已处理过通知 extras，但进程被杀后系统会恢复旧 intent（extras 仍在）。
+            // 清除这些 extras 防止重复触发（例如从图标打开 App 时莫名开始专注）。
+            clearNotificationExtras(intent)
+            Log.d(TAG, "📦 Restored pending state from savedInstanceState")
+        }
+
+        // 在 super.onCreate 之前提取 deep link（super 可能替换 intent）
         val launchDeepLink = extractDeepLinkFromIntent(intent)
         if (launchDeepLink != null) {
             pendingDeepLink = launchDeepLink
-            sanitizeDeepLinkIntent(intent)
             Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
         }
 
         super.onCreate(savedInstanceState)
         HomeWidgetPlugin.getData(this)
 
-        if (launchDeepLink == null) {
-            // 处理从通知栏点击进入番茄钟
-            handlePomodoroResumeFromIntent(intent)
+        // 每个 handler 自行检查对应 extra 并在缺失时 early return，
+        // 所以无条件调用是安全的。savedInstanceState 恢复路径已在上方 clearNotificationExtras，
+        // 这里不会重复处理。处理后再清除 extras 兜底。
+        processNotificationExtras(intent)
+        clearNotificationExtras(intent)
 
-            // 处理从通知栏点击进入待办列表
-            handleTodoResumeFromIntent(intent)
+        // 处理 App Shortcuts 导航（检查 action，不受 deep link 影响）
+        handleShortcutFromIntent(intent)
 
-            // 处理从通知栏传来的番茄钟动作
-            handlePomodoroActionFromIntent(intent)
-
-            // 处理从通知栏传来的待办确认动作
-            handleTodoConfirmFromIntent(intent)
-
-            // 处理从通知栏传来的图片查看动作
-            handleAnalysisImageFromIntent(intent)
-            handleOriginalTextFromIntent(intent)
-
-            // 处理从通知栏传来的规划块提醒
-            handlePlanBlockFromIntent(intent)
-
-            // 处理 App Shortcuts 导航
-            handleShortcutFromIntent(intent)
+        // 通知 extras 已提取完毕，现在可以安全清理 deep link 数据
+        if (launchDeepLink != null) {
+            sanitizeDeepLinkIntent(intent)
         }
 
         // 注册 Shizuku 权限请求与生命周期监听器
@@ -224,24 +236,35 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}, ${pomodoroActionReceiver::class.java.simpleName}")
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_PENDING_POMODORO, pendingOpenPomodoro)
+        outState.putBoolean(STATE_PENDING_TODO_LIST, pendingOpenTodoList)
+        outState.putString(STATE_PENDING_POMODORO_ACTION, pendingPomodoroAction)
+        outState.putBoolean(STATE_PENDING_TODO_CONFIRM, pendingTodoConfirm)
+        outState.putString(STATE_PENDING_ANALYSIS_IMAGE, pendingAnalysisImagePath)
+        pendingPlanBlockNotifId?.let { outState.putInt(STATE_PENDING_PLAN_NOTIF_ID, it) }
+        outState.putString(STATE_PENDING_PLAN_ID, pendingPlanBlockId)
+        outState.putString(STATE_PENDING_PLAN_TODO_ID, pendingPlanBlockTodoId)
+        outState.putString(STATE_PENDING_SHORTCUT, pendingShortcut)
+        outState.putString(STATE_PENDING_DEEP_LINK, pendingDeepLink)
+    }
+
     override fun onNewIntent(intent: Intent) {
         val deepLink = extractDeepLinkFromIntent(intent)
-        if (deepLink != null) {
-            sanitizeDeepLinkIntent(intent)
-            super.onNewIntent(intent)
-            dispatchDeepLink(deepLink)
-            return
-        }
 
         super.onNewIntent(intent)
-        handlePomodoroResumeFromIntent(intent)
-        handleTodoResumeFromIntent(intent)
-        handlePomodoroActionFromIntent(intent)
-        handleTodoConfirmFromIntent(intent)
-        handleAnalysisImageFromIntent(intent)
-        handleOriginalTextFromIntent(intent)
-        handlePlanBlockFromIntent(intent)
+
+        // 通知 extras 与 deep link 互不干扰，始终处理
+        processNotificationExtras(intent)
+
+        // 处理 App Shortcuts 导航
         handleShortcutFromIntent(intent)
+
+        if (deepLink != null) {
+            sanitizeDeepLinkIntent(intent)
+            dispatchDeepLink(deepLink)
+        }
     }
 
     private fun extractDeepLinkFromIntent(intent: Intent?): String? {
@@ -257,6 +280,21 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         intent.replaceExtras(Bundle())
         intent.removeCategory(Intent.CATEGORY_BROWSABLE)
         intent.removeCategory(Intent.CATEGORY_DEFAULT)
+    }
+
+    /// 清除所有通知相关的 extras，防止进程恢复时重复处理
+    private fun clearNotificationExtras(intent: Intent?) {
+        intent ?: return
+        intent.removeExtra("pomodoro_resume")
+        intent.removeExtra("todo_resume")
+        intent.removeExtra("pomodoro_action")
+        intent.removeExtra("open_todo_confirm")
+        intent.removeExtra("analysis_image_path")
+        intent.removeExtra("original_analysis_text")
+        intent.removeExtra("open_plan_block")
+        intent.removeExtra("plan_block_notif_id")
+        intent.removeExtra("plan_block_id")
+        intent.removeExtra("todo_id")
     }
 
     private fun dispatchDeepLink(data: String) {
@@ -349,6 +387,21 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingShortcut: String? = null
     private var pendingOpenPomodoro: Boolean = false
     private var pendingOpenTodoList: Boolean = false
+    private var dartReady: Boolean = false
+
+    // savedInstanceState 持久化 key
+    companion object {
+        private const val STATE_PENDING_POMODORO = "pending_open_pomodoro"
+        private const val STATE_PENDING_TODO_LIST = "pending_open_todo_list"
+        private const val STATE_PENDING_POMODORO_ACTION = "pending_pomodoro_action"
+        private const val STATE_PENDING_TODO_CONFIRM = "pending_todo_confirm"
+        private const val STATE_PENDING_ANALYSIS_IMAGE = "pending_analysis_image"
+        private const val STATE_PENDING_PLAN_NOTIF_ID = "pending_plan_notif_id"
+        private const val STATE_PENDING_PLAN_ID = "pending_plan_id"
+        private const val STATE_PENDING_PLAN_TODO_ID = "pending_plan_todo_id"
+        private const val STATE_PENDING_SHORTCUT = "pending_shortcut"
+        private const val STATE_PENDING_DEEP_LINK = "pending_deep_link"
+    }
 
     private fun handleShortcutFromIntent(intent: Intent?) {
         val action = intent?.action ?: return
@@ -373,17 +426,30 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    /// 统一处理所有通知栏 extras，与 deep link 互不干扰。
+    /// 每个 handler 内部会自行清除已处理的 extra（removeExtra），
+    /// 并通过 dartReady 标志决定立即发送还是暂存到 pending 队列。
+    private fun processNotificationExtras(intent: Intent?) {
+        handlePomodoroResumeFromIntent(intent)
+        handleTodoResumeFromIntent(intent)
+        handlePomodoroActionFromIntent(intent)
+        handleTodoConfirmFromIntent(intent)
+        handleAnalysisImageFromIntent(intent)
+        handleOriginalTextFromIntent(intent)
+        handlePlanBlockFromIntent(intent)
+    }
+
     private fun handlePomodoroResumeFromIntent(intent: Intent?) {
         if (intent?.getBooleanExtra("pomodoro_resume", false) != true) return
         Log.d(TAG, "🍅 handlePomodoroResumeFromIntent")
         intent.removeExtra("pomodoro_resume")
 
-        if (methodChannel != null) {
+        if (dartReady) {
             methodChannel?.invokeMethod("openPomodoro", null)
             Log.d(TAG, "🍅 Invoked openPomodoro to Flutter")
         } else {
             pendingOpenPomodoro = true
-            Log.d(TAG, "🍅 Saved pending openPomodoro")
+            Log.d(TAG, "🍅 Saved pending openPomodoro (dartReady=false)")
         }
     }
 
@@ -392,7 +458,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         Log.d(TAG, "📋 handleTodoResumeFromIntent")
         intent.removeExtra("todo_resume")
 
-        if (methodChannel != null) {
+        if (dartReady) {
             methodChannel?.invokeMethod("openTodoList", null)
             Log.d(TAG, "📋 Invoked openTodoList to Flutter")
         } else {
@@ -423,15 +489,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private fun handlePomodoroActionFromIntent(intent: Intent?) {
         val action = intent?.getStringExtra("pomodoro_action") ?: return
         Log.d(TAG, "🍅 handlePomodoroActionFromIntent: $action")
-        // 清除 extra，防止重复处理
         intent.removeExtra("pomodoro_action")
 
-        if (methodChannel != null) {
+        if (dartReady) {
             notifyFlutterPomodoroAction(action)
         } else {
-            // methodChannel还未初始化，保存待处理
             pendingPomodoroAction = action
-            Log.d(TAG, "🍅 Saved pending action: $action")
+            Log.d(TAG, "🍅 Saved pending action: $action (dartReady=false)")
         }
     }
 
@@ -859,6 +923,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             when (call.method) {
                 "notificationDartReady" -> {
                     Log.d(TAG, "📋 Dart side ready, flushing pending events")
+                    dartReady = true
                     flushPendingNotificationEvents()
                     result.success(null)
                 }
