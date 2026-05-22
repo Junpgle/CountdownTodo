@@ -1169,6 +1169,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
                     )
                     pi?.let { am.cancel(it) }
+
+                    // 🚀 终极收尾：补全物理取消状态栏上已显示的闹钟提醒通知，并清理防抖指纹，防止状态栏常驻残留
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(notifId)
+                    lastNotificationFingerprint.remove(notifId)
+                    lastNotificationTimestampMs.remove(notifId)
+
                     result.success(true)
                 }
 
