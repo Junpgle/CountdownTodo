@@ -1114,12 +1114,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return Transform.scale(
           scale: _isPulsing ? _pulseAnimation.value : 1.0,
           child: Container(
-            color: Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             alignment: Alignment.center,
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(color: Colors.transparent),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compact = !forceTitle && constraints.maxHeight <= 56;
+                final compact = constraints.maxHeight <= 56;
                 return Column(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1357,9 +1358,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           return Transform.scale(
             scale: _isPulsing ? _pulseAnimation.value : 1.0,
             child: Container(
-              color: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               alignment: Alignment.center,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(color: Colors.transparent),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final compact = constraints.maxHeight <= 56;
