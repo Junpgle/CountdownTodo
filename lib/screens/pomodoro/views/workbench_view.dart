@@ -1335,6 +1335,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         tagUuids: _selectedTagUuids,
         currentCycle: _currentCycle,
         deviceId: _deviceId,
+        note: _currentNote.isNotEmpty ? _currentNote : null,
       );
     } finally {
       _suppressRunStateEvents = false;
@@ -1347,11 +1348,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       _remainingSeconds = 0;
       _sessionStartMs = started.sessionStartMs;
       _remoteState = null;
-      _currentNote = '';
     });
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
     _startTicker();
+    _showLocalFloat();
 
     _persistIdleBoundTodo(null);
   }

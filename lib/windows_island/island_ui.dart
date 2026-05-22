@@ -688,9 +688,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final title = fd?['title']?.toString() ?? '';
     final tags = fd?['tags'] as List?;
     final hasTags = tags != null && tags.isNotEmpty;
+    final hasNote = fd?['note']?.toString().trim().isNotEmpty == true;
     final textLen = title.isEmpty ? 8 : title.length.clamp(8, 16);
     final width = (112 + textLen * 8.0).clamp(180.0, 240.0);
-    final height = hasTags ? 112.0 : 98.0;
+    double height = hasTags ? 112.0 : 98.0;
+    if (hasNote) height += 28;
     return Size(width, height);
   }
 
@@ -1606,6 +1608,28 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
+            if (fd?['note']?.toString().trim().isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  fd!['note'].toString().trim(),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.74),
+                    fontSize: 10,
+                    height: 1.15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
             const SizedBox(height: 6),
             if (!isLocal)
               _btn('远端计时中，无法更改', Colors.white.withValues(alpha: 0.1), () {})
