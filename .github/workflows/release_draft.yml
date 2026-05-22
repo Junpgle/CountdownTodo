@@ -36,8 +36,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${{ steps.version.outputs.tag }}"
-          if gh release view "$tag" --json body 2>/dev/null; then
-            old_body=$(gh release view "$tag" --json body -q '.body')
+          if release_json=$(gh release view "$tag" --json body,isDraft 2>/dev/null); then
+            if [ "$(echo "$release_json" | jq -r '.isDraft')" != "true" ]; then
+              echo "Release $tag is already published, skipping draft update."
+              exit 0
+            fi
+
+            old_body=$(echo "$release_json" | jq -r '.body')
             new_body=$(cat release_body.md)
             if [ "$old_body" = "$new_body" ]; then
               echo "Release $tag exists and body unchanged, skipping."
