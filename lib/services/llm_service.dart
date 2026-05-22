@@ -246,6 +246,40 @@ class LLMService {
   static const String _nvidiaNimModelsKey = 'nvidia_nim_models';
   static const String _providerModelsPrefix = 'provider_models_';
 
+  static const Map<String, String> _visionModelProviders = {
+    'glm-4.6v-flash': 'zhipu',
+    'glm-4.1v-thinking-flash': 'zhipu',
+    'glm-4v-flash': 'zhipu',
+    'glm-4.6v': 'zhipu',
+    'glm-ocr': 'zhipu',
+    'autoglm-phone': 'zhipu',
+    'glm-4.1v-thinking-flashx': 'zhipu',
+    'mimo-v2.5': 'mimo',
+    'mimo-v2-omni': 'mimo',
+  };
+
+  static const Map<String, String> _providerApiUrls = {
+    'zhipu': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    'mimo': 'https://api.xiaomimimo.com/v1/chat/completions',
+  };
+
+  static Future<({String url, String key})> resolveVisionEndpoint(
+      String visionModel) async {
+    final provider = _visionModelProviders[visionModel];
+    if (provider != null) {
+      final url = _providerApiUrls[provider]!;
+      final key = await getProviderApiKey(provider);
+      return (url: url, key: key);
+    }
+    final customModels = await getCustomVisionModels();
+    final custom = customModels.where((m) =>
+        m.modelId == visionModel || m.id == visionModel).firstOrNull;
+    if (custom != null && custom.apiUrl.isNotEmpty) {
+      return (url: custom.apiUrl, key: custom.apiKey);
+    }
+    return (url: '', key: '');
+  }
+
   static Future<LLMConfig?> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
     final configStr = prefs.getString(_configKey);
@@ -575,9 +609,13 @@ class LLMService {
 
     final prompt = config.visionPrompt.replaceAll('{now}', nowStr);
 
+    final endpoint = await resolveVisionEndpoint(config.visionModel);
+    final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
+    final visionKey = endpoint.key.isNotEmpty ? endpoint.key : config.apiKey;
+
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ${config.apiKey}',
+      'Authorization': 'Bearer $visionKey',
     };
 
     final imageUrl = 'data:$mimeType;base64,$base64Image';
@@ -605,7 +643,7 @@ class LLMService {
     base64Image.length;
 
     print('========== LLM 图片识别请求 ==========');
-    print('API: ${config.apiUrl}');
+    print('API: $visionUrl');
     print('Model: ${config.visionModel}');
     print('Image: $imagePath (${(fileSize / 1024).toStringAsFixed(1)}KB)');
     print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
@@ -613,7 +651,7 @@ class LLMService {
 
     final response = await http
         .post(
-          Uri.parse(config.apiUrl),
+          Uri.parse(visionUrl),
           headers: headers,
           body: body,
         )
