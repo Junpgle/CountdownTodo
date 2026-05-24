@@ -504,7 +504,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
     }
   }
 
-  void _handleDragEnd() async {
+  void _handleDragEnd({required bool autoFillEstimateOnTodoChange}) async {
     if (_dragStartBlock == null || _dragEndBlock == null) return;
 
     final startIdx = min(_dragStartBlock!, _dragEndBlock!);
@@ -520,10 +520,18 @@ class _PlanGridViewState extends State<_PlanGridView> {
       _dragEndBlock = null;
     });
 
-    _showAddBlockSheet(startTime, endTime);
+    _showAddBlockSheet(
+      startTime,
+      endTime,
+      autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
+    );
   }
 
-  void _showAddBlockSheet(DateTime startTime, DateTime endTime) {
+  void _showAddBlockSheet(
+    DateTime startTime,
+    DateTime endTime, {
+    required bool autoFillEstimateOnTodoChange,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -535,7 +543,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         todoGroups: widget.todoGroups,
         username: widget.username,
         initialTodoId: widget.initialTodoId,
-        autoFillEstimateOnTodoChange: false,
+        autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
         onSaved: widget.onRefresh,
       ),
     );
@@ -608,10 +616,12 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       _handleDragStart(d.localPosition, gridW, hourH),
                   onPanUpdate: (d) =>
                       _handleDragUpdate(d.localPosition, gridW, hourH),
-                  onPanEnd: (d) => _handleDragEnd(),
+                  onPanEnd: (d) =>
+                      _handleDragEnd(autoFillEstimateOnTodoChange: false),
                   onTapDown: (d) =>
                       _handleDragStart(d.localPosition, gridW, hourH),
-                  onTapUp: (d) => _handleDragEnd(),
+                  onTapUp: (d) =>
+                      _handleDragEnd(autoFillEstimateOnTodoChange: true),
                   child: Container(
                     height: totalH,
                     decoration: BoxDecoration(
