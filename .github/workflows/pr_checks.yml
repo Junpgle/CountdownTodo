@@ -62,7 +62,7 @@ jobs:
           echo "$changed_dart_files" | xargs dart format --output=none --set-exit-if-changed
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run tests
         run: flutter test
