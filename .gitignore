@@ -83,3 +83,4 @@ todo.md
 # Also ignore file/symlink variants
 .tmp
 /aliyun_release
+/test/

@@ -504,7 +504,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
     }
   }
 
-  void _handleDragEnd() async {
+  void _handleDragEnd({required bool autoFillEstimateOnTodoChange}) async {
     if (_dragStartBlock == null || _dragEndBlock == null) return;
 
     final startIdx = min(_dragStartBlock!, _dragEndBlock!);
@@ -520,10 +520,18 @@ class _PlanGridViewState extends State<_PlanGridView> {
       _dragEndBlock = null;
     });
 
-    _showAddBlockSheet(startTime, endTime);
+    _showAddBlockSheet(
+      startTime,
+      endTime,
+      autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
+    );
   }
 
-  void _showAddBlockSheet(DateTime startTime, DateTime endTime) {
+  void _showAddBlockSheet(
+    DateTime startTime,
+    DateTime endTime, {
+    required bool autoFillEstimateOnTodoChange,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -535,6 +543,7 @@ class _PlanGridViewState extends State<_PlanGridView> {
         todoGroups: widget.todoGroups,
         username: widget.username,
         initialTodoId: widget.initialTodoId,
+        autoFillEstimateOnTodoChange: autoFillEstimateOnTodoChange,
         onSaved: widget.onRefresh,
       ),
     );
@@ -607,10 +616,12 @@ class _PlanGridViewState extends State<_PlanGridView> {
                       _handleDragStart(d.localPosition, gridW, hourH),
                   onPanUpdate: (d) =>
                       _handleDragUpdate(d.localPosition, gridW, hourH),
-                  onPanEnd: (d) => _handleDragEnd(),
+                  onPanEnd: (d) =>
+                      _handleDragEnd(autoFillEstimateOnTodoChange: false),
                   onTapDown: (d) =>
                       _handleDragStart(d.localPosition, gridW, hourH),
-                  onTapUp: (d) => _handleDragEnd(),
+                  onTapUp: (d) =>
+                      _handleDragEnd(autoFillEstimateOnTodoChange: true),
                   child: Container(
                     height: totalH,
                     decoration: BoxDecoration(
@@ -1064,6 +1075,7 @@ class _AddPlanBlockSheet extends StatefulWidget {
   final List<TodoGroup> todoGroups;
   final String username;
   final String? initialTodoId;
+  final bool autoFillEstimateOnTodoChange;
   final VoidCallback onSaved;
 
   const _AddPlanBlockSheet({
@@ -1074,6 +1086,7 @@ class _AddPlanBlockSheet extends StatefulWidget {
     required this.todoGroups,
     required this.username,
     this.initialTodoId,
+    this.autoFillEstimateOnTodoChange = true,
     required this.onSaved,
   });
 
@@ -1449,7 +1462,9 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
             onChanged: (v) {
               if (v == null || v.startsWith('__todo_header_')) return;
               setState(() => _selectedTodoId = v);
-              _prefillEstimate(v);
+              if (widget.autoFillEstimateOnTodoChange) {
+                _prefillEstimate(v);
+              }
             },
             decoration: InputDecoration(
               border:
@@ -1462,8 +1477,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
             Row(
               children: [
                 Icon(Icons.auto_awesome,
-                    size: 14,
-                    color: Theme.of(context).colorScheme.primary),
+                    size: 14, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
                 Text(
                   'AI 预估 ${_formatDuration(_estimatedMinutes!)}，已自动设置时长和番茄轮数',

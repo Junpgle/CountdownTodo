@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show max;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -1083,6 +1084,8 @@ class PomodoroService {
 
   static const _keyLastRecordUpload = 'pomodoro_last_record_upload';
   static const _keyLastRecordDownload = 'pomodoro_last_record_download';
+  static const _keyLastRecordRecoveryUpload =
+      'pomodoro_last_record_recovery_upload';
 
   static Future<bool> mergeRecordsLww(
       List<PomodoroRecord> remoteRecords) async {
@@ -1156,6 +1159,9 @@ class PomodoroService {
       final db = await DatabaseHelper.instance.database;
       final lastUploadKey = await _getScopedKey(_keyLastRecordUpload);
       final lastUpload = prefs.getInt(lastUploadKey) ?? 0;
+      final recoveryUploadKey =
+          await _getScopedKey(_keyLastRecordRecoveryUpload);
+      final lastRecoveryUpload = prefs.getInt(recoveryUploadKey) ?? 0;
       final all = await _getAllRecordsRaw();
       if (all.isEmpty) return;
 
@@ -1182,6 +1188,19 @@ class PomodoroService {
             }
           } catch (_) {}
         }
+
+        // One-time recovery window for records whose op_logs were consumed by
+        // the main sync before Pomodoro upload ran. Advancing a separate
+        // recovery watermark prevents repeated WebSocket broadcast loops.
+        final recoveryWindowStart = lastUpload > 0
+            ? lastUpload - const Duration(days: 2).inMilliseconds
+            : 0;
+        final uploadWindowStart = max(recoveryWindowStart, lastRecoveryUpload);
+        for (final r in all) {
+          if (r.updatedAt > uploadWindowStart) {
+            dedup[r.uuid] = r;
+          }
+        }
       } else {
         // forceFullSync: 上传全量
         for (final r in all) {
@@ -1198,6 +1217,10 @@ class PomodoroService {
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
       if (ok) {
+        var latestUploadedAt = lastRecoveryUpload;
+        for (final r in dirty) {
+          if (r.updatedAt > latestUploadedAt) latestUploadedAt = r.updatedAt;
+        }
         await db.update(
           'op_logs',
           {'is_synced': 1, 'sync_error': ''},
@@ -1206,6 +1229,9 @@ class PomodoroService {
         );
         await prefs.setInt(
             lastUploadKey, DateTime.now().millisecondsSinceEpoch);
+        if (latestUploadedAt > lastRecoveryUpload) {
+          await prefs.setInt(recoveryUploadKey, latestUploadedAt);
+        }
       }
     } catch (e) {
       debugPrint('[PomodoroService] syncRecordsToCloud error: $e');

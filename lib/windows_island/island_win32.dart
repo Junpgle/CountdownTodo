@@ -45,8 +45,12 @@ void clearIslandHwndCache() {
 /// Get the smallest Flutter window HWND owned by current process.
 /// Returns null if not on Windows or no window found.
 int? getSmallestFlutterWindow() {
-  if (_islandHwndCache != null) return _islandHwndCache;
   if (!Platform.isWindows) return null;
+  final cached = _islandHwndCache;
+  if (cached != null) {
+    if (isWindowValid(cached)) return cached;
+    _islandHwndCache = null;
+  }
 
   try {
     final currentPid = GetCurrentProcessId();

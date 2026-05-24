@@ -43,6 +43,7 @@ class CalendarSyncEntry {
   }
 
   Map<String, dynamic> toPlatformJson() => {
+        'sourceId': id,
         'sourceType': type.name,
         'title': title,
         'startMs': _platformMillis(start),
@@ -64,17 +65,37 @@ class CalendarSyncResult {
     required this.inserted,
     required this.cleared,
     required this.failed,
+    this.eventIdsBySource = const {},
   });
 
   final int inserted;
   final int cleared;
   final int failed;
+  final Map<String, String> eventIdsBySource;
 
   factory CalendarSyncResult.fromMap(Map<dynamic, dynamic>? map) {
+    final eventIds = <String, String>{};
+    final rawEventIds = map?['eventIds'];
+    if (rawEventIds is List) {
+      for (final item in rawEventIds) {
+        if (item is! Map) continue;
+        final sourceType = item['sourceType']?.toString();
+        final sourceId = item['sourceId']?.toString();
+        final eventId = item['eventId']?.toString();
+        if (sourceType == CalendarSyncEntryType.planBlock.name &&
+            sourceId != null &&
+            sourceId.isNotEmpty &&
+            eventId != null &&
+            eventId.isNotEmpty) {
+          eventIds[sourceId] = eventId;
+        }
+      }
+    }
     return CalendarSyncResult(
       inserted: (map?['inserted'] as num?)?.toInt() ?? 0,
       cleared: (map?['cleared'] as num?)?.toInt() ?? 0,
       failed: (map?['failed'] as num?)?.toInt() ?? 0,
+      eventIdsBySource: eventIds,
     );
   }
 }
@@ -136,6 +157,41 @@ class CalendarSyncService {
       {'calendarId': calendarId},
     );
     return cleared ?? 0;
+  }
+
+  static Future<void> applyWrittenPlanBlockEventIds({
+    required String username,
+    required Map<String, String> eventIdsBySource,
+    required bool clearExisting,
+  }) async {
+    if (!clearExisting && eventIdsBySource.isEmpty) return;
+
+    final blocks = await StorageService.getPlanBlocks(
+      username,
+      includeDeleted: true,
+    );
+    final updates = <TodoPlanBlock>[];
+
+    for (final block in blocks) {
+      final nextEventId = eventIdsBySource[block.uuid];
+      if (nextEventId != null) {
+        if (block.calendarEventId != nextEventId) {
+          block.calendarEventId = nextEventId;
+          updates.add(block);
+        }
+      } else if (clearExisting && block.calendarEventId != null) {
+        block.calendarEventId = null;
+        updates.add(block);
+      }
+    }
+
+    if (updates.isEmpty) return;
+    await StorageService.savePlanBlocks(
+      username,
+      updates,
+      sync: false,
+      isSyncSource: true,
+    );
   }
 
   static Future<List<CalendarSyncEntry>> loadEntries(String username) async {
@@ -279,9 +335,7 @@ class CalendarSyncService {
     if (!end.isAfter(start)) end = start.add(const Duration(minutes: 25));
 
     return CalendarSyncEntry(
-      id: block.calendarEventId?.isNotEmpty == true
-          ? block.calendarEventId!
-          : block.uuid,
+      id: block.uuid,
       type: CalendarSyncEntryType.planBlock,
       title: block.titleSnapshot?.isNotEmpty == true
           ? block.titleSnapshot!

@@ -58,6 +58,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
     private val CALENDAR_EXT_VALUE = "CountDownTodo"
+    private val CALENDAR_SOURCE_ID_EXT_NAME = "countdowntodo_source_id"
+    private val CALENDAR_SOURCE_TYPE_EXT_NAME = "countdowntodo_source_type"
     private val NOTIFICATION_CHANNEL_ID = "live_updates_official_v2"
     // 🍅 番茄钟专属低功耗频道：IMPORTANCE_LOW 不唤醒屏幕、不振动
     private val POMODORO_CHANNEL_ID = "pomodoro_timer_low"
@@ -756,10 +758,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         calendarId: Long,
         events: List<*>?,
         clearFirst: Boolean
-    ): Map<String, Int> {
+    ): Map<String, Any> {
         var cleared = 0
         var inserted = 0
         var failed = 0
+        val eventIds = mutableListOf<Map<String, Any>>()
 
         if (clearFirst) {
             cleared = clearCalendarEvents(calendarId)
@@ -775,11 +778,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
             try {
                 val title = event["title"]?.toString()?.takeIf { it.isNotBlank() } ?: "未命名"
+                val sourceId = event["sourceId"]?.toString()?.takeIf { it.isNotBlank() }
                 val sourceType = event["sourceType"]?.toString() ?: "unknown"
                 val typeLabel = when (sourceType) {
                     "todo" -> "待办"
                     "course" -> "课程"
                     "countdown" -> "倒数日"
+                    "planBlock" -> "规划"
                     else -> "事项"
                 }
                 val startMs = (event["startMs"] as? Number)?.toLong()
@@ -825,6 +830,35 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                         extValues
                     )
                 }
+                if (sourceId != null) {
+                    runCatching {
+                        contentResolver.insert(
+                            CalendarContract.ExtendedProperties.CONTENT_URI,
+                            ContentValues().apply {
+                                put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
+                                put(CalendarContract.ExtendedProperties.NAME, CALENDAR_SOURCE_ID_EXT_NAME)
+                                put(CalendarContract.ExtendedProperties.VALUE, sourceId)
+                            }
+                        )
+                    }
+                    runCatching {
+                        contentResolver.insert(
+                            CalendarContract.ExtendedProperties.CONTENT_URI,
+                            ContentValues().apply {
+                                put(CalendarContract.ExtendedProperties.EVENT_ID, eventId)
+                                put(CalendarContract.ExtendedProperties.NAME, CALENDAR_SOURCE_TYPE_EXT_NAME)
+                                put(CalendarContract.ExtendedProperties.VALUE, sourceType)
+                            }
+                        )
+                    }
+                    eventIds.add(
+                        mapOf(
+                            "sourceId" to sourceId,
+                            "sourceType" to sourceType,
+                            "eventId" to eventId
+                        )
+                    )
+                }
                 inserted++
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to insert calendar event", e)
@@ -832,7 +866,12 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             }
         }
 
-        return mapOf("inserted" to inserted, "cleared" to cleared, "failed" to failed)
+        return mapOf(
+            "inserted" to inserted,
+            "cleared" to cleared,
+            "failed" to failed,
+            "eventIds" to eventIds
+        )
     }
 
     // 🚀 新增：一键将小部件固定到桌面的方法 (Android 8.0+)

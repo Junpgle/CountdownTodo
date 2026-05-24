@@ -216,9 +216,11 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _carouselAutoReturnTimer?.cancel();
     _systemControlAutoReturnTimer?.cancel();
     _quickControlsAutoReturnTimer?.cancel();
+    _sliderDebounce?.cancel();
     _resizeDebounce?.cancel();
     _timeNotifier.dispose();
     _clockTimeNotifier.dispose();
+    _pauseTimeNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();

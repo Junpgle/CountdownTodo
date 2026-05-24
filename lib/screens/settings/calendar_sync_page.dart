@@ -18,6 +18,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   List<CalendarSyncEntry> _entries = [];
   List<Map<String, dynamic>> _calendars = [];
   int? _calendarId;
+  String? _username;
   bool _clearBeforeWrite = true;
   bool _loading = true;
   bool _working = false;
@@ -71,6 +72,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
       final calendars = results[1] as List<Map<String, dynamic>>;
 
       setState(() {
+        _username = username;
         _entries = entries;
         _calendars = calendars;
         _calendarId = calendars.isNotEmpty
@@ -104,6 +106,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         calendarId: _calendarId,
         clearFirst: _clearBeforeWrite,
       );
+      final username = _username;
+      if (username != null && username.isNotEmpty) {
+        await CalendarSyncService.applyWrittenPlanBlockEventIds(
+          username: username,
+          eventIdsBySource: result.eventIdsBySource,
+          clearExisting: _clearBeforeWrite,
+        );
+      }
       _showMessage(
         '已写入 ${result.inserted} 项'
         '${result.cleared > 0 ? '，已清除旧内容 ${result.cleared} 项' : ''}'
@@ -367,7 +377,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
         if (_entries.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(child: Text('暂无可写入日历的待办、课程或倒数日')),
+            child: Center(child: Text('暂无可写入日历的待办、课程、倒数日或规划块')),
           )
         else
           ..._entries.map(_buildEntryTile),
@@ -418,6 +428,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
               ? null
               : (selected) =>
                   _toggleType(CalendarSyncEntryType.countdown, selected),
+        ),
+        FilterChip(
+          label: const Text('规划'),
+          selected: _isTypeFullySelected(CalendarSyncEntryType.planBlock),
+          onSelected: _working
+              ? null
+              : (selected) =>
+                  _toggleType(CalendarSyncEntryType.planBlock, selected),
         ),
       ],
     );

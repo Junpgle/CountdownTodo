@@ -131,7 +131,6 @@ class IslandChannel {
       {Duration timeout = const Duration(milliseconds: 2000)}) async {
     ensureInitialized();
     if (windowId != null && _readySet.contains(windowId)) {
-      _readySet.remove(windowId);
       return true;
     }
     final completer = Completer<void>();

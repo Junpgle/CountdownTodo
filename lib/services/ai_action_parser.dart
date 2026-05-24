@@ -148,7 +148,7 @@ class AiActionParser {
       case 'schedule_todo_block':
         return _listFromOrSelf(
           actionData,
-          actionData['blocks'] ?? actionData['plans'],
+          actionData['blocks'] ?? actionData['plans'] ?? actionData['todos'],
         ).map((block) {
           return AiTodoAction.fromJson({
             ...block,
@@ -374,7 +374,16 @@ class AiActionParser {
   static Map<String, dynamic> _withInferredAction(Map<String, dynamic> data) {
     if (data['action'] != null) return data;
     if (data['todos'] is List) {
-      return {...data, 'action': 'plan_todos'};
+      final todoList = data['todos'] as List;
+      final hasExistingRef = todoList.any((t) =>
+          t is Map &&
+          (t.containsKey('todoId') ||
+              t.containsKey('todo_id') ||
+              t.containsKey('todoUuid')));
+      return {
+        ...data,
+        'action': hasExistingRef ? 'create_plan_block' : 'plan_todos',
+      };
     }
     if (data['blocks'] is List || data['plans'] is List) {
       return {...data, 'action': 'create_plan_block'};
