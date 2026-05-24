@@ -1,0 +1,137 @@
+name: 缺陷反馈
+description: 报告 CountDownTodo / Uni-Sync 的异常、崩溃、同步问题或平台兼容问题
+title: "【缺陷】"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈问题。请尽量提供可复现步骤、平台信息和日志，尤其是同步、网络、番茄钟、Windows island 或后端相关问题。
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题概述
+      description: 简要说明发生了什么，以及它影响了哪个功能。
+      placeholder: 例如：Android 端完成番茄钟后，记录没有同步到 Windows 端。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      multiple: true
+      options:
+        - 待办 / 分组 / 提醒
+        - 规划块
+        - 番茄钟
+        - 时间日志 / 时间线
+        - 课程表 / 课程导入
+        - 团队协同 / 消息中心
+        - 同步 / 冲突处理
+        - AI 待办助手
+        - Windows island / 悬浮窗
+        - Android 小组件
+        - Web 端
+        - 后端 API
+        - 小米手环伴侣应用
+        - 文档 / 构建 / 发布
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 发生平台
+      multiple: true
+      options:
+        - Android
+        - Windows
+        - Web
+        - macOS
+        - iOS
+        - Linux
+        - 小米手环伴侣应用
+        - 后端
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: 应用版本
+      placeholder: 例如：4.12.18
+
+  - type: input
+    id: environment
+    attributes:
+      label: 系统和环境
+      description: 说明设备、系统版本、浏览器、Flutter/Dart 版本或后端运行环境。
+      placeholder: 例如：Windows 11 23H2 / Android 14 / Chrome 125 / Flutter 3.x
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请写出从干净状态开始的操作步骤。
+      placeholder: |
+        1. 打开应用并登录账号
+        2. 创建一个番茄钟标签
+        3. 在 Android 端完成一次番茄钟
+        4. 打开 Windows 端查看记录
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      placeholder: 例如：Windows 端应显示刚完成的番茄钟记录。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      placeholder: 例如：Windows 端没有新增记录，手动同步后仍为空。
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志、截图或录屏
+      description: 可粘贴关键日志、错误堆栈，或上传截图/录屏。请不要包含 token、账号密码、签名文件等敏感信息。
+      render: text
+
+  - type: textarea
+    id: network_sync
+    attributes:
+      label: 同步 / 网络补充信息
+      description: 如果问题涉及同步、API、WebSocket 或后端，请填写请求路径、触发端、目标端、是否经过 Cloudflare Zero Trust 等信息。
+      placeholder: |
+        - 触发端：
+        - 目标端：
+        - API 或 WebSocket：
+        - Web 是否经过 https://api-cdt.junpgle.me/：
+        - 是否只在某个平台发生：
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他补充
+      placeholder: 任何可能帮助定位的信息。
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我确认 issue 中没有包含 secrets、签名密钥、凭据、keystore、证书或私有部署配置。
+          required: true
+        - label: 我已经搜索过现有 issue，确认不是重复反馈。
+          required: true
