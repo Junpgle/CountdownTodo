@@ -1,0 +1,120 @@
+name: 功能请求
+description: 提议新功能、体验优化、平台支持或文档改进
+title: "【需求】"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请说明你想解决的真实问题、涉及的平台和预期行为。涉及后端能力时，新功能默认优先面向 Alibaba Cloud 调试后端。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 背景和问题
+      description: 当前有什么痛点？为什么需要这个改动？
+      placeholder: 例如：团队协同场景下，成员无法快速看出哪些规划块已经被番茄钟完成。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望方案
+      description: 描述你希望新增或改变的行为。
+      placeholder: 例如：在规划块列表中显示番茄钟完成状态，并支持按完成状态筛选。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      multiple: true
+      options:
+        - 待办 / 分组 / 提醒
+        - 规划块
+        - 番茄钟
+        - 时间日志 / 时间线
+        - 课程表 / 课程导入
+        - 团队协同 / 消息中心
+        - 同步 / 冲突处理
+        - AI 待办助手
+        - Windows island / 悬浮窗
+        - Android 小组件
+        - Web 端
+        - 后端 API
+        - 小米手环伴侣应用
+        - 文档 / 构建 / 发布
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 目标平台
+      multiple: true
+      options:
+        - Android
+        - Windows
+        - Web
+        - macOS
+        - iOS
+        - Linux
+        - 小米手环伴侣应用
+        - 后端
+        - 全平台
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_flow
+    attributes:
+      label: 用户流程
+      description: 如果是产品功能或 UI 改动，请描述用户如何使用它。
+      placeholder: |
+        1. 用户进入规划块页面
+        2. 点击筛选按钮
+        3. 选择“已完成番茄钟”
+        4. 页面只展示符合条件的规划块
+
+  - type: textarea
+    id: backend_sync
+    attributes:
+      label: 后端 / 同步影响
+      description: 如果需要 API、数据库、WebSocket、同步 payload 或冲突处理改动，请说明。
+      placeholder: |
+        - 是否需要新增 API：
+        - 是否影响 StorageService.syncData()：
+        - 是否影响 PomodoroService：
+        - 是否需要 WebSocket：
+        - 是否需要兼容 Cloudflare Worker：
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已考虑的替代方案
+      placeholder: 例如：也可以只在详情页展示，但列表页筛选更符合高频使用场景。
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 写出完成后如何判断这个需求已满足。
+      placeholder: |
+        - Android 和 Windows 均能看到完成状态
+        - Web 端 API 路径保持可用
+        - 旧数据不显示错误状态
+        - 相关 service 测试通过
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我确认这个需求没有要求暴露 secrets、签名密钥、凭据、keystore、证书或私有部署配置。
+          required: true
+        - label: 我已经搜索过现有 issue，确认不是重复需求。
+          required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 项目文档
+    url: https://github.com/Junpgle/math_quiz_app/blob/main/CONTRIBUTING.md
+    about: 提交 issue 前可先查看仓库内 docs/、Readme.md 和 CONTRIBUTING.md。
