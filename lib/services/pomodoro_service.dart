@@ -1182,6 +1182,17 @@ class PomodoroService {
             }
           } catch (_) {}
         }
+
+        // Keep a short rolling window so records missed by a failed/day-late
+        // sync are retried without requiring a manual full sync.
+        final uploadWindowStart = lastUpload > 0
+            ? lastUpload - const Duration(days: 2).inMilliseconds
+            : 0;
+        for (final r in all) {
+          if (r.updatedAt >= uploadWindowStart) {
+            dedup[r.uuid] = r;
+          }
+        }
       } else {
         // forceFullSync: 上传全量
         for (final r in all) {

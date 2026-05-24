@@ -3448,23 +3448,36 @@ class StorageService {
           }
         }
 
+        const pomodoroOpTables = ['pomodoro_records', 'pomodoro_tags'];
         if (blockingConflictUuids.isEmpty) {
-          await db.update('op_logs', {'is_synced': 1, 'sync_error': ''},
-              where: 'is_synced = 0');
+          await db.update(
+            'op_logs',
+            {'is_synced': 1, 'sync_error': ''},
+            where: 'is_synced = 0 AND target_table NOT IN (?, ?)',
+            whereArgs: pomodoroOpTables,
+          );
         } else {
           final placeholders =
               List.filled(blockingConflictUuids.length, '?').join(',');
           await db.update(
             'op_logs',
             {'is_synced': 1, 'sync_error': ''},
-            where: 'is_synced = 0 AND target_uuid NOT IN ($placeholders)',
-            whereArgs: blockingConflictUuids.toList(),
+            where:
+                'is_synced = 0 AND target_table NOT IN (?, ?) AND target_uuid NOT IN ($placeholders)',
+            whereArgs: [
+              ...pomodoroOpTables,
+              ...blockingConflictUuids,
+            ],
           );
           await db.update(
             'op_logs',
             {'is_synced': 0, 'sync_error': 'server_conflict'},
-            where: 'is_synced = 0 AND target_uuid IN ($placeholders)',
-            whereArgs: blockingConflictUuids.toList(),
+            where:
+                'is_synced = 0 AND target_table NOT IN (?, ?) AND target_uuid IN ($placeholders)',
+            whereArgs: [
+              ...pomodoroOpTables,
+              ...blockingConflictUuids,
+            ],
           );
         }
 
