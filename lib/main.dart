@@ -601,6 +601,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _bandPomodoroSub?.cancel();
+    unawaited(FloatWindowService.dispose());
     BandSyncService.dispose();
     PomodoroService.dispose();
     PomodoroSyncService.instance.dispose();

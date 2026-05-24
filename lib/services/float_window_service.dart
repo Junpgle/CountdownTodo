@@ -36,6 +36,8 @@ class FloatWindowConfig {
 class FloatWindowService {
   static bool _processingAction = false;
   static ClipboardService? _clipboardService;
+  static StreamSubscription<String>? _clipboardSub;
+  static StreamSubscription<Map<String, dynamic>>? _islandActionSub;
   static String? _lastCopiedUrl;
   static bool _initialized = false;
 
@@ -56,7 +58,6 @@ class FloatWindowService {
   static String _lastNote = '';
 
   // Island creation throttling
-  static final int _lastIslandCreateAttemptMs = 0;
   static Future<String?>? _creatingIsland; // 互斥锁, 防止并发创建
 
   // Data provider with caching
@@ -101,9 +102,10 @@ class FloatWindowService {
 
   static void _initClipboardListener() {
     debugPrint('[FloatWindow] _initClipboardListener called');
+    if (_clipboardService != null) return;
     _clipboardService = ClipboardService();
     _clipboardService!.startListening();
-    _clipboardService!.onUrlCopied.listen((url) {
+    _clipboardSub = _clipboardService!.onUrlCopied.listen((url) {
       debugPrint('[FloatWindow] URL received from stream: $url');
       if (url == _lastCopiedUrl) return;
       _lastCopiedUrl = url;
@@ -176,10 +178,24 @@ class FloatWindowService {
   static void _initIslandChannelSubscription() {
     try {
       IslandChannel.ensureInitialized();
-      IslandChannel.actionStream.listen((event) {
+      _islandActionSub ??= IslandChannel.actionStream.listen((event) {
         _handleIslandAction(event);
       });
     } catch (_) {}
+  }
+
+  static Future<void> dispose() async {
+    _pendingDeliveryTimer?.cancel();
+    _pendingDeliveryTimer = null;
+    _pendingStructuredPayload = null;
+    await _clipboardSub?.cancel();
+    _clipboardSub = null;
+    _clipboardService?.dispose();
+    _clipboardService = null;
+    await _islandActionSub?.cancel();
+    _islandActionSub = null;
+    _creatingIsland = null;
+    _initialized = false;
   }
 
   static void _handleIslandAction(Map<String, dynamic> event) {
