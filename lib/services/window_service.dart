@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited, TimeoutException, Timer;
+import 'dart:async' show TimeoutException, Timer;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
@@ -30,10 +30,10 @@ class WindowService extends WindowListener with TrayListener {
       debugPrint('[WindowService] Initializing...');
       await windowManager.ensureInitialized();
       debugPrint('[WindowService] windowManager.ensureInitialized() done');
-      
+
       await windowManager.setPreventClose(true);
       debugPrint('[WindowService] windowManager.setPreventClose(true) done');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final int? x = prefs.getInt(_keyX);
       final int? y = prefs.getInt(_keyY);
@@ -196,15 +196,17 @@ class WindowService extends WindowListener with TrayListener {
   // WindowListener overrides for closure
   @override
   void onWindowClose() {
-    debugPrint('[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
-    
+    debugPrint(
+        '[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
+
     // 立即处理，不等待
     _doHandleWindowClose();
   }
 
   Future<void> _doHandleWindowClose() async {
-    debugPrint('[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
-    
+    debugPrint(
+        '[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
+
     if (_isHandlingClose) {
       debugPrint('[WindowService] Already handling close, ignoring');
       return;
@@ -214,29 +216,35 @@ class WindowService extends WindowListener with TrayListener {
     try {
       bool shouldExit = true;
       String? failureReason;
-      
+
       try {
         if (onShowCloseConfirm != null) {
-          debugPrint('[WindowService] Calling Flutter close confirm callback...');
+          debugPrint(
+              '[WindowService] Calling Flutter close confirm callback...');
           shouldExit = await onShowCloseConfirm!().timeout(
             const Duration(seconds: 3),
             onTimeout: () {
-              debugPrint('[WindowService] Flutter callback timed out, using native dialog');
+              debugPrint(
+                  '[WindowService] Flutter callback timed out, using native dialog');
               failureReason = 'Flutter callback timeout';
               throw TimeoutException('Close dialog timeout');
             },
           );
-          debugPrint('[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
+          debugPrint(
+              '[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
         } else {
-          debugPrint('[WindowService] No close dialog handler registered, showing native dialog');
+          debugPrint(
+              '[WindowService] No close dialog handler registered, showing native dialog');
           failureReason = 'No callback registered';
           throw Exception('No callback registered');
         }
       } catch (e) {
-        debugPrint('[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
+        debugPrint(
+            '[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
         final result = _showNativeMessageBox();
         shouldExit = (result == 6); // IDYES = 6
-        debugPrint('[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
+        debugPrint(
+            '[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
       }
 
       debugPrint('[WindowService] Final decision: shouldExit=$shouldExit');

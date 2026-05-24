@@ -20,8 +20,6 @@ class _CacheEntry<T> {
 /// Centralized data provider for island window.
 /// Manages caching and aggregates data from multiple sources.
 class IslandDataProvider {
-  IslandDataProvider._();
-
   static final IslandDataProvider _instance = IslandDataProvider._internal();
   factory IslandDataProvider() => _instance;
   IslandDataProvider._internal();

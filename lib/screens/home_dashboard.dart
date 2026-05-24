@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +9,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
@@ -66,7 +64,6 @@ import 'todo_plan_screen.dart';
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
-import 'app_board_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -171,14 +168,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
-  bool _isDataLoading = false; // 🚀 加载锁，防止并发触发导致的数据库竞争
   bool _pendingReloadRequested = false;
-  int _loadGeneration = 0;
 
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
   Route<dynamic>? _pomodoroRoute;
-  int _todoUpdateSignal = 0; // 🚀 协同更新信号
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
   Timer? _remoteTodoHighlightTimer;
@@ -333,8 +327,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (Platform.isAndroid || Platform.isIOS) {
       _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
-        debugPrint(
-            "📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+        debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
         final args = call.arguments;
         int? notifId;
         if (args is Map) {
@@ -631,8 +624,6 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (pendingData != null) {
       final imagePath = pendingData['imagePath'] as String?;
-      final status = pendingData['status'] as String? ?? 'success';
-
       // 只要有 imagePath 就显示卡片（支持 processing/retrying/failed/success 状态）
       if (imagePath != null) {
         // 保存待确认数据，显示入口卡片
@@ -1302,7 +1293,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         child: InkWell(
           onTap: isProcessing
               ? null // 处理中不允许点击
-              : (isFailed ? _retryPendingTodoRecognition : _openPendingTodoConfirm),
+              : (isFailed
+                  ? _retryPendingTodoRecognition
+                  : _openPendingTodoConfirm),
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1393,7 +1386,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       GestureDetector(
                         onTap: _ignorePendingTodoRecognition,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.grey.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -1413,7 +1407,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       GestureDetector(
                         onTap: _retryPendingTodoRecognition,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.red.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
@@ -2177,7 +2172,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     } catch (_) {}
 
     // ── 课程通知 ────────────────────────────────────────────────
-    const int _courseNotificationId = 12347;
+    const int courseNotificationId = 12347;
 
     final dashboardData =
         await CourseService.getDashboardCourses(widget.username);
@@ -2192,8 +2187,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (courseTime == null || courseEndTime == null) continue;
 
         // 显示窗口：自上课前 20 分钟起，直到下课结束
-        final isInsideWindow = now.isAfter(courseTime.subtract(const Duration(minutes: 20))) &&
-                               now.isBefore(courseEndTime);
+        final isInsideWindow =
+            now.isAfter(courseTime.subtract(const Duration(minutes: 20))) &&
+                now.isBefore(courseEndTime);
         if (isInsideWindow) {
           // 已有定时闹钟的课程不再弹实时活动通知
           if (_coursesWithScheduledAlarms.contains(course.courseName)) {
@@ -2218,7 +2214,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
     if (!hasUpcomingCourse) {
-      NotificationService.cancelSpecialTodoNotification(_courseNotificationId);
+      NotificationService.cancelSpecialTodoNotification(courseNotificationId);
     }
 
     // ── 待办提醒 ────────────────────────────────────────────────
@@ -2298,7 +2294,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       // 🚀 核心改动：在待办执行的时间段内（提前 30 分钟直到截止时间）皆视为正在活动并在通知栏展示
       return now.isAfter(startDate.subtract(const Duration(minutes: 30))) &&
-             now.isBefore(localDueDate);
+          now.isBefore(localDueDate);
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
@@ -2816,12 +2812,15 @@ class _HomeDashboardState extends State<HomeDashboard>
               await prefs.remove('current_user_id');
               await prefs.remove('logged_in_username'); // 顺便清理用户名
 
-              if (!mounted) return;
+              if (!mounted || !ctx.mounted) return;
 
               // 2. 彻底关闭弹窗并切断路由栈，回到登录页
               Navigator.of(ctx).pop();
               Navigator.pushNamedAndRemoveUntil(
-                  context, '/login', (route) => false);
+                context,
+                '/login',
+                (route) => false,
+              );
             },
             child: const Text("重新登录"),
           ),
@@ -2887,10 +2886,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     _isGlobalLoadingNotifier.value = true;
-    final int generation = ++_loadGeneration;
-
     try {
-      final startTime = DateTime.now();
       //debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
 
       // 1. 读取基础数据 (并发执行，带超时保护)
@@ -3221,6 +3217,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       final prefs = await SharedPreferences.getInstance();
       int? userId = prefs.getInt('current_user_id');
       if (userId == null) throw Exception("未登录");
+      if (!mounted) return;
 
       bool hasChanges = false;
 
@@ -3829,35 +3826,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isSearchOpen = false;
           _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
         });
+      }
       _loadAllData(deferred: true);
     });
-  }
-
-  // 辅助方法：显示通用全屏层 (透明背景)
-  static Future<T?> showGeneralPage<T>({
-    required BuildContext context,
-    required RoutePageBuilder pageBuilder,
-    RouteTransitionsBuilder? transitionBuilder,
-    Duration transitionDuration = const Duration(milliseconds: 200),
-    bool barrierDismissible = true,
-    Color barrierColor = Colors.transparent,
-    String? barrierLabel,
-  }) {
-    return Navigator.of(context).push<T>(PageRouteBuilder(
-      opaque: false,
-      barrierDismissible: barrierDismissible,
-      barrierColor: barrierColor,
-      barrierLabel: barrierLabel,
-      pageBuilder: pageBuilder,
-      transitionsBuilder:
-          transitionBuilder ?? (ctx, anim1, anim2, child) => child,
-      transitionDuration: transitionDuration,
-    ));
   }
 
   @override
@@ -4075,8 +4051,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                   (x) => x.id == g.id);
                                               if (idx != -1) {
                                                 if (g.updatedAt >=
-                                                    allGroups[idx].updatedAt)
+                                                    allGroups[idx].updatedAt) {
                                                   allGroups[idx] = g;
+                                                }
                                               } else {
                                                 allGroups.add(g);
                                               }
