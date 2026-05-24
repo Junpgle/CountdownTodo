@@ -6,7 +6,7 @@ import 'dart:ui' hide window;
 import 'dart:ffi' hide Size;
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
-import 'package:win32/win32.dart' hide Size;
+import 'package:win32/win32.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
@@ -319,10 +319,8 @@ Future<void> islandMain(List<String> args) async {
       }
     } catch (_) {}
 
-    Timer? boundsPollingTimer;
     final Set<String> acknowledgedReminders = {};
     String? lastShownReminderId;
-    Map<String, dynamic>? currentReminder;
 
     Timer(IslandConfig.boundsSaveEnableDelay, () {
       boundsSaveEnabled = true;
@@ -331,8 +329,7 @@ Future<void> islandMain(List<String> args) async {
       });
     });
 
-    boundsPollingTimer =
-        Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
+    Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
       try {
         final hwnd = getSmallestFlutterWindow();
         if (hwnd == null) return;
@@ -412,8 +409,6 @@ Future<void> islandMain(List<String> args) async {
 
           if (needUpdate) {
             lastShownReminderId = itemId!;
-            currentReminder = reminder;
-
             final bool isAlreadyReminderState =
                 currentState == 'reminder_split' ||
                     currentState == 'reminder_capsule' ||

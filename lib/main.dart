@@ -367,7 +367,9 @@ class _MyAppState extends State<MyApp> {
               _loggedInUser = null;
             });
           }
-          Navigator.pop(dialogContext, false);
+          if (dialogContext.mounted) {
+            Navigator.pop(dialogContext, false);
+          }
         },
       ),
     );
@@ -695,20 +697,8 @@ class _MyAppState extends State<MyApp> {
               PointerDeviceKind.stylus,
             },
           ),
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

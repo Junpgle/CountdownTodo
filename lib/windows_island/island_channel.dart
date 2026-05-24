@@ -107,7 +107,9 @@ class IslandChannel {
                   if (map.isNotEmpty) {
                     _actionController.add(map);
                   }
-                } catch (e) {}
+                } catch (e) {
+                  debugPrint('[IslandChannel] invalid action args: $e');
+                }
               }
             } else if (call.method == 'postWindowMessage') {
               // Forward host-received postWindowMessage if relevant

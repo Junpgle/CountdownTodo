@@ -133,8 +133,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── 窗口控制
   WindowController? _windowController;
   Size _currentWindowSize = const Size(100, 34);
-  bool _isDragging = false;
-
   // ── 便捷 getter ─────────────────────────────────────────────────────────
   bool get _isFocusing => _stack.base == IslandState.focusing;
 
@@ -340,34 +338,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         return IslandState.focusing;
       default:
         return IslandState.idle;
-    }
-  }
-
-  /// 完整状态映射
-  IslandState _computeFullState(String stateStr) {
-    switch (stateStr) {
-      case 'focusing':
-        return IslandState.focusing;
-      case 'split_alert':
-        return IslandState.splitAlert;
-      case 'stacked_card':
-        return IslandState.stackedCard;
-      case 'finish_confirm':
-        return IslandState.finishConfirm;
-      case 'abandon_confirm':
-        return IslandState.abandonConfirm;
-      case 'finish_final':
-        return IslandState.finishFinal;
-      case 'reminder_popup':
-        return IslandState.reminderPopup;
-      case 'reminder_split':
-        return IslandState.reminderSplit;
-      case 'reminder_capsule':
-        return IslandState.reminderCapsule;
-      case 'copied_link':
-        return IslandState.copiedLink;
-      default:
-        return _isFocusing ? IslandState.focusing : IslandState.idle;
     }
   }
 
@@ -1343,98 +1313,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     );
   }
 
-  // ── Focusing ─────────────────────────────────────────────────────────────
-
-  Widget _buildFocusing() {
-    final fd = _currentPayload?['focusData'] as Map?;
-    final title = fd?['title']?.toString() ?? '专注事项';
-
-    return GestureDetector(
-      key: const ValueKey('focusing'),
-      onTap: () {
-        _stack.push(IslandState.stackedCard, data: _currentPayload);
-        _animateToState(IslandState.stackedCard);
-      },
-      onPanStart: (_) => _startDrag(),
-      child: AnimatedBuilder(
-        animation: _pulseController,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _isPulsing ? _pulseAnimation.value : 1.0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              alignment: Alignment.center,
-              clipBehavior: Clip.hardEdge,
-              decoration: const BoxDecoration(color: Colors.transparent),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxHeight <= 56;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!compact)
-                        ValueListenableBuilder<String>(
-                          valueListenable: _pauseTimeNotifier,
-                          builder: (context, pauseTime, _) {
-                            return Text(
-                              fd?['isPaused'] == true
-                                  ? '暂停中 $pauseTime'
-                                  : title,
-                              style: TextStyle(
-                                color: _isPulsing
-                                    ? _colorAnimation.value
-                                            ?.withValues(alpha: 0.7) ??
-                                        Colors.white70
-                                    : Colors.white70,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                height: 1.0,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            );
-                          },
-                        ),
-                      if (!compact) const SizedBox(height: 1),
-                      ValueListenableBuilder<String>(
-                        valueListenable: _timeNotifier,
-                        builder: (_, time, __) {
-                          if (_isCountdown &&
-                              _remainingSecs == 0 &&
-                              !_isPulsing) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              _triggerPomodoroAlert();
-                            });
-                          }
-
-                          return FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              time,
-                              style: TextStyle(
-                                color: _isPulsing
-                                    ? _colorAnimation.value ?? Colors.white
-                                    : Colors.white,
-                                fontSize: compact ? 16 : 16,
-                                fontWeight: FontWeight.w900,
-                                height: 1.0,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   // 触发番茄钟结束强提醒
   void _triggerPomodoroAlert() {
     if (_isPulsing || !mounted) return;
@@ -1443,14 +1321,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _isPulsing = true;
     });
 
-    // 启动脉冲动画，循环3次
     _pulseController.repeat(count: 3).then((_) {
       if (mounted) {
         setState(() {
           _isPulsing = false;
         });
 
-        // 动画结束后自动展开番茄钟结束卡片
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted && _stack.current == IslandState.focusing) {
             _showPomodoroFinishedCard();
@@ -1460,10 +1336,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     });
   }
 
-  // 显示番茄钟结束卡片
   void _showPomodoroFinishedCard() {
-    // 这里可以push一个新的状态来显示番茄钟结束卡片
-    // 暂时使用现有的stackedCard状态
     _stack.push(IslandState.stackedCard, data: _currentPayload);
     _animateToState(IslandState.stackedCard);
   }
@@ -2650,15 +2523,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   void _startDrag() async {
     if (widget.inLayoutDebugMode) return;
-    _isDragging = true;
     try {
       (await _getController()).invokeMethod('startDragging');
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _isDragging = false;
-      });
-    } catch (_) {
-      _isDragging = false;
-    }
+    } catch (_) {}
   }
 
   // ── 卡片轮播相关方法 ────────────────────────────────────────────────────

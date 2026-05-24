@@ -72,7 +72,8 @@ class IslandManager {
     }
 
     // 立即注册 future 到 _creating, 阻止后续调用进入 (在任何 await 之前!)
-    final future = _createIslandInternal(islandId, initialPayload: initialPayload);
+    final future =
+        _createIslandInternal(islandId, initialPayload: initialPayload);
     _creating[islandId] = future;
     try {
       final res = await future;
@@ -239,8 +240,8 @@ class IslandManager {
         }
       }
       return windowId;
-    } catch (_) {
-      debugPrint('[IslandManager] _doCreate exception for $islandId: $_');
+    } catch (e) {
+      debugPrint('[IslandManager] _doCreate exception for $islandId: $e');
       return null;
     }
   }
