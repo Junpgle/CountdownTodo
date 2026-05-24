@@ -130,6 +130,11 @@ serverVersionData = {
 - `todo_plan_blocks` 当前只按版本/更新时间合并，不进入冲突中心。
 - `pomodoro` 标签和记录通过 `PomodoroService` 单独同步。
 
+番茄钟 op_log 保护：
+
+- 主同步成功标记 `op_logs` 时，会排除 `pomodoro_records` 和 `pomodoro_tags`，避免主同步在 `PomodoroService.syncRecordsToCloud()` 之前提前消费番茄钟待上传日志。
+- 番茄钟记录上传成功后，才由 `PomodoroService` 将对应 `pomodoro_records` oplog 标记为已同步。
+
 额外补标：
 
 - 如果 `response.conflicts` 中有 `schedule_conflict`，且冲突检测开关开启，客户端会把它转换成本地 `local_schedule_conflict` 写入对应待办。
@@ -299,6 +304,26 @@ client.version > server.version
 - 时间日志没有客户端 `hasConflict` 字段，也不会进入冲突中心。
 
 所以“专注记录 / 番茄钟 / 时间日志永远不参与冲突计算”在当前主要路径上成立。
+
+## 番茄钟同步水位线和漏传修复
+
+番茄钟记录同步是独立链路：
+
+- 上传：`PomodoroService.syncRecordsToCloud()`。
+- 下载：`PomodoroService.syncRecordsFromCloud()`。
+- 标签：`syncTagsToCloud()` / `syncTagsFromCloud()`。
+
+当前关键水位线：
+
+- `pomodoro_last_record_upload`：最近成功上传时间。
+- `pomodoro_last_record_download`：最近成功拉取的远端更新时间。
+- `pomodoro_last_record_recovery_upload`：一次性回补上传水位。
+
+2026-05-24 修复点：
+
+- 历史问题：如果当天番茄钟没有及时同步，主同步可能提前把 `pomodoro_records` oplog 标成已同步，第二天普通增量上传找不到待上传记录，只能靠全量同步。
+- 当前处理：主同步不再消费番茄钟 oplog；番茄钟上传会额外做一次最近 2 天的恢复窗口补传。
+- 为避免同步风暴，恢复窗口不是永久滚动窗口，而是通过 `pomodoro_last_record_recovery_upload` 前进水位。成功补传后，同一批记录不会在后续静默同步中反复上传并触发 WebSocket 广播回声。
 
 ## 当前需要注意的边界
 

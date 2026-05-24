@@ -326,29 +326,29 @@ void _showMedalListDialog() {
 - **Core Service**: `lib/services/medal_recommendation_service.dart` (17KB)
 - **UI Widget**: `lib/widgets/medal_recommendation_card.dart` (15KB)
 - **Tests**: `test/medal_recommendation_service_test.dart` (9KB)
-- **Integration**: `lib/screens/personal_timeline_screen.dart` (需要更新)
+- **Integration**: `lib/screens/personal_timeline_screen.dart`（已接入时间线/勋章相关入口，后续可继续优化展示位置）
 
 ---
 
 ## ✨ 下一步
 
-1. **集成到 UI** (Today)
-   - 在 personal_timeline_screen 中显示推荐卡片
+1. **继续优化 UI 展示**
+   - 根据实际使用反馈调整 `personal_timeline_screen` 和勋章墙中的推荐展示位置
 
-2. **用户测试** (Tomorrow)
+2. **用户测试**
    - 收集用户反馈
    - 调整勋章难度阈值
 
-3. **数据收集** (Optional)
+3. **数据收集（可选）**
    - 为下一个 ML 项目收集用户行为数据
 
-4. **Analytics** (Optional)
+4. **效果分析（可选）**
    - 追踪勋章获得率
    - 测量参与度提升
 
 ---
 
-**状态**: ✅ Core Implementation Complete  
+**状态**: ✅ 核心实现已完成  
 **下一个 ML 项目**: #43 时间估算预测 或 #33 学习模式识别
 
 ---

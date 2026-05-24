@@ -1,223 +1,115 @@
-# 长期待办规划块方案
+# 长期待办规划块当前说明
+
+最后更新：`2026-05-24`
 
 ## 背景
 
-长期待办不应该靠创建一堆重复待办来表达执行计划。比如“写论文”应该始终是一个长期待办，而“今天 15:00-17:00 写论文”“明天 09:00-10:00 写论文”应当是挂在这个待办下面的多个规划块。
+长期待办不应该靠创建一堆重复待办来表达执行计划。比如“写论文”应始终是一个长期待办，而“今天 15:00-17:00 写论文”“明天 09:00-10:00 写论文”应当是挂在这个待办下面的多个规划块。
 
-规划块的目标：
+规划块承担“某个待办在某段时间执行”的职责：
 
 - 一个长期待办可以被安排到多个具体时间段。
 - 到点提醒用户开始专注。
 - 番茄钟记录实际专注时长。
 - 统计计划时长、实际专注时长和达成率。
-- AI 可以根据课程、已有待办、已有规划和番茄记录自动安排时间。
-- 录入体验要像时间日志补录一样顺手，支持拖拽选择时间段后快速保存。
+- AI 可以根据课程、已有待办、已有规划和番茄记录安排时间。
 
-## 核心模型
+## 当前核心模型
 
 ### TodoItem
 
-继续表示任务本体，例如：
-
-- 写论文
-- 复习高数
-- 背英语单词
-
-不要用 `TodoItem.createdDate` / `TodoItem.dueDate` 反复覆盖长期待办的多个执行时间。它们更适合单次待办，不适合表达多个计划时间块。
+`TodoItem` 继续表示任务本体，例如“写论文”“复习高数”“背英语单词”。不要用 `TodoItem.createdDate` / `TodoItem.dueDate` 反复覆盖长期待办的多个执行时间；它们更适合表达单次待办。
 
 ### TodoPlanBlock
 
-新增规划块模型，表示一次具体安排。
+`TodoPlanBlock` 已在 `lib/models.dart` 落地，用来表示一次具体安排。当前关键字段包括：
 
-建议字段：
+- `id` / `uuid`：全局唯一 ID。
+- `todoId`：关联的 `TodoItem.id`。
+- `titleSnapshot`：待办标题快照，便于离线显示和历史统计。
+- `startTime` / `endTime`：开始和结束时间，UTC 毫秒。
+- `plannedMinutes`：计划分钟数。
+- `status`：`planned`、`reminded`、`focusing`、`finished`、`missed`、`skipped`。
+- `actualFocusSeconds`：实际专注秒数。
+- `pomodoroRecordIds`：关联番茄钟记录 ID 列表。
+- `source`：来源，例如手动、AI、课程映射等。
+- `remark`：规划备注。
+- `reminderMinutes`：提前提醒分钟数。
+- `pomodoroMinutes` / `pomodoroRounds`：番茄钟配置。
+- `isDeleted`、`version`、`createdAt`、`updatedAt`、`deviceId`：同步和审计字段。
 
-- `id`: 全局唯一 ID。
-- `todoId`: 关联的 `TodoItem.id`。
-- `titleSnapshot`: 待办标题快照，便于离线显示和历史统计。
-- `startTime`: 开始时间，UTC 毫秒。
-- `endTime`: 结束时间，UTC 毫秒。
-- `plannedMinutes`: 计划分钟数，可由开始/结束时间计算，也可冗余保存。
-- `status`: `planned / reminded / focusing / done / missed / skipped`。
-- `actualFocusSeconds`: 实际专注秒数。
-- `pomodoroRecordIds`: 关联的番茄钟记录 ID 列表。
-- `source`: `manual / ai / recurrence / calendar`。
-- `remark`: 规划备注。
-- `reminderMinutes`: 提前提醒分钟数。
-- `isDeleted`: 逻辑删除。
-- `version`: 同步版本。
-- `createdAt`: 创建时间。
-- `updatedAt`: 更新时间。
-- `deviceId`: 创建/更新设备。
+## 当前实现位置
 
-## 录入体验
+- `lib/models.dart`：`TodoPlanBlock`、`TodoPlanStatus`。
+- `lib/storage_service.dart`：`savePlanBlocks`、`getPlanBlocks`、`getPlanBlocksByDay`、`deletePlanBlockGlobally` 和 delta sync 接入。
+- `lib/services/database_helper.dart`：`todo_plan_blocks` 表结构和迁移/修复。
+- `lib/screens/todo_plan_screen.dart`：日视图网格、点击/滑动创建、编辑、跳过、删除、长按移动、边缘调整。
+- `lib/screens/plan_block_stats_screen.dart`：规划块统计入口。
+- `lib/widgets/plan_block_today_section.dart`：首页今日规划展示。
+- `lib/services/reminder_schedule_service.dart`：规划块提醒调度。
+- `lib/services/pomodoro_control_service.dart` 与 `lib/services/pomodoro_service.dart`：从规划块开始专注、番茄钟结束后回写规划块。
+- `lib/services/ai_action_parser.dart`、`ai_todo_action_executor.dart`、`ai_todo_context_builder.dart`：AI 规划块 action 协议和执行。
 
-规划录入要复用时间日志的“日视图网格 + 拖拽选时间段 + 底部面板保存”的体验。
+## 当前交互行为
 
-### 入口
+- 日视图支持 `5 / 10 / 15 / 30` 分钟粒度切换。
+- 点击空白网格可创建规划块。选择待办后会启用 AI 时长估计，并自动调整结束时间和番茄轮数。
+- 滑动选择时间段可创建规划块。选择待办后不会自动套用 AI 预估时间，保留用户滑动选出的时间段。
+- 已有规划块支持点击编辑、长按移动、拖拽左右边缘调整开始/结束时间。
+- 底部面板支持提醒分钟、备注、番茄时长和番茄轮数配置。
+- `保存并开始专注` 会绑定 `planBlockId` 并进入番茄钟。
+- 番茄钟记录结束后会累计 `actualFocusSeconds`、追加 `pomodoroRecordIds`，并按达成率更新规划块状态。
 
-建议提供三个入口：
+## 状态流转
 
-- 待办详情页：在“规划”区域点击添加。
-- 今日计划页：点击空白时间轴或加号。
-- 时间日志/专注统计页：增加“规划”模式，与“补录”模式并列。
+当前主要状态语义：
 
-待办详情页适合从任务出发安排时间。今日计划页适合从一天的空闲时间出发填计划。时间日志页适合复用已有网格交互，做成“计划/实际”双层视图。
-
-### 日视图拖拽
-
-参考 `TimeLogScreen` 当前补录体验：
-
-- 左侧显示 24 小时时间轴。
-- 网格粒度默认 15 分钟。
-- 支持切换 5 / 10 / 15 / 30 分钟粒度。
-- 用户拖拽 15:00-17:00 后弹出规划录入面板。
-- 拖拽区域显示计划时长，例如 `2h`。
-- 已有规划块显示在网格上。
-- 已有番茄钟或时间日志可以作为实际层叠加显示。
-
-推荐交互：
-
-- 单击空白区域：快速创建 25 分钟规划块。
-- 拖拽空白区域：按选中时间创建规划块。
-- 点击已有规划块：编辑、开始专注、跳过、删除。
-- 长按规划块：拖动改期。
-- 拖拽边缘：调整开始/结束时间。
-
-### 底部录入面板
-
-底部面板应尽量比创建待办更轻。
-
-字段建议：
-
-- 待办选择：默认带入当前待办；从今日计划入口进入时可搜索待办。
-- 标题展示：显示待办标题，不默认新建待办。
-- 开始时间。
-- 结束时间。
-- 计划时长。
-- 提前提醒：默认 5 分钟。
-- 番茄配置：可选 `25min x N` 或直接使用规划块总时长。
-- 备注：可选。
-
-底部按钮：
-
-- `保存规划`
-- `保存并开始专注`
-- `AI 帮我安排更多`
-
-从待办详情页进入时，不应该要求用户重复输入标题。用户只需要选时间、确认提醒即可。
-
-### 快速自然语言录入
-
-为了比拖拽更快，可以增加一行轻量输入框：
-
-示例：
-
-- `今天 15-17`
-- `明天 9:00-10:00`
-- `周一三五 20:00-21:00 到月底`
-- `每天早上 8 点 25 分钟，连续 7 天`
-- `今晚两小时`
-
-解析结果不要创建新待办，而是创建挂在当前待办下的 `TodoPlanBlock`。
-
-从今日计划页输入时，如果没有当前待办，可以支持：
-
-- `写论文 今天 15-17`
-- `高数 明天 9-10`
-
-若匹配到已有待办则绑定已有待办；匹配不到时再询问是否新建待办。
-
-## 规划块状态流转
-
-建议状态流转：
-
-- `planned`: 已计划，未提醒。
-- `reminded`: 已触发提醒。
-- `focusing`: 用户从该规划块开始番茄钟。
-- `done`: 规划块已有实际专注记录，且用户确认完成或实际时长达到阈值。
-- `missed`: 结束时间已过，未开始专注。
-- `skipped`: 用户主动跳过。
+- `planned`：已计划，未开始。
+- `reminded`：设计上表示已提醒；当前稳定回写仍需完善。
+- `focusing`：用户从该规划块开始番茄钟。
+- `finished`：实际专注达到达成阈值后自动完成。
+- `missed`：结束时间已过且没有实际记录。
+- `skipped`：用户主动跳过。
 
 自动规则：
 
-- 当前时间超过 `endTime` 且没有实际记录，标记为 `missed`。
-- 实际专注时长达到计划时长的 80%，可建议标记 `done`。
-- 用户开始专注但中断，保留实际时长，状态可保持 `planned` 或进入 `done`，取决于达成率。
-
-## 提醒联动
-
-扩展 `ReminderScheduleService`：
-
-- 调度未来 7 天内未完成、未删除、未跳过的规划块。
-- 提醒时间为 `startTime - reminderMinutes`。
-- 通知点击后进入番茄钟页面，并携带 `todoId` 和 `planBlockId`。
-
-通知文案：
-
-- 标题：`开始专注：写论文`
-- 内容：`15:00 - 17:00 · 计划 120 分钟`
-
-如果规划块关联待办已有图片或备注，可以沿用现有通知能力显示附加信息。
+- 当前时间超过 `endTime` 且无实际专注记录时，会被标为 `missed`。
+- 从规划块开始番茄钟会进入 `focusing`。
+- 番茄钟结束后回写实际专注时长，并在达成阈值满足时标为 `finished`。
 
 ## 番茄钟联动
 
-现有 `PomodoroRecord` 已经有：
+`PomodoroRecord` 已支持：
 
 - `todoUuid`
 - `todoTitle`
 - `plannedDuration`
 - `actualDuration`
-
-建议增加：
-
 - `planBlockId`
 
 从规划块开始专注时：
 
-- 预选待办。
-- 预设专注时长。
-- 保存运行状态时带上 `planBlockId`。
-- 结束后新增 `PomodoroRecord` 并回写规划块：
-  - 累加 `actualFocusSeconds`。
-  - 追加 `pomodoroRecordIds`。
-  - 根据达成率更新状态。
+- 预选绑定待办。
+- 使用规划块的番茄配置或计划时长。
+- 运行状态携带 `planBlockId`。
+- 结束后新增 `PomodoroRecord` 并回写规划块：累计实际专注、追加记录 ID、更新状态。
 
-## 统计
+## 存储与同步
 
-统计分三层。
+- 本地表：`todo_plan_blocks`。
+- 同步入口：`StorageService.syncData()`。
+- 上传字段：通过 `todo_plan_blocks_changes` 进入 `ApiService.postDeltaSync()`。
+- 规划块不进入冲突中心；当前按版本/更新时间进行合并。
+- 新后端能力优先落到 `aliyun_debug/`；不要修改 `aliyun_release/`，除非明确要求。
+- Web 通过 Cloudflare Zero Trust API 访问，Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
 
-### 今日统计
+## AI 规划协议
 
-- 今日计划时长。
-- 今日实际专注时长。
-- 今日达成率。
-- 已完成规划块数量。
-- 漏做规划块数量。
+规划块使用独立 action，避免 AI 为长期待办制造重复待办。
 
-### 待办统计
+当前支持的规划块 action：
 
-每个长期待办显示：
-
-- 累计计划时长。
-- 累计实际专注时长。
-- 达成率。
-- 最近一次规划。
-- 下一个规划时间。
-
-### 周/月统计
-
-- 每日计划 vs 实际柱状图。
-- 按待办统计的专注排行。
-- 漏做时间块列表。
-- AI 建议：哪些计划经常排太满，哪些待办长期没有推进。
-
-## AI 规划
-
-现有 AI 协议已经支持 `plan_todos`、`reschedule_todo`、`start_pomodoro`，但它们偏向创建/修改待办。规划块应新增独立 action，避免 AI 制造重复待办。
-
-建议新增动作：
-
-- `create_plan_blocks`
+- `create_plan_block`
 - `update_plan_block`
 - `delete_plan_block`
 - `reschedule_plan_blocks`
@@ -229,7 +121,7 @@
 ```json
 [
   {
-    "action": "create_plan_blocks",
+    "action": "create_plan_block",
     "blocks": [
       {
         "todoId": "todo-uuid",
@@ -243,144 +135,37 @@
 ]
 ```
 
-AI 上下文需要注入：
-
-- 未完成待办。
-- 已有规划块。
-- 课程表。
-- 倒计时。
-- 近期番茄钟记录。
-- 今日/本周空闲时间。
-
 AI 规则：
 
-- 优先绑定已有待办。
+- 把已有待办安排到具体时间时，必须使用 `create_plan_block`，不要使用 `plan_todos`。
+- `plan_todos` 只用于创建全新待办。
+- 规划中提到的每个已有待办都应生成对应规划块，不要只生成部分时间段。
+- 如果上下文提供课程、已有规划或专注记录，应避开这些已占用时间。
 - 不确定待办 ID 时先追问。
-- 不要把长期待办拆成重复待办，除非用户明确要求拆分任务。
-- 避免安排到课程、已有规划块、已有日历事件冲突的时间。
-- 对过期未完成规划，可以建议顺延，而不是自动删除。
 
-## 日历同步
+## 统计
 
-规划块适合同步成系统日历事件。
+当前已有：
 
-建议：
+- 今日规划展示。
+- 规划块统计入口 `PlanBlockStatsScreen`。
+- 番茄钟实际专注回写。
 
-- 只同步具体规划块，不同步长期待办本体。
-- 每个规划块保存 `calendarEventId`。
-- 修改规划块时更新日历事件。
-- 删除规划块时删除或标记对应日历事件。
-- 保持现有课程、倒计时、待办同步逻辑兼容。
+仍需完善：
 
-## 存储与同步
+- 周/月计划 vs 实际图表。
+- 按待办统计的长期专注排行。
+- 漏做规划块分析。
+- AI 对计划过满、长期未推进待办的建议。
 
-本地建议新增表或存储集合：
+## 仍需收敛的点
 
-- `todo_plan_blocks`
+- 系统通知点击链路还需要稳定携带 `todoId` 和 `planBlockId` 直达番茄钟。
+- `TodoPlanStatus.reminded` 的回写还需要完善。
+- 规划块到系统日历事件的同步还没完整落地，模型中也没有稳定的 `calendarEventId` 字段。
+- 规划块变更与协同 WebSocket 广播策略还需要继续对齐。
+- 需要补充 widget 测试：点击创建启用 AI 估时、滑动创建不启用 AI 估时、拖拽改期和边缘调整。
 
-字段应与模型一致，并支持 delta sync：
+## 最近行为修正
 
-- `uuid`
-- `todo_uuid`
-- `title_snapshot`
-- `start_time`
-- `end_time`
-- `planned_minutes`
-- `status`
-- `actual_focus_seconds`
-- `pomodoro_record_ids`
-- `source`
-- `remark`
-- `reminder_minutes`
-- `is_deleted`
-- `version`
-- `created_at`
-- `updated_at`
-- `device_id`
-
-后端：
-
-- 新功能应优先落在 Alibaba Cloud。
-- 只修改 `aliyun_debug/`，除非明确要求发布到 release。
-- Web 继续通过 Cloudflare Zero Trust API 访问。
-- 多设备实时更新需要接入现有 WebSocket 机制。
-
-## 实施阶段
-
-### 第一阶段：本地规划块
-
-- 新增 `TodoPlanBlock` 模型。
-- 新增本地存储。
-- 待办详情页显示规划列表。
-- 今日计划页显示当天规划块。
-- 支持手动新增、编辑、删除、跳过。
-
-### 第二阶段：丝滑录入
-
-- 复用时间日志日视图网格。
-- 增加规划模式。
-- 支持拖拽创建规划块。
-- 支持底部面板快速保存。
-- 支持自然语言快捷录入。
-
-### 第三阶段：提醒和番茄钟
-
-- 规划块到点提醒。
-- 通知点击进入番茄钟。
-- 番茄钟记录绑定 `planBlockId`。
-- 结束后回写实际专注时长。
-
-### 第四阶段：统计
-
-- 今日计划达成。
-- 本周计划 vs 实际。
-- 按待办统计累计专注。
-- 漏做规划块统计。
-
-### 第五阶段：AI 规划
-
-- 新增 AI action。
-- 注入已有规划和空闲时间上下文。
-- AI 生成规划块，不生成重复待办。
-- 支持顺延、重排、补计划。
-
-### 第六阶段：同步和日历
-
-- Alibaba Cloud 调试后端新增规划块同步。
-- WebSocket 广播规划块变化。
-- 日历同步规划块事件。
-
-## 关键原则
-
-- 长期待办是目标，规划块是执行时间。
-- 多个执行时间不要覆盖同一个 `TodoItem.createdDate/dueDate`。
-- AI 规划必须优先绑定已有待办，避免重复创建。
-- 录入路径要短：选时间、选待办、保存。
-- 实际专注时长来自番茄钟记录，不靠用户手填。
-- 统计以规划块为计划来源，以番茄钟记录为实际来源。
-
-还没完成或不完整
-
-- 规划页粒度切换还没做完整：PLAN_BLOCK.md 要求 5/10/15/30 分钟切换，
-  TodoPlanScreen 当前仍是固定 15 分钟块。
-- 已有规划块长按拖动改期、拖拽边缘调整开始/结束时间还没做。
-- 底部面板缺少 AI 帮我安排更多 按钮。
-- 番茄配置 25min x N 没做，目前是直接使用规划块总时长。
-- 通知点击“携带 todoId 和 planBlockId 直达番茄钟”还不完整：目前调度里主
-  要是通知 ID 映射，首页 appbar 可以直达番茄钟，但系统通知点击链路还没
-  有完整传参到番茄钟。
-- reminded 状态没有真正落地流转：提醒发出后没有看到稳定回写
-  TodoPlanStatus.reminded。
-- “实际专注达到 80% 可建议 done”：当前代码是 90% 自动标记 finished，和
-  计划文档不一致。
-- AI action 只做了 create_plan_block，还没做这些：update_plan_block、
-  delete_plan_block、reschedule_plan_blocks、skip_plan_block、
-  start_plan_block_pomodoro。
-- 日历同步规划块还没做：模型里也还没有 calendarEventId。
-- 统计已有 PlanBlockStatsScreen，但周/月统计、AI 建议、漏做分析这些还不
-  完整。
-- 时间日志里的规划待办选择还没按刚才的文件夹/未完成/截止时间排序同步过
-  去，目前只修了 TodoPlanScreen 的选择器。
-- 后端同步没完整落地：本地有 todo_plan_blocks 和本地 changelog，但
-  aliyun_debug/server.js 没看到规划块专门 API/同步表处理。
-- WebSocket 广播规划块变化还没做。
+- 2026-05-24：滑动创建规划块时，用户选择待办不会触发 AI 预估自动覆盖时间段；点击空白处创建仍保留 AI 自动估时。

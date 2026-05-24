@@ -1,144 +1,107 @@
-# CountDownTodo / Uni-Sync — 全域协同效率工具套件
+# CountDownTodo / Uni-Sync
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.x-blue)](https://flutter.dev)
-[![Dart](https://img.shields.io/badge/Dart-3.1+-blue)](https://dart.dev)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Web-green)]()
-[![Version](https://img.shields.io/badge/Version-4.0.0-orange)]()
+CountDownTodo 是一个基于 Flutter 的跨平台效率工具，覆盖待办规划、倒数日、番茄钟、时间日志、课程表、屏幕时间复盘、团队协同和多端同步。
 
-CountDownTodo (Uni-Sync 4.0) 是一款跨平台的生产力与时间管理套件。在 4.0 版本中，我们引入了全新的 **Uni-Sync 协同引擎**，支持团队协作、实时状态同步、多维数据看板及深度全局搜索，为个人及团队提供极致的生产力支撑。
+当前应用版本：`4.12.18`
+文档更新时间：`2026-05-24`
 
-> **注意**：C++ 桌面悬浮组件 (`MathQuizLite/`) 位于独立仓库 [CountDownTodoLite](https://github.com/Junpgle/CountDownTodoLite)，本仓库仅包含 Flutter 移动端 + Cloudflare Workers 后端。
+## 当前架构
 
----
+- 主 Flutter 应用位于 `lib/`，平台壳位于 `android/`、`windows/`、`macos/`、`ios/`、`linux/`、`web/`。
+- 高容量业务数据以 SQLite 为主存储；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
+- 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块和屏幕时间 payload。
+- 番茄钟同步由 `PomodoroService` 单独处理，包含标签、记录、oplog 保护和漏传恢复水位线。
+- 后端同时保留 Alibaba Cloud 和 Cloudflare Worker。新后端能力优先修改 `aliyun_debug/`；`math-quiz-backend/` 保留兼容行为。
+- Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
+- WebSocket 用于番茄钟跨端感知和协同同步信号。
+- Windows island / floating-window 是 Windows-only 逻辑，必须保持平台守卫，Android 不应导入或初始化。
 
-## 🌟 4.0 核心特性
+## 主要功能
 
-- 🏗️ **Uni-Sync 协同引擎**：基于 UUID + Logical Clock 的增量 Oplog 同步，支持冲突挂起裁决与全量程原子回滚。
-- 🤝 **团队协同广场**：支持多团队切换、管理员审批流、团队公告强制确认及阅读率监控。
-- 🔍 **Omni-Console 全局搜索**：毫秒级全文索引，支持日期语义搜索（“今天”、“昨天”）、设置项直达及屏幕时间深度跳转。
-- 📊 **多维看板分析**：采用 Smooth Bezier 曲线绘制高颜值专注热力图与负荷图，支持日/周/月多粒度聚合。
-- 🌐 **混合同步体系**：云端（Aliyun/Cloudflare）+ 局域网（LAN Sync）双链路备份，确保数据主权与同步韧性。
-- 📱 **全端原生体验**：Android 实时活动 (Live Activities)、Windows 灵动岛悬浮窗、手表端互联。
+- 待办管理：分组、提醒、循环、版本历史、冲突处理、AI 辅助操作。
+- 规划块：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计。
+- 番茄钟：标签、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步。
+- 时间日志和时间线：合并补录记录与番茄钟记录做效率分析。
+- 课程导入和课程表：解析器位于 `lib/course_import/`。
+- 团队协同：团队管理、公告、消息中心、冲突收件箱和同步状态展示。
+- 全局搜索、勋章推荐、个人时间线、应用看板、Android 小组件、Windows 灵动岛。
+- 小米手环伴侣应用位于 `CountDownTodo-band/`。
 
----
+## 仓库结构
 
-## 🏗️ 技术架构
-
-| 层级 | 技术栈 | 职责 |
-|------|--------|------|
-| **表现层** | Flutter 3.x + Material3 | 多端自适应布局、高级动效 (Pulse/Shake/Flip) |
-| **同步层** | Delta Sync Engine (LWW) | 增量数据对齐、版本冲突裁决、本地审计追踪 (Audit Logs) |
-| **检索层** | SQLite FTS4 + Semantic Parser | 全局全文搜索、日期语义解析、设置项注册表 |
-| **通信层** | Cloudflare Zero Trust + HTTP/HTTPS | 混合云架构、私有化隧道、Zero Trust 安全准入 |
-| **原生层** | Win32 FFI / MethodChannel | 屏幕时间统计、灵动岛渲染、系统级通知推送 |
-
----
-
-## 📂 项目结构
-
-```
+```text
 math_quiz_app/
-├── lib/                          # Flutter 主工程 (107 文件)
-│   ├── main.dart                 # 应用入口 & 路由
-│   ├── models.dart               # 核心数据模型
-│   ├── models/                   # 扩展数据模型
-│   │   └── chat_message.dart     # 聊天消息模型
-│   ├── storage_service.dart      # 本地存储 & 增量同步引擎
-│   ├── update_service.dart       # 版本更新 & 下载管理
-│   ├── utils/                    # 工具函数
-│   │   └── page_transitions.dart # 页面转场动画
-│   ├── screens/                  # 页面层 (27 页面文件)
-│   │   ├── home_dashboard.dart   # 主仪表盘
-│   │   ├── login_screen.dart     # 登录/注册
-│   │   ├── splash_screen.dart    # 启动页
-│   │   ├── quiz_screen.dart      # 数学测验
-│   │   ├── pomodoro_screen.dart  # 番茄钟
-│   │   ├── todo_chat_screen.dart # 待办聊天
-│   │   ├── todo_confirm_screen.dart # 待办确认
-│   │   ├── time_log_screen.dart  # 时间日志
-│   │   ├── screen_time_detail_screen.dart # 屏幕时间详情
-│   │   ├── historical_todos_screen.dart   # 历史待办
-│   │   ├── historical_countdowns_screen.dart # 历史倒计时
-│   │   ├── course_screens.dart   # 课程管理
-│   │   ├── band_sync_screen.dart # 手环同步
-│   │   ├── feature_guide_screen.dart # 功能引导
-│   │   ├── settings_screen.dart  # 设置入口
-│   │   ├── about_screen.dart     # 关于页面
-│   │   ├── pomodoro/             # 番茄钟子模块 (7 文件)
-│   │   └── settings/             # 设置子模块 (14 文件)
-│   ├── services/                 # 服务层 (28 服务文件)
-│   │   ├── api_service.dart      # HTTP API 客户端
-│   │   ├── pomodoro_service.dart # 番茄钟核心逻辑
-│   │   ├── llm_service.dart      # 大模型智能解析
-│   │   ├── course_service.dart   # 课表解析 & 管理
-│   │   ├── screen_time_service.dart # 屏幕时间采集
-│   │   ├── notification_service.dart # 通知服务
-│   │   ├── band_sync_service.dart # 手环同步
-│   │   ├── tai_service.dart      # Windows TAI 采集
-│   │   ├── migration_service.dart # 数据迁移
-│   │   ├── reminder_schedule_service.dart # 提醒调度
-│   │   └── *_schedule_parser.dart # 4 校课表解析器
-│   ├── widgets/                  # 可复用 UI 组件 (6 文件)
-│   └── windows_island/           # Windows 灵动岛模块 (12 文件)
-├── math-quiz-backend/            # Cloudflare Workers 后端
-│   ├── src/index.js              # API 路由
-│   └── wrangler.toml             # CF 部署配置
-├── CountDownTodo-band/           # 手环同步模块
-├── interconnect_dev_test_demo/   # 互联测试演示
-├── android/                      # Android 原生代码
-├── windows/                      # Windows 平台配置
-├── web/                          # Web 平台配置
-└── assets/                       # 静态资源
+├── lib/                    Flutter 主应用代码
+│   ├── course_import/       课程导入处理器、解析器和 UI
+│   ├── models/              AI action、聊天消息、勋章 ML 等扩展模型
+│   ├── screens/             页面层和功能页面
+│   ├── services/            API、同步、数据库、番茄钟、AI、课程、时间线、通知、平台服务
+│   ├── widgets/             可复用 UI 组件和首页区块
+│   └── windows_island/      Windows-only 灵动岛/悬浮窗实现
+├── aliyun_debug/            Alibaba Cloud 调试后端，新后端能力优先修改这里
+├── math-quiz-backend/       Cloudflare Worker 后端，保留兼容
+├── CountDownTodo-band/      小米手环伴侣应用
+├── docs/                    项目文档，按主题归档
+├── android/ windows/ macos/ ios/ linux/ web/  平台壳
+├── assets/ splash/ wallpaper/                 资源目录
+├── scripts/                 构建和运行脚本
+└── test/                    Flutter 测试
 ```
 
----
+## 常用开发命令
 
-## 🚀 快速开始
-
-### 环境要求
-
-- Flutter SDK >= 3.1.0
-- Dart SDK >= 3.1.0
-- Android Studio / VS Code
-
-### 运行
+在仓库根目录运行 Flutter 命令：
 
 ```bash
-# 安装依赖
 flutter pub get
-
-# 运行 Android
-flutter run
-
-# 运行 Windows
+flutter analyze
+flutter test
 flutter run -d windows
-
-# 运行 Web
-flutter run -d chrome
+flutter run -d <device>
+.\scripts\run.ps1 -- -d windows
+.\scripts\build.ps1 -Android
+.\scripts\build.ps1 -Windows
+.\scripts\build.ps1 -All
 ```
 
-### 后端部署
+Cloudflare Worker 后端：
 
 ```bash
 cd math-quiz-backend
 npm install
-npx wrangler deploy
+npm run dev
+npm test
 ```
 
----
+手环应用：
 
-## 📖 文档索引
+```bash
+cd CountDownTodo-band
+npm run start
+npm run build
+npm run lint
+```
 
+## 文档入口
+
+- [文档目录](docs/README.md)
 - [项目架构](docs/PROJECT_ARCHITECTURE.md)
-- [灵动岛重新设计计划](docs/ISLAND_REDESIGN_PLAN.md)
-- [lib/ 源码总览](lib/README.md)
-- [screens/ 页面层](lib/screens/README.md)
-- [services/ 服务层](lib/services/README.md)
-- [widgets/ 组件层](lib/widgets/README.md)
-- [windows_island/ 灵动岛](lib/windows_island/README.md)
-- [windows_island/ 扩展指南](lib/windows_island/EXTENDING.md)
+- [规划块说明](docs/features/plan-blocks.md)
+- [AI 待办助手](docs/ai/todo-agent.md)
+- [冲突与同步逻辑](docs/sync/conflict-logic.md)
+- [勋章推荐](docs/features/medal-recommendation.md)
+- [版本管理修复报告](docs/reports/version-management-fix.md)
+- [冲突修复排查报告](docs/reports/conflict-resolution-efforts.md)
+- [lib 总览](lib/README.md)
+- [services 总览](lib/services/README.md)
+- [screens 总览](lib/screens/README.md)
+- [widgets 总览](lib/widgets/README.md)
+- [Windows 灵动岛总览](lib/windows_island/README.md)
 
----
+## 关键规则
 
-*最后更新：2026-04-24*
-*版本：v4.0.0 (Uni-Sync Edition)*
+- 新后端能力优先修改 `aliyun_debug/`。
+- 不要修改 `aliyun_release/`，除非任务明确要求。
+- 保留 Cloudflare 兼容行为，除非任务明确要求迁移或删除。
+- Windows island / floating-window 逻辑必须保持 Windows-only。
+- 不要提交新的 secrets、签名密钥、凭据、keystore、证书或私有部署配置。
