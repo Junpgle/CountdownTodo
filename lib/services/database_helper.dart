@@ -176,6 +176,47 @@ class DatabaseHelper {
     }
   }
 
+  static Future<void> ensureSuggestionFeedbackSchema(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS suggestion_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          keyword TEXT NOT NULL,
+          suggestion_type TEXT NOT NULL,
+          suggested_value TEXT NOT NULL,
+          accepted INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
+          'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
+    } catch (e) {
+      debugPrint('⚠️ Database: 检查/修复 suggestion_feedback 表失败: $e');
+    }
+  }
+
+  static Future<void> ensureTeamsSchema(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS teams (
+          uuid TEXT PRIMARY KEY,
+          name TEXT,
+          creator_id INTEGER DEFAULT 0,
+          created_at INTEGER DEFAULT 0,
+          role INTEGER DEFAULT 1,
+          member_count INTEGER DEFAULT 1,
+          invite_code TEXT,
+          updated_at INTEGER DEFAULT 0
+        )
+      ''');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_teams_updated_at ON teams(updated_at)');
+    } catch (e) {
+      debugPrint('⚠️ Database: 检查/修复 teams 表失败: $e');
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     // 🚀 桌面端 SQL 引擎初始化已由 main.dart 统一处理
 
@@ -204,8 +245,8 @@ class DatabaseHelper {
           onUpgrade: (db, oldVersion, newVersion) async {
             if (oldVersion < 29) {
               try {
-                final info = await db
-                    .rawQuery("PRAGMA table_info(pomodoro_records)");
+                final info =
+                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
                 if (!info.any((row) => row['name'] == 'note')) {
                   await db.execute(
                       "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;");
@@ -216,24 +257,8 @@ class DatabaseHelper {
               }
             }
             if (oldVersion < 28) {
-              try {
-                await db.execute('''
-                  CREATE TABLE IF NOT EXISTS suggestion_feedback (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    keyword TEXT NOT NULL,
-                    suggestion_type TEXT NOT NULL,
-                    suggested_value TEXT NOT NULL,
-                    accepted INTEGER NOT NULL DEFAULT 0,
-                    created_at INTEGER NOT NULL DEFAULT 0
-                  )
-                ''');
-                await db.execute(
-                    'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
-                    'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
-                debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
-              } catch (e) {
-                debugPrint('⚠️ Database: 创建 suggestion_feedback 表失败: $e');
-              }
+              await ensureSuggestionFeedbackSchema(db);
+              debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
             }
             if (oldVersion < 27) {
               try {
@@ -708,6 +733,8 @@ class DatabaseHelper {
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
             await ensureTodoPlanBlockSchema(db);
+            await ensureSuggestionFeedbackSchema(db);
+            await ensureTeamsSchema(db);
           },
         );
       } catch (e) {
@@ -1230,6 +1257,12 @@ class DatabaseHelper {
         updated_at INTEGER DEFAULT 0
       )
     ''');
+
+    // 15. 创建建议反馈表
+    await ensureSuggestionFeedbackSchema(db);
+
+    // 16. 创建团队缓存表
+    await ensureTeamsSchema(db);
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
@@ -1597,7 +1630,8 @@ class DatabaseHelper {
         sql.write(', LENGTH(t.conflict_data) AS _conflict_length');
       }
     }
-    sql.write(' FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = $userId');
+    sql.write(
+        ' FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = $userId');
     if (whereParts.isNotEmpty) {
       sql.write(' WHERE ${whereParts.join(' AND ')}');
     }

@@ -165,6 +165,7 @@ class _MyAppState extends State<MyApp> {
       brightness: Brightness.light,
     ),
     useMaterial3: true,
+    pageTransitionsTheme: PageTransitions.theme,
   );
 
   late final ThemeData _darkTheme = ThemeData(
@@ -173,6 +174,7 @@ class _MyAppState extends State<MyApp> {
       brightness: Brightness.dark,
     ),
     useMaterial3: true,
+    pageTransitionsTheme: PageTransitions.theme,
   );
 
   String? _loggedInUser;

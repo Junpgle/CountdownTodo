@@ -8,6 +8,8 @@ class AnimationConfigService {
   static const String _keyEnableScreenRadius = 'enable_screen_radius';
   static const String _keyEnablePredictiveBack = 'enable_predictive_back';
   static const String _keyAnimationDuration = 'animation_duration';
+  static const String _keyPageLayerDepth = 'page_layer_depth';
+  static const String _keyContainerContentStart = 'container_content_start';
 
   static Future<bool> isAnimationsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,6 +46,16 @@ class AnimationConfigService {
     return prefs.getInt(_keyAnimationDuration) ?? 500;
   }
 
+  static Future<int> getPageLayerDepth() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyPageLayerDepth) ?? 100;
+  }
+
+  static Future<int> getContainerContentStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyContainerContentStart) ?? 28;
+  }
+
   static Future<void> setAnimationsEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnableAnimations, value);
@@ -77,5 +89,15 @@ class AnimationConfigService {
   static Future<void> setAnimationDuration(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyAnimationDuration, value);
+  }
+
+  static Future<void> setPageLayerDepth(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyPageLayerDepth, value);
+  }
+
+  static Future<void> setContainerContentStart(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyContainerContentStart, value);
   }
 }
