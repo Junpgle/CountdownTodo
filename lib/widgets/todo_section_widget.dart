@@ -1679,6 +1679,27 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 size: 22,
               ),
             ),
+            confirmDismiss: (_) async {
+              return await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('确认删除'),
+                  content: Text('确定要删除「${todo.title}」吗？'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent),
+                      child: const Text('删除'),
+                    ),
+                  ],
+                ),
+              );
+            },
             onDismissed: (_) async {
               _todoDismissKeys.remove('drag_${todo.id}');
               _todoDismissKeys.remove('dismiss_${todo.id}');
