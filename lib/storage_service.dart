@@ -236,6 +236,8 @@ class StorageService {
   static const String KEY_WALLPAPER_INDEX = "app_wallpaper_index";
   static const String KEY_WALLPAPER_MKT = "app_wallpaper_mkt";
   static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
+  static const String keyWallpaperCacheCleanupTime =
+      "app_wallpaper_cache_cleanup_time";
 
   // Notification settings keys
   static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
@@ -5013,6 +5015,16 @@ class StorageService {
   static Future<void> saveWallpaperResolution(String resolution) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
+  }
+
+  static Future<int?> getWallpaperCacheCleanupTime() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getInt(keyWallpaperCacheCleanupTime);
+  }
+
+  static Future<void> saveWallpaperCacheCleanupTime(int timestamp) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(keyWallpaperCacheCleanupTime, timestamp);
   }
 
   static Future<bool> getTodoFoldersInline() async {
