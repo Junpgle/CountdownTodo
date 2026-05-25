@@ -49,7 +49,6 @@ object BackgroundNotificationScheduler {
             androidx.work.ExistingWorkPolicy.REPLACE,
             request
         )
-        Log.d(TAG, "Scheduled immediate notification poll")
     }
 
     fun stopImportantNotificationPoll(context: Context) {

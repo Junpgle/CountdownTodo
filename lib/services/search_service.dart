@@ -38,7 +38,6 @@ class SearchService {
   Future<void> warmup() async {
     if (_isWarmedUp) return;
     _isWarmedUp = true;
-    debugPrint("🔍 SearchService: Index warmup completed.");
   }
 
   // --- 静态设置项索引库 ---

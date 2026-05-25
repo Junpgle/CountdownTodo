@@ -249,7 +249,6 @@ class WidgetService {
     });
 
     await Future.wait(widgetWrites);
-    debugPrint('✅ [WidgetService] Widget data saved, now updating widgets...');
 
     try {
       // 使用 qualifiedAndroidName 传入完整类名，避免 debug 构建中 applicationId 带 .debug 后缀导致 Class.forName 失败
@@ -275,7 +274,6 @@ class WidgetService {
           return false;
         }),
       ]);
-      debugPrint('✅ [WidgetService] All widgets updated: $results');
     } catch (e) {
       debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
     }

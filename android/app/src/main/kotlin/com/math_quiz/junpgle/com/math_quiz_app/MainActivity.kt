@@ -133,13 +133,10 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 专门接收"点击完成"按钮的广播接收器
     private val todoActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d(TAG, "✅ Received MARK_DONE intent: $intent")
             if (intent?.action == "com.math_quiz.MARK_DONE") {
                 val notifId = intent.getIntExtra("notificationId", -1)
-                Log.d(TAG, "✅ MARK_DONE with notificationId: $notifId")
                 val args = if (notifId != -1) mapOf("notificationId" to notifId) else null
                 methodChannel?.invokeMethod("markCurrentTodoDone", args)
-                Log.d(TAG, "✅ Invoked markCurrentTodoDone to Flutter with args: $args")
             }
         }
     }
