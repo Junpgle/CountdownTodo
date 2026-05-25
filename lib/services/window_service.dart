@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited, TimeoutException, Timer;
+import 'dart:async' show TimeoutException, Timer;
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +17,12 @@ class WindowService extends WindowListener with TrayListener {
   static const _keyY = 'main_window_y';
   static const _keyW = 'main_window_w';
   static const _keyH = 'main_window_h';
+  static const double _minStartupWidth = 720;
+  static const double _minStartupHeight = 480;
 
   static Timer? _debounce;
+  static Rect? _startupBounds;
+  static bool _suppressBoundsSave = false;
 
   static final WindowService _instance = WindowService._internal();
 
@@ -30,20 +34,21 @@ class WindowService extends WindowListener with TrayListener {
       debugPrint('[WindowService] Initializing...');
       await windowManager.ensureInitialized();
       debugPrint('[WindowService] windowManager.ensureInitialized() done');
-      
+
       await windowManager.setPreventClose(true);
       debugPrint('[WindowService] windowManager.setPreventClose(true) done');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final int? x = prefs.getInt(_keyX);
       final int? y = prefs.getInt(_keyY);
       final int? w = prefs.getInt(_keyW);
       final int? h = prefs.getInt(_keyH);
       if (x != null && y != null && w != null && h != null) {
-        try {
-          await windowManager.setBounds(Rect.fromLTWH(
-              x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()));
-        } catch (_) {}
+        final bounds = Rect.fromLTWH(
+            x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble());
+        if (_isUsableBounds(bounds)) {
+          _startupBounds = bounds;
+        }
       }
 
       // Register listener for move/resize to persist bounds with debounce
@@ -117,11 +122,90 @@ class WindowService extends WindowListener with TrayListener {
     }
   }
 
+  static bool _isUsableBounds(Rect bounds) {
+    return bounds.left.isFinite &&
+        bounds.top.isFinite &&
+        bounds.width.isFinite &&
+        bounds.height.isFinite &&
+        bounds.width >= _minStartupWidth &&
+        bounds.height >= _minStartupHeight;
+  }
+
+  static Future<void> restoreStartupBoundsAndRepairViewport() async {
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    final bounds = _startupBounds;
+    if (bounds == null || !_isUsableBounds(bounds)) return;
+
+    try {
+      _suppressBoundsSave = true;
+      await windowManager.setBounds(bounds);
+
+      if (Platform.isWindows) {
+        // Windows sometimes keeps the Flutter child view at a stale swap-chain
+        // size when restoring a non-default window size before the first show.
+        // A hidden 1px nudge forces a real WM_SIZE, then restores the user size.
+        final nudged = Rect.fromLTWH(
+          bounds.left,
+          bounds.top,
+          bounds.width + 1,
+          bounds.height,
+        );
+        await windowManager.setBounds(nudged);
+        await Future<void>.delayed(const Duration(milliseconds: 16));
+        await windowManager.setBounds(bounds);
+      }
+    } catch (e) {
+      debugPrint('[WindowService] restore startup bounds failed: $e');
+    } finally {
+      _suppressBoundsSave = false;
+    }
+  }
+
+  static void schedulePostShowViewportRepair() {
+    if (!Platform.isWindows) return;
+    for (final delay in const [
+      Duration(milliseconds: 80),
+      Duration(milliseconds: 300),
+      Duration(milliseconds: 900),
+    ]) {
+      Future<void>.delayed(delay, () async {
+        await _nudgeCurrentBoundsForViewportRepair();
+      });
+    }
+  }
+
+  static Future<void> _nudgeCurrentBoundsForViewportRepair() async {
+    try {
+      final bounds = await windowManager.getBounds();
+      if (!_isUsableBounds(bounds)) return;
+
+      _suppressBoundsSave = true;
+      final nudged = Rect.fromLTWH(
+        bounds.left,
+        bounds.top,
+        bounds.width + 1,
+        bounds.height,
+      );
+      await windowManager.setBounds(nudged);
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      await windowManager.setBounds(bounds);
+    } catch (e) {
+      debugPrint('[WindowService] viewport repair failed: $e');
+    } finally {
+      _suppressBoundsSave = false;
+    }
+  }
+
   void _scheduleSave() {
+    if (_suppressBoundsSave) return;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 800), () async {
       try {
+        if (_suppressBoundsSave) return;
         final b = await windowManager.getBounds();
+        if (!_isUsableBounds(b)) {
+          return;
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_keyX, b.left.toInt());
         await prefs.setInt(_keyY, b.top.toInt());
@@ -196,15 +280,17 @@ class WindowService extends WindowListener with TrayListener {
   // WindowListener overrides for closure
   @override
   void onWindowClose() {
-    debugPrint('[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
-    
+    debugPrint(
+        '[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
+
     // 立即处理，不等待
     _doHandleWindowClose();
   }
 
   Future<void> _doHandleWindowClose() async {
-    debugPrint('[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
-    
+    debugPrint(
+        '[WindowService] _doHandleWindowClose triggered (isHandlingClose: $_isHandlingClose)');
+
     if (_isHandlingClose) {
       debugPrint('[WindowService] Already handling close, ignoring');
       return;
@@ -214,29 +300,35 @@ class WindowService extends WindowListener with TrayListener {
     try {
       bool shouldExit = true;
       String? failureReason;
-      
+
       try {
         if (onShowCloseConfirm != null) {
-          debugPrint('[WindowService] Calling Flutter close confirm callback...');
+          debugPrint(
+              '[WindowService] Calling Flutter close confirm callback...');
           shouldExit = await onShowCloseConfirm!().timeout(
             const Duration(seconds: 3),
             onTimeout: () {
-              debugPrint('[WindowService] Flutter callback timed out, using native dialog');
+              debugPrint(
+                  '[WindowService] Flutter callback timed out, using native dialog');
               failureReason = 'Flutter callback timeout';
               throw TimeoutException('Close dialog timeout');
             },
           );
-          debugPrint('[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
+          debugPrint(
+              '[WindowService] Flutter callback succeeded: shouldExit=$shouldExit');
         } else {
-          debugPrint('[WindowService] No close dialog handler registered, showing native dialog');
+          debugPrint(
+              '[WindowService] No close dialog handler registered, showing native dialog');
           failureReason = 'No callback registered';
           throw Exception('No callback registered');
         }
       } catch (e) {
-        debugPrint('[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
+        debugPrint(
+            '[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
         final result = _showNativeMessageBox();
         shouldExit = (result == 6); // IDYES = 6
-        debugPrint('[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
+        debugPrint(
+            '[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
       }
 
       debugPrint('[WindowService] Final decision: shouldExit=$shouldExit');

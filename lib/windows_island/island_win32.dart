@@ -5,33 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:win32/win32.dart';
 import 'island_config.dart';
 
-// ── DWM API Bindings ──────────────────────────────────────────────────────
-final _dwmapi = DynamicLibrary.open('dwmapi.dll');
-
-final class MARGINS extends Struct {
-  @Int32()
-  external int cxLeftWidth;
-  @Int32()
-  external int cxRightWidth;
-  @Int32()
-  external int cyTopHeight;
-  @Int32()
-  external int cyBottomHeight;
-}
-
-final class DWM_BLURBEHIND extends Struct {
-  @Uint32()
-  external int dwFlags;
-  @Int32()
-  external int fEnable;
-  external Pointer<IntPtr> hRgnBlur;
-  @Int32()
-  external int fTransitionOnMaximized;
-}
-
-const int DWM_BB_ENABLE = 0x00000001;
-const int TRUE = 1;
-
 // ── Win32 Window Utilities ────────────────────────────────────────────────
 
 /// Cached HWND for the island window
@@ -307,9 +280,9 @@ void startWindowDragging() {
     final hwnd = getSmallestFlutterWindow();
     if (hwnd != null) {
       const int wmNclbuttondown = 0x00A1;
-      const int HTCAPTION = 2;
+      const int htCaption = 2;
       ReleaseCapture();
-      PostMessage(hwnd, wmNclbuttondown, HTCAPTION, 0);
+      PostMessage(hwnd, wmNclbuttondown, htCaption, 0);
     }
   } catch (e) {
     debugPrint('[IslandWin32] startWindowDragging error: $e');

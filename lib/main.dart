@@ -127,9 +127,7 @@ Future<void> main(List<String> args) async {
   HttpOverrides.global = MyHttpOverrides();
 
   // 初始化 WindowService（监听窗口关闭事件）
-  debugPrint('[Main] === main() 开始初始化 WindowService ===');
   await WindowService.init();
-  debugPrint('[Main] === WindowService 初始化完成 ===');
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
@@ -165,6 +163,7 @@ class _MyAppState extends State<MyApp> {
       brightness: Brightness.light,
     ),
     useMaterial3: true,
+    pageTransitionsTheme: PageTransitions.theme,
   );
 
   late final ThemeData _darkTheme = ThemeData(
@@ -173,6 +172,7 @@ class _MyAppState extends State<MyApp> {
       brightness: Brightness.dark,
     ),
     useMaterial3: true,
+    pageTransitionsTheme: PageTransitions.theme,
   );
 
   String? _loggedInUser;
@@ -188,17 +188,13 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[Main] ========== initState START ==========');
     _windowReadyForSplashTransition =
         kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
-    debugPrint('[Main] Registering close dialog callback');
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
-    debugPrint('[Main] ✓ Callback registered');
     // 立即开始初始化，不等待首屏动画
     _initializeApp();
     // 处理开屏序列逻辑
     _startSplashSequence();
-    debugPrint('[Main] ========== initState END ==========');
   }
 
   Future<void> _startSplashSequence() async {
@@ -367,7 +363,9 @@ class _MyAppState extends State<MyApp> {
               _loggedInUser = null;
             });
           }
-          Navigator.pop(dialogContext, false);
+          if (dialogContext.mounted) {
+            Navigator.pop(dialogContext, false);
+          }
         },
       ),
     );
@@ -636,8 +634,10 @@ class _MyAppState extends State<MyApp> {
           });
           _applySplashTransitionIfReady();
         }
+        await WindowService.restoreStartupBoundsAndRepairViewport();
         await windowManager.show();
         await windowManager.focus();
+        WindowService.schedulePostShowViewportRepair();
         // Try to create the island window on Windows. Before creating, probe
         // whether desktop_multi_window exposes the core methods we need. If
         // not, we'll fall back to an in-layout island overlay powered by
@@ -695,20 +695,8 @@ class _MyAppState extends State<MyApp> {
               PointerDeviceKind.stylus,
             },
           ),
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

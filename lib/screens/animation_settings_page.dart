@@ -17,6 +17,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
   int _animationDuration = 500;
+  int _pageLayerDepth = 100;
+  int _containerContentStart = 28;
 
   @override
   void initState() {
@@ -33,6 +35,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.isScreenRadiusEnabled(),
       AnimationConfigService.isPredictiveBackEnabled(),
       AnimationConfigService.getAnimationDuration(),
+      AnimationConfigService.getPageLayerDepth(),
+      AnimationConfigService.getContainerContentStart(),
     ]);
     setState(() {
       _animationsEnabled = results[0] as bool;
@@ -42,6 +46,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _screenRadiusEnabled = results[4] as bool;
       _predictiveBackEnabled = results[5] as bool;
       _animationDuration = results[6] as int;
+      _pageLayerDepth = results[7] as int;
+      _containerContentStart = results[8] as int;
     });
   }
 
@@ -53,6 +59,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     bool? screenRadius,
     bool? predictiveBack,
     int? duration,
+    int? pageLayerDepth,
+    int? containerContentStart,
   }) async {
     if (enabled != null) {
       await AnimationConfigService.setAnimationsEnabled(enabled);
@@ -74,6 +82,14 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     }
     if (duration != null) {
       await AnimationConfigService.setAnimationDuration(duration);
+    }
+    if (pageLayerDepth != null) {
+      await AnimationConfigService.setPageLayerDepth(pageLayerDepth);
+    }
+    if (containerContentStart != null) {
+      await AnimationConfigService.setContainerContentStart(
+        containerContentStart,
+      );
     }
     await PageTransitions.init();
   }
@@ -216,6 +232,112 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                   fontSize: 11,
                                   color: colorScheme.onSurfaceVariant)),
                           Text('慢',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('层级深度',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_pageLayerDepth%',
+                              style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '控制背景页缩小、压暗和层级模糊强度',
+                        style: TextStyle(
+                            fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 8),
+                      Slider(
+                        value: _pageLayerDepth.toDouble(),
+                        min: 0,
+                        max: 100,
+                        divisions: 10,
+                        label: '$_pageLayerDepth%',
+                        onChanged: (val) {
+                          final next = val.round();
+                          setState(() => _pageLayerDepth = next);
+                          _update(pageLayerDepth: next);
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('轻',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                          Text('强',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('元素展开内容显现',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_containerContentStart%',
+                              style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '控制从卡片、按钮展开页面时内容出现的早晚',
+                        style: TextStyle(
+                            fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 8),
+                      Slider(
+                        value: _containerContentStart.toDouble(),
+                        min: 0,
+                        max: 60,
+                        divisions: 12,
+                        label: '$_containerContentStart%',
+                        onChanged: (val) {
+                          final next = val.round();
+                          setState(() => _containerContentStart = next);
+                          _update(containerContentStart: next);
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('早',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                          Text('晚',
                               style: TextStyle(
                                   fontSize: 11,
                                   color: colorScheme.onSurfaceVariant)),

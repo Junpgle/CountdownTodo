@@ -5,17 +5,16 @@ class MotionGuide {
   /// 用于引起用户对冲突字段的强制关注
   static Widget shake({required Widget child, bool trigger = false}) {
     if (!trigger) return child;
-    
+
     return TweenAnimationBuilder<double>(
       key: ValueKey(trigger),
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 500),
       builder: (context, value, child) {
-        // 使用正弦函数实现左右摆动，并在 500ms 内衰减
-        double offset = 8 * (1 - value) * (3.14 * 4 * value).toDouble(); 
-        // 修正为：基于 sin 的简单震动逻辑
-        double dx = (value < 0.1 || value > 0.9) ? 0 : (value % 0.2 < 0.1 ? -5.0 : 5.0);
-        
+        final dx = (value < 0.1 || value > 0.9)
+            ? 0.0
+            : (value % 0.2 < 0.1 ? -5.0 : 5.0);
+
         return Transform.translate(
           offset: Offset(dx, 0),
           child: child,

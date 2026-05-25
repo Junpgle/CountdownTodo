@@ -4889,7 +4889,6 @@ class StorageService {
 
     // 从网络获取
     try {
-      debugPrint('[Privacy] Fetching version from GitHub...');
       final response = await http
           .get(Uri.parse(PRIVACY_RAW_URL))
           .timeout(const Duration(seconds: 10));

@@ -24,6 +24,23 @@ class WeeklyCourseScreen extends StatefulWidget {
   State<WeeklyCourseScreen> createState() => _WeeklyCourseScreenState();
 }
 
+class _HiddenTimeRange {
+  const _HiddenTimeRange(this.startMinute, this.endMinute);
+
+  final double startMinute;
+  final double endMinute;
+
+  double get duration => endMinute - startMinute;
+
+  bool contains(double minute) => minute > startMinute && minute < endMinute;
+
+  double hiddenBefore(double minute) {
+    if (minute <= startMinute) return 0.0;
+    if (minute >= endMinute) return duration;
+    return minute - startMinute;
+  }
+}
+
 class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     with TickerProviderStateMixin {
   int _currentWeek = 1;
@@ -53,6 +70,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     'timeLogs',
     'pomodoros'
   };
+  bool _collapseFreeTime = true;
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -103,6 +121,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   final int startHour = 6;
   final int endHour = 24;
 
+  // 自适应空闲时间压缩：统一记录所有被扣除的绝对时间区间。
+  List<_HiddenTimeRange> _hiddenTimeRanges = const [];
+  double? _lunchCardStartMinute;
+  double _lunchCardDuration = 0.0;
+  String _lunchCollapseText = '';
   @override
   void initState() {
     super.initState();
@@ -220,6 +243,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    _checkCollapsedSlots();
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -487,6 +511,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _weekCourses = _allCourses.where((c) => c.weekIndex == newWeek).toList();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
+    _checkCollapsedSlots();
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -916,34 +941,72 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     return const SizedBox.shrink();
   }
 
+  void _handleFilterSelection(String value) {
+    setState(() {
+      if (value == 'clearAll') {
+        _activeDataViews.clear();
+        _updateWeekTodos();
+      } else if (value == 'selectAll') {
+        _activeDataViews
+            .addAll({'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
+        _updateWeekTodos();
+      } else if (value == 'disableFreeTimeCollapse') {
+        _collapseFreeTime = !_collapseFreeTime;
+      } else {
+        if (_activeDataViews.contains(value)) {
+          _activeDataViews.remove(value);
+        } else {
+          _activeDataViews.add(value);
+        }
+        if (value == 'todos' || value == 'hideCrossDay') {
+          _updateWeekTodos();
+        }
+      }
+    });
+    _checkCollapsedSlots();
+  }
+
   Widget _buildCheckableMenuItem(String key, String label) {
-    bool isSelected = _activeDataViews.contains(key);
+    final bool isSelected = key == 'disableFreeTimeCollapse'
+        ? !_collapseFreeTime
+        : _activeDataViews.contains(key);
     return MenuItemButton(
       closeOnActivate: false,
-      onPressed: () {
-        setState(() {
-          if (isSelected) {
-            if (_activeDataViews.length > 1) {
-              _activeDataViews.remove(key);
-            }
-          } else {
-            _activeDataViews.add(key);
-          }
-        });
-      },
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-            size: 20,
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Text(label),
-        ],
+      onPressed: () => _handleFilterSelection(key),
+      child: SizedBox(
+        width: 150,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? Icons.check : null,
+              size: 16,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+            ),
+            const SizedBox(width: 8),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterActionItem(
+      String value, String label, IconData icon, Color color) {
+    return MenuItemButton(
+      closeOnActivate: false,
+      onPressed: () => _handleFilterSelection(value),
+      child: SizedBox(
+        width: 150,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: color)),
+          ],
+        ),
       ),
     );
   }
@@ -955,10 +1018,231 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     return null;
   }
 
+  void _checkCollapsedSlots() {
+    if (!_collapseFreeTime) {
+      setState(() {
+        _hiddenTimeRanges = const [];
+        _lunchCardStartMinute = null;
+        _lunchCardDuration = 0.0;
+        _lunchCollapseText = '';
+      });
+      return;
+    }
+
+    const earlyStart = 360.0;
+    const earlyEnd = 480.0;
+    const lunchStart = 720.0;
+    const lunchEnd = 840.0;
+    const lateStart = 1260.0;
+    const lateEnd = 1440.0;
+    const lunchReserve = 20.0;
+
+    // 初始值：min >= max 表示该敏感区间完全空闲。
+    double minEarly = earlyEnd, maxEarly = earlyStart;
+    double minLunch = lunchEnd, maxLunch = lunchStart;
+    double minLate = lateEnd, maxLate = lateStart;
+
+    void updateBounds(double s, double e) {
+      // 时段 A [06:00, 08:00]
+      double sA = s.clamp(earlyStart, earlyEnd);
+      double eA = e.clamp(earlyStart, earlyEnd);
+      if (sA < eA) {
+        if (sA < minEarly) minEarly = sA;
+        if (eA > maxEarly) maxEarly = eA;
+      }
+
+      // 时段 B [720, 840]
+      double sB = s.clamp(lunchStart, lunchEnd);
+      double eB = e.clamp(lunchStart, lunchEnd);
+      if (sB < eB) {
+        if (sB < minLunch) minLunch = sB;
+        if (eB > maxLunch) maxLunch = eB;
+      }
+
+      // 时段 C [21:00, 24:00]
+      double sC = s.clamp(lateStart, lateEnd);
+      double eC = e.clamp(lateStart, lateEnd);
+      if (sC < eC) {
+        if (sC < minLate) minLate = sC;
+        if (eC > maxLate) maxLate = eC;
+      }
+    }
+
+    // 1. 扫描当前可见课程数据
+    if (_activeDataViews.contains('courses')) {
+      for (var course in _weekCourses) {
+        double cs = (course.startTime ~/ 100) * 60.0 + (course.startTime % 100);
+        double ce = (course.endTime ~/ 100) * 60.0 + (course.endTime % 100);
+        updateBounds(cs, ce);
+      }
+    }
+
+    final weekMonday = _getMondayOfCurrentWeek();
+
+    void updateBoundsFromEpochRange(int startMs, int endMs) {
+      if (weekMonday == null || endMs <= startMs) return;
+
+      final weekStart =
+          DateTime(weekMonday.year, weekMonday.month, weekMonday.day);
+      final weekEnd = weekStart.add(const Duration(days: 7));
+      DateTime start =
+          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      DateTime end =
+          DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+
+      if (!end.isAfter(weekStart) || !start.isBefore(weekEnd)) return;
+      if (start.isBefore(weekStart)) start = weekStart;
+      if (end.isAfter(weekEnd)) end = weekEnd;
+
+      DateTime dayStart = DateTime(start.year, start.month, start.day);
+      while (dayStart.isBefore(end)) {
+        final dayEnd = dayStart.add(const Duration(days: 1));
+        final sliceStart = start.isAfter(dayStart) ? start : dayStart;
+        final sliceEnd = end.isBefore(dayEnd) ? end : dayEnd;
+        if (sliceEnd.isAfter(sliceStart)) {
+          final double sliceStartMinute =
+              sliceStart.hour * 60.0 + sliceStart.minute;
+          final double sliceEndMinute = sliceEnd == dayEnd
+              ? 1440.0
+              : sliceEnd.hour * 60.0 + sliceEnd.minute;
+          updateBounds(
+            sliceStartMinute,
+            sliceEndMinute,
+          );
+        }
+        dayStart = dayEnd;
+      }
+    }
+
+    // 2. 扫描当前可见日内待办
+    if (_activeDataViews.contains('todos')) {
+      for (int weekday = 1; weekday <= 7; weekday++) {
+        for (var todo in _intraDayTodosPerDay[weekday] ?? []) {
+          if (todo.dueDate == null) continue;
+          DateTime dt = todo.dueDate!;
+          double m = dt.hour * 60.0 + dt.minute;
+          updateBounds(m, m + 1); // 截止时间点算作 1 分钟区间
+        }
+      }
+    }
+
+    // 3. 扫描当前可见时间日志
+    if (_activeDataViews.contains('timeLogs')) {
+      for (var log in _allTimeLogs) {
+        updateBoundsFromEpochRange(log.startTime, log.endTime);
+      }
+    }
+
+    // 4. 扫描当前可见计划块
+    if (_activeDataViews.contains('plans')) {
+      for (var plan in _allPlanBlocks) {
+        updateBoundsFromEpochRange(plan.startTime, plan.endTime);
+      }
+    }
+
+    // 5. 扫描当前可见专注记录。这里不能复用 _pomodorosPerDay，因为它会为避免
+    // 界面重复显示而跳过已关联计划块的专注记录。
+    if (_activeDataViews.contains('pomodoros')) {
+      for (var record in _allPomodoroRecords) {
+        final int endMs = record.endTime ??
+            (record.startTime + record.effectiveDuration * 1000);
+        updateBoundsFromEpochRange(record.startTime, endMs);
+      }
+    }
+
+    ({double pre, double post}) buildHideLengths(
+        double rangeStart, double rangeEnd, double minStart, double maxEnd) {
+      if (minStart >= maxEnd) {
+        return (pre: rangeEnd - rangeStart, post: 0.0);
+      }
+      return (
+        pre: (minStart - rangeStart).clamp(0.0, rangeEnd - rangeStart),
+        post: (rangeEnd - maxEnd).clamp(0.0, rangeEnd - rangeStart),
+      );
+    }
+
+    void addRange(List<_HiddenTimeRange> ranges, double start, double end) {
+      if (end - start > 0.01) {
+        ranges.add(_HiddenTimeRange(start, end));
+      }
+    }
+
+    void addTwoSidedRanges(
+      List<_HiddenTimeRange> ranges,
+      double rangeStart,
+      double rangeEnd,
+      double pre,
+      double post,
+    ) {
+      addRange(ranges, rangeStart, rangeStart + pre);
+      addRange(ranges, rangeEnd - post, rangeEnd);
+    }
+
+    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly);
+    final lunch = buildHideLengths(lunchStart, lunchEnd, minLunch, maxLunch);
+    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate);
+    final String lunchCollapseText =
+        _buildLunchCollapseText(lunchStart, lunchEnd, lunch.pre, lunch.post);
+
+    double lunchPre = lunch.pre;
+    double lunchPost = lunch.post;
+    double? lunchCardStartMinute;
+    double lunchCardDuration = 0.0;
+
+    final double totalLunchHide = lunchPre + lunchPost;
+    if (totalLunchHide > 0.0) {
+      lunchCardDuration =
+          totalLunchHide > lunchReserve ? lunchReserve : totalLunchHide;
+
+      if (lunchPre > 0.0) {
+        lunchCardStartMinute = lunchStart;
+        final double reserveFromPre =
+            lunchPre >= lunchCardDuration ? lunchCardDuration : lunchPre;
+        lunchPre -= reserveFromPre;
+        final double reserveRemain = lunchCardDuration - reserveFromPre;
+        if (reserveRemain > 0.0) {
+          lunchPost =
+              (lunchPost - reserveRemain).clamp(0.0, lunchEnd - lunchStart);
+        }
+      } else {
+        lunchCardStartMinute = lunchEnd - lunchPost;
+        lunchPost =
+            (lunchPost - lunchCardDuration).clamp(0.0, lunchEnd - lunchStart);
+      }
+    }
+
+    final hiddenRanges = <_HiddenTimeRange>[];
+    addTwoSidedRanges(
+        hiddenRanges, earlyStart, earlyEnd, early.pre, early.post);
+    addTwoSidedRanges(hiddenRanges, lunchStart, lunchEnd, lunchPre, lunchPost);
+    addTwoSidedRanges(hiddenRanges, lateStart, lateEnd, late.pre, late.post);
+    hiddenRanges.sort((a, b) => a.startMinute.compareTo(b.startMinute));
+
+    setState(() {
+      _hiddenTimeRanges = hiddenRanges;
+      _lunchCardStartMinute = lunchCardStartMinute;
+      _lunchCardDuration = lunchCardDuration;
+      _lunchCollapseText = lunchCollapseText;
+    });
+  }
+
+  double get _totalHiddenMinutes =>
+      _hiddenTimeRanges.fold(0.0, (sum, range) => sum + range.duration);
+
+  double _mapTimeToVirtualMinutes(int hour, int minute) {
+    double m = (hour * 60 + minute).toDouble();
+    final startMinute = startHour * 60.0;
+    if (m < startMinute) return 0;
+
+    final hiddenBefore = _hiddenTimeRanges.fold(
+        0.0, (sum, range) => sum + range.hiddenBefore(m));
+    double virtualM = m - startMinute - hiddenBefore;
+    return virtualM < 0 ? 0 : virtualM;
+  }
+
   double _timeToY(int hour, int minute, double minuteHeight) {
-    if (hour < startHour) return 0;
-    if (hour > endHour) return (endHour - startHour) * 60 * minuteHeight;
-    return ((hour - startHour) * 60 + minute) * minuteHeight;
+    double virtualMinutes = _mapTimeToVirtualMinutes(hour, minute);
+    return virtualMinutes * minuteHeight;
   }
 
   Color _getCourseColor(String courseName) {
@@ -1268,6 +1552,32 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
+  bool _isHourCollapsed(int hour) {
+    double m = hour * 60.0;
+    return _hiddenTimeRanges.any((range) => range.contains(m));
+  }
+
+  String _formatMinute(double minute) {
+    final int value = minute.round();
+    final int h = value ~/ 60;
+    final int m = value % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  String _buildLunchCollapseText(
+      double rangeStart, double rangeEnd, double pre, double post) {
+    final ranges = <String>[];
+    if (pre > 0.0) {
+      ranges.add(
+          '${_formatMinute(rangeStart)}-${_formatMinute(rangeStart + pre)}');
+    }
+    if (post > 0.0) {
+      ranges
+          .add('${_formatMinute(rangeEnd - post)}-${_formatMinute(rangeEnd)}');
+    }
+    return ranges.join(' & ');
+  }
+
   Widget _buildGrid(double cellWidth, double minuteHeight) {
     List<Widget> children = [];
     bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1275,6 +1585,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     Color textColor = isDark ? Colors.white70 : Colors.black87;
 
     for (int hour = startHour; hour <= endHour; hour++) {
+      // 🚀 自适应时间隐藏：如果该小时正点落于本周的合并收窄区间中，跳过不绘制
+      if (_isHourCollapsed(hour)) continue;
+
       double y = _timeToY(hour, 0, minuteHeight);
 
       children.add(Positioned(
@@ -1286,11 +1599,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       ));
 
       if (hour < endHour) {
+        // 🚀 动态自适应刻度容器高：寻找下一个可见的刻度小时并求高差，避免刻度重叠挤压
+        int nextHour = hour + 1;
+        while (nextHour <= endHour) {
+          if (_isHourCollapsed(nextHour)) {
+            nextHour++;
+            continue;
+          }
+          break;
+        }
+        double slotHeight = _timeToY(nextHour, 0, minuteHeight) - y;
+
         children.add(Positioned(
           top: y,
           left: 0,
           width: timeColumnWidth,
-          height: 60 * minuteHeight,
+          height: slotHeight,
           child: Align(
             alignment: Alignment.topCenter,
             child: Padding(
@@ -1306,6 +1630,76 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           ),
         ));
       }
+    }
+
+    final lunchCardStart = _lunchCardStartMinute;
+    if (lunchCardStart != null && _lunchCardDuration > 0.0) {
+      final int lunchCardHour = lunchCardStart ~/ 60;
+      final int lunchCardMinute = lunchCardStart.round() % 60;
+      final double y1 = _timeToY(lunchCardHour, lunchCardMinute, minuteHeight);
+      double collapseHeight = _lunchCardDuration * minuteHeight;
+
+      children.add(Positioned(
+        top: y1 + 1,
+        left: timeColumnWidth + 1,
+        right: 1,
+        height: (collapseHeight - 2).clamp(2.0, double.infinity).toDouble(),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.035),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: isDark ? Colors.white10 : Colors.black12,
+              width: 0.5,
+            ),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDark
+                    ? [
+                        Colors.white.withValues(alpha: 0.012),
+                        Colors.white.withValues(alpha: 0.012),
+                        Colors.white.withValues(alpha: 0.04),
+                        Colors.white.withValues(alpha: 0.04),
+                        Colors.white.withValues(alpha: 0.012),
+                        Colors.white.withValues(alpha: 0.012),
+                      ]
+                    : [
+                        Colors.black.withValues(alpha: 0.008),
+                        Colors.black.withValues(alpha: 0.008),
+                        Colors.black.withValues(alpha: 0.028),
+                        Colors.black.withValues(alpha: 0.028),
+                        Colors.black.withValues(alpha: 0.008),
+                        Colors.black.withValues(alpha: 0.008),
+                      ],
+                stops: const [0.0, 0.18, 0.18, 0.32, 0.32, 1.0],
+              ),
+            ),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '☕ 午休区间已折叠 ($_lunchCollapseText)',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDark ? Colors.white54 : Colors.black54,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
     }
 
     for (int i = 0; i <= 7; i++) {
@@ -1357,6 +1751,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               .expand((e) => e)
               .toList()
               .indexOf(todo);
+
+          // 🚀 根据物理高度动态计算 Todo 标题最大行数
+          final double availableForTodo =
+              (todo.teamUuid != null && height >= 32)
+                  ? height - 14.0
+                  : height - 2.0;
+          int todoMaxLines = (availableForTodo / 10.0).round();
+          if (todoMaxLines < 1) todoMaxLines = 1;
 
           children.add(Positioned(
             top: top,
@@ -1422,72 +1824,76 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 20
                       ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
                           size: 10, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (todo.teamUuid != null && height >= 32)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2.0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 2, vertical: 0.5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.3),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.group,
-                                          size: 8, color: Colors.white),
-                                      const SizedBox(width: 1),
-                                      Expanded(
-                                        // 🚀 强制填满剩余空间并截断
-                                        child: Text(
-                                          todo.teamName ?? '团队',
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 7,
-                                              fontWeight: FontWeight.bold),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (todo.teamUuid != null && height >= 32)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 2.0),
-                                  child: Icon(
-                                      todo.isDone
-                                          ? Icons.check_circle
-                                          : Icons.task_alt,
-                                      size: 10,
-                                      color: Colors.white),
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    todo.title,
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        decoration: todo.isDone
-                                            ? TextDecoration.lineThrough
-                                            : null,
-                                        height: 1.0),
-                                    maxLines: height < 35 ? 1 : 2,
-                                    overflow: TextOverflow.ellipsis,
+                                  padding: const EdgeInsets.only(bottom: 2.0),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 2, vertical: 0.5),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.3),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.group,
+                                            size: 8, color: Colors.white),
+                                        const SizedBox(width: 1),
+                                        Expanded(
+                                          // 🚀 强制填满剩余空间并截断
+                                          child: Text(
+                                            todo.teamName ?? '团队',
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 7,
+                                                fontWeight: FontWeight.bold),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2.0),
+                                    child: Icon(
+                                        todo.isDone
+                                            ? Icons.check_circle
+                                            : Icons.task_alt,
+                                        size: 10,
+                                        color: Colors.white),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      todo.title,
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          decoration: todo.isDone
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                          height: 1.0),
+                                      maxLines: todoMaxLines,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                 ),
               ),
@@ -1532,6 +1938,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final logCardKey = _getTimeLogCardKey(log.id);
           final logIndex =
               _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
+
+          // 🚀 根据物理高度动态计算 TimeLog 标题最大行数
+          final double availableForLog =
+              height > 22 ? height - 9.0 : height - 2.0;
+          int logMaxLines = (availableForLog / 9.0).round();
+          if (logMaxLines < 1) logMaxLines = 1;
 
           children.add(Positioned(
             top: top,
@@ -1592,44 +2004,48 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 18
                       ? const Icon(Icons.edit_calendar,
                           size: 8, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 1.0),
-                                  child: const Icon(Icons.edit_calendar,
-                                      size: 8, color: Colors.white),
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    logTitle,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.0),
-                                    maxLines: height < 25 ? 1 : 2,
-                                    overflow: TextOverflow.ellipsis,
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1.0),
+                                    child: const Icon(Icons.edit_calendar,
+                                        size: 8, color: Colors.white),
                                   ),
-                                ),
-                              ],
-                            ),
-                            if (height > 22)
-                              Text(
-                                '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.8),
-                                    fontSize: 7,
-                                    height: 1.0),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      logTitle,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: logMaxLines,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
-                          ],
+                              if (height > 22)
+                                Text(
+                                  '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}-${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.8),
+                                      fontSize: 7,
+                                      height: 1.0),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
                         ),
                 ),
               ),
@@ -1664,6 +2080,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final pomProgress = _calculatePlanPomodoroProgress(plan);
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
+
+          // 🚀 根据物理高度动态计算 Plan 标题最大行数
+          int planMaxLines = 2;
+          if (hasAssociatedPomodoro) {
+            double availableForPlan = height > 32
+                ? height - 19.0
+                : (height > 24 ? height - 11.0 : height - 4.0);
+            planMaxLines = (availableForPlan / 9.0).round();
+            if (planMaxLines < 1) planMaxLines = 1;
+          } else {
+            double availableForPlan =
+                height > 24 ? height - 11.0 : height - 4.0;
+            planMaxLines = (availableForPlan / 9.0).round();
+            if (planMaxLines < 1) planMaxLines = 1;
+          }
 
           children.add(Positioned(
             top: top,
@@ -1711,112 +2142,118 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ),
                           // 内容层
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                      plan.status == TodoPlanStatus.finished
-                                          ? Icons.event_available
-                                          : Icons.event_note,
-                                      size: 9,
-                                      color: Colors.white),
-                                  const SizedBox(width: 2),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0),
-                                      maxLines: height < 28 ? 1 : 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (height > 24)
-                                Column(
+                          SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      '${plan.plannedMinutes}min',
-                                      style: TextStyle(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.85),
-                                          fontSize: 7,
-                                          height: 1.0),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    Icon(
+                                        plan.status == TodoPlanStatus.finished
+                                            ? Icons.event_available
+                                            : Icons.event_note,
+                                        size: 9,
+                                        color: Colors.white),
+                                    const SizedBox(width: 2),
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1.0),
+                                        maxLines: height < 28 ? 1 : 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    // 显示番茄钟完成情况
-                                    if (height > 32)
+                                  ],
+                                ),
+                                if (height > 24)
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
                                       Text(
-                                        '${(((pomProgress['progress'] as double?) ?? 0.0) * 100).toStringAsFixed(0)}%',
+                                        '${plan.plannedMinutes}min',
                                         style: TextStyle(
                                             color: Colors.white
-                                                .withValues(alpha: 0.7),
-                                            fontSize: 6,
-                                            height: 1.0,
-                                            fontWeight: FontWeight.bold),
+                                                .withValues(alpha: 0.85),
+                                            fontSize: 7,
+                                            height: 1.0),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                  ],
-                                ),
-                            ],
+                                      // 显示番茄钟完成情况
+                                      if (height > 32)
+                                        Text(
+                                          '${(((pomProgress['progress'] as double?) ?? 0.0) * 100).toStringAsFixed(0)}%',
+                                          style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.7),
+                                              fontSize: 6,
+                                              height: 1.0,
+                                              fontWeight: FontWeight.bold),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                              ],
+                            ),
                           ),
                         ],
                       )
                     : (height < 18
                         ? const Icon(Icons.event_note,
                             size: 8, color: Colors.white)
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                      plan.status == TodoPlanStatus.finished
-                                          ? Icons.event_available
-                                          : Icons.event_note,
-                                      size: 9,
-                                      color: Colors.white),
-                                  const SizedBox(width: 2),
-                                  Expanded(
-                                    child: Text(
-                                      title,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0),
-                                      maxLines: height < 28 ? 1 : 2,
-                                      overflow: TextOverflow.ellipsis,
+                        : SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                        plan.status == TodoPlanStatus.finished
+                                            ? Icons.event_available
+                                            : Icons.event_note,
+                                        size: 9,
+                                        color: Colors.white),
+                                    const SizedBox(width: 2),
+                                    Expanded(
+                                      child: Text(
+                                        title,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1.0),
+                                        maxLines: height < 28 ? 1 : 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              if (height > 24)
-                                Text(
-                                  '${plan.plannedMinutes}min',
-                                  style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.85),
-                                      fontSize: 7,
-                                      height: 1.0),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  ],
                                 ),
-                            ],
-                          )),
+                                if (height > 24)
+                                  Text(
+                                    '${plan.plannedMinutes}min',
+                                    style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
+                                        fontSize: 7,
+                                        height: 1.0),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ))),
               ),
             ),
           ));
@@ -1864,6 +2301,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final pomCardKey = _getPomodoroCardKey(record.uuid);
           final pomIndex =
               _pomodorosPerDay.values.expand((e) => e).toList().indexOf(record);
+
+          // 🚀 根据物理高度动态计算 Pomodoro 标题最大行数
+          final double availableForPom =
+              height > 22 ? height - 9.0 : height - 2.0;
+          int pomMaxLines = (availableForPom / 9.0).round();
+          if (pomMaxLines < 1) pomMaxLines = 1;
 
           children.add(Positioned(
             top: top,
@@ -1924,44 +2367,50 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 18
                       ? const Icon(Icons.local_fire_department,
                           size: 8, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 1.0),
-                                  child: const Icon(Icons.local_fire_department,
-                                      size: 8, color: Colors.white),
-                                ),
-                                const SizedBox(width: 2),
-                                Expanded(
-                                  child: Text(
-                                    pomTitle,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.0),
-                                    maxLines: height < 25 ? 1 : 2,
-                                    overflow: TextOverflow.ellipsis,
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1.0),
+                                    child: const Icon(
+                                        Icons.local_fire_department,
+                                        size: 8,
+                                        color: Colors.white),
                                   ),
-                                ),
-                              ],
-                            ),
-                            if (height > 22)
-                              Text(
-                                '${record.effectiveDuration ~/ 60}min',
-                                style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.85),
-                                    fontSize: 7,
-                                    height: 1.0),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                  const SizedBox(width: 2),
+                                  Expanded(
+                                    child: Text(
+                                      pomTitle,
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.0),
+                                      maxLines: pomMaxLines,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
-                          ],
+                              if (height > 22)
+                                Text(
+                                  '${record.effectiveDuration ~/ 60}min',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
+                                      fontSize: 7,
+                                      height: 1.0),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
                         ),
                 ),
               ),
@@ -1987,6 +2436,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         final cardKey = _getCourseCardKey(
             course.courseName, course.weekday, course.startTime);
         final courseIndex = _weekCourses.indexOf(course);
+
+        // 🚀 根据课程卡片的物理高度动态计算课程名称的最大行数限制，四舍五入并收紧估算，让文本尽量多地展开
+        int courseMaxLines = 2;
+        if (course.roomName.isNotEmpty && height > 30) {
+          double availableForCourse = (height - 2) - 14.5;
+          courseMaxLines = (availableForCourse / 12.0).round();
+          if (courseMaxLines < 1) courseMaxLines = 1;
+        } else {
+          double availableForCourse = (height - 2) - 5.0;
+          courseMaxLines = (availableForCourse / 12.0).round();
+          if (courseMaxLines < 1) courseMaxLines = 1;
+        }
 
         children.add(Positioned(
           top: top + 1,
@@ -2057,7 +2518,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           height: 1.15),
-                      maxLines: 2,
+                      maxLines: courseMaxLines,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (height > 30) ...[
@@ -2439,145 +2900,43 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               }
             },
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list, size: 20),
-            tooltip: '筛选显示内容',
-            onSelected: (value) {
-              setState(() {
-                if (value == 'clearAll') {
-                  _activeDataViews.clear();
-                  _updateWeekTodos();
-                } else if (value == 'selectAll') {
-                  _activeDataViews.addAll(
-                      {'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
-                  _updateWeekTodos();
-                } else {
-                  if (_activeDataViews.contains(value)) {
-                    _activeDataViews.remove(value);
+          MenuAnchor(
+            menuChildren: [
+              _buildCheckableMenuItem('courses', '课表'),
+              _buildCheckableMenuItem('todos', '待办'),
+              _buildCheckableMenuItem('timeLogs', '时间日志'),
+              _buildCheckableMenuItem('plans', '今日规划'),
+              _buildCheckableMenuItem('pomodoros', '番茄钟'),
+              const Divider(height: 1),
+              _buildCheckableMenuItem('hideCrossDay', '隐藏跨天待办'),
+              _buildCheckableMenuItem('disableFreeTimeCollapse', '不折叠空余时间'),
+              const Divider(height: 1),
+              _buildFilterActionItem(
+                'selectAll',
+                '一键全选',
+                Icons.select_all,
+                Theme.of(context).colorScheme.primary,
+              ),
+              _buildFilterActionItem(
+                'clearAll',
+                '一键清除',
+                Icons.clear_all,
+                Colors.redAccent,
+              ),
+            ],
+            builder: (context, controller, child) {
+              return IconButton(
+                visualDensity: const VisualDensity(horizontal: -2),
+                icon: const Icon(Icons.filter_list, size: 20),
+                tooltip: '筛选显示内容',
+                onPressed: () {
+                  if (controller.isOpen) {
+                    controller.close();
                   } else {
-                    _activeDataViews.add(value);
+                    controller.open();
                   }
-                  if (value == 'todos' || value == 'hideCrossDay') {
-                    _updateWeekTodos();
-                  }
-                }
-              });
-            },
-            itemBuilder: (context) {
-              return [
-                PopupMenuItem(
-                  value: 'courses',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('courses')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('课表'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'todos',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('todos')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('待办'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'timeLogs',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('timeLogs')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('时间日志'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'plans',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('plans')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('今日规划'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'pomodoros',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('pomodoros')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('番茄钟'),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'hideCrossDay',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('hideCrossDay')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('隐藏跨天待办'),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'selectAll',
-                  child: Row(
-                    children: [
-                      Icon(Icons.select_all,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text('一键全选',
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'clearAll',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.clear_all,
-                          size: 16, color: Colors.redAccent),
-                      const SizedBox(width: 8),
-                      const Text('一键清除',
-                          style: TextStyle(color: Colors.redAccent)),
-                    ],
-                  ),
-                ),
-              ];
+                },
+              );
             },
           ),
           const SizedBox(width: 8),
@@ -2771,7 +3130,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                                 7;
                                         // 🚀 恢复自适应：将全天时间轴按比例缩放到当前屏幕可用高度，无需滑动
                                         double totalMinutes =
-                                            (endHour - startHour) * 60;
+                                            (endHour - startHour) * 60.0 -
+                                                _totalHiddenMinutes;
                                         double minuteHeight =
                                             innerConstraints.maxHeight /
                                                 totalMinutes;
@@ -3603,7 +3963,8 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
     final startLocal =
         DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
     final durationMin = r.effectiveDuration ~/ 60;
-    final statusIcon = r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+    final statusIcon =
+        r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
     final statusColor = r.isCompleted ? Colors.green : Colors.orange;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -3873,13 +4234,15 @@ class PomodoroDetailScreen extends StatelessWidget {
                 children: [
                   const Icon(Icons.note_rounded, color: Colors.grey),
                   const SizedBox(width: 16),
-                  const Text('备注', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  const Text('备注',
+                      style: TextStyle(color: Colors.grey, fontSize: 16)),
                   const Spacer(),
                   Flexible(
                     child: Text(
                       record.note!,
                       textAlign: TextAlign.right,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],

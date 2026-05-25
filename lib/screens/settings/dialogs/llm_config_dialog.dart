@@ -18,7 +18,6 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
   bool _obscureApiKey = true;
   bool _isLoading = true;
   bool _isTesting = false;
-  final bool _showAdvanced = false;
 
   @override
   void initState() {

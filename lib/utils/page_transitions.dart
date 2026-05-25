@@ -1,15 +1,22 @@
+import 'dart:ui' show ImageFilter, lerpDouble;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _springOut = Cubic(0.34, 1.2, 0.64, 1.0);
-const _springIn = Cubic(0.5, 0.0, 0.75, 0.0);
-const _springInOut = Cubic(0.38, 0.0, 0.22, 1.0);
+const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
+const _defaultPageLayerBackgroundScale = 0.875;
+const _defaultPageLayerBackgroundMask = 0.24;
+const _defaultPageLayerMaxBlur = 12.0;
+const _defaultContainerContentStart = 0.28;
 
 class _AnimSettings {
   static bool enabled = true;
   static bool lazyLoad = true;
   static bool screenRadius = true;
+  static bool layerBlur = false;
   static int duration = 500;
+  static int pageLayerDepth = 100;
+  static int containerContentStart = 28;
 
   static Future<void> load() async {
     try {
@@ -17,42 +24,45 @@ class _AnimSettings {
       enabled = prefs.getBool('enable_animations') ?? true;
       lazyLoad = prefs.getBool('enable_lazy_load') ?? true;
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
+      layerBlur = prefs.getBool('enable_layer_blur') ?? false;
       duration = prefs.getInt('animation_duration') ?? 500;
-    } catch (_) {}
-  }
-
-  static Future<void> save({
-    bool? enabled,
-    bool? lazyLoad,
-    bool? screenRadius,
-    int? duration,
-  }) async {
-    try {
-      final prefs = await _prefs();
-      if (enabled != null) {
-        prefs.setBool('enable_animations', enabled);
-        _AnimSettings.enabled = enabled;
-      }
-      if (lazyLoad != null) {
-        prefs.setBool('enable_lazy_load', lazyLoad);
-        _AnimSettings.lazyLoad = lazyLoad;
-      }
-      if (screenRadius != null) {
-        prefs.setBool('enable_screen_radius', screenRadius);
-        _AnimSettings.screenRadius = screenRadius;
-      }
-      if (duration != null) {
-        prefs.setInt('animation_duration', duration);
-        _AnimSettings.duration = duration;
-      }
+      pageLayerDepth = prefs.getInt('page_layer_depth') ?? 100;
+      containerContentStart = prefs.getInt('container_content_start') ?? 28;
     } catch (_) {}
   }
 
   static Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
+
+  static double get depthFactor => (pageLayerDepth / 100).clamp(0.0, 1.0);
+
+  static double get backgroundScale =>
+      lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
+
+  static double get backgroundMask =>
+      _defaultPageLayerBackgroundMask * depthFactor;
+
+  static double get backgroundBlur =>
+      layerBlur ? _defaultPageLayerMaxBlur * depthFactor : 0.0;
+
+  static double get contentStart {
+    final value = containerContentStart / 100;
+    return value.clamp(0.0, 0.6);
+  }
 }
 
 class PageTransitions {
   static Future<void> init() => _AnimSettings.load();
+
+  static const PageTransitionsTheme theme = PageTransitionsTheme(
+    builders: <TargetPlatform, PageTransitionsBuilder>{
+      TargetPlatform.android: _PageLayerMaterialPageTransitionsBuilder(),
+      TargetPlatform.iOS: _PageLayerMaterialPageTransitionsBuilder(),
+      TargetPlatform.macOS: _PageLayerMaterialPageTransitionsBuilder(),
+      TargetPlatform.windows: _PageLayerMaterialPageTransitionsBuilder(),
+      TargetPlatform.linux: _PageLayerMaterialPageTransitionsBuilder(),
+      TargetPlatform.fuchsia: _PageLayerMaterialPageTransitionsBuilder(),
+    },
+  );
 
   static Future<T?> pushFromRect<T>({
     required BuildContext context,
@@ -65,11 +75,17 @@ class PageTransitions {
         const BorderRadius.all(Radius.circular(16)),
   }) async {
     await _AnimSettings.load();
+    if (!context.mounted) {
+      return null;
+    }
     if (!_AnimSettings.enabled) {
       return Navigator.push(context, MaterialPageRoute(builder: (_) => page));
     }
 
     await Future.delayed(const Duration(milliseconds: 16));
+    if (!context.mounted) {
+      return null;
+    }
     final renderBox =
         sourceKey.currentContext?.findRenderObject() as RenderBox?;
 
@@ -96,15 +112,197 @@ class PageTransitions {
   }
 
   static Route<T> slideHorizontal<T>(Widget page) {
-    return _SlideRoute<T>(page: page, direction: Axis.horizontal);
+    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideEnd);
   }
 
   static Route<T> slideUp<T>(Widget page) {
-    return _SlideRoute<T>(page: page, direction: Axis.vertical);
+    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideBottom);
   }
 
   static Route<T> fadeThrough<T>(Widget page) {
     return _FadeRoute<T>(page: page);
+  }
+}
+
+enum _PageLayerRouteMode {
+  scale,
+  slideEnd,
+  slideBottom,
+  fade,
+}
+
+class _PageLayerMaterialPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _PageLayerMaterialPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (!_AnimSettings.enabled) {
+      return child;
+    }
+    return _PageLayerTransition(
+      animation: animation,
+      secondaryAnimation: secondaryAnimation,
+      mode: _PageLayerRouteMode.scale,
+      child: child,
+    );
+  }
+}
+
+class _PageLayerTransition extends StatelessWidget {
+  final Animation<double> animation;
+  final Animation<double> secondaryAnimation;
+  final _PageLayerRouteMode mode;
+  final Widget child;
+
+  const _PageLayerTransition({
+    required this.animation,
+    required this.secondaryAnimation,
+    required this.mode,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final routeCurve = CurvedAnimation(
+      parent: animation,
+      curve: _pageLayerCurve,
+      reverseCurve: _pageLayerCurve,
+    );
+    final backgroundCurve = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: _pageLayerCurve,
+      reverseCurve: _pageLayerCurve,
+    );
+
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[routeCurve, backgroundCurve]),
+      child: child,
+      builder: (context, child) {
+        final backgroundProgress = backgroundCurve.value.clamp(0.0, 1.0);
+        final foregroundProgress = routeCurve.value.clamp(0.0, 1.0);
+        final isBackground = backgroundProgress > 0.0;
+
+        Widget current = child ?? const SizedBox.shrink();
+
+        if (isBackground) {
+          current = _buildBackgroundPage(context, current, backgroundProgress);
+        }
+
+        if (foregroundProgress < 1.0 ||
+            animation.status == AnimationStatus.reverse) {
+          current = _buildForegroundPage(context, current, foregroundProgress);
+        }
+
+        return current;
+      },
+    );
+  }
+
+  Widget _buildBackgroundPage(
+    BuildContext context,
+    Widget child,
+    double progress,
+  ) {
+    final scale = lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
+    final blur = lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
+    final maskOpacity =
+        lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
+    final clip = _deviceBorderRadius(context, progress);
+
+    Widget current = Transform.scale(
+      scale: scale,
+      child: child,
+    );
+
+    if (_AnimSettings.screenRadius && clip > 0) {
+      current = ClipRRect(
+        borderRadius: BorderRadius.circular(clip),
+        child: current,
+      );
+    }
+
+    if (blur > 0.01) {
+      current = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: current,
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        current,
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: maskOpacity),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForegroundPage(
+    BuildContext context,
+    Widget child,
+    double progress,
+  ) {
+    final eased = progress.clamp(0.0, 1.0);
+    final corner = _deviceBorderRadius(context, 1.0 - eased);
+    Widget current = child;
+
+    if (_AnimSettings.screenRadius && corner > 0) {
+      current = ClipRRect(
+        borderRadius: BorderRadius.circular(corner),
+        child: current,
+      );
+    }
+
+    switch (mode) {
+      case _PageLayerRouteMode.scale:
+        final scale = lerpDouble(0.92, 1.0, eased)!;
+        final opacity = lerpDouble(0.75, 1.0, eased)!;
+        return Transform.scale(
+          scale: scale,
+          alignment: const Alignment(0, -0.45),
+          child: Opacity(opacity: opacity, child: current),
+        );
+      case _PageLayerRouteMode.slideEnd:
+      case _PageLayerRouteMode.slideBottom:
+        final begin = mode == _PageLayerRouteMode.slideEnd
+            ? const Offset(1.0, 0.0)
+            : const Offset(0.0, 1.0);
+        final offset = Offset.lerp(begin, Offset.zero, eased)!;
+        return FractionalTranslation(
+          translation: offset,
+          child: Opacity(
+            opacity: lerpDouble(0.9, 1.0, eased)!,
+            child: current,
+          ),
+        );
+      case _PageLayerRouteMode.fade:
+        return Opacity(opacity: eased, child: current);
+    }
+  }
+
+  double _deviceBorderRadius(BuildContext context, double progress) {
+    if (!_AnimSettings.screenRadius) {
+      return 0;
+    }
+    final pad = MediaQuery.of(context).padding;
+    final target = pad.top > 30
+        ? 24.0
+        : pad.top > 20
+            ? 16.0
+            : 12.0;
+    return target * progress.clamp(0.0, 1.0);
   }
 }
 
@@ -177,7 +375,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     super.initState();
     if (_AnimSettings.lazyLoad) {
       Future.delayed(
-          Duration(milliseconds: (_AnimSettings.duration * 0.3).round()), () {
+          Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
         if (mounted) setState(() => _contentVisible = true);
       });
     } else {
@@ -190,24 +388,30 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
     final screenSize = MediaQuery.of(context).size;
 
     return AnimatedBuilder(
-      animation: widget.animation,
+      animation: Listenable.merge(
+        <Listenable>[widget.animation, widget.secondaryAnimation],
+      ),
       builder: (context, child) {
         final tRaw = CurvedAnimation(
           parent: widget.animation,
-          curve: _springOut,
-          reverseCurve: _springIn,
+          curve: _pageLayerCurve,
+          reverseCurve: _pageLayerCurve,
         ).value;
         final t = tRaw.clamp(0.0, 1.0);
-        final tBounce = tRaw.clamp(0.0, 1.0);
+        final backgroundProgress = CurvedAnimation(
+          parent: widget.secondaryAnimation,
+          curve: _pageLayerCurve,
+          reverseCurve: _pageLayerCurve,
+        ).value.clamp(0.0, 1.0);
 
         final begin = widget.sourceRect;
         final end = widget.targetRect ??
             Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
 
-        final left = begin.left + (end.left - begin.left) * tBounce;
-        final top = begin.top + (end.top - begin.top) * tBounce;
-        final width = begin.width + (end.width - begin.width) * tBounce;
-        final height = begin.height + (end.height - begin.height) * tBounce;
+        final left = lerpDouble(begin.left, end.left, t)!;
+        final top = lerpDouble(begin.top, end.top, t)!;
+        final width = lerpDouble(begin.width, end.width, t)!;
+        final height = lerpDouble(begin.height, end.height, t)!;
 
         final beginR = widget.sourceBorderRadius;
         final endR = widget.targetBorderRadius;
@@ -218,31 +422,47 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
           bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
         );
 
-        final fadeIn = _AnimSettings.lazyLoad
-            ? (t < 0.35 ? 0.0 : ((t - 0.35) / 0.65).clamp(0.0, 1.0))
-            : 1.0;
+        final contentStart = _AnimSettings.lazyLoad
+            ? _AnimSettings.contentStart
+            : _defaultContainerContentStart;
+        final contentProgress =
+            ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
+        final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
+        final contentScale = lerpDouble(0.96, 1.0, contentProgress)!;
+        final maskOpacity =
+            lerpDouble(0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
 
-        Widget? deviceClip;
+        Widget content = widget.child;
         if (_AnimSettings.screenRadius) {
           final pad = MediaQuery.of(context).padding;
           final r = pad.top > 30
               ? 24.0
               : pad.top > 20
                   ? 16.0
-                  : 0.0;
+                  : 12.0;
           if (r > 0) {
-            deviceClip = ClipRRect(
-              borderRadius: BorderRadius.circular(r),
-              child: widget.child,
+            content = ClipRRect(
+              borderRadius: BorderRadius.circular(lerpDouble(r, 0, t)!),
+              child: content,
             );
           }
         }
 
-        final content = deviceClip ?? widget.child;
+        content = Transform.scale(
+          scale: contentScale,
+          alignment: const Alignment(0, -0.45),
+          child: content,
+        );
 
         return Stack(
           fit: StackFit.expand,
           children: [
+            if (maskOpacity > 0)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: maskOpacity),
+                ),
+              ),
             Positioned(
               left: left,
               top: top,
@@ -256,7 +476,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
             if (_contentVisible)
               Positioned.fill(
                 child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 100),
+                  duration: const Duration(milliseconds: 80),
                   opacity: fadeIn,
                   child: IgnorePointer(ignoring: fadeIn < 1.0, child: content),
                 ),
@@ -270,9 +490,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
 class _SlideRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
-  final Axis direction;
+  final _PageLayerRouteMode mode;
 
-  _SlideRoute({required this.page, required this.direction})
+  _SlideRoute({required this.page, required this.mode})
       : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: Duration(milliseconds: _AnimSettings.duration),
@@ -282,7 +502,7 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
             return _SlideWidget(
               animation: animation,
               secondaryAnimation: secondaryAnimation,
-              direction: direction,
+              mode: mode,
               child: child,
             );
           },
@@ -292,13 +512,13 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
 class _SlideWidget extends StatefulWidget {
   final Animation<double> animation;
   final Animation<double> secondaryAnimation;
-  final Axis direction;
+  final _PageLayerRouteMode mode;
   final Widget child;
 
   const _SlideWidget({
     required this.animation,
     required this.secondaryAnimation,
-    required this.direction,
+    required this.mode,
     required this.child,
   });
 
@@ -324,45 +544,11 @@ class _SlideWidgetState extends State<_SlideWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final begin = widget.direction == Axis.horizontal
-        ? const Offset(1.0, 0.0)
-        : const Offset(0.0, 1.0);
-    final offsetCurve = CurvedAnimation(
-      parent: widget.animation,
-      curve: _springOut,
-      reverseCurve: _springIn,
-    );
-    final tween = Tween(begin: begin, end: Offset.zero);
-    final offsetAnim = offsetCurve.drive(tween);
-    final fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: widget.animation, curve: Curves.easeInOut),
-    );
-    final secBegin = widget.direction == Axis.horizontal
-        ? const Offset(-0.15, 0.0)
-        : const Offset(0.0, 0.2);
-    final secCurve = CurvedAnimation(
-      parent: widget.secondaryAnimation,
-      curve: Curves.easeInOutCubic,
-    );
-    final secTween = Tween(begin: Offset.zero, end: secBegin);
-    final secOffset = secCurve.drive(secTween);
-    final secFade = Tween<double>(begin: 1.0, end: 0.7).animate(
-      CurvedAnimation(
-          parent: widget.secondaryAnimation, curve: Curves.easeInOut),
-    );
-
-    return SlideTransition(
-      position: offsetAnim,
-      child: FadeTransition(
-        opacity: fadeAnim,
-        child: SlideTransition(
-          position: secOffset,
-          child: FadeTransition(
-            opacity: secFade,
-            child: _visible ? widget.child : const SizedBox.shrink(),
-          ),
-        ),
-      ),
+    return _PageLayerTransition(
+      animation: widget.animation,
+      secondaryAnimation: widget.secondaryAnimation,
+      mode: widget.mode,
+      child: _visible ? widget.child : const SizedBox.shrink(),
     );
   }
 }
@@ -377,16 +563,12 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
           reverseTransitionDuration:
               Duration(milliseconds: _AnimSettings.duration),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            return _PageLayerTransition(
+              animation: animation,
+              secondaryAnimation: secondaryAnimation,
+              mode: _PageLayerRouteMode.fade,
+              child: child,
             );
-            final secFade = Tween<double>(begin: 1.0, end: 0.0).animate(
-              CurvedAnimation(
-                  parent: secondaryAnimation, curve: Curves.easeInOut),
-            );
-            return FadeTransition(
-                opacity: fade,
-                child: FadeTransition(opacity: secFade, child: child));
           },
         );
 }

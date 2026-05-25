@@ -88,7 +88,7 @@ class ApiService {
   static Future<bool> ping() async {
     try {
       // 访问基础路径，只要有任何响应（即使是 404）也说明网络通畅且服务器在线
-      final response = await _client
+      await _client
           .get(
             Uri.parse('$_effectiveBaseUrl/'),
           )
@@ -1247,8 +1247,9 @@ class ApiService {
       {bool isLocal = false, String? table, String? username}) async {
     // 🚀 如果是本地记录或处于离线状态，执行本地强力回滚（含缓存刷新）
     if (isLocal) {
-      if (table == null || username == null)
+      if (table == null || username == null) {
         return {'success': false, 'error': '缺少回滚上下文'};
+      }
       final success =
           await StorageService.rollbackLocalItem(table, logId as int, username);
       return {'success': success, 'message': success ? '本地回滚成功' : '本地回滚失败'};
