@@ -70,6 +70,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     'timeLogs',
     'pomodoros'
   };
+  bool _collapseFreeTime = true;
 
   // --- 🚀 视图模式分级 (1周, 2周, 1个月) ---
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
@@ -940,34 +941,72 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     return const SizedBox.shrink();
   }
 
+  void _handleFilterSelection(String value) {
+    setState(() {
+      if (value == 'clearAll') {
+        _activeDataViews.clear();
+        _updateWeekTodos();
+      } else if (value == 'selectAll') {
+        _activeDataViews
+            .addAll({'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
+        _updateWeekTodos();
+      } else if (value == 'disableFreeTimeCollapse') {
+        _collapseFreeTime = !_collapseFreeTime;
+      } else {
+        if (_activeDataViews.contains(value)) {
+          _activeDataViews.remove(value);
+        } else {
+          _activeDataViews.add(value);
+        }
+        if (value == 'todos' || value == 'hideCrossDay') {
+          _updateWeekTodos();
+        }
+      }
+    });
+    _checkCollapsedSlots();
+  }
+
   Widget _buildCheckableMenuItem(String key, String label) {
-    bool isSelected = _activeDataViews.contains(key);
+    final bool isSelected = key == 'disableFreeTimeCollapse'
+        ? !_collapseFreeTime
+        : _activeDataViews.contains(key);
     return MenuItemButton(
       closeOnActivate: false,
-      onPressed: () {
-        setState(() {
-          if (isSelected) {
-            if (_activeDataViews.length > 1) {
-              _activeDataViews.remove(key);
-            }
-          } else {
-            _activeDataViews.add(key);
-          }
-        });
-      },
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSelected ? Icons.check_box : Icons.check_box_outline_blank,
-            size: 20,
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Text(label),
-        ],
+      onPressed: () => _handleFilterSelection(key),
+      child: SizedBox(
+        width: 150,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? Icons.check : null,
+              size: 16,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+            ),
+            const SizedBox(width: 8),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterActionItem(
+      String value, String label, IconData icon, Color color) {
+    return MenuItemButton(
+      closeOnActivate: false,
+      onPressed: () => _handleFilterSelection(value),
+      child: SizedBox(
+        width: 150,
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: color)),
+          ],
+        ),
       ),
     );
   }
@@ -980,6 +1019,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   void _checkCollapsedSlots() {
+    if (!_collapseFreeTime) {
+      setState(() {
+        _hiddenTimeRanges = const [];
+        _lunchCardStartMinute = null;
+        _lunchCardDuration = 0.0;
+        _lunchCollapseText = '';
+      });
+      return;
+    }
+
     const earlyStart = 360.0;
     const earlyEnd = 480.0;
     const lunchStart = 720.0;
@@ -2851,146 +2900,43 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               }
             },
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list, size: 20),
-            tooltip: '筛选显示内容',
-            onSelected: (value) {
-              setState(() {
-                if (value == 'clearAll') {
-                  _activeDataViews.clear();
-                  _updateWeekTodos();
-                } else if (value == 'selectAll') {
-                  _activeDataViews.addAll(
-                      {'courses', 'todos', 'plans', 'timeLogs', 'pomodoros'});
-                  _updateWeekTodos();
-                } else {
-                  if (_activeDataViews.contains(value)) {
-                    _activeDataViews.remove(value);
+          MenuAnchor(
+            menuChildren: [
+              _buildCheckableMenuItem('courses', '课表'),
+              _buildCheckableMenuItem('todos', '待办'),
+              _buildCheckableMenuItem('timeLogs', '时间日志'),
+              _buildCheckableMenuItem('plans', '今日规划'),
+              _buildCheckableMenuItem('pomodoros', '番茄钟'),
+              const Divider(height: 1),
+              _buildCheckableMenuItem('hideCrossDay', '隐藏跨天待办'),
+              _buildCheckableMenuItem('disableFreeTimeCollapse', '不折叠空余时间'),
+              const Divider(height: 1),
+              _buildFilterActionItem(
+                'selectAll',
+                '一键全选',
+                Icons.select_all,
+                Theme.of(context).colorScheme.primary,
+              ),
+              _buildFilterActionItem(
+                'clearAll',
+                '一键清除',
+                Icons.clear_all,
+                Colors.redAccent,
+              ),
+            ],
+            builder: (context, controller, child) {
+              return IconButton(
+                visualDensity: const VisualDensity(horizontal: -2),
+                icon: const Icon(Icons.filter_list, size: 20),
+                tooltip: '筛选显示内容',
+                onPressed: () {
+                  if (controller.isOpen) {
+                    controller.close();
                   } else {
-                    _activeDataViews.add(value);
+                    controller.open();
                   }
-                  if (value == 'todos' || value == 'hideCrossDay') {
-                    _updateWeekTodos();
-                  }
-                }
-              });
-              _checkCollapsedSlots();
-            },
-            itemBuilder: (context) {
-              return [
-                PopupMenuItem(
-                  value: 'courses',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('courses')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('课表'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'todos',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('todos')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('待办'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'timeLogs',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('timeLogs')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('时间日志'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'plans',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('plans')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('今日规划'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'pomodoros',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('pomodoros')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('番茄钟'),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'hideCrossDay',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check,
-                          size: 16,
-                          color: _activeDataViews.contains('hideCrossDay')
-                              ? Colors.blue
-                              : Colors.transparent),
-                      const SizedBox(width: 8),
-                      const Text('隐藏跨天待办'),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'selectAll',
-                  child: Row(
-                    children: [
-                      Icon(Icons.select_all,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text('一键全选',
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary)),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'clearAll',
-                  child: Row(
-                    children: [
-                      const Icon(Icons.clear_all,
-                          size: 16, color: Colors.redAccent),
-                      const SizedBox(width: 8),
-                      const Text('一键清除',
-                          style: TextStyle(color: Colors.redAccent)),
-                    ],
-                  ),
-                ),
-              ];
+                },
+              );
             },
           ),
           const SizedBox(width: 8),
