@@ -1625,7 +1625,11 @@ class LineChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant LineChartPainter oldDelegate) =>
+      !identical(oldDelegate.data, data) ||
+      !identical(oldDelegate.labels, labels) ||
+      oldDelegate.primaryColor != primaryColor ||
+      oldDelegate.textColor != textColor;
 }
 
 // ─────────────────────────────────────────────
@@ -1729,5 +1733,10 @@ class BarChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant BarChartPainter oldDelegate) =>
+      !identical(oldDelegate.data, data) ||
+      !identical(oldDelegate.labels, labels) ||
+      oldDelegate.primaryColor != primaryColor ||
+      oldDelegate.textColor != textColor ||
+      oldDelegate.selectedIndex != selectedIndex;
 }

@@ -776,56 +776,58 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(borderRadius),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isTransparent
-                          ? Colors.transparent
-                          : IslandConfig.bgColor.withValues(alpha: 0.82),
-                      borderRadius: BorderRadius.circular(borderRadius),
-                      border: isTransparent
-                          ? null
-                          : Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              width: 0.8,
-                            ),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: AnimatedSwitcher(
-                      duration: IslandConfig.switchDuration,
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      layoutBuilder: (currentChild, previousChildren) => Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          ...previousChildren,
-                          if (currentChild != null) currentChild,
-                        ],
+                child: RepaintBoundary(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isTransparent
+                            ? Colors.transparent
+                            : IslandConfig.bgColor.withValues(alpha: 0.82),
+                        borderRadius: BorderRadius.circular(borderRadius),
+                        border: isTransparent
+                            ? null
+                            : Border.all(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                width: 0.8,
+                              ),
                       ),
-                      transitionBuilder: (child, anim) {
-                        final curved = CurvedAnimation(
-                          parent: anim,
-                          curve: Curves.easeOutCubic,
-                          reverseCurve: Curves.easeInCubic,
-                        );
-                        return FadeTransition(
-                          opacity: curved,
-                          child: ScaleTransition(
-                            scale: Tween<double>(
-                              begin: IslandConfig.switchScaleBegin,
-                              end: IslandConfig.switchScaleEnd,
-                            ).animate(curved),
-                            child: child,
-                          ),
-                        );
-                      },
+                      clipBehavior: Clip.antiAlias,
+                      child: AnimatedSwitcher(
+                        duration: IslandConfig.switchDuration,
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        layoutBuilder: (currentChild, previousChildren) => Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            ...previousChildren,
+                            if (currentChild != null) currentChild,
+                          ],
+                        ),
+                        transitionBuilder: (child, anim) {
+                          final curved = CurvedAnimation(
+                            parent: anim,
+                            curve: Curves.easeOutCubic,
+                            reverseCurve: Curves.easeInCubic,
+                          );
+                          return FadeTransition(
+                            opacity: curved,
+                            child: ScaleTransition(
+                              scale: Tween<double>(
+                                begin: IslandConfig.switchScaleBegin,
+                                end: IslandConfig.switchScaleEnd,
+                              ).animate(curved),
+                              child: child,
+                            ),
+                          );
+                        },
                       child: KeyedSubtree(
                         key: ValueKey(_contentKeyForCurrentState()),
                         child: _buildContent(),
                       ),
                     ),
                   ),
+                ),
                 ),
               ),
             );
@@ -1082,7 +1084,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     final fd = _currentPayload?['focusData'] as Map?;
     final title = fd?['title']?.toString() ?? '专注事项';
 
-    return AnimatedBuilder(
+    return RepaintBoundary(
+      child: AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
         return Transform.scale(
@@ -1169,6 +1172,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
           ),
         );
       },
+      ),
     );
   }
 

@@ -369,10 +369,22 @@ class _ContainerTransformWidget extends StatefulWidget {
 
 class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
+  late final CurvedAnimation _forwardCurve;
+  late final CurvedAnimation _backgroundCurve;
 
   @override
   void initState() {
     super.initState();
+    _forwardCurve = CurvedAnimation(
+      parent: widget.animation,
+      curve: _pageLayerCurve,
+      reverseCurve: _pageLayerCurve,
+    );
+    _backgroundCurve = CurvedAnimation(
+      parent: widget.secondaryAnimation,
+      curve: _pageLayerCurve,
+      reverseCurve: _pageLayerCurve,
+    );
     if (_AnimSettings.lazyLoad) {
       Future.delayed(
           Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
@@ -384,6 +396,13 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   }
 
   @override
+  void dispose() {
+    _forwardCurve.dispose();
+    _backgroundCurve.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
 
@@ -392,17 +411,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         <Listenable>[widget.animation, widget.secondaryAnimation],
       ),
       builder: (context, child) {
-        final tRaw = CurvedAnimation(
-          parent: widget.animation,
-          curve: _pageLayerCurve,
-          reverseCurve: _pageLayerCurve,
-        ).value;
-        final t = tRaw.clamp(0.0, 1.0);
-        final backgroundProgress = CurvedAnimation(
-          parent: widget.secondaryAnimation,
-          curve: _pageLayerCurve,
-          reverseCurve: _pageLayerCurve,
-        ).value.clamp(0.0, 1.0);
+        final t = _forwardCurve.value.clamp(0.0, 1.0);
+        final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
 
         final begin = widget.sourceRect;
         final end = widget.targetRect ??

@@ -62,27 +62,30 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
 
   @override
   Widget build(BuildContext context) {
+    // Only render one IndexedStack; use AnimatedOpacity + SlideTransition
+    // for cross-fade. Avoids laying out two full IndexedStacks simultaneously.
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, child) {
+        final showPrev = _ctrl.status == AnimationStatus.reverse ||
+            _ctrl.status == AnimationStatus.dismissed;
         return Stack(
           children: [
-            if (_ctrl.status == AnimationStatus.reverse ||
-                _ctrl.status == AnimationStatus.dismissed)
-              IndexedStack(
-                index: _prevIndex,
-                children: widget.children,
-              ),
-            FadeTransition(
-              opacity: _fadeAnim,
-              child: SlideTransition(
-                position: _slideAnim,
-                child: IndexedStack(
-                  index: _displayIndex,
-                  children: widget.children,
+            IndexedStack(
+              index: showPrev ? _prevIndex : _displayIndex,
+              children: widget.children,
+            ),
+            if (_ctrl.status == AnimationStatus.forward)
+              FadeTransition(
+                opacity: _fadeAnim,
+                child: SlideTransition(
+                  position: _slideAnim,
+                  child: IndexedStack(
+                    index: _displayIndex,
+                    children: widget.children,
+                  ),
                 ),
               ),
-            ),
           ],
         );
       },

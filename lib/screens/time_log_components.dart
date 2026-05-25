@@ -824,7 +824,18 @@ class _DayGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DayGridPainter o) => true;
+  bool shouldRepaint(covariant _DayGridPainter o) =>
+      o.minutesPerBlock != minutesPerBlock ||
+      o.dragStart != dragStart ||
+      o.dragEnd != dragEnd ||
+      !identical(o.logs, logs) ||
+      !identical(o.planBlocks, planBlocks) ||
+      o.showPlans != showPlans ||
+      !identical(o.tags, tags) ||
+      o.gridStart != gridStart ||
+      o.selColor != selColor ||
+      o.isDark != isDark ||
+      o.hourH != hourH;
 }
 
 class _EntryModeToggle extends StatelessWidget {
@@ -2061,7 +2072,12 @@ class _LineChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _LineChartPainter o) => true;
+  bool shouldRepaint(covariant _LineChartPainter o) =>
+      !identical(o.data, data) ||
+      !identical(o.xLabels, xLabels) ||
+      o.color != color ||
+      o.touchPos != touchPos ||
+      o.itemW != itemW;
 }
 
 // ══════════════════════════════════════════════════════════

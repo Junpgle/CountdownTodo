@@ -186,6 +186,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
+  final ValueNotifier<int> _pomodoroTickNotifier = ValueNotifier<int>(0);
 
   // 🚀 Granular Refresh Notifiers
   late final ValueNotifier<List<TodoItem>> _todosNotifier;
@@ -431,10 +432,10 @@ class _HomeDashboardState extends State<HomeDashboard>
         _checkUpcomingEvents();
       });
 
-      // 🚀 Banner 倒计时实时刷新：每 10 秒强制触发一次 UI 重绘，确保“剩 Xm”动态更新
+      // 🚀 Banner 倒计时实时刷新：每 10 秒触发 Banner 区域重绘，确保”剩 Xm”动态更新
       _bannerRefreshTimer =
           Timer.periodic(const Duration(seconds: 10), (timer) {
-        if (mounted) setState(() {});
+        if (mounted) _pomodoroTickNotifier.value++;
       });
 
       // 立即执行一次
@@ -489,6 +490,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
+    _pomodoroTickNotifier.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -1138,7 +1140,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         return;
       }
       if (isCountUp) {
-        setState(() => _remotePomodoroRemaining++);
+        _remotePomodoroRemaining++;
+        _pomodoroTickNotifier.value++;
       } else {
         final rem =
             ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
@@ -1147,7 +1150,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           _remotePomodoroTicker?.cancel();
           if (mounted) setState(() => _remotePomodoro = null);
         } else {
-          setState(() => _remotePomodoroRemaining = rem);
+          _remotePomodoroRemaining = rem;
+          _pomodoroTickNotifier.value++;
         }
       }
     });
@@ -1222,13 +1226,12 @@ class _HomeDashboardState extends State<HomeDashboard>
           ? ((now - _localPomodoro!.sessionStartMs) / 1000).floor()
           : ((_localPomodoro!.targetEndMs - now) / 1000).ceil();
 
-      setState(() {
-        _localPomodoroRemaining = rem;
-        if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
-          _localPomodoroRemaining = 0;
-          _stopLocalTicker();
-        }
-      });
+      _localPomodoroRemaining = rem;
+      if (!isActuallyCountUp && _localPomodoroRemaining <= 0) {
+        _localPomodoroRemaining = 0;
+        _stopLocalTicker();
+      }
+      _pomodoroTickNotifier.value++;
     });
   }
 
@@ -4219,7 +4222,10 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     );
 
                                     Map<String, Widget> sectionsMap = {
-                                      'banners': _buildUniversalBanner(isLight),
+                                      'banners': ValueListenableBuilder<int>(
+                                        valueListenable: _pomodoroTickNotifier,
+                                        builder: (_, __, ___) => _buildUniversalBanner(isLight),
+                                      ),
                                       'courses': courseSection,
                                       'countdowns': countdownSection,
                                       'todos': todoSection,
