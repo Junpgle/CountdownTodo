@@ -1358,6 +1358,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               .toList()
               .indexOf(todo);
 
+          // 🚀 根据物理高度动态计算 Todo 标题最大行数
+          final double availableForTodo = (todo.teamUuid != null && height >= 32)
+              ? height - 14.0
+              : height - 2.0;
+          int todoMaxLines = (availableForTodo / 10.0).round();
+          if (todoMaxLines < 1) todoMaxLines = 1;
+
           children.add(Positioned(
             top: top,
             left: finalLeft,
@@ -1422,9 +1429,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 20
                       ? Icon(todo.isDone ? Icons.check_circle : Icons.task_alt,
                           size: 10, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                           children: [
                             if (todo.teamUuid != null && height >= 32)
                               Padding(
@@ -1481,7 +1490,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                             ? TextDecoration.lineThrough
                                             : null,
                                         height: 1.0),
-                                    maxLines: height < 35 ? 1 : 2,
+                                    maxLines: todoMaxLines,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -1489,6 +1498,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ],
                         ),
+                      ),
                 ),
               ),
             ),
@@ -1532,6 +1542,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final logCardKey = _getTimeLogCardKey(log.id);
           final logIndex =
               _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
+
+          // 🚀 根据物理高度动态计算 TimeLog 标题最大行数
+          final double availableForLog = height > 22 ? height - 9.0 : height - 2.0;
+          int logMaxLines = (availableForLog / 9.0).round();
+          if (logMaxLines < 1) logMaxLines = 1;
 
           children.add(Positioned(
             top: top,
@@ -1592,9 +1607,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 18
                       ? const Icon(Icons.edit_calendar,
                           size: 8, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                           children: [
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1613,7 +1630,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                         fontSize: 9,
                                         fontWeight: FontWeight.bold,
                                         height: 1.0),
-                                    maxLines: height < 25 ? 1 : 2,
+                                    maxLines: logMaxLines,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -1631,6 +1648,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               ),
                           ],
                         ),
+                      ),
                 ),
               ),
             ),
@@ -1664,6 +1682,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final pomProgress = _calculatePlanPomodoroProgress(plan);
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
+
+          // 🚀 根据物理高度动态计算 Plan 标题最大行数
+          int planMaxLines = 2;
+          if (hasAssociatedPomodoro) {
+            double availableForPlan = height > 32
+                ? height - 19.0
+                : (height > 24 ? height - 11.0 : height - 4.0);
+            planMaxLines = (availableForPlan / 9.0).round();
+            if (planMaxLines < 1) planMaxLines = 1;
+          } else {
+            double availableForPlan = height > 24 ? height - 11.0 : height - 4.0;
+            planMaxLines = (availableForPlan / 9.0).round();
+            if (planMaxLines < 1) planMaxLines = 1;
+          }
 
           children.add(Positioned(
             top: top,
@@ -1711,9 +1743,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ),
                           // 内容层
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
+                          SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                             children: [
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1771,14 +1805,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 ),
                             ],
                           ),
+                        ),
                         ],
                       )
                     : (height < 18
                         ? const Icon(Icons.event_note,
                             size: 8, color: Colors.white)
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
+                        : SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                             children: [
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1816,7 +1853,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   overflow: TextOverflow.ellipsis,
                                 ),
                             ],
-                          )),
+                          ))),
               ),
             ),
           ));
@@ -1864,6 +1901,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final pomCardKey = _getPomodoroCardKey(record.uuid);
           final pomIndex =
               _pomodorosPerDay.values.expand((e) => e).toList().indexOf(record);
+
+          // 🚀 根据物理高度动态计算 Pomodoro 标题最大行数
+          final double availableForPom = height > 22 ? height - 9.0 : height - 2.0;
+          int pomMaxLines = (availableForPom / 9.0).round();
+          if (pomMaxLines < 1) pomMaxLines = 1;
 
           children.add(Positioned(
             top: top,
@@ -1924,9 +1966,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   child: height < 18
                       ? const Icon(Icons.local_fire_department,
                           size: 8, color: Colors.white)
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
+                      : SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                           children: [
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1945,7 +1989,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                         fontSize: 9,
                                         fontWeight: FontWeight.bold,
                                         height: 1.0),
-                                    maxLines: height < 25 ? 1 : 2,
+                                    maxLines: pomMaxLines,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -1963,6 +2007,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               ),
                           ],
                         ),
+                      ),
                 ),
               ),
             ),
@@ -1987,6 +2032,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         final cardKey = _getCourseCardKey(
             course.courseName, course.weekday, course.startTime);
         final courseIndex = _weekCourses.indexOf(course);
+
+        // 🚀 根据课程卡片的物理高度动态计算课程名称的最大行数限制，四舍五入并收紧估算，让文本尽量多地展开
+        int courseMaxLines = 2;
+        if (course.roomName.isNotEmpty && height > 30) {
+          double availableForCourse = (height - 2) - 14.5;
+          courseMaxLines = (availableForCourse / 12.0).round();
+          if (courseMaxLines < 1) courseMaxLines = 1;
+        } else {
+          double availableForCourse = (height - 2) - 5.0;
+          courseMaxLines = (availableForCourse / 12.0).round();
+          if (courseMaxLines < 1) courseMaxLines = 1;
+        }
 
         children.add(Positioned(
           top: top + 1,
@@ -2057,7 +2114,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           height: 1.15),
-                      maxLines: 2,
+                      maxLines: courseMaxLines,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (height > 30) ...[
