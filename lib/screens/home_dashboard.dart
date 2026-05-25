@@ -27,6 +27,7 @@ import '../services/screen_time_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
+import '../services/wallpaper_cache_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_sync_service.dart';
@@ -3681,6 +3682,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _initManifestWallpaper() async {
+    await WallpaperCacheService.cleanupIfNeeded();
     await UpdateService.initWallpaper();
     final manifestShow = UpdateService.wallpaperShowNotifier.value;
     final manifestUrl = UpdateService.wallpaperUrlNotifier.value;
@@ -3861,6 +3863,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       fit: BoxFit.cover,
                     )
                   : CachedNetworkImage(
+                      cacheManager: WallpaperCacheService.cacheManager,
                       imageUrl: _wallpaperUrl!,
                       fit: BoxFit.cover,
                       memCacheWidth: 1080,

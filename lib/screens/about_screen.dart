@@ -5,11 +5,11 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
-import 'dart:convert';
 import '../../utils/page_transitions.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
+import '../update_service.dart';
 import 'dart:async';
 import '../services/local_migration_service.dart';
 import '../services/database_helper.dart';
@@ -25,9 +25,12 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   String _version = '加载中...';
   String _buildNumber = '';
-  List<dynamic> _releases = [];
-  bool _isLoadingReleases = true;
+  List<ChangelogEntry> _changelogEntries = [];
+  bool _isLoadingChangelog = true;
   bool _versionExpanded = false;
+  bool _archiveLoaded = false;
+  bool _isLoadingArchive = false;
+  static const int _pageSize = 10;
 
   String? _privacyPolicyContent;
   String? _privacyPolicyDate;
@@ -54,7 +57,7 @@ class _AboutScreenState extends State<AboutScreen> {
   void initState() {
     super.initState();
     _loadVersion();
-    _fetchReleases();
+    _loadChangelog();
     _fetchPrivacyPolicy();
     _loadDeviceInfo();
     _checkMigration();
@@ -147,31 +150,42 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
-  Future<void> _fetchReleases() async {
-    const String releasesUrl =
-        'https://api.github.com/repos/Junpgle/math_quiz_app/releases';
+  Future<void> _loadChangelog() async {
     try {
-      final response = await http.get(
-        Uri.parse(releasesUrl),
-        headers: {'Accept': 'application/vnd.github.v3+json'},
-      );
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            _releases = data;
-            _isLoadingReleases = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() => _isLoadingReleases = false);
-        }
+      final manifest = await UpdateService.checkManifest(preferCache: true);
+      final recent = manifest?.changelogHistory ?? [];
+      if (mounted) {
+        setState(() {
+          _changelogEntries = recent;
+          _isLoadingChangelog = false;
+        });
       }
     } catch (e) {
       debugPrint('获取更新日志失败: $e');
       if (mounted) {
-        setState(() => _isLoadingReleases = false);
+        setState(() => _isLoadingChangelog = false);
+      }
+    }
+  }
+
+  Future<void> _loadArchive() async {
+    if (_archiveLoaded || _isLoadingArchive) return;
+    _isLoadingArchive = true;
+    try {
+      final manifest = await UpdateService.checkManifest(preferCache: true);
+      final archive = await UpdateService.loadChangelogArchive(
+          manifest: manifest, preferCache: true);
+      if (mounted) {
+        setState(() {
+          _changelogEntries = [..._changelogEntries, ...archive];
+          _archiveLoaded = true;
+          _isLoadingArchive = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载归档日志失败: $e');
+      if (mounted) {
+        setState(() => _isLoadingArchive = false);
       }
     }
   }
@@ -360,6 +374,8 @@ class _AboutScreenState extends State<AboutScreen> {
             _buildDeviceCard(context),
             const SizedBox(height: 16),
             _buildCleanupCard(context),
+            const SizedBox(height: 16),
+            _buildChangelogCard(context),
             const SizedBox(height: 16),
             _buildPrivacyCard(context),
             const SizedBox(height: 16),
@@ -673,6 +689,13 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _buildChangelogCard(BuildContext context) {
+    final visibleEntries = _versionExpanded
+        ? _changelogEntries
+        : _changelogEntries.take(_pageSize).toList();
+    final hasMore = _versionExpanded
+        ? !_archiveLoaded
+        : _changelogEntries.length > _pageSize;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
@@ -691,24 +714,26 @@ class _AboutScreenState extends State<AboutScreen> {
                   const Text('更新日志',
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    onPressed: () => _launchURL(
-                        'https://github.com/Junpgle/math_quiz_app/releases'),
-                    tooltip: '查看全部',
-                  ),
+                  if (_changelogEntries.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_changelogEntries.length} 个版本',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.outline),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 8),
-              _isLoadingReleases
+              _isLoadingChangelog
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(20),
                         child: CircularProgressIndicator(),
                       ),
                     )
-                  : _releases.isEmpty
+                  : _changelogEntries.isEmpty
                       ? const Center(
                           child: Padding(
                             padding: EdgeInsets.all(20),
@@ -717,116 +742,111 @@ class _AboutScreenState extends State<AboutScreen> {
                         )
                       : Column(
                           children: [
-                            InkWell(
-                              onTap: () => setState(
-                                  () => _versionExpanded = !_versionExpanded),
-                              child: Padding(
+                            ...visibleEntries
+                                .map((entry) => _buildChangelogEntry(entry)),
+                            if (hasMore)
+                              Padding(
                                 padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _versionExpanded
-                                          ? Icons.expand_less
-                                          : Icons.expand_more,
-                                      size: 20,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
+                                    const EdgeInsets.only(top: 8),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: TextButton.icon(
+                                    onPressed: _isLoadingArchive
+                                        ? null
+                                        : () {
+                                            if (!_versionExpanded) {
+                                              // 第一次展开：显示更多近期版本
+                                              setState(() =>
+                                                  _versionExpanded = true);
+                                              // 同时后台加载归档
+                                              _loadArchive();
+                                            } else if (!_archiveLoaded) {
+                                              // 已展开但归档未加载：加载归档
+                                              _loadArchive();
+                                            }
+                                          },
+                                    icon: _isLoadingArchive
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child:
+                                                CircularProgressIndicator(
+                                                    strokeWidth: 2),
+                                          )
+                                        : const Icon(
+                                            Icons.expand_more,
+                                            size: 18,
+                                          ),
+                                    label: Text(
+                                      _isLoadingArchive
+                                          ? '加载中...'
+                                          : _versionExpanded
+                                              ? '加载更早版本'
+                                              : '查看全部',
+                                      style: const TextStyle(fontSize: 12),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _versionExpanded ? '收起' : '展开',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            AnimatedCrossFade(
-                              firstChild: const SizedBox.shrink(),
-                              secondChild: Column(
-                                children:
-                                    _releases.take(5).map<Widget>((release) {
-                                  final tagName = release['tag_name'] ?? '';
-                                  final body = release['body'] ?? '暂无更新说明';
-                                  final publishedAt =
-                                      release['published_at'] ?? '';
-                                  String dateStr = '';
-                                  if (publishedAt.isNotEmpty) {
-                                    try {
-                                      final date = DateTime.parse(publishedAt);
-                                      dateStr =
-                                          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                                    } catch (_) {}
-                                  }
-
-                                  return ExpansionTile(
-                                    tilePadding: EdgeInsets.zero,
-                                    title: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primaryContainer,
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            tagName,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onPrimaryContainer,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        if (dateStr.isNotEmpty)
-                                          Text(
-                                            dateStr,
-                                            style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey),
-                                          ),
-                                      ],
-                                    ),
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                            left: 8, right: 8, bottom: 12),
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Text(
-                                            body,
-                                            style:
-                                                const TextStyle(fontSize: 13),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                              crossFadeState: _versionExpanded
-                                  ? CrossFadeState.showSecond
-                                  : CrossFadeState.showFirst,
-                              duration: const Duration(milliseconds: 300),
-                            ),
                           ],
                         ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildChangelogEntry(ChangelogEntry entry) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                entry.versionName,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (entry.date.isNotEmpty)
+              Text(
+                entry.date,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: entry.items
+                    .map((item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            item,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
