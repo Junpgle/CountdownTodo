@@ -42,6 +42,7 @@ class AppManifest {
   final List<Announcement> announcements;
   final WallpaperConfig wallpaper;
   final List<ChangelogEntry> changelogHistory;
+  final ChangelogArchiveConfig changelogArchive;
 
   AppManifest({
     required this.versionCode,
@@ -51,6 +52,7 @@ class AppManifest {
     required this.announcements,
     required this.wallpaper,
     this.changelogHistory = const [],
+    required this.changelogArchive,
   });
 
   factory AppManifest.fromJson(Map<String, dynamic> json) {
@@ -75,8 +77,34 @@ class AppManifest {
       changelogHistory: (json['changelog_history'] as List<dynamic>? ?? [])
           .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
+      changelogArchive:
+          ChangelogArchiveConfig.fromJson(json['changelog_archive'] ?? {}),
     );
   }
+}
+
+class ChangelogArchiveConfig {
+  final String url;
+  final int count;
+  final String latestVersion;
+  final String oldestVersion;
+
+  const ChangelogArchiveConfig({
+    required this.url,
+    this.count = 0,
+    this.latestVersion = '',
+    this.oldestVersion = '',
+  });
+
+  bool get isAvailable => url.isNotEmpty && count > 0;
+
+  factory ChangelogArchiveConfig.fromJson(Map<String, dynamic> json) =>
+      ChangelogArchiveConfig(
+        url: json['url']?.toString() ?? '',
+        count: int.tryParse(json['count']?.toString() ?? '0') ?? 0,
+        latestVersion: json['latest_version']?.toString() ?? '',
+        oldestVersion: json['oldest_version']?.toString() ?? '',
+      );
 }
 
 class UpdateInfo {
@@ -223,8 +251,14 @@ class _AnnouncementCarouselDialogState
 class UpdateService {
   static const String MANIFEST_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
+  static const String CHANGELOG_ARCHIVE_URL =
+      "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
   static const String _manifestCacheTimeKey = 'update_manifest_cache_time';
+  static const String _changelogArchiveCacheKey =
+      'changelog_archive_cache_json';
+  static const String _changelogArchiveCacheTimeKey =
+      'changelog_archive_cache_time';
   static Future<AppManifest?>? _manifestRefreshFuture;
 
   static bool _isDialogShowing = false;
@@ -270,11 +304,11 @@ class UpdateService {
   }
 
   // --- 手表端更新维护 ---
-  
+
   /// 检查手表版本并推送给手表 (如果有连接)
   static Future<void> syncBandVersionInfo() async {
     if (!BandSyncService.isInitialized || !BandSyncService.isConnected) return;
-    
+
     // 🚀 核心优化：检查用户是否开启了自动更新功能
     final prefs = await SharedPreferences.getInstance();
     final autoUpdate = prefs.getBool('band_auto_update_enabled') ?? true;
@@ -282,11 +316,11 @@ class UpdateService {
       debugPrint("🚀 手环自动更新功能已关闭，跳过推送");
       return;
     }
-    
+
     // 获取手机端的 Manifest，里面包含了 changelog_history
     final manifest = await checkManifest(preferCache: true);
     if (manifest == null) return;
-    
+
     // 构造发送给手环的信息
     final Map<String, dynamic> bandUpdateInfo = {
       'version_code': manifest.versionCode,
@@ -297,7 +331,7 @@ class UpdateService {
       },
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     };
-    
+
     await BandSyncService.sendVersionUpdate(bandUpdateInfo);
     debugPrint("🚀 已向手环推送最新版本信息: ${manifest.versionName}");
   }
@@ -498,6 +532,64 @@ class UpdateService {
       }
     } catch (_) {}
     return null;
+  }
+
+  static List<ChangelogEntry> _parseChangelogArchive(String rawJson) {
+    final decoded = jsonDecode(rawJson);
+    final source = decoded is List
+        ? decoded
+        : (decoded as Map<String, dynamic>)['changelog_history']
+                as List<dynamic>? ??
+            [];
+    return source
+        .map((e) => ChangelogEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<ChangelogEntry>> _readChangelogArchiveCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_changelogArchiveCacheKey);
+      if (cached == null || cached.isEmpty) return const [];
+      return _parseChangelogArchive(cached);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> _writeChangelogArchiveCache(String rawJson) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_changelogArchiveCacheKey, rawJson);
+      await prefs.setInt(
+          _changelogArchiveCacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  static Future<List<ChangelogEntry>> loadChangelogArchive({
+    AppManifest? manifest,
+    bool preferCache = true,
+  }) async {
+    final archiveUrl = manifest?.changelogArchive.url.isNotEmpty == true
+        ? manifest!.changelogArchive.url
+        : CHANGELOG_ARCHIVE_URL;
+
+    if (preferCache) {
+      final cached = await _readChangelogArchiveCache();
+      if (cached.isNotEmpty) return cached;
+    }
+
+    try {
+      final response = await http.get(Uri.parse(archiveUrl));
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        final archive = _parseChangelogArchive(body);
+        await _writeChangelogArchiveCache(body);
+        return archive;
+      }
+    } catch (_) {}
+
+    return _readChangelogArchiveCache();
   }
 
   /// 强制联网刷新 Manifest 缓存。
@@ -818,6 +910,7 @@ class UpdateService {
       }),
       announcements: [],
       wallpaper: WallpaperConfig.fromJson({'show': false}),
+      changelogArchive: const ChangelogArchiveConfig(url: ''),
     );
 
     if (context.mounted) {
@@ -983,7 +1076,8 @@ class UpdateService {
                                       onPressed: () {
                                         if (_localPackagePath != null) {
                                           installPackage(_localPackagePath!);
-                                          NotificationService.cancelUpdateNotification();
+                                          NotificationService
+                                              .cancelUpdateNotification();
                                         }
                                       },
                                     ),

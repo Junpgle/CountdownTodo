@@ -21,7 +21,10 @@ class AboutSection extends StatefulWidget {
 class _AboutSectionState extends State<AboutSection> {
   String _version = '加载中...';
   List<ChangelogEntry> _changelogHistory = [];
+  List<ChangelogEntry> _archivedChangelogHistory = [];
+  AppManifest? _manifest;
   bool _isRefreshingChangelog = false;
+  bool _isLoadingChangelogArchive = false;
 
   @override
   void initState() {
@@ -44,7 +47,9 @@ class _AboutSectionState extends State<AboutSection> {
       final manifest = await UpdateService.checkManifest();
       if (manifest != null && mounted) {
         setState(() {
+          _manifest = manifest;
           _changelogHistory = manifest.changelogHistory;
+          _archivedChangelogHistory = [];
         });
       }
     } catch (_) {}
@@ -63,7 +68,9 @@ class _AboutSectionState extends State<AboutSection> {
       );
       if (manifest != null && mounted) {
         setState(() {
+          _manifest = manifest;
           _changelogHistory = manifest.changelogHistory;
+          _archivedChangelogHistory = [];
         });
       }
     } catch (_) {
@@ -71,6 +78,38 @@ class _AboutSectionState extends State<AboutSection> {
       if (mounted) {
         setState(() {
           _isRefreshingChangelog = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadArchivedChangelog() async {
+    if (_isLoadingChangelogArchive) return;
+    setState(() {
+      _isLoadingChangelogArchive = true;
+    });
+
+    try {
+      final archive = await UpdateService.loadChangelogArchive(
+        manifest: _manifest,
+        preferCache: false,
+      );
+      if (!mounted) return;
+      final existingVersions = _changelogHistory
+          .map((entry) => entry.versionName)
+          .followedBy(
+              _archivedChangelogHistory.map((entry) => entry.versionName))
+          .toSet();
+      setState(() {
+        _archivedChangelogHistory = [
+          ..._archivedChangelogHistory,
+          ...archive.where((entry) => existingVersions.add(entry.versionName)),
+        ];
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingChangelogArchive = false;
         });
       }
     }
@@ -92,50 +131,87 @@ class _AboutSectionState extends State<AboutSection> {
   void _showChangelogDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('更新日志'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: _changelogHistory.isEmpty
-                ? const [Text('暂无更新日志，请稍后重试。')]
-                : _changelogHistory
-                    .map((entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'v${entry.versionName} ${entry.date}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final allHistory = [
+            ..._changelogHistory,
+            ..._archivedChangelogHistory,
+          ];
+          final canLoadArchive = _manifest?.changelogArchive.isAvailable ??
+              _archivedChangelogHistory.isEmpty;
+
+          return AlertDialog(
+            title: const Text('更新日志'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: allHistory.isEmpty
+                    ? const [Text('暂无更新日志，请稍后重试。')]
+                    : allHistory
+                        .map((entry) => Padding(
+                              padding: const EdgeInsets.only(bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'v${entry.versionName} ${entry.date}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...entry.items.map((item) => Text('• $item')),
+                                ],
                               ),
-                              const SizedBox(height: 8),
-                              ...entry.items.map((item) => Text('• $item')),
-                            ],
-                          ),
-                        ))
-                    .toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed:
-                _isRefreshingChangelog ? null : _refreshChangelogFromNetwork,
-            child: _isRefreshingChangelog
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('刷新'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-        ],
+                            ))
+                        .toList(),
+              ),
+            ),
+            actions: [
+              if (canLoadArchive && _archivedChangelogHistory.isEmpty)
+                TextButton(
+                  onPressed: _isLoadingChangelogArchive
+                      ? null
+                      : () async {
+                          setDialogState(() {});
+                          await _loadArchivedChangelog();
+                          if (dialogContext.mounted) {
+                            setDialogState(() {});
+                          }
+                        },
+                  child: _isLoadingChangelogArchive
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('加载更早日志'),
+                ),
+              TextButton(
+                onPressed: _isRefreshingChangelog
+                    ? null
+                    : () async {
+                        setDialogState(() {});
+                        await _refreshChangelogFromNetwork();
+                        if (dialogContext.mounted) {
+                          setDialogState(() {});
+                        }
+                      },
+                child: _isRefreshingChangelog
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('刷新'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
