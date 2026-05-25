@@ -634,8 +634,10 @@ class _MyAppState extends State<MyApp> {
           });
           _applySplashTransitionIfReady();
         }
+        await WindowService.restoreStartupBoundsAndRepairViewport();
         await windowManager.show();
         await windowManager.focus();
+        WindowService.schedulePostShowViewportRepair();
         // Try to create the island window on Windows. Before creating, probe
         // whether desktop_multi_window exposes the core methods we need. If
         // not, we'll fall back to an in-layout island overlay powered by
