@@ -11,6 +11,7 @@ const _defaultPageLayerBackgroundMask = 0.24;
 const _defaultPageLayerMaxBlur = 12.0;
 const _defaultContainerContentStart = 0.28;
 const _epsilon = 0.001;
+const _predictiveBackMaxInteractiveProgress = 0.68;
 
 class _AnimSettings {
   static bool enabled = true;
@@ -192,6 +193,13 @@ class _PredictiveBackGestureBridgeState<T>
       widget.route.isCurrent &&
       widget.route.popGestureEnabled;
 
+  double _routeProgressForBackGesture(PredictiveBackEvent backEvent) {
+    final gestureProgress = backEvent.progress.clamp(0.0, 1.0);
+    final visualPopProgress =
+        gestureProgress * _predictiveBackMaxInteractiveProgress;
+    return 1.0 - visualPopProgress;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -209,7 +217,9 @@ class _PredictiveBackGestureBridgeState<T>
     if (!_canHandle) {
       return false;
     }
-    widget.route.handleStartBackGesture(progress: 1 - backEvent.progress);
+    widget.route.handleStartBackGesture(
+      progress: _routeProgressForBackGesture(backEvent),
+    );
     return true;
   }
 
@@ -219,7 +229,7 @@ class _PredictiveBackGestureBridgeState<T>
       return;
     }
     widget.route.handleUpdateBackGestureProgress(
-      progress: 1 - backEvent.progress,
+      progress: _routeProgressForBackGesture(backEvent),
     );
   }
 
@@ -236,7 +246,17 @@ class _PredictiveBackGestureBridgeState<T>
     if (!widget.route.isCurrent) {
       return;
     }
-    widget.route.handleCommitBackGesture();
+    final navigator = widget.route.navigator;
+    if (navigator == null) {
+      return;
+    }
+
+    // Flutter's default TransitionRoute implementation reverses from the
+    // controller upper bound on commit. For this route, the predictive gesture
+    // has already driven the controller to the correct progress, so popping
+    // directly avoids a visible jump back to the fully-open page state.
+    navigator.pop();
+    navigator.didStopUserGesture();
   }
 
   @override
