@@ -2834,6 +2834,8 @@ class StorageService {
         'record_date': date,
         'package_name': stat['package_name']?.toString() ?? '',
         'app_name': stat['app_name']?.toString() ?? '',
+        'device_name': stat['device_name']?.toString() ?? '',
+        'category': stat['category']?.toString() ?? '未分类',
         'duration':
             (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
@@ -2925,8 +2927,32 @@ class StorageService {
         result[date]!.add({
           'package_name': m['package_name'],
           'app_name': m['app_name'],
+          'device_name': m['device_name'],
+          'category': m['category'],
           'duration': m['duration'],
         });
+      }
+      final int userId = prefs.getInt('current_user_id') ?? 0;
+      if (userId > 0) {
+        final datesNeedingDeviceNames = result.entries
+            .where((entry) => entry.value.any((item) {
+                  final deviceName = item['device_name']?.toString() ?? '';
+                  return deviceName.isEmpty;
+                }))
+            .map((entry) => entry.key)
+            .toList();
+
+        for (final date in datesNeedingDeviceNames) {
+          try {
+            final cloudStats = await ApiService.fetchScreenTime(userId, date);
+            if (cloudStats.isNotEmpty) {
+              await saveScreenTimeHistoryToSql(date, cloudStats);
+              result[date] = cloudStats;
+            }
+          } catch (e) {
+            debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
+          }
+        }
       }
       return result;
     } catch (e) {
