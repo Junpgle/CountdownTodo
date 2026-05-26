@@ -661,7 +661,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (maskOpacity > 0)
+            if (maskOpacity > _epsilon)
               ColoredBox(
                 color: Colors.black.withValues(alpha: maskOpacity),
               ),
@@ -672,13 +672,24 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               height: height,
               child: ClipRRect(
                 borderRadius: borderRadius,
-                child: Container(color: widget.sourceColor),
+                child: ColoredBox(
+                  color: widget.sourceColor,
+                  child: _contentVisible
+                      ? IgnorePointer(
+                          ignoring: fadeIn < 1.0,
+                          child: Transform.translate(
+                            offset: Offset(-left, -top),
+                            child: SizedBox(
+                              width: screenSize.width,
+                              height: screenSize.height,
+                              child: content,
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
               ),
             ),
-            if (_contentVisible)
-              Positioned.fill(
-                child: IgnorePointer(ignoring: fadeIn < 1.0, child: content),
-              ),
           ],
         );
       },
