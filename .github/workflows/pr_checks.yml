@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  flutter:
-    name: Flutter analyze and test
+  flutter-pr:
+    name: Flutter PR checks
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +41,8 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Check Dart formatting for changed files
+      - name: Collect changed Dart files
+        id: changed
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
@@ -53,6 +54,44 @@ jobs:
               | grep -v '_backup\.dart$' || true
           )"
 
+          changed_test_files="$(
+            printf '%s\n' "$changed_dart_files" \
+              | grep '^test/.*_test\.dart$' || true
+          )"
+
+          related_test_files=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              lib/*.dart)
+                candidate="test/${file#lib/}"
+                candidate="${candidate%.dart}_test.dart"
+                if [ -f "$candidate" ]; then
+                  related_test_files="${related_test_files}${candidate}"$'\n'
+                fi
+                ;;
+            esac
+          done <<< "$changed_dart_files"
+
+          test_files="$(
+            printf '%s\n%s\n' "$changed_test_files" "$related_test_files" \
+              | sed '/^$/d' | sort -u
+          )"
+
+          {
+            echo 'dart_files<<EOF'
+            echo "$changed_dart_files"
+            echo 'EOF'
+            echo 'test_files<<EOF'
+            echo "$test_files"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check Dart formatting for changed files
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          changed_dart_files="${{ steps.changed.outputs.dart_files }}"
           if [ -z "$changed_dart_files" ]; then
             echo "No changed Dart files to format-check."
             exit 0
@@ -61,8 +100,36 @@ jobs:
           echo "$changed_dart_files"
           echo "$changed_dart_files" | xargs dart format --output=none --set-exit-if-changed
 
-      - name: Analyze
+      - name: Analyze changed Dart files
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          changed_dart_files="${{ steps.changed.outputs.dart_files }}"
+          if [ -z "$changed_dart_files" ]; then
+            echo "No changed Dart files to analyze."
+            exit 0
+          fi
+
+          echo "$changed_dart_files"
+          echo "$changed_dart_files" | xargs dart analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run related tests
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          test_files="${{ steps.changed.outputs.test_files }}"
+          if [ -z "$test_files" ]; then
+            echo "No related tests found for changed Dart files."
+            exit 0
+          fi
+
+          echo "$test_files"
+          echo "$test_files" | xargs flutter test
+
+      - name: Full analyze
+        if: github.event_name == 'workflow_dispatch'
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Run tests
+      - name: Full test
+        if: github.event_name == 'workflow_dispatch'
         run: flutter test

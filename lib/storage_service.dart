@@ -236,6 +236,8 @@ class StorageService {
   static const String KEY_WALLPAPER_INDEX = "app_wallpaper_index";
   static const String KEY_WALLPAPER_MKT = "app_wallpaper_mkt";
   static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
+  static const String keyWallpaperCacheCleanupTime =
+      "app_wallpaper_cache_cleanup_time";
 
   // Notification settings keys
   static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
@@ -2832,6 +2834,8 @@ class StorageService {
         'record_date': date,
         'package_name': stat['package_name']?.toString() ?? '',
         'app_name': stat['app_name']?.toString() ?? '',
+        'device_name': stat['device_name']?.toString() ?? '',
+        'category': stat['category']?.toString() ?? '未分类',
         'duration':
             (stat['duration'] is num) ? (stat['duration'] as num).toInt() : 0,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
@@ -2923,8 +2927,32 @@ class StorageService {
         result[date]!.add({
           'package_name': m['package_name'],
           'app_name': m['app_name'],
+          'device_name': m['device_name'],
+          'category': m['category'],
           'duration': m['duration'],
         });
+      }
+      final int userId = prefs.getInt('current_user_id') ?? 0;
+      if (userId > 0) {
+        final datesNeedingDeviceNames = result.entries
+            .where((entry) => entry.value.any((item) {
+                  final deviceName = item['device_name']?.toString() ?? '';
+                  return deviceName.isEmpty;
+                }))
+            .map((entry) => entry.key)
+            .toList();
+
+        for (final date in datesNeedingDeviceNames) {
+          try {
+            final cloudStats = await ApiService.fetchScreenTime(userId, date);
+            if (cloudStats.isNotEmpty) {
+              await saveScreenTimeHistoryToSql(date, cloudStats);
+              result[date] = cloudStats;
+            }
+          } catch (e) {
+            debugPrint("⚠️ ScreenTime History 云端补齐失败($date): $e");
+          }
+        }
       }
       return result;
     } catch (e) {
@@ -5013,6 +5041,16 @@ class StorageService {
   static Future<void> saveWallpaperResolution(String resolution) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
+  }
+
+  static Future<int?> getWallpaperCacheCleanupTime() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getInt(keyWallpaperCacheCleanupTime);
+  }
+
+  static Future<void> saveWallpaperCacheCleanupTime(int timestamp) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(keyWallpaperCacheCleanupTime, timestamp);
   }
 
   static Future<bool> getTodoFoldersInline() async {

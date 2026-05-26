@@ -267,12 +267,14 @@ class SearchService {
     if (query.trim().isEmpty) {
       return await guessSearch();
     }
-    
+
     final currentSearchId = ++_latestSearchId;
     final q = query.toLowerCase().trim();
 
     // 🚀 异步记录搜索历史
-    DatabaseHelper.instance.insertSearchHistory(q).catchError((e) => debugPrint("Record search history error: $e"));
+    DatabaseHelper.instance
+        .insertSearchHistory(q)
+        .catchError((e) => debugPrint("Record search history error: $e"));
 
     final searchTerms = _extractSearchTerms(q);
     final scoredResults = <SearchResultWithScore>[];
@@ -305,14 +307,15 @@ class SearchService {
           searchTerms,
         );
         // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
-        scoredResults.add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
+        scoredResults
+            .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
       }
     } catch (e) {
       debugPrint("Database search error: $e");
     }
 
     scoredResults.sort((a, b) => b.score.compareTo(a.score));
-    
+
     // 4. 强制去重：根据 ID 过滤重复项（防止数据库中存在冗余数据导致展示混乱）
     final seenIds = <String>{};
     final finalResults = <SearchResult>[];
@@ -325,16 +328,17 @@ class SearchService {
 
     // 5. 动态动作注入
     if (q.contains('新') || q.contains('加')) {
-      finalResults.insert(0, SearchResult(
-        id: 'action_new_todo',
-        title: '快速新建待办',
-        subtitle: '点击立即创建新任务',
-        icon: Icons.add_task,
-        type: SearchResultType.action,
-        extraData: {'action': 'new_todo'},
-      ));
+      finalResults.insert(
+          0,
+          SearchResult(
+            id: 'action_new_todo',
+            title: '快速新建待办',
+            subtitle: '点击立即创建新任务',
+            icon: Icons.add_task,
+            type: SearchResultType.action,
+            extraData: {'action': 'new_todo'},
+          ));
     }
-
 
     return finalResults;
   }
@@ -352,7 +356,8 @@ class SearchService {
     return terms.every((term) => lower.contains(term.toLowerCase()));
   }
 
-  int _calculateScore(String title, String? subtitle, String? breadcrumb, String query, List<String> terms) {
+  int _calculateScore(String title, String? subtitle, String? breadcrumb,
+      String query, List<String> terms) {
     if (terms.isEmpty) return 0;
     if (terms.length == 1) {
       final term = terms.first;
@@ -364,7 +369,8 @@ class SearchService {
       return 0;
     }
 
-    final haystack = '$title ${subtitle ?? ''} ${breadcrumb ?? ''}'.toLowerCase();
+    final haystack =
+        '$title ${subtitle ?? ''} ${breadcrumb ?? ''}'.toLowerCase();
     if (!_matchesAllTerms(haystack, terms)) return 0;
 
     var score = 0;
@@ -386,7 +392,8 @@ class SearchService {
     return score + terms.length * 10;
   }
 
-  Future<List<SearchResult>> _searchDatabase(String query, List<String> searchTerms) async {
+  Future<List<SearchResult>> _searchDatabase(
+      String query, List<String> searchTerms) async {
     final dbItems = <SearchResult>[];
     final db = DatabaseHelper.instance;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -432,7 +439,11 @@ class SearchService {
           day = int.tryParse(match.group(2)!) ?? 0;
         }
 
-        if (year != null && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        if (year != null &&
+            month >= 1 &&
+            month <= 12 &&
+            day >= 1 &&
+            day <= 31) {
           targetDate = DateTime(year, month, day);
           break;
         }
@@ -440,12 +451,13 @@ class SearchService {
     }
 
     final isDateQuery = targetDate != null;
-    final startOfDay = targetDate != null ? DateTime(targetDate.year, targetDate.month, targetDate.day) : null;
+    final startOfDay = targetDate != null
+        ? DateTime(targetDate.year, targetDate.month, targetDate.day)
+        : null;
     final endOfDay = startOfDay?.add(const Duration(days: 1));
     final now = DateTime.now();
     final targetDateValue = targetDate;
-    final isTodayQuery =
-        isDateQuery &&
+    final isTodayQuery = isDateQuery &&
         targetDateValue != null &&
         targetDateValue.year == now.year &&
         targetDateValue.month == now.month &&
@@ -459,26 +471,36 @@ class SearchService {
     try {
       if (isDateQuery) {
         final allTodos = await StorageService.getTodos(username);
-        final matchedTodos = allTodos.where((t) {
-          if (t.isDeleted) return false;
-          if (t.dueDate != null && t.dueDate!.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && t.dueDate!.isBefore(endOfDay!)) return true;
-          if (t.createdDate != null) {
-            final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
-            if (cd.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && cd.isBefore(endOfDay!)) return true;
-          }
-          return false;
-        }).take(20).toList();
+        final matchedTodos = allTodos
+            .where((t) {
+              if (t.isDeleted) return false;
+              if (t.dueDate != null &&
+                  t.dueDate!.isAfter(
+                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
+                  t.dueDate!.isBefore(endOfDay!)) return true;
+              if (t.createdDate != null) {
+                final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
+                if (cd.isAfter(startOfDay!
+                        .subtract(const Duration(milliseconds: 1))) &&
+                    cd.isBefore(endOfDay!)) return true;
+              }
+              return false;
+            })
+            .take(20)
+            .toList();
 
-        todos = matchedTodos.map((t) => {
-          'uuid': t.id,
-          'content': t.title,
-          'is_completed': t.isDone ? 1 : 0,
-          'is_deleted': 0,
-          'due_date': t.dueDate?.millisecondsSinceEpoch,
-          'created_date': t.createdDate,
-          'team_name': t.teamName,
-          'remark': t.remark,
-        }).toList();
+        todos = matchedTodos
+            .map((t) => {
+                  'uuid': t.id,
+                  'content': t.title,
+                  'is_completed': t.isDone ? 1 : 0,
+                  'is_deleted': 0,
+                  'due_date': t.dueDate?.millisecondsSinceEpoch,
+                  'created_date': t.createdDate,
+                  'team_name': t.teamName,
+                  'remark': t.remark,
+                })
+            .toList();
       } else {
         final todoMap = <String, Map<String, dynamic>>{};
         for (final term in searchTerms) {
@@ -498,18 +520,20 @@ class SearchService {
     } catch (e) {
       debugPrint('Todo search error: $e');
     }
-    
+
     for (var t in todos) {
       // 构建副标题：备注（优先）+ 截止时间 + 归属团队
       // 🚀 修复：备注始终显示在副标题第一行，而非仅作兜底
       final metaParts = <String>[];
       final dueDateMs = t['due_date'];
       if (dueDateMs != null && dueDateMs != 0) {
-        metaParts.add('截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}');
+        metaParts.add(
+            '截止 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(dueDateMs is int ? dueDateMs : int.tryParse(dueDateMs.toString()) ?? 0))}');
       }
       final createdDateMs = t['created_date'];
       if (createdDateMs != null && createdDateMs != 0) {
-        metaParts.add('开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}');
+        metaParts.add(
+            '开始 ${DateFormat('MM/dd').format(DateTime.fromMillisecondsSinceEpoch(createdDateMs is int ? createdDateMs : int.tryParse(createdDateMs.toString()) ?? 0))}');
       }
       if (t['team_name'] != null && (t['team_name'] as String).isNotEmpty) {
         metaParts.add('团队: ${t['team_name']}');
@@ -525,7 +549,9 @@ class SearchService {
         id: 'db_todo_${t['uuid']}',
         title: t['content'] ?? '未命名任务',
         subtitle: displaySubtitle,
-        icon: t['is_completed'] == 1 ? Icons.check_circle : Icons.radio_button_unchecked,
+        icon: t['is_completed'] == 1
+            ? Icons.check_circle
+            : Icons.radio_button_unchecked,
         type: SearchResultType.todo,
         extraData: {
           'uuid': t['uuid'],
@@ -560,17 +586,24 @@ class SearchService {
         final weekIdx = c['week_index'];
         final weekday = c['weekday'];
         const weekdayNames = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-        final weekdayStr = (weekday != null && weekday >= 1 && weekday <= 7) ? weekdayNames[weekday] : '';
+        final weekdayStr = (weekday != null && weekday >= 1 && weekday <= 7)
+            ? weekdayNames[weekday]
+            : '';
         final startSlot = c['start_time'];
         final endSlot = c['end_time'];
-        final timePart = (startSlot != null && endSlot != null) ? '第 $startSlot-$endSlot 节' : '';
+        final timePart = (startSlot != null && endSlot != null)
+            ? '第 $startSlot-$endSlot 节'
+            : '';
         final weekPart = weekIdx != null ? '第 $weekIdx 周' : '';
-        final subtitle = [weekPart, weekdayStr, timePart, c['room_name'] ?? ''].where((s) => s.isNotEmpty).join(' · ');
+        final subtitle = [weekPart, weekdayStr, timePart, c['room_name'] ?? '']
+            .where((s) => s.isNotEmpty)
+            .join(' · ');
 
         dbItems.add(SearchResult(
           id: 'db_course_${c['uuid']}',
           title: c['course_name'] ?? '未知课程',
-          subtitle: subtitle.isNotEmpty ? subtitle : (c['teacher_name'] ?? '未知教师'),
+          subtitle:
+              subtitle.isNotEmpty ? subtitle : (c['teacher_name'] ?? '未知教师'),
           icon: Icons.school,
           type: SearchResultType.course,
           extraData: {
@@ -608,10 +641,13 @@ class SearchService {
         String subtitle = '未设置日期';
         final targetMs = cd['target_time'];
         if (targetMs != null) {
-          final target = DateTime.fromMillisecondsSinceEpoch(targetMs is int ? targetMs : int.tryParse(targetMs.toString()) ?? 0);
+          final target = DateTime.fromMillisecondsSinceEpoch(targetMs is int
+              ? targetMs
+              : int.tryParse(targetMs.toString()) ?? 0);
           final diff = target.difference(now).inDays;
           final dateStr = DateFormat('yyyy/MM/dd').format(target);
-          subtitle = diff >= 0 ? '还有 $diff 天 · $dateStr' : '已过 ${-diff} 天 · $dateStr';
+          subtitle =
+              diff >= 0 ? '还有 $diff 天 · $dateStr' : '已过 ${-diff} 天 · $dateStr';
         }
         dbItems.add(SearchResult(
           id: 'db_countdown_${cd['uuid']}',
@@ -634,15 +670,21 @@ class SearchService {
     // 🚀 修复：时间日志存在 SharedPreferences，统一用 StorageService
     try {
       final allLogs = await StorageService.getTimeLogs(username);
-      final matchedLogs = allLogs.where((l) {
-        if (l.isDeleted) return false;
-        if (isDateQuery) {
-          final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
-          return start.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && start.isBefore(endOfDay!);
-        }
-        final haystack = [l.title, l.remark].whereType<String>().join(' ').toLowerCase();
-        return _matchesAllTerms(haystack, searchTerms);
-      }).take(15).toList();
+      final matchedLogs = allLogs
+          .where((l) {
+            if (l.isDeleted) return false;
+            if (isDateQuery) {
+              final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
+              return start.isAfter(
+                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
+                  start.isBefore(endOfDay!);
+            }
+            final haystack =
+                [l.title, l.remark].whereType<String>().join(' ').toLowerCase();
+            return _matchesAllTerms(haystack, searchTerms);
+          })
+          .take(15)
+          .toList();
 
       for (var l in matchedLogs) {
         final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
@@ -670,7 +712,8 @@ class SearchService {
     // 搜索标签名，点击可跳转到该标签的折线图统计界面
     try {
       final allTags = await PomodoroService.getTags();
-      final matchedTags = allTags.where((t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms));
+      final matchedTags = allTags
+          .where((t) => _matchesAllTerms(t.name.toLowerCase(), searchTerms));
       for (var tag in matchedTags) {
         dbItems.add(SearchResult(
           id: 'db_tag_${tag.uuid}',
@@ -696,7 +739,8 @@ class SearchService {
       try {
         final seenApps = <String>{};
 
-        void addScreenTimeApps(List<dynamic> stats, {required bool includeAll}) {
+        void addScreenTimeApps(List<dynamic> stats,
+            {required bool includeAll}) {
           for (var item in stats) {
             if (item is! Map) continue;
             final appName = item['app_name']?.toString().trim() ?? '';
@@ -705,7 +749,8 @@ class SearchService {
             final normalized = appName.toLowerCase();
             if (seenApps.contains(normalized)) continue;
 
-            final matchesQuery = includeAll || _matchesAllTerms(normalized, searchTerms);
+            final matchesQuery =
+                includeAll || _matchesAllTerms(normalized, searchTerms);
             if (!matchesQuery) continue;
 
             seenApps.add(normalized);
@@ -790,25 +835,33 @@ class SearchService {
     if (isDateQuery) {
       try {
         final allPoms = await PomodoroService.getRecords();
-        final matchedPoms = allPoms.where((p) {
-          final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-          return start.isAfter(startOfDay!.subtract(const Duration(milliseconds: 1))) && start.isBefore(endOfDay!);
-        }).take(15).toList();
+        final matchedPoms = allPoms
+            .where((p) {
+              final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+              return start.isAfter(
+                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
+                  start.isBefore(endOfDay!);
+            })
+            .take(15)
+            .toList();
         for (var p in matchedPoms) {
           final start = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-          final end = p.endTime != null ? DateTime.fromMillisecondsSinceEpoch(p.endTime!) : start.add(Duration(minutes: p.effectiveDuration ~/ 60));
+          final end = p.endTime != null
+              ? DateTime.fromMillisecondsSinceEpoch(p.endTime!)
+              : start.add(Duration(minutes: p.effectiveDuration ~/ 60));
           final mins = p.effectiveDuration ~/ 60;
           dbItems.add(SearchResult(
             id: 'db_pom_${p.uuid}',
             title: p.todoTitle?.isNotEmpty == true ? p.todoTitle! : '专注记录',
-                  subtitle: '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
+            subtitle:
+                '$mins 分钟 · ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)} · ${p.isCompleted ? "完成" : "中断"}',
             icon: Icons.timer_outlined,
             type: SearchResultType.log, // 与时间日志归在一组
-              extraData: {
-                'uuid': p.uuid,
-                'table': 'pomodoro_records',
-                if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
-              },
+            extraData: {
+              'uuid': p.uuid,
+              'table': 'pomodoro_records',
+              if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
+            },
           ));
         }
       } catch (e) {
@@ -836,9 +889,8 @@ class SearchService {
         dbItems.add(SearchResult(
           id: 'db_group_${g['uuid']}',
           title: g['name'] ?? '未命名文件夹',
-          subtitle: g['team_name'] != null
-              ? '团队文件夹 · ${g['team_name']}'
-              : '个人文件夹',
+          subtitle:
+              g['team_name'] != null ? '团队文件夹 · ${g['team_name']}' : '个人文件夹',
           icon: Icons.folder_rounded,
           type: SearchResultType.todoGroup,
           extraData: {'uuid': g['uuid'], 'table': 'todo_groups'},
@@ -870,39 +922,38 @@ class SearchService {
           CourseItem? nearestCourse;
           int minDiffSeconds = 0x7FFFFFFF; // 很大一个数
           String reason = "";
-          
+
           for (var c in allCourses) {
             try {
               final dateParts = c.date.split('-');
               if (dateParts.length != 3) continue;
-              
+
               final startDt = DateTime(
-                int.parse(dateParts[0]), 
-                int.parse(dateParts[1]), 
-                int.parse(dateParts[2]),
-                c.startTime ~/ 100,
-                c.startTime % 100
-              );
+                  int.parse(dateParts[0]),
+                  int.parse(dateParts[1]),
+                  int.parse(dateParts[2]),
+                  c.startTime ~/ 100,
+                  c.startTime % 100);
               final endDt = DateTime(
-                int.parse(dateParts[0]), 
-                int.parse(dateParts[1]), 
-                int.parse(dateParts[2]),
-                c.endTime ~/ 100,
-                c.endTime % 100
-              );
+                  int.parse(dateParts[0]),
+                  int.parse(dateParts[1]),
+                  int.parse(dateParts[2]),
+                  c.endTime ~/ 100,
+                  c.endTime % 100);
 
               // 1. 如果正在进行，优先级最高
               if (now.isAfter(startDt) && now.isBefore(endDt)) {
                 nearestCourse = c;
                 minDiffSeconds = 0;
                 reason = "正在进行的课程";
-                break; 
+                break;
               }
 
               // 2. 计算绝对距离
               final diffToStart = now.difference(startDt).inSeconds.abs();
               final diffToEnd = now.difference(endDt).inSeconds.abs();
-              final localMin = diffToStart < diffToEnd ? diffToStart : diffToEnd;
+              final localMin =
+                  diffToStart < diffToEnd ? diffToStart : diffToEnd;
 
               if (localMin < minDiffSeconds) {
                 minDiffSeconds = localMin;
@@ -936,10 +987,7 @@ class SearchService {
         subtitle: '✨ 早安！开启高效的一天',
         icon: Icons.wb_sunny_outlined,
         type: SearchResultType.recommend,
-        extraData: {
-          'action': 'navigate', 
-          'route': '/course/weekly'
-        },
+        extraData: {'action': 'navigate', 'route': '/course/weekly'},
       ));
     } else if (hour >= 21 || hour <= 2) {
       suggestions.add(SearchResult(
@@ -949,7 +997,7 @@ class SearchService {
         icon: Icons.insert_chart_outlined,
         type: SearchResultType.recommend,
         extraData: {
-          'action': 'navigate', 
+          'action': 'navigate',
           'route': '/personal_timeline',
           'initialDimension': 0 // 🚀 1 代表周视图
         },
@@ -959,7 +1007,13 @@ class SearchService {
     // 2. 紧急维度：逾期任务探测 (权重最高)
     try {
       final allTodos = await StorageService.getTodos(username);
-      final overdue = allTodos.where((t) => !t.isDone && !t.isDeleted && t.dueDate != null && t.dueDate!.isBefore(now)).toList();
+      final overdue = allTodos
+          .where((t) =>
+              !t.isDone &&
+              !t.isDeleted &&
+              t.dueDate != null &&
+              t.dueDate!.isBefore(now))
+          .toList();
       if (overdue.isNotEmpty) {
         suggestions.add(SearchResult(
           id: 'guess_overdue',
@@ -990,7 +1044,8 @@ class SearchService {
 
     // 4. 历史时间维度：最近搜索 (时段敏感型，展示前 5 条)
     try {
-      final history = await db.getRecentSearches(limit: 5, currentHour: now.hour);
+      final history =
+          await db.getRecentSearches(limit: 5, currentHour: now.hour);
       for (var h in history) {
         // 如果已经作为“最常搜索”推荐过了，就不再在历史里重复显示（可选）
         suggestions.add(SearchResult(
@@ -1010,7 +1065,7 @@ class SearchService {
       if (poms.isNotEmpty) {
         final lastPom = poms.first;
         if (lastPom.todoTitle != null && lastPom.todoTitle!.isNotEmpty) {
-           suggestions.add(SearchResult(
+          suggestions.add(SearchResult(
             id: 'guess_recent_focus',
             title: '继续搜索: ${lastPom.todoTitle}',
             subtitle: '🔥 您最近正在专注这项任务',
@@ -1052,11 +1107,14 @@ class SearchNavigationHandler {
         _executeAction(context, action);
       } else if (action == 'apply_query' && query != null) {
         // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("正在搜索: $query"), duration: const Duration(seconds: 1)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("正在搜索: $query"),
+            duration: const Duration(seconds: 1)));
       } else if (action == 'navigate') {
         _navigateByRoute(context, route ?? '', data);
       } else if (action == 'filter_overdue') {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("已跳转至待办列表 - 逾期筛选")));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text("已跳转至待办列表 - 逾期筛选")));
       }
       return;
     }
@@ -1067,7 +1125,8 @@ class SearchNavigationHandler {
       _handleTodoEdit(context, result);
     } else if (result.type == SearchResultType.todoGroup) {
       _handleTodoGroupNavigation(context, result);
-    } else if (result.type == SearchResultType.course || data['type'] == 'course_detail') {
+    } else if (result.type == SearchResultType.course ||
+        data['type'] == 'course_detail') {
       _handleCourseNavigation(context, result);
     }
   }
@@ -1106,9 +1165,15 @@ class SearchNavigationHandler {
         title: todoMap['content']?.toString() ?? '',
         isDone: todoMap['is_completed'] == 1,
         isDeleted: todoMap['is_deleted'] == 1,
-        version: (todoMap['version'] is int) ? todoMap['version'] : int.tryParse(todoMap['version'].toString()) ?? 1,
-        updatedAt: (todoMap['updated_at'] is int) ? todoMap['updated_at'] : int.tryParse(todoMap['updated_at'].toString()),
-        createdAt: (todoMap['created_at'] is int) ? todoMap['created_at'] : int.tryParse(todoMap['created_at'].toString()),
+        version: (todoMap['version'] is int)
+            ? todoMap['version']
+            : int.tryParse(todoMap['version'].toString()) ?? 1,
+        updatedAt: (todoMap['updated_at'] is int)
+            ? todoMap['updated_at']
+            : int.tryParse(todoMap['updated_at'].toString()),
+        createdAt: (todoMap['created_at'] is int)
+            ? todoMap['created_at']
+            : int.tryParse(todoMap['created_at'].toString()),
         createdDate: toInt(todoMap['created_date']),
         dueDate: toInt(todoMap['due_date']) != null
             ? DateTime.fromMillisecondsSinceEpoch(toInt(todoMap['due_date'])!)
@@ -1117,7 +1182,9 @@ class SearchNavigationHandler {
         groupId: todoMap['group_id']?.toString(),
         teamUuid: todoMap['team_uuid']?.toString(),
         teamName: todoMap['team_name']?.toString(),
-        collabType: (todoMap['collab_type'] is int) ? todoMap['collab_type'] : int.tryParse(todoMap['collab_type'].toString()) ?? 0,
+        collabType: (todoMap['collab_type'] is int)
+            ? todoMap['collab_type']
+            : int.tryParse(todoMap['collab_type'].toString()) ?? 0,
         reminderMinutes: toInt(todoMap['reminder_minutes']),
       );
 
@@ -1135,7 +1202,9 @@ class SearchNavigationHandler {
                 await StorageService.saveTodos(username, newList);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("待办已更新"), behavior: SnackBarBehavior.floating),
+                    const SnackBar(
+                        content: Text("待办已更新"),
+                        behavior: SnackBarBehavior.floating),
                   );
                 }
               },
@@ -1155,8 +1224,8 @@ class SearchNavigationHandler {
     }
   }
 
-
-  static void _handleTodoGroupNavigation(BuildContext context, SearchResult result) {
+  static void _handleTodoGroupNavigation(
+      BuildContext context, SearchResult result) {
     Navigator.of(context).popUntil((route) => route.isFirst);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text("已跳转至文件夹: ${result.title}"),
@@ -1164,19 +1233,25 @@ class SearchNavigationHandler {
     ));
   }
 
-  static void _handleCourseNavigation(BuildContext context, SearchResult result) async {
+  static void _handleCourseNavigation(
+      BuildContext context, SearchResult result) async {
     try {
       final uuid = result.extraData?['uuid'];
       if (uuid == null) return;
 
       final db = DatabaseHelper.instance;
       final maps = await db.searchCourses(''); // 暂时全量搜或者加个 getCourseByUuid
-      final courseMap = maps.firstWhere((m) => m['uuid'].toString() == uuid.toString(), orElse: () => {});
-      
+      final courseMap = maps.firstWhere(
+          (m) => m['uuid'].toString() == uuid.toString(),
+          orElse: () => {});
+
       if (courseMap.isNotEmpty) {
         final course = CourseItem.fromJson(courseMap);
         if (context.mounted) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => CourseDetailScreen(course: course)));
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => CourseDetailScreen(course: course)));
         }
       }
     } catch (e) {
@@ -1184,7 +1259,8 @@ class SearchNavigationHandler {
     }
   }
 
-  static void _navigateByRoute(BuildContext context, String route, Map<String, dynamic> data) async {
+  static void _navigateByRoute(
+      BuildContext context, String route, Map<String, dynamic> data) async {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
@@ -1193,11 +1269,15 @@ class SearchNavigationHandler {
       final tagUuid = data['tag_uuid'];
       if (tagUuid != null) {
         Navigator.of(context).popUntil((route) => route.isFirst);
-        Navigator.push(context, MaterialPageRoute(builder: (_) => TimeLogScreen(username: username, initialTagUuid: tagUuid)));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => TimeLogScreen(
+                    username: username, initialTagUuid: tagUuid)));
       }
       return;
     }
-    
+
     if (route == '/screen_time/app') {
       final appName = data['app_name'];
       if (appName != null) {
@@ -1210,11 +1290,16 @@ class SearchNavigationHandler {
             history[todayKey] = cachedToday;
           }
         }
-        Navigator.push(context, MaterialPageRoute(builder: (_) => AppDetailScreen(
-          appName: appName,
-          historyStats: history,
-          filter: DeviceFilter.all,
-        )));
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => AppDetailScreen(
+                      appName: appName,
+                      historyStats: history,
+                      filter: DeviceFilter.all,
+                      range: ScreenTimeRange.day,
+                      anchorDate: DateTime.now(),
+                    )));
       }
       return;
     }
@@ -1223,10 +1308,7 @@ class SearchNavigationHandler {
       case '/pomodoro/stats':
         final dim = data['initialDimension'] as int? ?? 0;
         page = PomodoroScreen(
-          username: username, 
-          initialTab: 1, 
-          initialDimension: dim
-        );
+            username: username, initialTab: 1, initialDimension: dim);
         break;
       case '/personal_timeline':
         final dimIndex = data['initialDimension'] as int? ?? 0;
@@ -1241,24 +1323,39 @@ class SearchNavigationHandler {
       case '/time_log/manual':
         page = TimeLogScreen(username: username);
         break;
-      case '/settings': 
-        page = SettingsPage(initialTarget: target); 
+      case '/settings':
+        page = SettingsPage(initialTarget: target);
         break;
-      case '/settings/animation': 
-        page = const AnimationSettingsPage(); 
+      case '/settings/animation':
+        page = const AnimationSettingsPage();
         break;
-      case '/settings/wallpaper': page = const WallpaperSettingsPage(); break;
-      case '/settings/llm_config': page = const LLMConfigPage(); break;
-      case '/settings/notifications': page = const NotificationSettingsPage(); break;
-      case '/settings/lan_sync': page = const LanSyncScreen(); break;
-      case '/settings/band_sync': page = const BandSyncScreen(); break;
-      case '/about': page = const AboutScreen(); break;
-      case '/login': Navigator.pushNamed(context, '/login'); return;
-      case '/teams': 
+      case '/settings/wallpaper':
+        page = const WallpaperSettingsPage();
+        break;
+      case '/settings/llm_config':
+        page = const LLMConfigPage();
+        break;
+      case '/settings/notifications':
+        page = const NotificationSettingsPage();
+        break;
+      case '/settings/lan_sync':
+        page = const LanSyncScreen();
+        break;
+      case '/settings/band_sync':
+        page = const BandSyncScreen();
+        break;
+      case '/about':
+        page = const AboutScreen();
+        break;
+      case '/login':
+        Navigator.pushNamed(context, '/login');
+        return;
+      case '/teams':
         if (context.mounted) {
-          Navigator.push(context, PageTransitions.slideHorizontal(
-            TeamManagementScreen(username: username, initialTarget: target)
-          ));
+          Navigator.push(
+              context,
+              PageTransitions.slideHorizontal(TeamManagementScreen(
+                  username: username, initialTarget: target)));
         }
         return;
       case '/today':
@@ -1269,7 +1366,9 @@ class SearchNavigationHandler {
         break;
       case '/tomorrow':
         Navigator.of(context).popUntil((route) => route.isFirst);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("已跳转至主页 - 请查看明日安排"), behavior: SnackBarBehavior.floating));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("已跳转至主页 - 请查看明日安排"),
+            behavior: SnackBarBehavior.floating));
         return;
       case '/screen_time':
         final cache = await StorageService.getScreenTimeCache();
@@ -1303,9 +1402,11 @@ class SearchNavigationHandler {
             Text("AI 智能分析"),
           ],
         ),
-        content: Text("AI 正在深度分析您的意图：\n\"$query\"\n\n(此处可对接现有的 LLMService 实现智能创建或问答)"),
+        content: Text(
+            "AI 正在深度分析您的意图：\n\"$query\"\n\n(此处可对接现有的 LLMService 实现智能创建或问答)"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("了解")),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text("了解")),
         ],
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),

@@ -48,7 +48,7 @@ class AnimationConfigService {
 
   static Future<int> getPageLayerDepth() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyPageLayerDepth) ?? 100;
+    return prefs.getInt(_keyPageLayerDepth) ?? 60;
   }
 
   static Future<int> getContainerContentStart() async {

@@ -65,25 +65,17 @@ class _FadingIndexedStackState extends State<FadingIndexedStack>
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, child) {
-        return Stack(
-          children: [
-            if (_ctrl.status == AnimationStatus.reverse ||
-                _ctrl.status == AnimationStatus.dismissed)
-              IndexedStack(
-                index: _prevIndex,
-                children: widget.children,
-              ),
-            FadeTransition(
-              opacity: _fadeAnim,
-              child: SlideTransition(
-                position: _slideAnim,
-                child: IndexedStack(
-                  index: _displayIndex,
-                  children: widget.children,
-                ),
-              ),
+        final showPrev = _ctrl.status == AnimationStatus.reverse ||
+            _ctrl.status == AnimationStatus.dismissed;
+        return FadeTransition(
+          opacity: _fadeAnim,
+          child: SlideTransition(
+            position: _slideAnim,
+            child: IndexedStack(
+              index: showPrev ? _prevIndex : _displayIndex,
+              children: widget.children,
             ),
-          ],
+          ),
         );
       },
     );

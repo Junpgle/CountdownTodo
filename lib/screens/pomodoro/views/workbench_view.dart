@@ -81,6 +81,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   // ── Timer ──
   Timer? _ticker;
   int _notifyTickCount = 0;
+  final ValueNotifier<int> _timerTickNotifier = ValueNotifier<int>(0);
 
   // ── Todos ──
   List<TodoItem> _todos = [];
@@ -199,6 +200,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     FloatWindowService.isWorkbenchMounted = false;
     _ticker?.cancel();
     _remoteTicker?.cancel();
+    _timerTickNotifier.dispose();
     _crossDeviceSub?.cancel();
     _connSub?.cancel();
     _runStateSub?.cancel();
@@ -725,7 +727,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         final elapsed =
             ((DateTime.now().millisecondsSinceEpoch - _sessionStartMs) / 1000)
                 .floor();
-        setState(() => _remainingSeconds = elapsed);
+        _remainingSeconds = elapsed;
+        _timerTickNotifier.value++;
       } else {
         final rem =
             ((targetEndMs - DateTime.now().millisecondsSinceEpoch) / 1000)
@@ -745,7 +748,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           widget.onPhaseChanged(_phase);
         } else {
           // 即使内部允许负值缓冲，UI 上也要显示为 0
-          setState(() => _remainingSeconds = rem < 0 ? 0 : rem);
+          _remainingSeconds = rem < 0 ? 0 : rem;
+          _timerTickNotifier.value++;
         }
       }
     });
@@ -1062,10 +1066,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         if (_isPaused) {
           // debugPrint('[Ticker] CRITICAL: Ticker tried to update while _isPaused=true. Skipping.');
         } else {
-          setState(() {
-            _remainingSeconds = elapsed;
-            // debugPrint('[Ticker] Set _remainingSeconds to $elapsed');
-          });
+          _remainingSeconds = elapsed;
+          _timerTickNotifier.value++;
         }
         _notifyTickCount++;
         if (_notifyTickCount >= 60) {
@@ -1084,7 +1086,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             await _onBreakEnd();
           }
         } else {
-          setState(() => _remainingSeconds = remaining);
+          _remainingSeconds = remaining;
+          _timerTickNotifier.value++;
           _notifyTickCount++;
           final int interval = remaining <= 60 ? 1 : 60;
           if (_notifyTickCount >= interval) {
@@ -1101,10 +1104,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _pauseTicker?.cancel();
     _pauseTicker = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      setState(() {
-        _pauseElapsedSecs =
-            (DateTime.now().millisecondsSinceEpoch - _pauseStartMs) ~/ 1000;
-      });
+      _pauseElapsedSecs =
+          (DateTime.now().millisecondsSinceEpoch - _pauseStartMs) ~/ 1000;
+      _timerTickNotifier.value++;
     });
   }
 
@@ -2631,21 +2633,26 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildImmersiveTimerWidget() {
-    final isCountUp = _settings.mode == TimerMode.countUp;
-    final isRemoteCountUp = _remoteState?.duration == 0;
-    return ImmersiveTimer(
-      phase: _phase,
-      remainingSeconds: _remainingSeconds,
-      focusMinutes: _settings.focusMinutes,
-      breakMinutes: _settings.breakMinutes,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      isCountUp: isCountUp,
-      isRemoteCountUp: isRemoteCountUp,
-      remoteState: _remoteState,
-      isCompact: widget.isCompact,
-      isPaused: _isPaused,
-      pauseSeconds: _pauseElapsedSecs,
+    return ValueListenableBuilder<int>(
+      valueListenable: _timerTickNotifier,
+      builder: (context, _, __) {
+        final isCountUp = _settings.mode == TimerMode.countUp;
+        final isRemoteCountUp = _remoteState?.duration == 0;
+        return ImmersiveTimer(
+          phase: _phase,
+          remainingSeconds: _remainingSeconds,
+          focusMinutes: _settings.focusMinutes,
+          breakMinutes: _settings.breakMinutes,
+          currentCycle: _currentCycle,
+          totalCycles: _settings.cycles,
+          isCountUp: isCountUp,
+          isRemoteCountUp: isRemoteCountUp,
+          remoteState: _remoteState,
+          isCompact: widget.isCompact,
+          isPaused: _isPaused,
+          pauseSeconds: _pauseElapsedSecs,
+        );
+      },
     );
   }
 
@@ -2784,7 +2791,7 @@ class _PauseTimerText extends StatefulWidget {
 
 class _PauseTimerTextState extends State<_PauseTimerText> {
   Timer? _timer;
-  int _seconds = 0;
+  final ValueNotifier<int> _secondsNotifier = ValueNotifier(0);
 
   @override
   void initState() {
@@ -2795,15 +2802,14 @@ class _PauseTimerTextState extends State<_PauseTimerText> {
 
   void _update() {
     if (!mounted) return;
-    setState(() {
-      _seconds =
-          (DateTime.now().millisecondsSinceEpoch - widget.pauseStartMs) ~/ 1000;
-    });
+    _secondsNotifier.value =
+        (DateTime.now().millisecondsSinceEpoch - widget.pauseStartMs) ~/ 1000;
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _secondsNotifier.dispose();
     super.dispose();
   }
 
@@ -2816,6 +2822,9 @@ class _PauseTimerTextState extends State<_PauseTimerText> {
 
   @override
   Widget build(BuildContext context) {
-    return Text('暂停时长: ${_format(_seconds)}');
+    return ValueListenableBuilder<int>(
+      valueListenable: _secondsNotifier,
+      builder: (context, seconds, _) => Text('暂停时长: ${_format(seconds)}'),
+    );
   }
 }

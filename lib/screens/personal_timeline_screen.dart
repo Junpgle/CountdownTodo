@@ -3731,7 +3731,9 @@ class _DonutPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _DonutPainter oldDelegate) =>
+      !identical(oldDelegate.data, data) ||
+      !identical(oldDelegate.palette, palette);
 }
 
 class _SparklinePainter extends CustomPainter {
@@ -3772,5 +3774,6 @@ class _SparklinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) =>
+      !identical(oldDelegate.data, data) || oldDelegate.color != color;
 }

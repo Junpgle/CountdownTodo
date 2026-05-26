@@ -115,27 +115,29 @@ class _ShimmerPlaceholderState extends State<_ShimmerPlaceholder>
     final highlightColor =
         brightness == Brightness.dark ? Colors.grey[700]! : Colors.grey[100]!;
 
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Container(
-          width: widget.width == double.infinity ? null : widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-            gradient: LinearGradient(
-              begin: Alignment(_animation.value, 0),
-              end: Alignment(_animation.value + 0.5, 0),
-              colors: [
-                baseColor,
-                highlightColor,
-                baseColor,
-              ],
-              stops: const [0.0, 0.5, 1.0],
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          return Container(
+            width: widget.width == double.infinity ? null : widget.width,
+            height: widget.height,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+              gradient: LinearGradient(
+                begin: Alignment(_animation.value, 0),
+                end: Alignment(_animation.value + 0.5, 0),
+                colors: [
+                  baseColor,
+                  highlightColor,
+                  baseColor,
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -415,17 +417,19 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                 SizedBox(
                                   width: double.infinity,
                                   height: isTablet ? 160 : 100,
-                                  child: AnimatedBuilder(
-                                    animation: _pieAnim,
-                                    builder: (context, child) {
-                                      return CustomPaint(
-                                        painter: PieChartPainter(
-                                          data: deviceMap,
-                                          total: totalTime,
-                                          sweepProgress: _pieAnim.value,
-                                        ),
-                                      );
-                                    },
+                                  child: RepaintBoundary(
+                                    child: AnimatedBuilder(
+                                      animation: _pieAnim,
+                                      builder: (context, child) {
+                                        return CustomPaint(
+                                          painter: PieChartPainter(
+                                            data: deviceMap,
+                                            total: totalTime,
+                                            sweepProgress: _pieAnim.value,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -445,18 +449,20 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                 SizedBox(
                                   width: double.infinity,
                                   height: isTablet ? 160 : 100,
-                                  child: AnimatedBuilder(
-                                    animation: _pieAnim,
-                                    builder: (context, child) {
-                                      return CustomPaint(
-                                        painter: PieChartPainter(
-                                          data: appMap,
-                                          total: totalTime,
-                                          isAppChart: true,
-                                          sweepProgress: _pieAnim.value,
-                                        ),
-                                      );
-                                    },
+                                  child: RepaintBoundary(
+                                    child: AnimatedBuilder(
+                                      animation: _pieAnim,
+                                      builder: (context, child) {
+                                        return CustomPaint(
+                                          painter: PieChartPainter(
+                                            data: appMap,
+                                            total: totalTime,
+                                            isAppChart: true,
+                                            sweepProgress: _pieAnim.value,
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),

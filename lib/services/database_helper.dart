@@ -229,7 +229,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 29, // V29: pomodoro_records 新增 note 字段
+          version: 30, // V30: screen_time 保留设备名与分类字段
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -243,6 +243,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 30) {
+              await ensureScreenTimeSchema(db);
+            }
             if (oldVersion < 29) {
               try {
                 final info =
@@ -667,6 +670,8 @@ class DatabaseHelper {
                   record_date TEXT,
                   package_name TEXT,
                   app_name TEXT,
+                  device_name TEXT,
+                  category TEXT,
                   duration INTEGER,
                   updated_at INTEGER
                 )
@@ -735,6 +740,7 @@ class DatabaseHelper {
             await ensureTodoPlanBlockSchema(db);
             await ensureSuggestionFeedbackSchema(db);
             await ensureTeamsSchema(db);
+            await ensureScreenTimeSchema(db);
           },
         );
       } catch (e) {
@@ -745,6 +751,38 @@ class DatabaseHelper {
     }
 
     throw StateError('Database open retry exhausted: $path');
+  }
+
+  static Future<void> ensureScreenTimeSchema(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS screen_time (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          record_date TEXT,
+          package_name TEXT,
+          app_name TEXT,
+          device_name TEXT,
+          category TEXT,
+          duration INTEGER,
+          updated_at INTEGER
+        )
+      ''');
+
+      final info = await db.rawQuery("PRAGMA table_info(screen_time)");
+      final existingColumns = info.map((row) => row['name']).toSet();
+      if (!existingColumns.contains('device_name')) {
+        await db
+            .execute("ALTER TABLE screen_time ADD COLUMN device_name TEXT;");
+      }
+      if (!existingColumns.contains('category')) {
+        await db.execute("ALTER TABLE screen_time ADD COLUMN category TEXT;");
+      }
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
+      debugPrint('✅ Database: screen_time schema ready');
+    } catch (e) {
+      debugPrint('⚠️ Database: screen_time schema repair failed: $e');
+    }
   }
 
   static bool _isDatabaseLockedError(Object error) {
@@ -1199,6 +1237,8 @@ class DatabaseHelper {
         record_date TEXT,
         package_name TEXT,
         app_name TEXT,
+        device_name TEXT,
+        category TEXT,
         duration INTEGER,
         updated_at INTEGER
       )

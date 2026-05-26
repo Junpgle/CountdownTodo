@@ -32,6 +32,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   double _dayWidth = 60.0;
   TodoItem? _detailTask;
   DateTime _now = DateTime.now();
+  final ValueNotifier<DateTime> _nowNotifier = ValueNotifier(DateTime.now());
   late Timer _timer;
   final ScrollController _cdScrollController = ScrollController();
   final ScrollController _marqueeController = ScrollController();
@@ -43,9 +44,8 @@ class _AppBoardScreenState extends State<AppBoardScreen>
     _loadData();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {
-          _now = DateTime.now();
-        });
+        _now = DateTime.now();
+        _nowNotifier.value = _now;
       }
     });
     _startMarquee();
@@ -55,24 +55,23 @@ class _AppBoardScreenState extends State<AppBoardScreen>
   void dispose() {
     _timer.cancel();
     _marqueeTimer?.cancel();
+    _nowNotifier.dispose();
     _cdScrollController.dispose();
     _marqueeController.dispose();
     super.dispose();
   }
 
   void _startMarquee() {
-    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+    // Use a slower, less frequent timer to reduce layout thrashing.
+    // 100ms with 3px step = ~30px/s smooth scroll at lower CPU cost.
+    _marqueeTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (_marqueeController.hasClients) {
         double maxScroll = _marqueeController.position.maxScrollExtent;
         double currentScroll = _marqueeController.offset;
         if (currentScroll >= maxScroll - 1) {
           _marqueeController.jumpTo(0);
         } else {
-          _marqueeController.animateTo(
-            currentScroll + 10,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.linear,
-          );
+          _marqueeController.jumpTo(currentScroll + 3);
         }
       }
     });
@@ -298,14 +297,17 @@ class _AppBoardScreenState extends State<AppBoardScreen>
               ),
             ),
           if (isDesktop)
-            Text(
-              DateFormat('HH:mm').format(_now),
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8),
-                fontSize: 48,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -2,
-                fontFeatures: [const FontFeature.tabularFigures()],
+            ValueListenableBuilder<DateTime>(
+              valueListenable: _nowNotifier,
+              builder: (context, now, _) => Text(
+                DateFormat('HH:mm').format(now),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 48,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -2,
+                  fontFeatures: [const FontFeature.tabularFigures()],
+                ),
               ),
             ),
         ],
