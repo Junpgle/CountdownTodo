@@ -10,6 +10,21 @@ import '../utils/page_transitions.dart';
 // ─────────────────────────────────────────────
 enum DeviceFilter { all, pc, mobile, phone, tablet }
 
+enum ScreenTimeRange { day, week, month }
+
+extension ScreenTimeRangeExtension on ScreenTimeRange {
+  String get label {
+    switch (this) {
+      case ScreenTimeRange.day:
+        return "日";
+      case ScreenTimeRange.week:
+        return "周";
+      case ScreenTimeRange.month:
+        return "月";
+    }
+  }
+}
+
 extension DeviceFilterExtension on DeviceFilter {
   String get label {
     switch (this) {
@@ -112,6 +127,7 @@ class ScreenTimeDetailScreen extends StatefulWidget {
 
 class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   DeviceFilter _currentFilter = DeviceFilter.all;
+  ScreenTimeRange _currentRange = ScreenTimeRange.day;
   Map<String, List<dynamic>> _historyStats = {};
   Map<String, String> _cloudMappings = {};
   bool _isLoading = true;
@@ -322,6 +338,147 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return sorted;
   }
 
+  static DateTime _dateOnly(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  static DateTime _startOfWeek(DateTime date) {
+    final normalized = _dateOnly(date);
+    return normalized.subtract(Duration(days: normalized.weekday - 1));
+  }
+
+  static DateTime _periodStart(DateTime date, ScreenTimeRange range) {
+    final normalized = _dateOnly(date);
+    switch (range) {
+      case ScreenTimeRange.day:
+        return normalized;
+      case ScreenTimeRange.week:
+        return _startOfWeek(normalized);
+      case ScreenTimeRange.month:
+        return DateTime(normalized.year, normalized.month);
+    }
+  }
+
+  static DateTime _periodEnd(DateTime periodStart, ScreenTimeRange range) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return periodStart;
+      case ScreenTimeRange.week:
+        return periodStart.add(const Duration(days: 6));
+      case ScreenTimeRange.month:
+        return DateTime(periodStart.year, periodStart.month + 1, 0);
+    }
+  }
+
+  static DateTime _previousPeriodStart(
+      DateTime periodStart, ScreenTimeRange range) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return periodStart.subtract(const Duration(days: 1));
+      case ScreenTimeRange.week:
+        return periodStart.subtract(const Duration(days: 7));
+      case ScreenTimeRange.month:
+        return DateTime(periodStart.year, periodStart.month - 1);
+    }
+  }
+
+  static DateTime _shiftPeriod(
+      DateTime periodStart, ScreenTimeRange range, int offset) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return periodStart.add(Duration(days: offset));
+      case ScreenTimeRange.week:
+        return periodStart.add(Duration(days: offset * 7));
+      case ScreenTimeRange.month:
+        return DateTime(periodStart.year, periodStart.month + offset);
+    }
+  }
+
+  static String _historyKey(DateTime date) =>
+      DateFormat('yyyy-MM-dd').format(date);
+
+  static Iterable<DateTime> _daysInPeriod(
+      DateTime periodStart, ScreenTimeRange range, DateTime today) sync* {
+    final end = _periodEnd(periodStart, range);
+    final cappedEnd = end.isAfter(today) ? today : end;
+    for (DateTime d = periodStart;
+        !d.isAfter(cappedEnd);
+        d = d.add(const Duration(days: 1))) {
+      yield d;
+    }
+  }
+
+  static String _periodLabel(
+      DateTime periodStart, ScreenTimeRange range, DateTime today) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return periodStart == today
+            ? "今日"
+            : DateFormat('MM/dd').format(periodStart);
+      case ScreenTimeRange.week:
+        final thisWeek = _startOfWeek(today);
+        final end = _periodEnd(periodStart, range);
+        if (periodStart == thisWeek) return "本周";
+        return "${DateFormat('MM/dd').format(periodStart)}-${DateFormat('MM/dd').format(end)}";
+      case ScreenTimeRange.month:
+        if (periodStart.year == today.year &&
+            periodStart.month == today.month) {
+          return "本月";
+        }
+        return DateFormat('yyyy/MM').format(periodStart);
+    }
+  }
+
+  static String _compareText(ScreenTimeRange range) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return "较前一天";
+      case ScreenTimeRange.week:
+        return "较前一周";
+      case ScreenTimeRange.month:
+        return "较前一月";
+    }
+  }
+
+  static String _trendTitle(ScreenTimeRange range) {
+    switch (range) {
+      case ScreenTimeRange.day:
+        return "近七日趋势";
+      case ScreenTimeRange.week:
+        return "近七周趋势";
+      case ScreenTimeRange.month:
+        return "近六月趋势";
+    }
+  }
+
+  List<dynamic> _statsForPeriod(DateTime periodStart, ScreenTimeRange range) {
+    final Map<String, Map<String, dynamic>> grouped = {};
+    for (final date in _daysInPeriod(periodStart, range, _todayNormalized)) {
+      for (final raw in _historyStats[_historyKey(date)] ?? []) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final appName = item['app_name']?.toString() ?? '未知应用';
+        final packageName = item['package_name']?.toString() ?? '';
+        final deviceName = item['device_name']?.toString() ?? '未知设备';
+        final category = item['category']?.toString() ?? '未分类';
+        final key = '$packageName::$appName::$deviceName::$category';
+        final duration =
+            (item['duration'] is num) ? (item['duration'] as num).toInt() : 0;
+
+        grouped.putIfAbsent(
+            key,
+            () => {
+                  'package_name': packageName,
+                  'app_name': appName,
+                  'device_name': deviceName,
+                  'category': category,
+                  'duration': 0,
+                });
+        grouped[key]!['duration'] =
+            (grouped[key]!['duration'] as int) + duration;
+      }
+    }
+    return grouped.values.toList();
+  }
+
   // ─── 设备分布小组件（复用） ───
   static Widget buildDeviceBreakdown(
       Map<String, int> devices, bool isAllFilter) {
@@ -379,22 +536,22 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   Widget _buildMainContent() {
-    bool isToday = _selectedDate == _todayNormalized;
-    String datePrefix =
-        isToday ? "今日" : DateFormat('MM/dd').format(_selectedDate);
+    final periodStart = _periodStart(_selectedDate, _currentRange);
+    final prevPeriodStart = _previousPeriodStart(periodStart, _currentRange);
+    final datePrefix =
+        _periodLabel(periodStart, _currentRange, _todayNormalized);
 
-    String selectedDateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-    String prevDateStr = DateFormat('yyyy-MM-dd')
-        .format(_selectedDate.subtract(const Duration(days: 1)));
+    final periodStats = _statsForPeriod(periodStart, _currentRange);
+    final prevPeriodStats = _statsForPeriod(prevPeriodStart, _currentRange);
 
-    int selectedTotal = ScreenTimeDetailScreen.getTotalDuration(
-        _historyStats[selectedDateStr] ?? [], _currentFilter);
+    int selectedTotal =
+        ScreenTimeDetailScreen.getTotalDuration(periodStats, _currentFilter);
     int prevTotal = ScreenTimeDetailScreen.getTotalDuration(
-        _historyStats[prevDateStr] ?? [], _currentFilter);
+        prevPeriodStats, _currentFilter);
     int diff = selectedTotal - prevTotal;
 
-    final filteredStats = ScreenTimeDetailScreen.getFilteredStats(
-        _historyStats[selectedDateStr] ?? [], _currentFilter);
+    final filteredStats =
+        ScreenTimeDetailScreen.getFilteredStats(periodStats, _currentFilter);
     final topApps = getGroupedApps(filteredStats);
 
     // 分类
@@ -461,9 +618,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                                     children: [
                               _buildHeroCard(selectedTotal, diff, datePrefix),
                               const SizedBox(height: 16),
-                              _buildSectionHeader(
-                                  "近七日趋势", Icons.bar_chart_rounded),
-                              _buildChartCard(_todayNormalized, height: 280),
+                              _buildSectionHeader(_trendTitle(_currentRange),
+                                  Icons.bar_chart_rounded),
+                              _buildChartCard(height: 280),
                             ]))),
                       ])),
               const SizedBox(width: 24),
@@ -516,8 +673,9 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _buildSectionHeader("近七日趋势", Icons.bar_chart_rounded),
-              _buildChartCard(_todayNormalized, height: 200),
+              _buildSectionHeader(
+                  _trendTitle(_currentRange), Icons.bar_chart_rounded),
+              _buildChartCard(height: 200),
               const SizedBox(height: 20),
               if (finalCategories.isNotEmpty) ...[
                 _buildSectionHeader("$datePrefix类别分布", Icons.category_rounded),
@@ -578,40 +736,81 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   // ─────────────────────────────────────────────
   Widget _buildFilters({EdgeInsetsGeometry padding = EdgeInsets.zero}) {
     final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 52,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: padding,
-        itemCount: DeviceFilter.values.length,
-        itemBuilder: (ctx, i) {
-          final filter = DeviceFilter.values[i];
-          final selected = _currentFilter == filter;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              child: ChoiceChip(
-                label: Text(filter.label,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: selected ? cs.onPrimary : cs.onSurfaceVariant)),
-                selected: selected,
-                onSelected: (v) {
-                  if (v) setState(() => _currentFilter = filter);
-                },
-                shape: const StadiumBorder(),
-                showCheckmark: false,
-                selectedColor: cs.primary,
-                backgroundColor: cs.surfaceContainerHighest,
-                side: BorderSide(
-                    color: selected ? cs.primary : cs.outlineVariant, width: 1),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-              ),
+    Widget buildRangeChip(ScreenTimeRange range) {
+      final selected = _currentRange == range;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: Text(range.label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: selected ? cs.onPrimary : cs.onSurfaceVariant)),
+          selected: selected,
+          onSelected: (v) {
+            if (!v) return;
+            setState(() {
+              _currentRange = range;
+              _selectedDate = _periodStart(_selectedDate, range);
+            });
+          },
+          shape: const StadiumBorder(),
+          showCheckmark: false,
+          selectedColor: cs.primary,
+          backgroundColor: cs.surfaceContainerHighest,
+          side: BorderSide(
+              color: selected ? cs.primary : cs.outlineVariant, width: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+      );
+    }
+
+    Widget buildDeviceChip(DeviceFilter filter) {
+      final selected = _currentFilter == filter;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: Text(filter.label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: selected ? cs.onPrimary : cs.onSurfaceVariant)),
+          selected: selected,
+          onSelected: (v) {
+            if (v) setState(() => _currentFilter = filter);
+          },
+          shape: const StadiumBorder(),
+          showCheckmark: false,
+          selectedColor: cs.primary,
+          backgroundColor: cs.surfaceContainerHighest,
+          side: BorderSide(
+              color: selected ? cs.primary : cs.outlineVariant, width: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: padding,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: ScreenTimeRange.values.map(buildRangeChip).toList(),
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: DeviceFilter.values.map(buildDeviceChip).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -640,7 +839,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             ],
           ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.primary.withValues(alpha: 0.15), width: 1),
+          border:
+              Border.all(color: cs.primary.withValues(alpha: 0.15), width: 1),
         ),
         child: Padding(
           padding: const EdgeInsets.all(22),
@@ -666,7 +866,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                     Icon(diffIcon, size: 15, color: diffColor),
                     const SizedBox(width: 4),
                     Text(
-                        "较前一天${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}",
+                        "${_compareText(_currentRange)}${isIncrease ? '增加' : '减少'} ${formatHM(diff.abs())}",
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -677,7 +877,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.12), shape: BoxShape.circle),
+                  color: cs.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle),
               child: Icon(Icons.access_time_filled_rounded,
                   size: 32, color: cs.primary),
             ),
@@ -688,20 +889,31 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // 七日柱状图卡片
+  // 趋势柱状图卡片
   // ─────────────────────────────────────────────
-  Widget _buildChartCard(DateTime today, {double height = 200}) {
-    List<int> dailyTotals = [];
+  Widget _buildChartCard({double height = 200}) {
+    final currentPeriodStart = _periodStart(_todayNormalized, _currentRange);
+    final selectedPeriodStart = _periodStart(_selectedDate, _currentRange);
+    final slotCount = _currentRange == ScreenTimeRange.month ? 6 : 7;
+    List<int> totals = [];
     List<String> labels = [];
-    for (int i = 6; i >= 0; i--) {
-      DateTime d = today.subtract(Duration(days: i));
-      dailyTotals.add(ScreenTimeDetailScreen.getTotalDuration(
-          _historyStats[DateFormat('yyyy-MM-dd').format(d)] ?? [],
-          _currentFilter));
-      labels.add(i == 0 ? "今日" : DateFormat('MM/dd').format(d));
+
+    for (int i = slotCount - 1; i >= 0; i--) {
+      final slotStart = _shiftPeriod(currentPeriodStart, _currentRange, -i);
+      totals.add(ScreenTimeDetailScreen.getTotalDuration(
+          _statsForPeriod(slotStart, _currentRange), _currentFilter));
+      labels.add(_chartLabel(slotStart, i == 0));
     }
-    int selectedIndex = 6 - today.difference(_selectedDate).inDays;
-    if (selectedIndex < 0 || selectedIndex > 6) selectedIndex = -1;
+
+    int selectedIndex = -1;
+    for (int i = 0; i < slotCount; i++) {
+      final slotStart =
+          _shiftPeriod(currentPeriodStart, _currentRange, i - slotCount + 1);
+      if (slotStart == selectedPeriodStart) {
+        selectedIndex = i;
+        break;
+      }
+    }
 
     return Container(
       decoration: _cardDecoration(context),
@@ -711,13 +923,13 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) {
-              double sectionWidth = constraints.maxWidth / 7;
+              double sectionWidth = constraints.maxWidth / slotCount;
               int tappedIndex =
                   (details.localPosition.dx / sectionWidth).floor();
-              if (tappedIndex >= 0 && tappedIndex < 7) {
+              if (tappedIndex >= 0 && tappedIndex < slotCount) {
                 setState(() {
-                  _selectedDate =
-                      today.subtract(Duration(days: 6 - tappedIndex));
+                  _selectedDate = _shiftPeriod(currentPeriodStart,
+                      _currentRange, tappedIndex - slotCount + 1);
                 });
               }
             },
@@ -726,7 +938,7 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
               height: height,
               child: CustomPaint(
                   painter: BarChartPainter(
-                data: dailyTotals,
+                data: totals,
                 labels: labels,
                 primaryColor: Theme.of(context).colorScheme.primary,
                 textColor: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -737,6 +949,17 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
         }),
       ),
     );
+  }
+
+  String _chartLabel(DateTime periodStart, bool isCurrent) {
+    switch (_currentRange) {
+      case ScreenTimeRange.day:
+        return isCurrent ? "今日" : DateFormat('MM/dd').format(periodStart);
+      case ScreenTimeRange.week:
+        return isCurrent ? "本周" : DateFormat('MM/dd').format(periodStart);
+      case ScreenTimeRange.month:
+        return isCurrent ? "本月" : DateFormat('MM月').format(periodStart);
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -766,6 +989,12 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             isAllFilter: _currentFilter == DeviceFilter.all,
             historyStats: _historyStats,
             currentFilter: _currentFilter,
+            range: _currentRange,
+            anchorDate: _selectedDate,
+            periodLabel: _periodLabel(
+                _periodStart(_selectedDate, _currentRange),
+                _currentRange,
+                _todayNormalized),
           ),
           sourceColor: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(18),
@@ -773,7 +1002,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
+              border:
+                  Border.all(color: color.withValues(alpha: 0.18), width: 1),
             ),
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -781,7 +1011,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
+                    color: color.withValues(alpha: 0.15),
+                    shape: BoxShape.circle),
                 child: Icon(getCategoryIcon(name), color: color, size: 20),
               ),
               const SizedBox(height: 8),
@@ -838,6 +1069,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
             appName: app.key,
             historyStats: _historyStats,
             filter: _currentFilter,
+            range: _currentRange,
+            anchorDate: _selectedDate,
           ),
           sourceColor: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
@@ -919,6 +1152,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
                 appName: app.key,
                 historyStats: _historyStats,
                 filter: _currentFilter,
+                range: _currentRange,
+                anchorDate: _selectedDate,
               ),
               sourceColor: cs.surface,
               borderRadius: BorderRadius.zero,
@@ -972,7 +1207,8 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
     return BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+      border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1036,6 +1272,9 @@ class CategoryDetailScreen extends StatelessWidget {
   final bool isAllFilter;
   final Map<String, List<dynamic>> historyStats;
   final DeviceFilter currentFilter;
+  final ScreenTimeRange range;
+  final DateTime anchorDate;
+  final String periodLabel;
 
   const CategoryDetailScreen({
     super.key,
@@ -1044,6 +1283,9 @@ class CategoryDetailScreen extends StatelessWidget {
     required this.isAllFilter,
     required this.historyStats,
     required this.currentFilter,
+    required this.range,
+    required this.anchorDate,
+    required this.periodLabel,
   });
 
   BoxDecoration _cardDecoration(BuildContext context) {
@@ -1051,7 +1293,8 @@ class CategoryDetailScreen extends StatelessWidget {
     return BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+      border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1107,7 +1350,7 @@ class CategoryDetailScreen extends StatelessWidget {
                       color: catColor),
                 ),
                 const SizedBox(height: 12),
-                Text("该类别今日总计",
+                Text("该类别$periodLabel总计",
                     style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
                 const SizedBox(height: 6),
                 Text(_ScreenTimeDetailScreenState.formatHM(totalDur),
@@ -1142,6 +1385,8 @@ class CategoryDetailScreen extends StatelessWidget {
                                 appName: app.key,
                                 historyStats: historyStats,
                                 filter: currentFilter,
+                                range: range,
+                                anchorDate: anchorDate,
                               ),
                               sourceColor: cs.surface,
                               borderRadius: BorderRadius.zero,
@@ -1151,7 +1396,8 @@ class CategoryDetailScreen extends StatelessWidget {
                                 child: Row(children: [
                                   CircleAvatar(
                                     radius: 20,
-                                    backgroundColor: catColor.withValues(alpha: 0.1),
+                                    backgroundColor:
+                                        catColor.withValues(alpha: 0.1),
                                     child: Text(
                                         app.key.isNotEmpty
                                             ? app.key[0].toUpperCase()
@@ -1209,12 +1455,16 @@ class AppDetailScreen extends StatelessWidget {
   final String appName;
   final Map<String, List<dynamic>> historyStats;
   final DeviceFilter filter;
+  final ScreenTimeRange range;
+  final DateTime anchorDate;
 
   const AppDetailScreen(
       {super.key,
       required this.appName,
       required this.historyStats,
-      required this.filter});
+      required this.filter,
+      required this.range,
+      required this.anchorDate});
 
   @override
   Widget build(BuildContext context) {
@@ -1222,43 +1472,91 @@ class AppDetailScreen extends StatelessWidget {
     List<String> labels = [];
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
-    int total7Days = 0;
+    final currentPeriodStart =
+        _ScreenTimeDetailScreenState._periodStart(anchorDate, range);
+    final slotCount = range == ScreenTimeRange.month ? 6 : 7;
+    int totalAcrossSlots = 0;
     Map<String, List<int>> deviceTrends = {};
-    Map<String, int> deviceToday = {};
+    Map<String, int> deviceCurrent = {};
 
-    for (int i = 6; i >= 0; i--) {
-      DateTime d = today.subtract(Duration(days: i));
-      labels.add(i == 0 ? "今日" : DateFormat('MM/dd').format(d));
-      for (var item in historyStats[DateFormat('yyyy-MM-dd').format(d)] ?? []) {
-        String name = item['app_name'] ?? "";
-        String device = item['device_name'] ?? "";
-        if (name == appName &&
-            ScreenTimeDetailScreen.matchesFilter(device, filter)) {
-          deviceTrends.putIfAbsent(device, () => List.filled(7, 0));
-        }
+    String chartLabel(DateTime periodStart, bool isCurrentSlot) {
+      switch (range) {
+        case ScreenTimeRange.day:
+          return isCurrentSlot && periodStart == today
+              ? "今日"
+              : DateFormat('MM/dd').format(periodStart);
+        case ScreenTimeRange.week:
+          return isCurrentSlot
+              ? _ScreenTimeDetailScreenState._periodLabel(
+                  periodStart, range, today)
+              : DateFormat('MM/dd').format(periodStart);
+        case ScreenTimeRange.month:
+          return isCurrentSlot
+              ? _ScreenTimeDetailScreenState._periodLabel(
+                  periodStart, range, today)
+              : DateFormat('MM月').format(periodStart);
       }
     }
-    for (int i = 6; i >= 0; i--) {
-      DateTime d = today.subtract(Duration(days: i));
-      for (var item in historyStats[DateFormat('yyyy-MM-dd').format(d)] ?? []) {
-        String name = item['app_name'] ?? "";
-        String device = item['device_name'] ?? "";
-        if (name == appName && deviceTrends.containsKey(device)) {
-          int duration = item['duration'] as int;
-          int dayIndex = 6 - i;
-          deviceTrends[device]![dayIndex] += duration;
-          total7Days += duration;
-          if (i == 0) {
-            deviceToday[device] = (deviceToday[device] ?? 0) + duration;
+
+    for (int slot = 0; slot < slotCount; slot++) {
+      final periodStart = _ScreenTimeDetailScreenState._shiftPeriod(
+          currentPeriodStart, range, slot - slotCount + 1);
+      labels.add(chartLabel(periodStart, slot == slotCount - 1));
+      for (final d in _ScreenTimeDetailScreenState._daysInPeriod(
+          periodStart, range, today)) {
+        for (var item
+            in historyStats[_ScreenTimeDetailScreenState._historyKey(d)] ??
+                []) {
+          String name = item['app_name'] ?? "";
+          String device = item['device_name'] ?? "";
+          if (name == appName &&
+              ScreenTimeDetailScreen.matchesFilter(device, filter)) {
+            deviceTrends.putIfAbsent(device, () => List.filled(slotCount, 0));
           }
         }
       }
     }
-    int avgDaily = total7Days ~/ 7;
+
+    for (int slot = 0; slot < slotCount; slot++) {
+      final periodStart = _ScreenTimeDetailScreenState._shiftPeriod(
+          currentPeriodStart, range, slot - slotCount + 1);
+      for (final d in _ScreenTimeDetailScreenState._daysInPeriod(
+          periodStart, range, today)) {
+        for (var item
+            in historyStats[_ScreenTimeDetailScreenState._historyKey(d)] ??
+                []) {
+          String name = item['app_name'] ?? "";
+          String device = item['device_name'] ?? "";
+          if (name == appName && deviceTrends.containsKey(device)) {
+            int duration = (item['duration'] is num)
+                ? (item['duration'] as num).toInt()
+                : 0;
+            deviceTrends[device]![slot] += duration;
+            totalAcrossSlots += duration;
+            if (slot == slotCount - 1) {
+              deviceCurrent[device] = (deviceCurrent[device] ?? 0) + duration;
+            }
+          }
+        }
+      }
+    }
+    int avgPerPeriod = totalAcrossSlots ~/ slotCount;
+    final String selectedLabel = _ScreenTimeDetailScreenState._periodLabel(
+        currentPeriodStart, range, today);
+    final String totalLabel = switch (range) {
+      ScreenTimeRange.day => "多端近七日总计",
+      ScreenTimeRange.week => "多端近七周总计",
+      ScreenTimeRange.month => "多端近六月总计",
+    };
+    final String avgLabel = switch (range) {
+      ScreenTimeRange.day => "日均使用",
+      ScreenTimeRange.week => "周均使用",
+      ScreenTimeRange.month => "月均使用",
+    };
 
     List<String> sortedDevices = deviceTrends.keys.toList();
     sortedDevices.sort((a, b) {
-      int at = deviceToday[a] ?? 0, bt = deviceToday[b] ?? 0;
+      int at = deviceCurrent[a] ?? 0, bt = deviceCurrent[b] ?? 0;
       if (at != bt) return bt.compareTo(at);
       return deviceTrends[b]!
           .fold(0, (s, v) => s + v)
@@ -1268,7 +1566,8 @@ class AppDetailScreen extends StatelessWidget {
     BoxDecoration cardDec = BoxDecoration(
       color: cs.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
+      border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.5), width: 0.8),
       boxShadow: [
         BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1296,7 +1595,7 @@ class AppDetailScreen extends StatelessWidget {
             List<Widget> deviceTrendCards = [];
             for (String device in sortedDevices) {
               List<int> trend = deviceTrends[device]!;
-              int todayUse = deviceToday[device] ?? 0;
+              int currentUse = deviceCurrent[device] ?? 0;
               int totalUse = trend.fold(0, (sum, val) => sum + val);
               if (totalUse == 0) continue;
 
@@ -1339,24 +1638,24 @@ class AppDetailScreen extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: todayUse > 0
+                              color: currentUse > 0
                                   ? cs.primaryContainer
                                   : cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child:
                                 Row(mainAxisSize: MainAxisSize.min, children: [
-                              Text("今日 ",
+                              Text("$selectedLabel ",
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: cs.onSurfaceVariant)),
                               Text(
                                   _ScreenTimeDetailScreenState.formatShortHM(
-                                      todayUse),
+                                      currentUse),
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: todayUse > 0
+                                      color: currentUse > 0
                                           ? cs.onPrimaryContainer
                                           : cs.onSurfaceVariant)),
                             ]),
@@ -1400,8 +1699,8 @@ class AppDetailScreen extends StatelessWidget {
                             ],
                           ),
                           borderRadius: BorderRadius.circular(24),
-                          border:
-                              Border.all(color: cs.primary.withValues(alpha: 0.15)),
+                          border: Border.all(
+                              color: cs.primary.withValues(alpha: 0.15)),
                         ),
                         child: Column(children: [
                           CircleAvatar(
@@ -1425,14 +1724,14 @@ class AppDetailScreen extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 Column(children: [
-                                  Text("多端近七日总计",
+                                  Text(totalLabel,
                                       style: TextStyle(
                                           color: cs.onSurfaceVariant,
                                           fontSize: 13)),
                                   const SizedBox(height: 6),
                                   Text(
                                       _ScreenTimeDetailScreenState
-                                          .formatShortHM(total7Days),
+                                          .formatShortHM(totalAcrossSlots),
                                       style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.w800,
@@ -1441,16 +1740,17 @@ class AppDetailScreen extends StatelessWidget {
                                 Container(
                                     width: 1,
                                     height: 44,
-                                    color: cs.outlineVariant.withValues(alpha: 0.5)),
+                                    color: cs.outlineVariant
+                                        .withValues(alpha: 0.5)),
                                 Column(children: [
-                                  Text("日均使用",
+                                  Text(avgLabel,
                                       style: TextStyle(
                                           color: cs.onSurfaceVariant,
                                           fontSize: 13)),
                                   const SizedBox(height: 6),
                                   Text(
                                       _ScreenTimeDetailScreenState
-                                          .formatShortHM(avgDaily),
+                                          .formatShortHM(avgPerPeriod),
                                       style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.w800,
@@ -1563,7 +1863,10 @@ class LineChartPainter extends CustomPainter {
           ..shader = ui.Gradient.linear(
             Offset(0, topPadding),
             Offset(0, size.height - bottomPadding),
-            [primaryColor.withValues(alpha: 0.3), primaryColor.withValues(alpha: 0.0)],
+            [
+              primaryColor.withValues(alpha: 0.3),
+              primaryColor.withValues(alpha: 0.0)
+            ],
           ));
     canvas.drawPath(
         linePath,
@@ -1664,8 +1967,9 @@ class BarChartPainter extends CustomPainter {
     for (int i = 0; i < data.length; i++) {
       double xc = i * spacing + spacing / 2;
       double barH = (data[i] / maxVal) * chartHeight;
-      barPaint.color =
-          (i == selectedIndex) ? primaryColor : primaryColor.withValues(alpha: 0.22);
+      barPaint.color = (i == selectedIndex)
+          ? primaryColor
+          : primaryColor.withValues(alpha: 0.22);
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromLTWH(xc - barWidth / 2,
