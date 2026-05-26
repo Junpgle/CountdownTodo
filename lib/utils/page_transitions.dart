@@ -26,7 +26,7 @@ class _AnimSettings {
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
       layerBlur = prefs.getBool('enable_layer_blur') ?? false;
       duration = prefs.getInt('animation_duration') ?? 500;
-      pageLayerDepth = prefs.getInt('page_layer_depth') ?? 100;
+      pageLayerDepth = prefs.getInt('page_layer_depth') ?? 60;
       containerContentStart = prefs.getInt('container_content_start') ?? 28;
     } catch (_) {}
   }

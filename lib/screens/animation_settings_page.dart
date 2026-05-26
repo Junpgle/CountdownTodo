@@ -17,7 +17,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
   int _animationDuration = 500;
-  int _pageLayerDepth = 100;
+  int _pageLayerDepth = 60;
   int _containerContentStart = 28;
 
   @override
