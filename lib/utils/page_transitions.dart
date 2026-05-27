@@ -289,12 +289,31 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   // Cached MediaQuery values — avoid calling MediaQuery.of(context) every frame.
   double _cachedScreenRadius = 12.0;
 
+  // Cached _AnimSettings values.
+  late double _bgScale;
+  late double _bgBlur;
+  late double _bgMask;
+  late bool _useScreenRadius;
+
+  // Frame-skip cache.
+  double _lastRoute = -1;
+  double _lastBg = -1;
+  Widget? _cachedFrame;
+
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    _cacheSettings();
     _cacheMediaQuery();
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _cacheSettings() {
+    _bgScale = _AnimSettings.backgroundScale;
+    _bgBlur = _AnimSettings.backgroundBlur;
+    _bgMask = _AnimSettings.backgroundMask;
+    _useScreenRadius = _AnimSettings.screenRadius;
   }
 
   @override
@@ -319,6 +338,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         oldWidget.secondaryAnimation != widget.secondaryAnimation) {
       _disposeAnimations();
       _initAnimations();
+      _lastRoute = -1;
+      _lastBg = -1;
+      _cachedFrame = null;
     }
   }
 
@@ -353,18 +375,35 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   Widget build(BuildContext context) {
+    // Wrap child ONCE outside builder — Flutter caches this as the
+    // AnimatedBuilder.child parameter across frames.
+    final wrappedChild = RepaintBoundary(child: widget.child);
+
     return AnimatedBuilder(
       animation: _mergedAnimation,
-      child: widget.child,
+      child: wrappedChild,
       builder: (context, child) {
-        final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
-        final foregroundProgress = _routeCurve.value.clamp(0.0, 1.0);
+        final routeVal = _routeCurve.value;
+        final bgVal = _backgroundCurve.value;
+
+        // Frame-skip — return cached widget when animation is idle.
+        if (routeVal == _lastRoute && bgVal == _lastBg && _cachedFrame != null) {
+          return _cachedFrame!;
+        }
+        _lastRoute = routeVal;
+        _lastBg = bgVal;
+
+        final backgroundProgress = bgVal.clamp(0.0, 1.0);
+        final foregroundProgress = routeVal.clamp(0.0, 1.0);
         final isBackground = backgroundProgress > 0.0;
 
         Widget current = child ?? const SizedBox.shrink();
 
         if (isBackground) {
-          current = _buildBackgroundPage(current, backgroundProgress);
+          final isReverse =
+              widget.animation.status == AnimationStatus.reverse;
+          current = _buildBackgroundPage(current, backgroundProgress,
+              isReverse: isReverse);
         }
 
         if (foregroundProgress < 1.0 ||
@@ -372,60 +411,66 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
           current = _buildForegroundPage(current, foregroundProgress);
         }
 
+        _cachedFrame = current;
         return current;
       },
     );
   }
 
-  Widget _buildBackgroundPage(Widget child, double progress) {
-    // Direct arithmetic — avoids ui.lerpDouble overhead.
-    final bgScale = _AnimSettings.backgroundScale;
-    final scale = 1.0 + (bgScale - 1.0) * progress;
-    final blur = _AnimSettings.backgroundBlur * progress;
-    final maskOpacity = _AnimSettings.backgroundMask * progress;
-    final clip = _cachedScreenRadius * progress;
+  Widget _buildBackgroundPage(Widget child, double progress,
+      {required bool isReverse}) {
+    // Direct arithmetic with cached settings — avoids per-frame getter calls.
+    final scale = 1.0 + (_bgScale - 1.0) * progress;
+    final maskOpacity = _bgMask * progress;
 
     Widget current = scale < 1.0 - _epsilon
         ? Transform.scale(scale: scale, child: child)
         : child;
 
-    if (_AnimSettings.screenRadius && clip > 0.5) {
-      current = ClipRRect(
-        clipBehavior: Clip.hardEdge,
-        borderRadius: BorderRadius.circular(clip),
-        child: current,
-      );
-    }
-
-    if (blur > 0.01) {
-      current = ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: current,
-      );
+    // Skip expensive ClipRRect + blur during reverse (pop) animation.
+    if (!isReverse) {
+      final clip = _cachedScreenRadius * progress;
+      if (_useScreenRadius && clip > 0.5) {
+        current = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: BorderRadius.circular(clip),
+          child: current,
+        );
+      }
+      final blur = _bgBlur * progress;
+      if (blur > 0.01) {
+        current = ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: current,
+        );
+      }
     }
 
     if (maskOpacity <= _epsilon) return current;
 
-    return DecoratedBox(
-      position: DecorationPosition.foreground,
-      decoration: BoxDecoration(
-        color: Color.fromRGBO(0, 0, 0, maskOpacity),
-      ),
-      child: current,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        current,
+        ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity)),
+      ],
     );
   }
 
   Widget _buildForegroundPage(Widget child, double progress) {
     final eased = progress;
-    final corner = _cachedScreenRadius * (1.0 - eased);
     Widget current = child;
 
-    if (_AnimSettings.screenRadius && corner > 0.5) {
-      current = ClipRRect(
-        clipBehavior: Clip.hardEdge,
-        borderRadius: BorderRadius.circular(corner),
-        child: current,
-      );
+    // Skip ClipRRect during reverse — content is being dismissed, not revealed.
+    if (widget.animation.status != AnimationStatus.reverse) {
+      final corner = _cachedScreenRadius * (1.0 - eased);
+      if (_useScreenRadius && corner > 0.5) {
+        current = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: BorderRadius.circular(corner),
+          child: current,
+        );
+      }
     }
 
     switch (widget.mode) {
@@ -562,6 +607,17 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
   late double _screenRadius;
   late double _contentStartThreshold;
 
+  // Cached _AnimSettings values — avoid repeated static getter calls.
+  late bool _useScreenRadius;
+  late bool _useLazyLoad;
+  late double _bgMask;
+  late double _screenRadiusAnim; // _screenRadius for animation
+
+  // Frame-skip cache — avoid rebuilding when animation is idle.
+  double _lastForward = -1;
+  double _lastBackground = -1;
+  Widget? _cachedFrame;
+
   @override
   void initState() {
     super.initState();
@@ -578,9 +634,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     _mergedAnimation = Listenable.merge(
       <Listenable>[_forwardCurve, _backgroundCurve],
     );
-    _contentStartThreshold = _AnimSettings.lazyLoad
-        ? _AnimSettings.contentStart
-        : _defaultContainerContentStart;
+    _cacheAnimSettings();
     _cacheScreenMetrics();
     WidgetsBinding.instance.addObserver(this);
     if (_AnimSettings.lazyLoad) {
@@ -591,6 +645,15 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     } else {
       _contentVisible = true;
     }
+  }
+
+  void _cacheAnimSettings() {
+    _useScreenRadius = _AnimSettings.screenRadius;
+    _useLazyLoad = _AnimSettings.lazyLoad;
+    _bgMask = _AnimSettings.backgroundMask;
+    _contentStartThreshold = _useLazyLoad
+        ? _AnimSettings.contentStart
+        : _defaultContainerContentStart;
   }
 
   @override
@@ -607,6 +670,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         : padding.top > 20
             ? 16.0
             : 12.0;
+    _screenRadiusAnim = _screenRadius;
   }
 
   @override
@@ -628,10 +692,6 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         Rect.fromLTWH(0, 0, _screenSize.width, _screenSize.height);
     final beginR = widget.sourceBorderRadius;
     final endR = widget.targetBorderRadius;
-    final useScreenRadius = _AnimSettings.screenRadius;
-    final useLazyLoad = _AnimSettings.lazyLoad;
-    final bgMask = _AnimSettings.backgroundMask;
-    final contentStartThreshold = _contentStartThreshold;
     final screenWidth = _screenSize.width;
     final screenHeight = _screenSize.height;
 
@@ -643,9 +703,19 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     final halfWScreen = screenWidth / 2;
     final halfHScreen = screenHeight / 2;
     final invScreenWidth = 1.0 / screenWidth;
-    final invContentRange = contentStartThreshold < 1.0
-        ? 1.0 / (1.0 - contentStartThreshold)
+    final invContentRange = _contentStartThreshold < 1.0
+        ? 1.0 / (1.0 - _contentStartThreshold)
         : 1.0;
+
+    // Pre-compute border radius deltas.
+    final dRTLX = endR.topLeft.x - beginR.topLeft.x;
+    final dRTLY = endR.topLeft.y - beginR.topLeft.y;
+    final dRTRX = endR.topRight.x - beginR.topRight.x;
+    final dRTRY = endR.topRight.y - beginR.topRight.y;
+    final dRBLX = endR.bottomLeft.x - beginR.bottomLeft.x;
+    final dRBLY = endR.bottomLeft.y - beginR.bottomLeft.y;
+    final dRBRX = endR.bottomRight.x - beginR.bottomRight.x;
+    final dRBRY = endR.bottomRight.y - beginR.bottomRight.y;
 
     // Build content once — OverflowBox forces full-screen constraints so
     // responsive content never reflows during back gesture shrinking.
@@ -664,7 +734,14 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
       child: cachedContent,
       builder: (context, child) {
         final t = _forwardCurve.value;
-        final backgroundProgress = _backgroundCurve.value;
+        final bg = _backgroundCurve.value;
+
+        // Frame-skip — return cached widget when animation is idle.
+        if (t == _lastForward && bg == _lastBackground && _cachedFrame != null) {
+          return _cachedFrame!;
+        }
+        _lastForward = t;
+        _lastBackground = bg;
 
         // Direct arithmetic — avoids ui.lerpDouble function call overhead.
         final left = begin.left + dLeft * t;
@@ -676,9 +753,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
             widget.animation.status == AnimationStatus.reverse;
 
         final contentProgress =
-            ((t - contentStartThreshold) * invContentRange).clamp(0.0, 1.0);
-        final fadeIn = useLazyLoad ? contentProgress : 1.0;
-        final maskOpacity = bgMask * backgroundProgress;
+            ((t - _contentStartThreshold) * invContentRange).clamp(0.0, 1.0);
+        final fadeIn = _useLazyLoad ? contentProgress : 1.0;
+        final maskOpacity = _bgMask * bg;
 
         // Build content layer — cached child (OverflowBox) avoids re-layout.
         Widget contentLayer = child ?? const SizedBox.shrink();
@@ -686,8 +763,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         if (isReverse) {
           // Gesture: single Transform with precomputed matrix (scale + translate).
           final s = width * invScreenWidth;
-          final tx = left - halfWScreen + width / 2;
-          final ty = top - halfHScreen + height / 2;
+          final tx = left - halfWScreen + width * 0.5;
+          final ty = top - halfHScreen + height * 0.5;
           _gestureMatrix
               .setValues(s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
           contentLayer = Transform(
@@ -697,8 +774,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
           );
         } else {
           // Forward: screen-radius clip + content scale + fade.
-          if (useScreenRadius) {
-            final corner = _screenRadius * (1.0 - t);
+          if (_useScreenRadius) {
+            final corner = _screenRadiusAnim * (1.0 - t);
             if (corner > 0.5) {
               contentLayer = ClipRRect(
                 clipBehavior: Clip.hardEdge,
@@ -728,29 +805,22 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
             ? ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity))
             : null;
 
-        // Container border radius — direct Radius interpolation.
+        // Container border radius — direct interpolation with precomputed deltas.
         final borderRadius = isReverse
             ? BorderRadius.zero
             : BorderRadius.only(
                 topLeft: Radius.elliptical(
-                    beginR.topLeft.x + (endR.topLeft.x - beginR.topLeft.x) * t,
-                    beginR.topLeft.y +
-                        (endR.topLeft.y - beginR.topLeft.y) * t),
+                    beginR.topLeft.x + dRTLX * t,
+                    beginR.topLeft.y + dRTLY * t),
                 topRight: Radius.elliptical(
-                    beginR.topRight.x +
-                        (endR.topRight.x - beginR.topRight.x) * t,
-                    beginR.topRight.y +
-                        (endR.topRight.y - beginR.topRight.y) * t),
+                    beginR.topRight.x + dRTRX * t,
+                    beginR.topRight.y + dRTRY * t),
                 bottomLeft: Radius.elliptical(
-                    beginR.bottomLeft.x +
-                        (endR.bottomLeft.x - beginR.bottomLeft.x) * t,
-                    beginR.bottomLeft.y +
-                        (endR.bottomLeft.y - beginR.bottomLeft.y) * t),
+                    beginR.bottomLeft.x + dRBLX * t,
+                    beginR.bottomLeft.y + dRBLY * t),
                 bottomRight: Radius.elliptical(
-                    beginR.bottomRight.x +
-                        (endR.bottomRight.x - beginR.bottomRight.x) * t,
-                    beginR.bottomRight.y +
-                        (endR.bottomRight.y - beginR.bottomRight.y) * t),
+                    beginR.bottomRight.x + dRBRX * t,
+                    beginR.bottomRight.y + dRBRY * t),
               );
 
         Widget container = ColoredBox(
@@ -765,7 +835,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
           );
         }
 
-        return Stack(
+        _cachedFrame = Stack(
           fit: StackFit.expand,
           children: [
             if (maskWidget != null) maskWidget,
@@ -781,6 +851,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
             ),
           ],
         );
+        return _cachedFrame!;
       },
     );
   }
