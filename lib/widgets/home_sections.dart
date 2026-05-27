@@ -497,12 +497,57 @@ class PieChartPainter extends CustomPainter {
   final bool isAppChart;
   final double sweepProgress;
 
+  // 缓存 TextPainter，避免每帧重复创建
+  late final List<TextPainter> _labelPainters;
+  late final List<String> _labels;
+
   PieChartPainter({
     required this.data,
     required this.total,
     this.isAppChart = false,
     this.sweepProgress = 1.0,
-  });
+  }) {
+    final colors = isAppChart
+        ? [
+            Colors.blue.shade400,
+            Colors.green.shade400,
+            Colors.orange.shade400,
+            Colors.purple.shade300,
+            Colors.cyan.shade300,
+          ]
+        : [
+            Colors.indigo.shade400,
+            Colors.teal.shade400,
+            Colors.amber.shade600,
+            Colors.redAccent.shade200,
+          ];
+    final labelsList = data.keys.toList();
+    _labels = labelsList;
+    _labelPainters = List.generate(labelsList.length, (i) {
+      String displayLabel = labelsList[i];
+      if (displayLabel.length > 6) {
+        displayLabel = "${displayLabel.substring(0, 5)}..";
+      }
+      return TextPainter(
+        text: TextSpan(
+          text: displayLabel,
+          style: TextStyle(
+            color: colors[i % colors.length].withValues(alpha: 1.0),
+            fontSize: 12, // 默认字号，paint() 中按需缩放
+            fontWeight: FontWeight.bold,
+            shadows: const [
+              Shadow(
+                offset: Offset(0, 1),
+                blurRadius: 2,
+                color: Colors.black26,
+              ),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+    });
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -547,42 +592,16 @@ class PieChartPainter extends CustomPainter {
 
       canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
 
-      if (sweepProgress > 0.5) {
+      if (sweepProgress > 0.5 && sweepAngle > (math.pi * 3 * 0.02)) {
         final middleAngle = startAngle + sweepAngle / 2;
+        final textRadius = radius + (dynamicStrokeWidth / 2) + 12;
+        final x = center.dx + textRadius * math.cos(middleAngle);
+        final y = center.dy + textRadius * math.sin(middleAngle);
 
-        if (sweepAngle > (math.pi * 3 * 0.02)) {
-          final textRadius = radius + (dynamicStrokeWidth / 2) + 12;
-          final x = center.dx + textRadius * math.cos(middleAngle);
-          final y = center.dy + textRadius * math.sin(middleAngle);
-
-          String displayLabel = label;
-          if (displayLabel.length > 6) {
-            displayLabel = "${displayLabel.substring(0, 5)}..";
-          }
-
-          double fontSize = minDimension > 200 ? 12 : 10;
-
-          final textPainter = TextPainter(
-            text: TextSpan(
-              text: displayLabel,
-              style: TextStyle(
-                  color: colors[i % colors.length].withValues(alpha: 1.0),
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.bold,
-                  shadows: const [
-                    Shadow(
-                        offset: Offset(0, 1),
-                        blurRadius: 2,
-                        color: Colors.black26)
-                  ]),
-            ),
-            textDirection: TextDirection.ltr,
-          )..layout();
-
-          final textOffset =
-              Offset(x - textPainter.width / 2, y - textPainter.height / 2);
-          textPainter.paint(canvas, textOffset);
-        }
+        final textPainter = _labelPainters[i];
+        final textOffset =
+            Offset(x - textPainter.width / 2, y - textPainter.height / 2);
+        textPainter.paint(canvas, textOffset);
       }
 
       startAngle += fullSweepAngle;
