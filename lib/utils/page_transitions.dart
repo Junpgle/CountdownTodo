@@ -299,14 +299,12 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   void didChangeMetrics() {
-    // Update cached radius when window metrics change (rotation, resize).
     _cacheMediaQuery();
   }
 
   void _cacheMediaQuery() {
-    // Use platform dispatcher to read padding without creating a BuildContext
-    // dependency — avoids per-frame MediaQuery.of rebuilds.
-    final padding = WidgetsBinding.instance.platformDispatcher.views.first.padding;
+    final padding =
+        WidgetsBinding.instance.platformDispatcher.views.first.padding;
     _cachedScreenRadius = padding.top > 30
         ? 24.0
         : padding.top > 20
@@ -366,18 +364,12 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         Widget current = child ?? const SizedBox.shrink();
 
         if (isBackground) {
-          current = _buildBackgroundPage(
-            RepaintBoundary(child: current),
-            backgroundProgress,
-          );
+          current = _buildBackgroundPage(current, backgroundProgress);
         }
 
         if (foregroundProgress < 1.0 ||
             widget.animation.status == AnimationStatus.reverse) {
-          current = _buildForegroundPage(
-            RepaintBoundary(child: current),
-            foregroundProgress,
-          );
+          current = _buildForegroundPage(current, foregroundProgress);
         }
 
         return current;
@@ -386,10 +378,11 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   }
 
   Widget _buildBackgroundPage(Widget child, double progress) {
-    final scale = ui.lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
-    final blur = ui.lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
-    final maskOpacity =
-        ui.lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
+    // Direct arithmetic — avoids ui.lerpDouble overhead.
+    final bgScale = _AnimSettings.backgroundScale;
+    final scale = 1.0 + (bgScale - 1.0) * progress;
+    final blur = _AnimSettings.backgroundBlur * progress;
+    final maskOpacity = _AnimSettings.backgroundMask * progress;
     final clip = _cachedScreenRadius * progress;
 
     Widget current = scale < 1.0 - _epsilon
@@ -411,14 +404,12 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       );
     }
 
-    if (maskOpacity <= _epsilon) {
-      return current;
-    }
+    if (maskOpacity <= _epsilon) return current;
 
     return DecoratedBox(
       position: DecorationPosition.foreground,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: maskOpacity),
+        color: Color.fromRGBO(0, 0, 0, maskOpacity),
       ),
       child: current,
     );
@@ -439,8 +430,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     switch (widget.mode) {
       case _PageLayerRouteMode.scale:
-        final scale = ui.lerpDouble(0.92, 1.0, eased)!;
-        final opacity = ui.lerpDouble(0.75, 1.0, eased)!;
+        // Direct arithmetic: scale = 0.92 + 0.08 * eased
+        final scale = 0.92 + 0.08 * eased;
+        final opacity = 0.75 + 0.25 * eased;
         if (scale < 1.0 - _epsilon) {
           current = Transform.scale(
             scale: scale,
@@ -456,17 +448,16 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
             : current;
       case _PageLayerRouteMode.slideEnd:
       case _PageLayerRouteMode.slideBottom:
-        final begin = widget.mode == _PageLayerRouteMode.slideEnd
-            ? const Offset(1.0, 0.0)
-            : const Offset(0.0, 1.0);
-        final offset = Offset.lerp(begin, Offset.zero, eased)!;
-        if (offset.distanceSquared > _epsilon) {
+        final isEnd = widget.mode == _PageLayerRouteMode.slideEnd;
+        // Direct arithmetic: offset component = 1.0 - eased
+        final d = 1.0 - eased;
+        if (d > _epsilon) {
           current = FractionalTranslation(
-            translation: offset,
+            translation: isEnd ? Offset(d, 0.0) : Offset(0.0, d),
             child: current,
           );
         }
-        final opacity = ui.lerpDouble(0.9, 1.0, eased)!;
+        final opacity = 0.9 + 0.1 * eased;
         return opacity < 1.0 - _epsilon
             ? FadeTransition(
                 opacity: AlwaysStoppedAnimation(opacity),
@@ -644,6 +635,18 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     final screenWidth = _screenSize.width;
     final screenHeight = _screenSize.height;
 
+    // Pre-compute deltas — direct arithmetic in builder instead of lerpDouble.
+    final dLeft = end.left - begin.left;
+    final dTop = end.top - begin.top;
+    final dWidth = end.width - begin.width;
+    final dHeight = end.height - begin.height;
+    final halfWScreen = screenWidth / 2;
+    final halfHScreen = screenHeight / 2;
+    final invScreenWidth = 1.0 / screenWidth;
+    final invContentRange = contentStartThreshold < 1.0
+        ? 1.0 / (1.0 - contentStartThreshold)
+        : 1.0;
+
     // Build content once — OverflowBox forces full-screen constraints so
     // responsive content never reflows during back gesture shrinking.
     // Cached as AnimatedBuilder.child so Flutter reuses across frames.
@@ -663,30 +666,30 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         final t = _forwardCurve.value;
         final backgroundProgress = _backgroundCurve.value;
 
-        final left = ui.lerpDouble(begin.left, end.left, t)!;
-        final top = ui.lerpDouble(begin.top, end.top, t)!;
-        final width = ui.lerpDouble(begin.width, end.width, t)!;
-        final height = ui.lerpDouble(begin.height, end.height, t)!;
+        // Direct arithmetic — avoids ui.lerpDouble function call overhead.
+        final left = begin.left + dLeft * t;
+        final top = begin.top + dTop * t;
+        final width = begin.width + dWidth * t;
+        final height = begin.height + dHeight * t;
 
         final isReverse =
             widget.animation.status == AnimationStatus.reverse;
 
         final contentProgress =
-            ((t - contentStartThreshold) / (1 - contentStartThreshold))
-                .clamp(0.0, 1.0);
+            ((t - contentStartThreshold) * invContentRange).clamp(0.0, 1.0);
         final fadeIn = useLazyLoad ? contentProgress : 1.0;
-        final maskOpacity =
-            ui.lerpDouble(0.0, bgMask, backgroundProgress)!;
+        final maskOpacity = bgMask * backgroundProgress;
 
         // Build content layer — cached child (OverflowBox) avoids re-layout.
         Widget contentLayer = child ?? const SizedBox.shrink();
 
         if (isReverse) {
           // Gesture: single Transform with precomputed matrix (scale + translate).
-          final s = width / screenWidth;
-          final tx = left - (screenWidth - width) / 2;
-          final ty = top - (screenHeight - height) / 2;
-          _gestureMatrix.setValues(s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
+          final s = width * invScreenWidth;
+          final tx = left - halfWScreen + width / 2;
+          final ty = top - halfHScreen + height / 2;
+          _gestureMatrix
+              .setValues(s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
           contentLayer = Transform(
             transform: _gestureMatrix,
             transformHitTests: false,
@@ -695,7 +698,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         } else {
           // Forward: screen-radius clip + content scale + fade.
           if (useScreenRadius) {
-            final corner = ui.lerpDouble(_screenRadius, 0, t)!;
+            final corner = _screenRadius * (1.0 - t);
             if (corner > 0.5) {
               contentLayer = ClipRRect(
                 clipBehavior: Clip.hardEdge,
@@ -704,7 +707,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
               );
             }
           }
-          final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
+          final contentScale = 0.96 + 0.04 * contentProgress;
           if (contentScale < 1.0 - _epsilon) {
             contentLayer = Transform.scale(
               scale: contentScale,
@@ -722,21 +725,32 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
 
         // Mask overlay — skip widget when fully transparent.
         final maskWidget = maskOpacity > _epsilon
-            ? ColoredBox(
-                color: Colors.black.withValues(alpha: maskOpacity),
-              )
+            ? ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity))
             : null;
 
-        // Container — no ClipRRect during gesture (content moves freely).
+        // Container border radius — direct Radius interpolation.
         final borderRadius = isReverse
             ? BorderRadius.zero
             : BorderRadius.only(
-                topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
-                topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
-                bottomLeft:
-                    Radius.lerp(beginR.bottomLeft, endR.bottomLeft, t)!,
-                bottomRight:
-                    Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
+                topLeft: Radius.elliptical(
+                    beginR.topLeft.x + (endR.topLeft.x - beginR.topLeft.x) * t,
+                    beginR.topLeft.y +
+                        (endR.topLeft.y - beginR.topLeft.y) * t),
+                topRight: Radius.elliptical(
+                    beginR.topRight.x +
+                        (endR.topRight.x - beginR.topRight.x) * t,
+                    beginR.topRight.y +
+                        (endR.topRight.y - beginR.topRight.y) * t),
+                bottomLeft: Radius.elliptical(
+                    beginR.bottomLeft.x +
+                        (endR.bottomLeft.x - beginR.bottomLeft.x) * t,
+                    beginR.bottomLeft.y +
+                        (endR.bottomLeft.y - beginR.bottomLeft.y) * t),
+                bottomRight: Radius.elliptical(
+                    beginR.bottomRight.x +
+                        (endR.bottomRight.x - beginR.bottomRight.x) * t,
+                    beginR.bottomRight.y +
+                        (endR.bottomRight.y - beginR.bottomRight.y) * t),
               );
 
         Widget container = ColoredBox(
