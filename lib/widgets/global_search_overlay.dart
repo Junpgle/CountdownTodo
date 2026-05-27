@@ -76,8 +76,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final FocusNode _keyboardFocusNode = FocusNode();
   late AnimationController _animController;
-  late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
 
   List<SearchResult> _results = [];
@@ -95,8 +95,6 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _scaleAnimation =
-        CurvedAnimation(parent: _animController, curve: Curves.easeOutBack);
     _fadeAnimation =
         CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _animController.forward();
@@ -111,6 +109,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   void dispose() {
     _controller.dispose();
     _inputFocusNode.dispose();
+    _keyboardFocusNode.dispose();
     _debounce?.cancel();
     _animController.dispose();
     super.dispose();
@@ -244,7 +243,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           : Colors.transparent,
       resizeToAvoidBottomInset: false,
       body: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyboardFocusNode,
         onKeyEvent: _handleKeyEvent,
         child: Stack(
           children: [
