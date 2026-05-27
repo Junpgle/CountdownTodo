@@ -1,4 +1,4 @@
-import 'dart:ui' show ImageFilter, lerpDouble;
+import 'dart:ui' as ui show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +47,7 @@ class _AnimSettings {
   static double get depthFactor => (pageLayerDepth / 100).clamp(0.0, 1.0);
 
   static double get backgroundScale =>
-      lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
+      ui.lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
 
   static double get backgroundMask =>
       _defaultPageLayerBackgroundMask * depthFactor;
@@ -386,10 +386,10 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   }
 
   Widget _buildBackgroundPage(Widget child, double progress) {
-    final scale = lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
-    final blur = lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
+    final scale = ui.lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
+    final blur = ui.lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
     final maskOpacity =
-        lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
+        ui.lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
     final clip = _cachedScreenRadius * progress;
 
     Widget current = scale < 1.0 - _epsilon
@@ -406,7 +406,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     if (blur > 0.01) {
       current = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: current,
       );
     }
@@ -439,8 +439,8 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
     switch (widget.mode) {
       case _PageLayerRouteMode.scale:
-        final scale = lerpDouble(0.92, 1.0, eased)!;
-        final opacity = lerpDouble(0.75, 1.0, eased)!;
+        final scale = ui.lerpDouble(0.92, 1.0, eased)!;
+        final opacity = ui.lerpDouble(0.75, 1.0, eased)!;
         if (scale < 1.0 - _epsilon) {
           current = Transform.scale(
             scale: scale,
@@ -466,7 +466,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
             child: current,
           );
         }
-        final opacity = lerpDouble(0.9, 1.0, eased)!;
+        final opacity = ui.lerpDouble(0.9, 1.0, eased)!;
         return opacity < 1.0 - _epsilon
             ? FadeTransition(
                 opacity: AlwaysStoppedAnimation(opacity),
@@ -641,17 +641,29 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     final screenWidth = _screenSize.width;
     final screenHeight = _screenSize.height;
 
+    // Build content once — OverflowBox forces full-screen constraints so
+    // responsive content never reflows during back gesture shrinking.
+    // Cached as AnimatedBuilder.child so Flutter reuses across frames.
+    final cachedContent = _contentVisible
+        ? OverflowBox(
+            alignment: Alignment.topLeft,
+            maxWidth: screenWidth,
+            maxHeight: screenHeight,
+            child: RepaintBoundary(child: widget.child),
+          )
+        : null;
+
     return AnimatedBuilder(
       animation: _mergedAnimation,
-      child: RepaintBoundary(child: widget.child),
+      child: cachedContent,
       builder: (context, child) {
         final t = _forwardCurve.value;
         final backgroundProgress = _backgroundCurve.value;
 
-        final left = lerpDouble(begin.left, end.left, t)!;
-        final top = lerpDouble(begin.top, end.top, t)!;
-        final width = lerpDouble(begin.width, end.width, t)!;
-        final height = lerpDouble(begin.height, end.height, t)!;
+        final left = ui.lerpDouble(begin.left, end.left, t)!;
+        final top = ui.lerpDouble(begin.top, end.top, t)!;
+        final width = ui.lerpDouble(begin.width, end.width, t)!;
+        final height = ui.lerpDouble(begin.height, end.height, t)!;
 
         final borderRadius = BorderRadius.only(
           topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
@@ -660,39 +672,59 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
           bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
         );
 
+        final isReverse =
+            widget.animation.status == AnimationStatus.reverse;
+
         final contentProgress =
             ((t - contentStartThreshold) / (1 - contentStartThreshold))
                 .clamp(0.0, 1.0);
         final fadeIn = useLazyLoad ? contentProgress : 1.0;
-        final contentScale = lerpDouble(0.96, 1.0, contentProgress)!;
+        final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
         final maskOpacity =
-            lerpDouble(0.0, bgMask, backgroundProgress)!;
+            ui.lerpDouble(0.0, bgMask, backgroundProgress)!;
 
-        Widget content = child ?? const SizedBox.shrink();
-        if (useScreenRadius) {
-          final corner = lerpDouble(_screenRadius, 0, t)!;
-          if (corner > 0.5) {
-            content = ClipRRect(
-              clipBehavior: Clip.hardEdge,
-              borderRadius: BorderRadius.circular(corner),
-              child: content,
+        // Build content layer — cached child (OverflowBox) avoids re-layout.
+        Widget contentLayer = child ?? const SizedBox.shrink();
+
+        if (isReverse) {
+          // Back gesture: visual scale + translate toward source rect.
+          final gestureScale = width / screenWidth;
+          final gestureOffset = Offset(
+            left - (screenWidth - width) / 2,
+            top - (screenHeight - height) / 2,
+          );
+          contentLayer = Transform.scale(
+            scale: gestureScale,
+            child: Transform.translate(
+              offset: gestureOffset,
+              child: contentLayer,
+            ),
+          );
+        } else {
+          // Forward animation: screen-radius clip + content scale + fade.
+          if (useScreenRadius) {
+            final corner = ui.lerpDouble(_screenRadius, 0, t)!;
+            if (corner > 0.5) {
+              contentLayer = ClipRRect(
+                clipBehavior: Clip.hardEdge,
+                borderRadius: BorderRadius.circular(corner),
+                child: contentLayer,
+              );
+            }
+          }
+          if (contentScale < 1.0 - _epsilon) {
+            contentLayer = Transform.scale(
+              scale: contentScale,
+              alignment: const Alignment(0, -0.45),
+              child: contentLayer,
             );
           }
-        }
-
-        if (contentScale < 1.0 - _epsilon) {
-          content = Transform.scale(
-            scale: contentScale,
-            alignment: const Alignment(0, -0.45),
-            child: content,
-          );
-        }
-
-        if (fadeIn < 1.0 - _epsilon) {
-          content = FadeTransition(
-            opacity: AlwaysStoppedAnimation(fadeIn),
-            child: content,
-          );
+          if (fadeIn < 1.0 - _epsilon) {
+            contentLayer = FadeTransition(
+              opacity: AlwaysStoppedAnimation(fadeIn),
+              child: contentLayer,
+            );
+          }
         }
 
         return Stack(
@@ -707,24 +739,17 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
               top: top,
               width: width,
               height: height,
-              child: ClipRRect(
-                clipBehavior: Clip.hardEdge,
-                borderRadius: borderRadius,
-                child: ColoredBox(
-                  color: widget.sourceColor,
-                  child: _contentVisible
-                      ? IgnorePointer(
-                          ignoring: fadeIn < 1.0,
-                          child: Transform.translate(
-                            offset: Offset(-left, -top),
-                            child: SizedBox(
-                              width: screenWidth,
-                              height: screenHeight,
-                              child: content,
-                            ),
-                          ),
-                        )
-                      : null,
+              child: IgnorePointer(
+                ignoring: !isReverse && fadeIn < 1.0,
+                child: RepaintBoundary(
+                  child: ClipRRect(
+                    clipBehavior: Clip.hardEdge,
+                    borderRadius: borderRadius,
+                    child: ColoredBox(
+                      color: widget.sourceColor,
+                      child: contentLayer,
+                    ),
+                  ),
                 ),
               ),
             ),
