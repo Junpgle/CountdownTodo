@@ -82,6 +82,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Timer? _quickControlsAutoReturnTimer;
   Timer? _mediaRefreshTimer;
   bool _mediaPollingStarted = false;
+  final ValueNotifier<int> _mediaTickNotifier = ValueNotifier(0);
 
   // 启动系统控制自动返回定时器（子控制 → 快速面板）
   void _startSystemControlAutoReturnTimer() {
@@ -219,6 +220,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _timeNotifier.dispose();
     _clockTimeNotifier.dispose();
     _pauseTimeNotifier.dispose();
+    _mediaTickNotifier.dispose();
     widget.payloadNotifier?.removeListener(_onNotifierPayload);
     _splitController.dispose();
     _sizeController.dispose();
@@ -323,7 +325,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     SystemControlService.startMediaPolling(intervalMs: 3000);
     _mediaRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted && _stack.current == IslandState.musicPlayer) {
-        setState(() {});
+        _mediaTickNotifier.value++;
       }
     });
   }
@@ -2905,29 +2907,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   // 音乐播放器（包含歌词显示）
   Widget _buildMusicPlayer() {
-    final musicData = _currentPayload?['musicData'] as Map?;
-    final hasMusic = musicData != null && musicData.isNotEmpty;
-
-    // 从 SMTC 获取系统媒体信息
-    final smtc = SystemControlService.getMediaInfo();
-    final smtcHasMusic = !smtc.isEmpty;
-
-    // 优先使用 payload 中的数据，其次使用 SMTC 数据
-    final title =
-        musicData?['title']?.toString() ?? (smtcHasMusic ? smtc.title : '');
-    final artist =
-        musicData?['artist']?.toString() ?? (smtcHasMusic ? smtc.artist : '');
-    final isPlaying = musicData?['isPlaying'] as bool? ??
-        (smtc.status == PlaybackStatus.playing);
-    final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
-    final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
-    final lyrics = musicData?['lyrics']?.toString() ?? '';
-    final currentLyricIndex = musicData?['currentLyricIndex'] as int? ?? 0;
-    final shuffleOn = musicData?['shuffle'] as bool? ?? false;
-    final repeatMode = musicData?['repeat']?.toString() ?? 'off';
-
-    final showContent = hasMusic || smtcHasMusic;
-
     return GestureDetector(
       key: const ValueKey('musicPlayer'),
       onTap: () {
@@ -2941,10 +2920,45 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.all(14),
-        child: showContent
-            ? _buildMusicPlayerContent(title, artist, isPlaying, currentTime,
-                totalTime, lyrics, currentLyricIndex, shuffleOn, repeatMode)
-            : _buildMusicEmptyState(),
+        child: ValueListenableBuilder<int>(
+          valueListenable: _mediaTickNotifier,
+          builder: (context, _, __) {
+            final musicData = _currentPayload?['musicData'] as Map?;
+            final hasMusic = musicData != null && musicData.isNotEmpty;
+            final smtc = SystemControlService.getMediaInfo();
+            final smtcHasMusic = !smtc.isEmpty;
+            final title = musicData?['title']?.toString() ??
+                (smtcHasMusic ? smtc.title : '');
+            final artist = musicData?['artist']?.toString() ??
+                (smtcHasMusic ? smtc.artist : '');
+            final isPlaying = musicData?['isPlaying'] as bool? ??
+                (smtc.status == PlaybackStatus.playing);
+            final currentTime =
+                musicData?['currentTime']?.toString() ?? '0:00';
+            final totalTime =
+                musicData?['totalTime']?.toString() ?? '0:00';
+            final lyrics = musicData?['lyrics']?.toString() ?? '';
+            final currentLyricIndex =
+                musicData?['currentLyricIndex'] as int? ?? 0;
+            final shuffleOn = musicData?['shuffle'] as bool? ?? false;
+            final repeatMode =
+                musicData?['repeat']?.toString() ?? 'off';
+            final showContent = hasMusic || smtcHasMusic;
+            return showContent
+                ? _buildMusicPlayerContent(
+                    title,
+                    artist,
+                    isPlaying,
+                    currentTime,
+                    totalTime,
+                    lyrics,
+                    currentLyricIndex,
+                    shuffleOn,
+                    repeatMode,
+                  )
+                : _buildMusicEmptyState();
+          },
+        ),
       ),
     );
   }
