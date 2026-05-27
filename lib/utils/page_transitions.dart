@@ -626,6 +626,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     super.dispose();
   }
 
+  // Pre-allocated matrix reused every gesture frame to avoid per-frame alloc.
+  static final Matrix4 _gestureMatrix = Matrix4.identity();
+
   @override
   Widget build(BuildContext context) {
     // Pre-compute values that don't depend on animation t.
@@ -665,13 +668,6 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         final width = ui.lerpDouble(begin.width, end.width, t)!;
         final height = ui.lerpDouble(begin.height, end.height, t)!;
 
-        final borderRadius = BorderRadius.only(
-          topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
-          topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
-          bottomLeft: Radius.lerp(beginR.bottomLeft, endR.bottomLeft, t)!,
-          bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
-        );
-
         final isReverse =
             widget.animation.status == AnimationStatus.reverse;
 
@@ -679,7 +675,6 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
             ((t - contentStartThreshold) / (1 - contentStartThreshold))
                 .clamp(0.0, 1.0);
         final fadeIn = useLazyLoad ? contentProgress : 1.0;
-        final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
         final maskOpacity =
             ui.lerpDouble(0.0, bgMask, backgroundProgress)!;
 
@@ -687,21 +682,18 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         Widget contentLayer = child ?? const SizedBox.shrink();
 
         if (isReverse) {
-          // Back gesture: visual scale + translate toward source rect.
-          final gestureScale = width / screenWidth;
-          final gestureOffset = Offset(
-            left - (screenWidth - width) / 2,
-            top - (screenHeight - height) / 2,
-          );
-          contentLayer = Transform.scale(
-            scale: gestureScale,
-            child: Transform.translate(
-              offset: gestureOffset,
-              child: contentLayer,
-            ),
+          // Gesture: single Transform with precomputed matrix (scale + translate).
+          final s = width / screenWidth;
+          final tx = left - (screenWidth - width) / 2;
+          final ty = top - (screenHeight - height) / 2;
+          _gestureMatrix.setValues(s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
+          contentLayer = Transform(
+            transform: _gestureMatrix,
+            transformHitTests: false,
+            child: contentLayer,
           );
         } else {
-          // Forward animation: screen-radius clip + content scale + fade.
+          // Forward: screen-radius clip + content scale + fade.
           if (useScreenRadius) {
             final corner = ui.lerpDouble(_screenRadius, 0, t)!;
             if (corner > 0.5) {
@@ -712,6 +704,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
               );
             }
           }
+          final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
           if (contentScale < 1.0 - _epsilon) {
             contentLayer = Transform.scale(
               scale: contentScale,
@@ -727,13 +720,41 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
           }
         }
 
+        // Mask overlay — skip widget when fully transparent.
+        final maskWidget = maskOpacity > _epsilon
+            ? ColoredBox(
+                color: Colors.black.withValues(alpha: maskOpacity),
+              )
+            : null;
+
+        // Container — no ClipRRect during gesture (content moves freely).
+        final borderRadius = isReverse
+            ? BorderRadius.zero
+            : BorderRadius.only(
+                topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
+                topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
+                bottomLeft:
+                    Radius.lerp(beginR.bottomLeft, endR.bottomLeft, t)!,
+                bottomRight:
+                    Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
+              );
+
+        Widget container = ColoredBox(
+          color: widget.sourceColor,
+          child: contentLayer,
+        );
+        if (!isReverse && borderRadius != BorderRadius.zero) {
+          container = ClipRRect(
+            clipBehavior: Clip.hardEdge,
+            borderRadius: borderRadius,
+            child: container,
+          );
+        }
+
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (maskOpacity > _epsilon)
-              ColoredBox(
-                color: Colors.black.withValues(alpha: maskOpacity),
-              ),
+            if (maskWidget != null) maskWidget,
             Positioned(
               left: left,
               top: top,
@@ -741,21 +762,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
               height: height,
               child: IgnorePointer(
                 ignoring: !isReverse && fadeIn < 1.0,
-                child: RepaintBoundary(
-                  child: isReverse
-                      ? ColoredBox(
-                          color: widget.sourceColor,
-                          child: contentLayer,
-                        )
-                      : ClipRRect(
-                          clipBehavior: Clip.hardEdge,
-                          borderRadius: borderRadius,
-                          child: ColoredBox(
-                            color: widget.sourceColor,
-                            child: contentLayer,
-                          ),
-                        ),
-                ),
+                child: container,
               ),
             ),
           ],
