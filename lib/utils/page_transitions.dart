@@ -280,15 +280,38 @@ class _PageLayerTransition extends StatefulWidget {
   State<_PageLayerTransition> createState() => _PageLayerTransitionState();
 }
 
-class _PageLayerTransitionState extends State<_PageLayerTransition> {
+class _PageLayerTransitionState extends State<_PageLayerTransition>
+    with WidgetsBindingObserver {
   late CurvedAnimation _routeCurve;
   late CurvedAnimation _backgroundCurve;
   late Listenable _mergedAnimation;
+
+  // Cached MediaQuery values — avoid calling MediaQuery.of(context) every frame.
+  double _cachedScreenRadius = 12.0;
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    _cacheMediaQuery();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Update cached radius when window metrics change (rotation, resize).
+    _cacheMediaQuery();
+  }
+
+  void _cacheMediaQuery() {
+    // Use platform dispatcher to read padding without creating a BuildContext
+    // dependency — avoids per-frame MediaQuery.of rebuilds.
+    final padding = WidgetsBinding.instance.platformDispatcher.views.first.padding;
+    _cachedScreenRadius = padding.top > 30
+        ? 24.0
+        : padding.top > 20
+            ? 16.0
+            : 12.0;
   }
 
   @override
@@ -325,6 +348,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposeAnimations();
     super.dispose();
   }
@@ -343,7 +367,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
 
         if (isBackground) {
           current = _buildBackgroundPage(
-            context,
             RepaintBoundary(child: current),
             backgroundProgress,
           );
@@ -352,7 +375,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
         if (foregroundProgress < 1.0 ||
             widget.animation.status == AnimationStatus.reverse) {
           current = _buildForegroundPage(
-            context,
             RepaintBoundary(child: current),
             foregroundProgress,
           );
@@ -363,26 +385,20 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
     );
   }
 
-  Widget _buildBackgroundPage(
-    BuildContext context,
-    Widget child,
-    double progress,
-  ) {
+  Widget _buildBackgroundPage(Widget child, double progress) {
     final scale = lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
     final blur = lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
     final maskOpacity =
         lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
-    final clip = _deviceBorderRadius(context, progress);
+    final clip = _cachedScreenRadius * progress;
 
     Widget current = scale < 1.0 - _epsilon
-        ? Transform.scale(
-            scale: scale,
-            child: child,
-          )
+        ? Transform.scale(scale: scale, child: child)
         : child;
 
     if (_AnimSettings.screenRadius && clip > 0.5) {
       current = ClipRRect(
+        clipBehavior: Clip.hardEdge,
         borderRadius: BorderRadius.circular(clip),
         child: current,
       );
@@ -399,30 +415,23 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
       return current;
     }
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        current,
-        IgnorePointer(
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: maskOpacity),
-          ),
-        ),
-      ],
+    return DecoratedBox(
+      position: DecorationPosition.foreground,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: maskOpacity),
+      ),
+      child: current,
     );
   }
 
-  Widget _buildForegroundPage(
-    BuildContext context,
-    Widget child,
-    double progress,
-  ) {
-    final eased = progress.clamp(0.0, 1.0);
-    final corner = _deviceBorderRadius(context, 1.0 - eased);
+  Widget _buildForegroundPage(Widget child, double progress) {
+    final eased = progress;
+    final corner = _cachedScreenRadius * (1.0 - eased);
     Widget current = child;
 
     if (_AnimSettings.screenRadius && corner > 0.5) {
       current = ClipRRect(
+        clipBehavior: Clip.hardEdge,
         borderRadius: BorderRadius.circular(corner),
         child: current,
       );
@@ -440,7 +449,10 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
           );
         }
         return opacity < 1.0 - _epsilon
-            ? Opacity(opacity: opacity, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(opacity),
+                child: current,
+              )
             : current;
       case _PageLayerRouteMode.slideEnd:
       case _PageLayerRouteMode.slideBottom:
@@ -456,26 +468,19 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
         }
         final opacity = lerpDouble(0.9, 1.0, eased)!;
         return opacity < 1.0 - _epsilon
-            ? Opacity(opacity: opacity, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(opacity),
+                child: current,
+              )
             : current;
       case _PageLayerRouteMode.fade:
         return eased < 1.0 - _epsilon
-            ? Opacity(opacity: eased, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(eased),
+                child: current,
+              )
             : current;
     }
-  }
-
-  double _deviceBorderRadius(BuildContext context, double progress) {
-    if (!_AnimSettings.screenRadius) {
-      return 0;
-    }
-    final pad = MediaQuery.of(context).padding;
-    final target = pad.top > 30
-        ? 24.0
-        : pad.top > 20
-            ? 16.0
-            : 12.0;
-    return target * progress.clamp(0.0, 1.0);
   }
 }
 
@@ -554,10 +559,17 @@ class _ContainerTransformWidget extends StatefulWidget {
       _ContainerTransformWidgetState();
 }
 
-class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
+class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
+    with WidgetsBindingObserver {
   bool _contentVisible = false;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
+  late final Listenable _mergedAnimation;
+
+  // Cached layout values — avoid MediaQuery.of(context) per frame.
+  late Size _screenSize;
+  late double _screenRadius;
+  late double _contentStartThreshold;
 
   @override
   void initState() {
@@ -572,6 +584,14 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
       curve: _pageLayerCurve,
       reverseCurve: _pageLayerCurve,
     );
+    _mergedAnimation = Listenable.merge(
+      <Listenable>[_forwardCurve, _backgroundCurve],
+    );
+    _contentStartThreshold = _AnimSettings.lazyLoad
+        ? _AnimSettings.contentStart
+        : _defaultContainerContentStart;
+    _cacheScreenMetrics();
+    WidgetsBinding.instance.addObserver(this);
     if (_AnimSettings.lazyLoad) {
       Future.delayed(
           Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
@@ -583,7 +603,24 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   }
 
   @override
+  void didChangeMetrics() {
+    _cacheScreenMetrics();
+  }
+
+  void _cacheScreenMetrics() {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    _screenSize = view.physicalSize / view.devicePixelRatio;
+    final padding = view.padding;
+    _screenRadius = padding.top > 30
+        ? 24.0
+        : padding.top > 20
+            ? 16.0
+            : 12.0;
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _forwardCurve.dispose();
     _backgroundCurve.dispose();
     super.dispose();
@@ -591,27 +628,31 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
+    // Pre-compute values that don't depend on animation t.
+    final begin = widget.sourceRect;
+    final end = widget.targetRect ??
+        Rect.fromLTWH(0, 0, _screenSize.width, _screenSize.height);
+    final beginR = widget.sourceBorderRadius;
+    final endR = widget.targetBorderRadius;
+    final useScreenRadius = _AnimSettings.screenRadius;
+    final useLazyLoad = _AnimSettings.lazyLoad;
+    final bgMask = _AnimSettings.backgroundMask;
+    final contentStartThreshold = _contentStartThreshold;
+    final screenWidth = _screenSize.width;
+    final screenHeight = _screenSize.height;
 
     return AnimatedBuilder(
-      animation: Listenable.merge(
-        <Listenable>[widget.animation, widget.secondaryAnimation],
-      ),
+      animation: _mergedAnimation,
+      child: RepaintBoundary(child: widget.child),
       builder: (context, child) {
-        final t = _forwardCurve.value.clamp(0.0, 1.0);
-        final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
-
-        final begin = widget.sourceRect;
-        final end = widget.targetRect ??
-            Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+        final t = _forwardCurve.value;
+        final backgroundProgress = _backgroundCurve.value;
 
         final left = lerpDouble(begin.left, end.left, t)!;
         final top = lerpDouble(begin.top, end.top, t)!;
         final width = lerpDouble(begin.width, end.width, t)!;
         final height = lerpDouble(begin.height, end.height, t)!;
 
-        final beginR = widget.sourceBorderRadius;
-        final endR = widget.targetBorderRadius;
         final borderRadius = BorderRadius.only(
           topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
           topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
@@ -619,27 +660,20 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
           bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
         );
 
-        final contentStart = _AnimSettings.lazyLoad
-            ? _AnimSettings.contentStart
-            : _defaultContainerContentStart;
         final contentProgress =
-            ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
-        final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
+            ((t - contentStartThreshold) / (1 - contentStartThreshold))
+                .clamp(0.0, 1.0);
+        final fadeIn = useLazyLoad ? contentProgress : 1.0;
         final contentScale = lerpDouble(0.96, 1.0, contentProgress)!;
         final maskOpacity =
-            lerpDouble(0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
+            lerpDouble(0.0, bgMask, backgroundProgress)!;
 
-        Widget content = RepaintBoundary(child: widget.child);
-        if (_AnimSettings.screenRadius) {
-          final pad = MediaQuery.of(context).padding;
-          final r = pad.top > 30
-              ? 24.0
-              : pad.top > 20
-                  ? 16.0
-                  : 12.0;
-          final corner = lerpDouble(r, 0, t)!;
+        Widget content = child ?? const SizedBox.shrink();
+        if (useScreenRadius) {
+          final corner = lerpDouble(_screenRadius, 0, t)!;
           if (corner > 0.5) {
             content = ClipRRect(
+              clipBehavior: Clip.hardEdge,
               borderRadius: BorderRadius.circular(corner),
               child: content,
             );
@@ -655,7 +689,10 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         }
 
         if (fadeIn < 1.0 - _epsilon) {
-          content = Opacity(opacity: fadeIn, child: content);
+          content = FadeTransition(
+            opacity: AlwaysStoppedAnimation(fadeIn),
+            child: content,
+          );
         }
 
         return Stack(
@@ -671,6 +708,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               width: width,
               height: height,
               child: ClipRRect(
+                clipBehavior: Clip.hardEdge,
                 borderRadius: borderRadius,
                 child: ColoredBox(
                   color: widget.sourceColor,
@@ -680,8 +718,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                           child: Transform.translate(
                             offset: Offset(-left, -top),
                             child: SizedBox(
-                              width: screenSize.width,
-                              height: screenSize.height,
+                              width: screenWidth,
+                              height: screenHeight,
                               child: content,
                             ),
                           ),
