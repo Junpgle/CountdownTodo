@@ -742,14 +742,19 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
               child: IgnorePointer(
                 ignoring: !isReverse && fadeIn < 1.0,
                 child: RepaintBoundary(
-                  child: ClipRRect(
-                    clipBehavior: Clip.hardEdge,
-                    borderRadius: borderRadius,
-                    child: ColoredBox(
-                      color: widget.sourceColor,
-                      child: contentLayer,
-                    ),
-                  ),
+                  child: isReverse
+                      ? ColoredBox(
+                          color: widget.sourceColor,
+                          child: contentLayer,
+                        )
+                      : ClipRRect(
+                          clipBehavior: Clip.hardEdge,
+                          borderRadius: borderRadius,
+                          child: ColoredBox(
+                            color: widget.sourceColor,
+                            child: contentLayer,
+                          ),
+                        ),
                 ),
               ),
             ),
