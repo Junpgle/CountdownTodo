@@ -80,6 +80,7 @@ class TodoSectionWidget extends StatefulWidget {
 
 class TodoSectionWidgetState extends State<TodoSectionWidget>
     with TickerProviderStateMixin {
+  static const _kIdleAnimation = AlwaysStoppedAnimation(0.0);
   bool _isWholeListExpanded = true;
   bool _isTodayExpanded = true;
   bool _isTodayManuallyExpanded = false;
@@ -1731,7 +1732,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             child: Builder(
               builder: (cardCtx) => AnimatedBuilder(
                 animation: _completingAnimations[todo.id] ??
-                    AlwaysStoppedAnimation(0.0),
+                    _kIdleAnimation,
                 builder: (context, child) {
                   final anim = _completingAnimations[todo.id];
                   final isAnimating = anim != null && anim.isAnimating;
@@ -1998,6 +1999,12 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                           setState(() {
                                                             _isCompleting[todo
                                                                 .id] = false;
+                                                            _completingAnimations[
+                                                                    todo.id]
+                                                                ?.dispose();
+                                                            _completingAnimations
+                                                                .remove(
+                                                                    todo.id);
                                                           });
                                                         }
                                                       });
