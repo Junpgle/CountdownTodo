@@ -461,7 +461,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       fit: StackFit.expand,
       children: [
         current,
-        ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity)),
+        IgnorePointer(
+          child: ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity)),
+        ),
       ],
     );
   }
@@ -604,28 +606,10 @@ class _ContainerTransformWidget extends StatefulWidget {
       _ContainerTransformWidgetState();
 }
 
-class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
-    with WidgetsBindingObserver {
+class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
-  late final Listenable _mergedAnimation;
-
-  // Cached layout values — avoid MediaQuery.of(context) per frame.
-  late Size _screenSize;
-  late double _screenRadius;
-  late double _contentStartThreshold;
-
-  // Cached _AnimSettings values — avoid repeated static getter calls.
-  late bool _useScreenRadius;
-  late bool _useLazyLoad;
-  late double _bgMask;
-  late double _screenRadiusAnim; // _screenRadius for animation
-
-  // Frame-skip cache — avoid rebuilding when animation is idle.
-  double _lastForward = -1;
-  double _lastBackground = -1;
-  Widget? _cachedFrame;
 
   @override
   void initState() {
@@ -640,249 +624,128 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
       curve: _pageLayerCurve,
       reverseCurve: _pageLayerCurve,
     );
-    _mergedAnimation = Listenable.merge(
-      <Listenable>[_forwardCurve, _backgroundCurve],
-    );
-    _cacheAnimSettings();
-    _cacheScreenMetrics();
-    WidgetsBinding.instance.addObserver(this);
     if (_AnimSettings.lazyLoad) {
       Future.delayed(
           Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
-        if (mounted) {
-          setState(() {
-            _contentVisible = true;
-            _lastForward = -1;
-            _lastBackground = -1;
-            _cachedFrame = null;
-          });
-        }
+        if (mounted) setState(() => _contentVisible = true);
       });
     } else {
       _contentVisible = true;
     }
   }
 
-  void _cacheAnimSettings() {
-    _useScreenRadius = _AnimSettings.screenRadius;
-    _useLazyLoad = _AnimSettings.lazyLoad;
-    _bgMask = _AnimSettings.backgroundMask;
-    _contentStartThreshold = _useLazyLoad
-        ? _AnimSettings.contentStart
-        : _defaultContainerContentStart;
-  }
-
-  @override
-  void didChangeMetrics() {
-    _cacheScreenMetrics();
-    _lastForward = -1;
-    _lastBackground = -1;
-    _cachedFrame = null;
-  }
-
-  @override
-  void didUpdateWidget(covariant _ContainerTransformWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.child != widget.child ||
-        oldWidget.sourceRect != widget.sourceRect ||
-        oldWidget.targetRect != widget.targetRect ||
-        oldWidget.sourceColor != widget.sourceColor ||
-        oldWidget.sourceBorderRadius != widget.sourceBorderRadius ||
-        oldWidget.targetBorderRadius != widget.targetBorderRadius) {
-      _lastForward = -1;
-      _lastBackground = -1;
-      _cachedFrame = null;
-    }
-  }
-
-  void _cacheScreenMetrics() {
-    final view = WidgetsBinding.instance.platformDispatcher.views.first;
-    _screenSize = view.physicalSize / view.devicePixelRatio;
-    final padding = view.padding;
-    _screenRadius = padding.top > 30
-        ? 24.0
-        : padding.top > 20
-            ? 16.0
-            : 12.0;
-    _screenRadiusAnim = _screenRadius;
-  }
-
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _forwardCurve.dispose();
     _backgroundCurve.dispose();
     super.dispose();
   }
 
-  // Pre-allocated matrix reused every gesture frame to avoid per-frame alloc.
-  static final Matrix4 _gestureMatrix = Matrix4.identity();
-
   @override
   Widget build(BuildContext context) {
-    // Pre-compute values that don't depend on animation t.
-    final begin = widget.sourceRect;
-    final end = widget.targetRect ??
-        Rect.fromLTWH(0, 0, _screenSize.width, _screenSize.height);
-    final beginR = widget.sourceBorderRadius;
-    final endR = widget.targetBorderRadius;
-    final screenWidth = _screenSize.width;
-    final screenHeight = _screenSize.height;
-
-    // Pre-compute deltas — direct arithmetic in builder instead of lerpDouble.
-    final dLeft = end.left - begin.left;
-    final dTop = end.top - begin.top;
-    final dWidth = end.width - begin.width;
-    final dHeight = end.height - begin.height;
-    final halfWScreen = screenWidth / 2;
-    final halfHScreen = screenHeight / 2;
-    final invScreenWidth = 1.0 / screenWidth;
-    final invContentRange = _contentStartThreshold < 1.0
-        ? 1.0 / (1.0 - _contentStartThreshold)
-        : 1.0;
-
-    // Pre-compute border radius deltas.
-    final dRTLX = endR.topLeft.x - beginR.topLeft.x;
-    final dRTLY = endR.topLeft.y - beginR.topLeft.y;
-    final dRTRX = endR.topRight.x - beginR.topRight.x;
-    final dRTRY = endR.topRight.y - beginR.topRight.y;
-    final dRBLX = endR.bottomLeft.x - beginR.bottomLeft.x;
-    final dRBLY = endR.bottomLeft.y - beginR.bottomLeft.y;
-    final dRBRX = endR.bottomRight.x - beginR.bottomRight.x;
-    final dRBRY = endR.bottomRight.y - beginR.bottomRight.y;
-
-    // Build content once — OverflowBox forces full-screen constraints so
-    // responsive content never reflows during back gesture shrinking.
-    // Cached as AnimatedBuilder.child so Flutter reuses across frames.
-    final cachedContent = _contentVisible
-        ? OverflowBox(
-            alignment: Alignment.topLeft,
-            maxWidth: screenWidth,
-            maxHeight: screenHeight,
-            child: RepaintBoundary(child: widget.child),
-          )
-        : null;
+    final screenSize = MediaQuery.of(context).size;
 
     return AnimatedBuilder(
-      animation: _mergedAnimation,
-      child: cachedContent,
+      animation: Listenable.merge(
+        <Listenable>[widget.animation, widget.secondaryAnimation],
+      ),
       builder: (context, child) {
-        final t = _forwardCurve.value;
-        final bg = _backgroundCurve.value;
+        final t = _forwardCurve.value.clamp(0.0, 1.0);
+        final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
 
-        // Frame-skip — return cached widget when animation is idle.
-        if (t == _lastForward &&
-            bg == _lastBackground &&
-            _cachedFrame != null) {
-          return _cachedFrame!;
-        }
-        _lastForward = t;
-        _lastBackground = bg;
+        final begin = widget.sourceRect;
+        final end = widget.targetRect ??
+            Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
 
-        // Direct arithmetic — avoids ui.lerpDouble function call overhead.
-        final left = begin.left + dLeft * t;
-        final top = begin.top + dTop * t;
-        final width = begin.width + dWidth * t;
-        final height = begin.height + dHeight * t;
+        final left = ui.lerpDouble(begin.left, end.left, t)!;
+        final top = ui.lerpDouble(begin.top, end.top, t)!;
+        final width = ui.lerpDouble(begin.width, end.width, t)!;
+        final height = ui.lerpDouble(begin.height, end.height, t)!;
 
-        final isReverse = widget.animation.status == AnimationStatus.reverse;
-
-        final contentProgress =
-            ((t - _contentStartThreshold) * invContentRange).clamp(0.0, 1.0);
-        final fadeIn = _useLazyLoad ? contentProgress : 1.0;
-        final maskOpacity = _bgMask * bg;
-
-        // Build content layer — cached child (OverflowBox) avoids re-layout.
-        Widget contentLayer = child ?? const SizedBox.shrink();
-
-        if (isReverse) {
-          // Gesture: single Transform with precomputed matrix (scale + translate).
-          final s = width * invScreenWidth;
-          final tx = left - halfWScreen + width * 0.5;
-          final ty = top - halfHScreen + height * 0.5;
-          _gestureMatrix.setValues(
-              s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
-          contentLayer = Transform(
-            transform: _gestureMatrix,
-            transformHitTests: false,
-            child: contentLayer,
-          );
-        } else {
-          // Forward: screen-radius clip + content scale + fade.
-          if (_useScreenRadius) {
-            final corner = _screenRadiusAnim * (1.0 - t);
-            if (corner > 0.5) {
-              contentLayer = ClipRRect(
-                clipBehavior: Clip.hardEdge,
-                borderRadius: BorderRadius.circular(corner),
-                child: contentLayer,
-              );
-            }
-          }
-          final contentScale = 0.96 + 0.04 * contentProgress;
-          if (contentScale < 1.0 - _epsilon) {
-            contentLayer = Transform.scale(
-              scale: contentScale,
-              alignment: const Alignment(0, -0.45),
-              child: contentLayer,
-            );
-          }
-          if (fadeIn < 1.0 - _epsilon) {
-            contentLayer = FadeTransition(
-              opacity: AlwaysStoppedAnimation(fadeIn),
-              child: contentLayer,
-            );
-          }
-        }
-
-        // Mask overlay — skip widget when fully transparent.
-        final maskWidget = maskOpacity > _epsilon
-            ? ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity))
-            : null;
-
-        // Container border radius — direct interpolation with precomputed deltas.
-        final borderRadius = isReverse
-            ? BorderRadius.zero
-            : BorderRadius.only(
-                topLeft: Radius.elliptical(
-                    beginR.topLeft.x + dRTLX * t, beginR.topLeft.y + dRTLY * t),
-                topRight: Radius.elliptical(beginR.topRight.x + dRTRX * t,
-                    beginR.topRight.y + dRTRY * t),
-                bottomLeft: Radius.elliptical(beginR.bottomLeft.x + dRBLX * t,
-                    beginR.bottomLeft.y + dRBLY * t),
-                bottomRight: Radius.elliptical(beginR.bottomRight.x + dRBRX * t,
-                    beginR.bottomRight.y + dRBRY * t),
-              );
-
-        Widget container = ColoredBox(
-          color: widget.sourceColor,
-          child: contentLayer,
+        final beginR = widget.sourceBorderRadius;
+        final endR = widget.targetBorderRadius;
+        final borderRadius = BorderRadius.only(
+          topLeft: Radius.lerp(beginR.topLeft, endR.topLeft, t)!,
+          topRight: Radius.lerp(beginR.topRight, endR.topRight, t)!,
+          bottomLeft: Radius.lerp(beginR.bottomLeft, endR.bottomLeft, t)!,
+          bottomRight: Radius.lerp(beginR.bottomRight, endR.bottomRight, t)!,
         );
-        if (!isReverse && borderRadius != BorderRadius.zero) {
-          container = ClipRRect(
-            clipBehavior: Clip.hardEdge,
-            borderRadius: borderRadius,
-            child: container,
+
+        final contentStart = _AnimSettings.lazyLoad
+            ? _AnimSettings.contentStart
+            : _defaultContainerContentStart;
+        final contentProgress =
+            ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
+        final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
+        final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
+        final maskOpacity = ui.lerpDouble(
+            0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
+
+        Widget content = RepaintBoundary(child: widget.child);
+        if (_AnimSettings.screenRadius) {
+          final pad = MediaQuery.of(context).padding;
+          final r = pad.top > 30
+              ? 24.0
+              : pad.top > 20
+                  ? 16.0
+                  : 12.0;
+          final corner = ui.lerpDouble(r, 0, t)!;
+          if (corner > 0.5) {
+            content = ClipRRect(
+              borderRadius: BorderRadius.circular(corner),
+              child: content,
+            );
+          }
+        }
+
+        if (contentScale < 1.0 - _epsilon) {
+          content = Transform.scale(
+            scale: contentScale,
+            alignment: const Alignment(0, -0.45),
+            child: content,
           );
         }
 
-        _cachedFrame = Stack(
+        if (fadeIn < 1.0 - _epsilon) {
+          content = Opacity(opacity: fadeIn, child: content);
+        }
+
+        return Stack(
           fit: StackFit.expand,
           children: [
-            if (maskWidget != null) maskWidget,
+            if (maskOpacity > _epsilon)
+              IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: maskOpacity),
+                ),
+              ),
             Positioned(
               left: left,
               top: top,
               width: width,
               height: height,
-              child: IgnorePointer(
-                ignoring: !isReverse && fadeIn < 1.0,
-                child: container,
+              child: ClipRRect(
+                borderRadius: borderRadius,
+                child: ColoredBox(
+                  color: widget.sourceColor,
+                  child: _contentVisible
+                      ? IgnorePointer(
+                          ignoring: fadeIn < 1.0,
+                          child: Transform.translate(
+                            offset: Offset(-left, -top),
+                            child: SizedBox(
+                              width: screenSize.width,
+                              height: screenSize.height,
+                              child: content,
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
               ),
             ),
           ],
         );
-        return _cachedFrame!;
       },
     );
   }
