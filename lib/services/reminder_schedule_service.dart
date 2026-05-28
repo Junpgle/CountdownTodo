@@ -202,6 +202,11 @@ class ReminderScheduleService {
         if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'courseStartMs': courseStart.toUtc().millisecondsSinceEpoch,
+            'courseEndMs':
+                DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100)
+                    .toUtc()
+                    .millisecondsSinceEpoch,
             'title': '📚 ${c.courseName}',
             'text': '${_hm(courseStart)} · ${c.roomName}',
             'notifId': _courseBaseId + i,

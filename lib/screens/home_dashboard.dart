@@ -3014,25 +3014,35 @@ class _HomeDashboardState extends State<HomeDashboard>
         await CourseCalendarAdjustmentService.pendingOfficialHolidayWindow();
     if (window == null || !mounted) return;
 
-    final openSettings = await showDialog<bool>(
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${window.name}课表调整提醒'),
         content: const Text('临近法定节假日。不同学校放假和补课安排可能不同，请手动选择放假日期，并确认哪一天的课调到哪一天。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 'later'),
             child: const Text('稍后'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'snooze_today'),
+            child: const Text('今日不再提醒'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, 'open'),
             child: const Text('去选择'),
           ),
         ],
       ),
     );
 
-    if (openSettings == true && mounted) {
+    if (action == 'snooze_today') {
+      await CourseCalendarAdjustmentService.snoozeOfficialHolidayPromptForToday(
+          window.key);
+      return;
+    }
+
+    if (action == 'open' && mounted) {
       await Navigator.push(
         context,
         PageTransitions.slideHorizontal(
@@ -3808,25 +3818,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isSearchOpen = false; // 🚀 记录搜索层是否打开
 
   void _showGlobalSearch() {
-    final size = MediaQuery.of(context).size;
-    final bool isCompact = size.shortestSide < 600;
-    final double maxWidth = isCompact ? size.width : 1180;
-    final double panelWidth = (size.width - 40).clamp(0, maxWidth);
-    final double left = (size.width - panelWidth) / 2;
-
-    // 🚀 核心改进：计算搜索面板在 Overlay 中的实际位置，使动画不再铺满全屏，而是缩放到板块
-    // 修复对齐问题：需要加上 SafeArea 的顶部高度（状态栏）
-    final statusBarHeight = MediaQuery.of(context).padding.top;
-    final targetRect = Rect.fromLTWH(
-        left, statusBarHeight + 60, panelWidth, 150); // 150px 约等于搜索框+快捷提示的高度
-    final targetBorderRadius = BorderRadius.circular(28);
-
     PageTransitions.pushFromRect(
       context: context,
       page: const GlobalSearchOverlay(),
       sourceKey: _searchButtonKey,
-      targetRect: targetRect,
-      targetBorderRadius: targetBorderRadius,
     ).then((_) async {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));

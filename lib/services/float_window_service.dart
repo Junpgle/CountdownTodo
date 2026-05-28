@@ -207,11 +207,19 @@ class FloatWindowService {
 
       switch (action) {
         case 'finish':
+          if (isWorkbenchMounted) {
+            debugPrint('[FloatWindow] finish delegated to mounted workbench');
+            return;
+          }
           final modifiedSecs =
               event['modifiedSecs'] ?? payload?['modifiedSecs'] ?? 0;
           _handleAction('finish', (modifiedSecs is int) ? modifiedSecs : 0);
           break;
         case 'abandon':
+          if (isWorkbenchMounted) {
+            debugPrint('[FloatWindow] abandon delegated to mounted workbench');
+            return;
+          }
           _handleAction('abandon', 0);
           break;
         case 'reminder_ok':
@@ -590,7 +598,6 @@ class FloatWindowService {
     try {
       final islandId = 'island-1';
       var winId = IslandManager().getCachedWindowId(islandId);
-      var createdWithInitialPayload = false;
       debugPrint(
           '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
 
@@ -602,9 +609,10 @@ class FloatWindowService {
           winId = await _creatingIsland;
         } else {
           debugPrint('[FloatWindow] Creating island: $islandId');
-          final future = IslandManager()
-              .createIsland(islandId, initialPayload: structured);
-          createdWithInitialPayload = true;
+          // Keep child-window creation payload small and stable. Sending a
+          // focusing payload as a createWindow argument has caused desktop
+          // multi-window crashes on Windows; update the state after creation.
+          final future = IslandManager().createIsland(islandId);
           _creatingIsland = future;
           try {
             winId = await future;
@@ -616,14 +624,6 @@ class FloatWindowService {
       }
 
       if (winId != null) {
-        if (createdWithInitialPayload) {
-          debugPrint(
-              '[FloatWindow] Island created with initial payload; skip duplicate send.');
-          try {
-            debugPayload.value = null;
-          } catch (_) {}
-          return;
-        }
         final sent =
             await IslandManager().sendStructuredPayload(islandId, structured);
         debugPrint('[FloatWindow] sendStructuredPayload result: $sent');

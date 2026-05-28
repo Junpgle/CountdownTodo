@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -34,17 +34,28 @@ class _TextMatch {
 }
 
 const _typeMeta = <SearchResultType, _TypeMeta>{
-  SearchResultType.todo:      _TypeMeta('待办事项',  Icons.check_circle_outline,   Color(0xFF007AFF)),
-  SearchResultType.todoGroup: _TypeMeta('待办文件夹', Icons.folder_rounded,          Color(0xFFFF9500)),
-  SearchResultType.course:    _TypeMeta('课程',      Icons.school_rounded,          Color(0xFF34C759)),
-  SearchResultType.countdown: _TypeMeta('倒计时',    Icons.timer_outlined,          Color(0xFFFF3B30)),
-  SearchResultType.tag:       _TypeMeta('专注标签',   Icons.label_rounded,           Color(0xFFE84C88)),
-  SearchResultType.app:       _TypeMeta('屏幕使用',   Icons.smartphone_rounded,      Color(0xFF5B6BE8)),
-  SearchResultType.log:       _TypeMeta('时间日志',  Icons.history_edu_rounded,     Color(0xFF00C7BE)),
-  SearchResultType.setting:   _TypeMeta('设置',      Icons.settings_rounded,        Color(0xFFFF9500)),
-  SearchResultType.action:    _TypeMeta('快捷操作',  Icons.bolt_rounded,            Color(0xFFAF52DE)),
-  SearchResultType.recommend: _TypeMeta('猜你想搜',  Icons.auto_awesome_outlined,   Color(0xFFFF2D55)),
-  SearchResultType.history:   _TypeMeta('搜索历史',  Icons.history_rounded,         Colors.grey),
+  SearchResultType.todo:
+      _TypeMeta('待办事项', Icons.check_circle_outline, Color(0xFF007AFF)),
+  SearchResultType.todoGroup:
+      _TypeMeta('待办文件夹', Icons.folder_rounded, Color(0xFFFF9500)),
+  SearchResultType.course:
+      _TypeMeta('课程', Icons.school_rounded, Color(0xFF34C759)),
+  SearchResultType.countdown:
+      _TypeMeta('倒计时', Icons.timer_outlined, Color(0xFFFF3B30)),
+  SearchResultType.tag:
+      _TypeMeta('专注标签', Icons.label_rounded, Color(0xFFE84C88)),
+  SearchResultType.app:
+      _TypeMeta('屏幕使用', Icons.smartphone_rounded, Color(0xFF5B6BE8)),
+  SearchResultType.log:
+      _TypeMeta('时间日志', Icons.history_edu_rounded, Color(0xFF00C7BE)),
+  SearchResultType.setting:
+      _TypeMeta('设置', Icons.settings_rounded, Color(0xFFFF9500)),
+  SearchResultType.action:
+      _TypeMeta('快捷操作', Icons.bolt_rounded, Color(0xFFAF52DE)),
+  SearchResultType.recommend:
+      _TypeMeta('猜你想搜', Icons.auto_awesome_outlined, Color(0xFFFF2D55)),
+  SearchResultType.history:
+      _TypeMeta('搜索历史', Icons.history_rounded, Colors.grey),
 };
 
 // 分组显示顺序
@@ -76,8 +87,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     with SingleTickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final FocusNode _keyboardFocusNode = FocusNode();
   late AnimationController _animController;
-  late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
 
   List<SearchResult> _results = [];
@@ -95,8 +106,6 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    _scaleAnimation =
-        CurvedAnimation(parent: _animController, curve: Curves.easeOutBack);
     _fadeAnimation =
         CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _animController.forward();
@@ -111,6 +120,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   void dispose() {
     _controller.dispose();
     _inputFocusNode.dispose();
+    _keyboardFocusNode.dispose();
     _debounce?.cancel();
     _animController.dispose();
     super.dispose();
@@ -121,14 +131,15 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   void _onQueryChanged(String query) {
     _currentQuery = query;
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    
+
     // 如果是空字符串，立即执行（不防抖），让建议秒出
     if (query.trim().isEmpty) {
       _executeSearch('');
       return;
     }
 
-    _debounce = Timer(const Duration(milliseconds: 300), () => _executeSearch(query));
+    _debounce =
+        Timer(const Duration(milliseconds: 300), () => _executeSearch(query));
   }
 
   Future<void> _executeSearch(String query) async {
@@ -181,7 +192,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     _animController.reverse().then((_) {
       if (mounted) {
         navigator.pop(); // 关闭搜索蒙层
-        SearchNavigationHandler.handle(navigator.context, result); // 用父级 context 导航
+        SearchNavigationHandler.handle(
+            navigator.context, result); // 用父级 context 导航
       }
     });
   }
@@ -212,10 +224,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final mediaQuery = MediaQuery.of(context);
+    final size = mediaQuery.size;
+    final keyboardInset = mediaQuery.viewInsets.bottom;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isCompact = size.shortestSide < 600;
+    final hasResultsPanel = _results.isNotEmpty || _isSearching;
 
     // 🚀 电脑端（非 Compact）面板使用全不透明色
     final panelColor = isDark
@@ -244,7 +259,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
           : Colors.transparent,
       resizeToAvoidBottomInset: false,
       body: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyboardFocusNode,
         onKeyEvent: _handleKeyEvent,
         child: Stack(
           children: [
@@ -265,35 +280,71 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: isCompact ? size.width : 1180),
-                      child: Container(
-                        margin: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: panelColor,
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: isDark ? Colors.white12 : Colors.black12,
+                    constraints:
+                        BoxConstraints(maxWidth: isCompact ? size.width : 1180),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxHeight = constraints.maxHeight;
+                        final topMargin =
+                            isCompact && keyboardInset > 0 ? 16.0 : 60.0;
+                        const horizontalMargin = 20.0;
+                        const bottomMargin = 20.0;
+                        const minPanelHeight = 200.0;
+                        final keyboardAdjustedMaxHeight =
+                            (maxHeight - keyboardInset).clamp(0.0, maxHeight);
+                        final availableHeight = (keyboardAdjustedMaxHeight -
+                                topMargin -
+                                bottomMargin)
+                            .clamp(0.0, maxHeight);
+                        final panelHeight = availableHeight < minPanelHeight
+                            ? availableHeight
+                            : availableHeight.clamp(minPanelHeight, maxHeight);
+
+                        return Container(
+                          margin: EdgeInsets.fromLTRB(
+                            horizontalMargin,
+                            topMargin,
+                            horizontalMargin,
+                            bottomMargin,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Color.fromRGBO(0, 0, 0, isDark ? 0.25 : 0.12),
-                              blurRadius: 36,
-                              offset: const Offset(0, 18),
+                          padding: const EdgeInsets.all(16),
+                          constraints: BoxConstraints(maxHeight: panelHeight),
+                          decoration: BoxDecoration(
+                            color: panelColor,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: isDark ? Colors.white12 : Colors.black12,
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildSearchInput(colorScheme, isDark),
-                            const SizedBox(height: 8),
-                            _buildSearchScopeHint(colorScheme, isDark),
-                            const SizedBox(height: 12),
-                            if (_results.isNotEmpty || _isSearching)
-                              _buildResultsPanel(colorScheme, isDark, size),
-                          ],
-                        ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color.fromRGBO(
+                                    0, 0, 0, isDark ? 0.25 : 0.12),
+                                blurRadius: 36,
+                                offset: const Offset(0, 18),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: hasResultsPanel
+                                ? MainAxisSize.max
+                                : MainAxisSize.min,
+                            children: [
+                              _buildSearchInput(colorScheme, isDark),
+                              const SizedBox(height: 8),
+                              _buildSearchScopeHint(colorScheme, isDark),
+                              const SizedBox(height: 12),
+                              if (hasResultsPanel)
+                                Expanded(
+                                  child: _buildResultsPanel(
+                                    colorScheme,
+                                    isDark,
+                                    size,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -380,7 +431,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: isDark ? 0.14 : 0.08),
+                color:
+                    colorScheme.primary.withValues(alpha: isDark ? 0.14 : 0.08),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -401,7 +453,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // 结果面板（分组）
   // ──────────────────────────────────────────────────────────────────────────
 
-  Widget _buildResultsPanel(ColorScheme colorScheme, bool isDark, Size screenSize) {
+  Widget _buildResultsPanel(
+      ColorScheme colorScheme, bool isDark, Size screenSize) {
     if (_results.isEmpty && _isSearching) {
       return _buildSearchSkeleton(isDark, screenSize);
     }
@@ -422,7 +475,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       final isExpanded = _expanded[type] ?? false;
       final displayItems = isExpanded ? items : items.take(3).toList();
       final hasMore = items.length > 3 && !isExpanded;
-      final estimatedHeight = 58 + (displayItems.length * 86.0) + (hasMore ? 38 : 0);
+      final estimatedHeight =
+          58 + (displayItems.length * 86.0) + (hasMore ? 38 : 0);
 
       sections.add(_SearchSectionLayoutItem(
         widget: _buildSection(
@@ -439,101 +493,99 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     }
 
     final isCompact = screenSize.shortestSide < 600;
-    final maxHeight = screenSize.height * (isCompact ? 0.55 : 0.68);
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final banner = dateQueryHint == null
-              ? const SizedBox.shrink()
-              : Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF2C2C2E)
-                          : colorScheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.12),
-                      ),
-                    ),
-                    child: Text(
-                      dateQueryHint,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : colorScheme.primary,
-                      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final banner = dateQueryHint == null
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF2C2C2E)
+                        : colorScheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: colorScheme.primary
+                          .withValues(alpha: isDark ? 0.18 : 0.12),
                     ),
                   ),
-                );
+                  child: Text(
+                    dateQueryHint,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : colorScheme.primary,
+                    ),
+                  ),
+                ),
+              );
 
-          final useTwoColumns = !isCompact && constraints.maxWidth >= 960;
-          if (!useTwoColumns) {
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  banner,
-                  ...sections.map((section) => section.widget),
-                ],
-              ),
-            );
-          }
-
-          final gutter = 12.0;
-          final columnWidth = (constraints.maxWidth - gutter) / 2;
-          final leftColumn = <Widget>[];
-          final rightColumn = <Widget>[];
-          double leftHeight = 0;
-          double rightHeight = 0;
-
-          for (final section in sections) {
-            final wrapped = SizedBox(width: columnWidth, child: section.widget);
-            if (leftHeight <= rightHeight) {
-              leftColumn.add(wrapped);
-              leftHeight += section.estimatedHeight;
-            } else {
-              rightColumn.add(wrapped);
-              rightHeight += section.estimatedHeight;
-            }
-          }
-
-          Widget buildColumn(List<Widget> children) {
-            if (children.isEmpty) return const SizedBox.shrink();
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  children[i],
-                  if (i != children.length - 1) const SizedBox(height: 12),
-                ],
-              ],
-            );
-          }
-
+        final useTwoColumns = !isCompact && constraints.maxWidth >= 960;
+        if (!useTwoColumns) {
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 banner,
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: columnWidth, child: buildColumn(leftColumn)),
-                    const SizedBox(width: 12),
-                    SizedBox(width: columnWidth, child: buildColumn(rightColumn)),
-                  ],
-                ),
+                ...sections.map((section) => section.widget),
               ],
             ),
           );
-        },
-      ),
+        }
+
+        final gutter = 12.0;
+        final columnWidth = (constraints.maxWidth - gutter) / 2;
+        final leftColumn = <Widget>[];
+        final rightColumn = <Widget>[];
+        double leftHeight = 0;
+        double rightHeight = 0;
+
+        for (final section in sections) {
+          final wrapped = SizedBox(width: columnWidth, child: section.widget);
+          if (leftHeight <= rightHeight) {
+            leftColumn.add(wrapped);
+            leftHeight += section.estimatedHeight;
+          } else {
+            rightColumn.add(wrapped);
+            rightHeight += section.estimatedHeight;
+          }
+        }
+
+        Widget buildColumn(List<Widget> children) {
+          if (children.isEmpty) return const SizedBox.shrink();
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                children[i],
+                if (i != children.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          );
+        }
+
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              banner,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: columnWidth, child: buildColumn(leftColumn)),
+                  const SizedBox(width: 12),
+                  SizedBox(width: columnWidth, child: buildColumn(rightColumn)),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -544,7 +596,6 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     }
     return null;
   }
-
 
   // ──────────────────────────────────────────────────────────────────────────
   // 分类区块
@@ -594,7 +645,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   ),
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
                       color: meta.color.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -602,7 +654,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     child: Text(
                       '$totalCount',
                       style: TextStyle(
-                          fontSize: 11, color: meta.color, fontWeight: FontWeight.w600),
+                          fontSize: 11,
+                          color: meta.color,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -620,7 +674,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                       height: 1,
                       indent: 16,
                       endIndent: 16,
-                                              color: isDark ? Colors.white10 : const Color(0x0F000000),
+                      color: isDark ? Colors.white10 : const Color(0x0F000000),
                     ),
                   _buildResultTile(item, meta.color, colorScheme, isDark),
                 ],
@@ -636,14 +690,16 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
-                        color: isDark ? Colors.white10 : const Color(0x0F000000),
+                        color:
+                            isDark ? Colors.white10 : const Color(0x0F000000),
                       ),
                     ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.expand_more_rounded, size: 16, color: meta.color),
+                      Icon(Icons.expand_more_rounded,
+                          size: 16, color: meta.color),
                       const SizedBox(width: 4),
                       Text(
                         '查看全部 $totalCount 项',
@@ -727,7 +783,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                         if (item.breadcrumb != null)
                           Container(
                             margin: const EdgeInsets.only(left: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: typeColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
@@ -784,8 +841,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     if (data['is_completed'] == 1) {
       tags.add(_chip('已完成', Colors.green, isDark));
     }
-    if (data['team_name'] != null &&
-        (data['team_name'] as String).isNotEmpty) {
+    if (data['team_name'] != null && (data['team_name'] as String).isNotEmpty) {
       tags.add(_chip('📌 ${data['team_name']}', Colors.blueAccent, isDark));
     }
 
@@ -827,7 +883,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         .toList();
 
     if (terms.isEmpty) {
-      return Text(text, style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
+      return Text(text,
+          style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
     }
 
     final lower = text.toLowerCase();
@@ -844,7 +901,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     }
 
     if (matches.isEmpty) {
-      return Text(text, style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
+      return Text(text,
+          style: style, maxLines: 2, overflow: TextOverflow.ellipsis);
     }
 
     matches.sort((a, b) => a.start.compareTo(b.start));
@@ -873,14 +931,15 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       ));
       start = m.end;
     }
-    if (start < text.length) spans.add(TextSpan(text: text.substring(start), style: style));
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start), style: style));
+    }
     return RichText(
       text: TextSpan(children: spans, style: style),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
     );
   }
-
 
   // ──────────────────────────────────────────────────────────────────────────
   // 空状态
@@ -918,6 +977,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       ),
     );
   }
+
   // 🚀 搜索结果骨架屏
   Widget _buildSearchSkeleton(bool isDark, Size screenSize) {
     final baseColor =

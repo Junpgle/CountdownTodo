@@ -1,4 +1,4 @@
-import 'dart:ui' show ImageFilter, lerpDouble;
+import 'dart:ui' as ui show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +47,7 @@ class _AnimSettings {
   static double get depthFactor => (pageLayerDepth / 100).clamp(0.0, 1.0);
 
   static double get backgroundScale =>
-      lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
+      ui.lerpDouble(1.0, _defaultPageLayerBackgroundScale, depthFactor)!;
 
   static double get backgroundMask =>
       _defaultPageLayerBackgroundMask * depthFactor;
@@ -280,15 +280,58 @@ class _PageLayerTransition extends StatefulWidget {
   State<_PageLayerTransition> createState() => _PageLayerTransitionState();
 }
 
-class _PageLayerTransitionState extends State<_PageLayerTransition> {
+class _PageLayerTransitionState extends State<_PageLayerTransition>
+    with WidgetsBindingObserver {
   late CurvedAnimation _routeCurve;
   late CurvedAnimation _backgroundCurve;
   late Listenable _mergedAnimation;
+
+  // Cached MediaQuery values — avoid calling MediaQuery.of(context) every frame.
+  double _cachedScreenRadius = 12.0;
+
+  // Cached _AnimSettings values.
+  late double _bgScale;
+  late double _bgBlur;
+  late double _bgMask;
+  late bool _useScreenRadius;
+
+  // Frame-skip cache.
+  double _lastRoute = -1;
+  double _lastBg = -1;
+  Widget? _cachedFrame;
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
+    _cacheSettings();
+    _cacheMediaQuery();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _cacheSettings() {
+    _bgScale = _AnimSettings.backgroundScale;
+    _bgBlur = _AnimSettings.backgroundBlur;
+    _bgMask = _AnimSettings.backgroundMask;
+    _useScreenRadius = _AnimSettings.screenRadius;
+  }
+
+  @override
+  void didChangeMetrics() {
+    _cacheMediaQuery();
+    _lastRoute = -1;
+    _lastBg = -1;
+    _cachedFrame = null;
+  }
+
+  void _cacheMediaQuery() {
+    final padding =
+        WidgetsBinding.instance.platformDispatcher.views.first.padding;
+    _cachedScreenRadius = padding.top > 30
+        ? 24.0
+        : padding.top > 20
+            ? 16.0
+            : 12.0;
   }
 
   @override
@@ -298,6 +341,14 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
         oldWidget.secondaryAnimation != widget.secondaryAnimation) {
       _disposeAnimations();
       _initAnimations();
+      _lastRoute = -1;
+      _lastBg = -1;
+      _cachedFrame = null;
+    } else if (oldWidget.child != widget.child ||
+        oldWidget.mode != widget.mode) {
+      _lastRoute = -1;
+      _lastBg = -1;
+      _cachedFrame = null;
     }
   }
 
@@ -325,113 +376,119 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposeAnimations();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Wrap child ONCE outside builder — Flutter caches this as the
+    // AnimatedBuilder.child parameter across frames.
+    final wrappedChild = RepaintBoundary(child: widget.child);
+
     return AnimatedBuilder(
       animation: _mergedAnimation,
-      child: widget.child,
+      child: wrappedChild,
       builder: (context, child) {
-        final backgroundProgress = _backgroundCurve.value.clamp(0.0, 1.0);
-        final foregroundProgress = _routeCurve.value.clamp(0.0, 1.0);
+        final routeVal = _routeCurve.value;
+        final bgVal = _backgroundCurve.value;
+
+        // Frame-skip — return cached widget when animation is idle.
+        if (routeVal == _lastRoute &&
+            bgVal == _lastBg &&
+            _cachedFrame != null) {
+          return _cachedFrame!;
+        }
+        _lastRoute = routeVal;
+        _lastBg = bgVal;
+
+        final backgroundProgress = bgVal.clamp(0.0, 1.0);
+        final foregroundProgress = routeVal.clamp(0.0, 1.0);
         final isBackground = backgroundProgress > 0.0;
 
         Widget current = child ?? const SizedBox.shrink();
 
         if (isBackground) {
-          current = _buildBackgroundPage(
-            context,
-            RepaintBoundary(child: current),
-            backgroundProgress,
-          );
+          final isReverse = widget.animation.status == AnimationStatus.reverse;
+          current = _buildBackgroundPage(current, backgroundProgress,
+              isReverse: isReverse);
         }
 
         if (foregroundProgress < 1.0 ||
             widget.animation.status == AnimationStatus.reverse) {
-          current = _buildForegroundPage(
-            context,
-            RepaintBoundary(child: current),
-            foregroundProgress,
-          );
+          current = _buildForegroundPage(current, foregroundProgress);
         }
 
+        _cachedFrame = current;
         return current;
       },
     );
   }
 
-  Widget _buildBackgroundPage(
-    BuildContext context,
-    Widget child,
-    double progress,
-  ) {
-    final scale = lerpDouble(1.0, _AnimSettings.backgroundScale, progress)!;
-    final blur = lerpDouble(0.0, _AnimSettings.backgroundBlur, progress)!;
-    final maskOpacity =
-        lerpDouble(0.0, _AnimSettings.backgroundMask, progress)!;
-    final clip = _deviceBorderRadius(context, progress);
+  Widget _buildBackgroundPage(Widget child, double progress,
+      {required bool isReverse}) {
+    // Direct arithmetic with cached settings — avoids per-frame getter calls.
+    final scale = 1.0 + (_bgScale - 1.0) * progress;
+    final maskOpacity = _bgMask * progress;
 
     Widget current = scale < 1.0 - _epsilon
-        ? Transform.scale(
-            scale: scale,
-            child: child,
-          )
+        ? Transform.scale(scale: scale, child: child)
         : child;
 
-    if (_AnimSettings.screenRadius && clip > 0.5) {
-      current = ClipRRect(
-        borderRadius: BorderRadius.circular(clip),
-        child: current,
-      );
+    // Skip expensive ClipRRect + blur during reverse (pop) animation.
+    if (!isReverse) {
+      final clip = _cachedScreenRadius * progress;
+      if (_useScreenRadius && clip > 0.5) {
+        current = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: BorderRadius.circular(clip),
+          child: current,
+        );
+      }
+      final blur = _bgBlur * progress;
+      if (blur > 0.01) {
+        current = ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: current,
+        );
+      }
     }
 
-    if (blur > 0.01) {
-      current = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: current,
-      );
-    }
-
-    if (maskOpacity <= _epsilon) {
-      return current;
-    }
+    if (maskOpacity <= _epsilon) return current;
 
     return Stack(
       fit: StackFit.expand,
       children: [
         current,
         IgnorePointer(
-          child: ColoredBox(
-            color: Colors.black.withValues(alpha: maskOpacity),
-          ),
+          child: ColoredBox(color: Color.fromRGBO(0, 0, 0, maskOpacity)),
         ),
       ],
     );
   }
 
-  Widget _buildForegroundPage(
-    BuildContext context,
-    Widget child,
-    double progress,
-  ) {
-    final eased = progress.clamp(0.0, 1.0);
-    final corner = _deviceBorderRadius(context, 1.0 - eased);
+  Widget _buildForegroundPage(Widget child, double progress) {
+    final eased = progress;
     Widget current = child;
 
-    if (_AnimSettings.screenRadius && corner > 0.5) {
-      current = ClipRRect(
-        borderRadius: BorderRadius.circular(corner),
-        child: current,
-      );
+    // Skip ClipRRect during reverse — content is being dismissed, not revealed.
+    if (widget.animation.status != AnimationStatus.reverse) {
+      final corner = _cachedScreenRadius * (1.0 - eased);
+      if (_useScreenRadius && corner > 0.5) {
+        current = ClipRRect(
+          clipBehavior: Clip.hardEdge,
+          borderRadius: BorderRadius.circular(corner),
+          child: current,
+        );
+      }
     }
 
     switch (widget.mode) {
       case _PageLayerRouteMode.scale:
-        final scale = lerpDouble(0.92, 1.0, eased)!;
-        final opacity = lerpDouble(0.75, 1.0, eased)!;
+        // Direct arithmetic: scale = 0.92 + 0.08 * eased
+        final scale = 0.92 + 0.08 * eased;
+        final opacity = 0.75 + 0.25 * eased;
         if (scale < 1.0 - _epsilon) {
           current = Transform.scale(
             scale: scale,
@@ -440,42 +497,37 @@ class _PageLayerTransitionState extends State<_PageLayerTransition> {
           );
         }
         return opacity < 1.0 - _epsilon
-            ? Opacity(opacity: opacity, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(opacity),
+                child: current,
+              )
             : current;
       case _PageLayerRouteMode.slideEnd:
       case _PageLayerRouteMode.slideBottom:
-        final begin = widget.mode == _PageLayerRouteMode.slideEnd
-            ? const Offset(1.0, 0.0)
-            : const Offset(0.0, 1.0);
-        final offset = Offset.lerp(begin, Offset.zero, eased)!;
-        if (offset.distanceSquared > _epsilon) {
+        final isEnd = widget.mode == _PageLayerRouteMode.slideEnd;
+        // Direct arithmetic: offset component = 1.0 - eased
+        final d = 1.0 - eased;
+        if (d > _epsilon) {
           current = FractionalTranslation(
-            translation: offset,
+            translation: isEnd ? Offset(d, 0.0) : Offset(0.0, d),
             child: current,
           );
         }
-        final opacity = lerpDouble(0.9, 1.0, eased)!;
+        final opacity = 0.9 + 0.1 * eased;
         return opacity < 1.0 - _epsilon
-            ? Opacity(opacity: opacity, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(opacity),
+                child: current,
+              )
             : current;
       case _PageLayerRouteMode.fade:
         return eased < 1.0 - _epsilon
-            ? Opacity(opacity: eased, child: current)
+            ? FadeTransition(
+                opacity: AlwaysStoppedAnimation(eased),
+                child: current,
+              )
             : current;
     }
-  }
-
-  double _deviceBorderRadius(BuildContext context, double progress) {
-    if (!_AnimSettings.screenRadius) {
-      return 0;
-    }
-    final pad = MediaQuery.of(context).padding;
-    final target = pad.top > 30
-        ? 24.0
-        : pad.top > 20
-            ? 16.0
-            : 12.0;
-    return target * progress.clamp(0.0, 1.0);
   }
 }
 
@@ -605,10 +657,10 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final end = widget.targetRect ??
             Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
 
-        final left = lerpDouble(begin.left, end.left, t)!;
-        final top = lerpDouble(begin.top, end.top, t)!;
-        final width = lerpDouble(begin.width, end.width, t)!;
-        final height = lerpDouble(begin.height, end.height, t)!;
+        final left = ui.lerpDouble(begin.left, end.left, t)!;
+        final top = ui.lerpDouble(begin.top, end.top, t)!;
+        final width = ui.lerpDouble(begin.width, end.width, t)!;
+        final height = ui.lerpDouble(begin.height, end.height, t)!;
 
         final beginR = widget.sourceBorderRadius;
         final endR = widget.targetBorderRadius;
@@ -625,9 +677,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final contentProgress =
             ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
         final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
-        final contentScale = lerpDouble(0.96, 1.0, contentProgress)!;
-        final maskOpacity =
-            lerpDouble(0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
+        final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
+        final maskOpacity = ui.lerpDouble(
+            0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
 
         Widget content = RepaintBoundary(child: widget.child);
         if (_AnimSettings.screenRadius) {
@@ -637,7 +689,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               : pad.top > 20
                   ? 16.0
                   : 12.0;
-          final corner = lerpDouble(r, 0, t)!;
+          final corner = ui.lerpDouble(r, 0, t)!;
           if (corner > 0.5) {
             content = ClipRRect(
               borderRadius: BorderRadius.circular(corner),
@@ -661,9 +713,11 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (maskOpacity > 0)
-              ColoredBox(
-                color: Colors.black.withValues(alpha: maskOpacity),
+            if (maskOpacity > _epsilon)
+              IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: maskOpacity),
+                ),
               ),
             Positioned(
               left: left,
@@ -672,13 +726,24 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
               height: height,
               child: ClipRRect(
                 borderRadius: borderRadius,
-                child: Container(color: widget.sourceColor),
+                child: ColoredBox(
+                  color: widget.sourceColor,
+                  child: _contentVisible
+                      ? IgnorePointer(
+                          ignoring: fadeIn < 1.0,
+                          child: Transform.translate(
+                            offset: Offset(-left, -top),
+                            child: SizedBox(
+                              width: screenSize.width,
+                              height: screenSize.height,
+                              child: content,
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
               ),
             ),
-            if (_contentVisible)
-              Positioned.fill(
-                child: IgnorePointer(ignoring: fadeIn < 1.0, child: content),
-              ),
           ],
         );
       },

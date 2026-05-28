@@ -316,6 +316,16 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     }).toList()
           ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
+    // 清理已删除倒计时项的 pulse controller，防止内存泄漏
+    final currentIds = activeCountdowns.map((c) => c.id).toSet();
+    _pulseControllers.keys
+        .where((id) => !currentIds.contains(id))
+        .toList()
+        .forEach((id) {
+      _pulseControllers[id]?.dispose();
+      _pulseControllers.remove(id);
+    });
+
     if (activeCountdowns.isEmpty) {
       return EmptyState(text: "暂无有效倒计时", isLight: widget.isLight);
     }

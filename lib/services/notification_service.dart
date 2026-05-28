@@ -546,6 +546,8 @@ class NotificationService {
           if (r['type'] != null) 'type': r['type'],
           if (r['todoType'] != null) 'todoType': r['todoType'],
           if (r['courseName'] != null) 'courseName': r['courseName'],
+          if (r['courseStartMs'] != null) 'courseStartMs': r['courseStartMs'],
+          if (r['courseEndMs'] != null) 'courseEndMs': r['courseEndMs'],
           if (r['room'] != null) 'room': r['room'],
           if (r['timeStr'] != null) 'timeStr': r['timeStr'],
           if (r['teacher'] != null) 'teacher': r['teacher'],
@@ -845,6 +847,5 @@ class _TrackedSubscription<T> implements StreamSubscription<T> {
   void onError(Function? handleError) => _inner.onError(handleError);
 
   @override
-  void onData(void Function(T data)? handleData) =>
-      _inner.onData(handleData);
+  void onData(void Function(T data)? handleData) => _inner.onData(handleData);
 }

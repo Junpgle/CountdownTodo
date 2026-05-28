@@ -126,6 +126,8 @@ class OfficialHolidayWindow {
 
 class CourseCalendarAdjustmentService {
   static const String _prefsKey = 'course_calendar_adjustments_v1';
+  static const String _officialHolidaySnoozeTodayKey =
+      'official_holiday_prompt_snooze_today';
   static const int _officialHolidayPromptLeadDays = 7;
   static final DateFormat _df = DateFormat('yyyy-MM-dd');
   static const String official2026SourceName = '国务院办公厅关于2026年部分节假日安排的通知';
@@ -296,10 +298,35 @@ class CourseCalendarAdjustmentService {
       final first = dates.first
           .subtract(const Duration(days: _officialHolidayPromptLeadDays));
       final last = dates.last.add(const Duration(days: 7));
-      if (!current.isBefore(first) && !current.isAfter(last)) return window;
+      if (!current.isBefore(first) &&
+          !current.isAfter(last) &&
+          !await _isOfficialHolidaySnoozedToday(window.key, current)) {
+        return window;
+      }
     }
     return null;
   }
+
+  static Future<void> snoozeOfficialHolidayPromptForToday(String key) async {
+    if (key.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _officialHolidaySnoozeTodayKey,
+      _officialHolidaySnoozeValue(key),
+    );
+  }
+
+  static Future<bool> _isOfficialHolidaySnoozedToday(
+    String key,
+    DateTime now,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_officialHolidaySnoozeTodayKey) ==
+        _officialHolidaySnoozeValue(key, now);
+  }
+
+  static String _officialHolidaySnoozeValue(String key, [DateTime? now]) =>
+      '${_df.format(now ?? DateTime.now())}|$key';
 
   static bool _isWindowConfigured(
     CourseCalendarAdjustment adjustment,

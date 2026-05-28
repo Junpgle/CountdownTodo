@@ -1445,8 +1445,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
-      // 🚀 Notify island to switch to idle immediately
-      await FloatWindowService.update(endMs: 0, isLocal: true);
+      // Notify island to switch to idle immediately.
+      await _updateFloatSafely(
+          FloatWindowService.update(endMs: 0, isLocal: true));
 
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
@@ -1475,8 +1476,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _persistIdleBoundTodo(_boundTodo);
       await PomodoroService.clearRunState();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
-      // 🚀 Notify island to switch to idle immediately
-      await FloatWindowService.update(endMs: 0, isLocal: true);
+      // Notify island to switch to idle immediately.
+      await _updateFloatSafely(
+          FloatWindowService.update(endMs: 0, isLocal: true));
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
         durationSeconds: isCountUp
@@ -1722,8 +1724,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         NotificationService.cancelReminder(40001);
         NotificationService.cancelReminder(40002);
         _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
-        // 🚀 Notify island to switch to idle immediately
-        await FloatWindowService.update(endMs: 0, isLocal: true);
+        // Notify island to switch to idle immediately.
+        await _updateFloatSafely(
+            FloatWindowService.update(endMs: 0, isLocal: true));
         setState(() {
           _phase = PomodoroPhase.idle;
           _currentCycle = 1;
@@ -2133,21 +2136,34 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     }
 
     if (isIdle) {
-      // 🚀 Fix: Forward explicitly to clear the island session state
-      // when the local workbench enters idle/finished phase.
-      await FloatWindowService.update(endMs: 0, isLocal: true);
+      // Forward explicitly to clear the island session state when the local
+      // workbench enters idle/finished phase.
+      await _updateFloatSafely(
+          FloatWindowService.update(endMs: 0, isLocal: true));
     } else {
-      await FloatWindowService.update(
-        endMs: effectiveEndMs,
-        title: displayTitle,
-        tags: tagNames,
-        isLocal: _phase != PomodoroPhase.remoteWatching,
-        mode: mode,
-        isPaused: _isPaused,
-        accumulatedMs: _accumulatedMs,
-        pauseStartMs: _pauseStartMs,
-        note: _currentNote,
+      await _updateFloatSafely(
+        FloatWindowService.update(
+          endMs: effectiveEndMs,
+          title: displayTitle,
+          tags: tagNames,
+          isLocal: _phase != PomodoroPhase.remoteWatching,
+          mode: mode,
+          isPaused: _isPaused,
+          accumulatedMs: _accumulatedMs,
+          pauseStartMs: _pauseStartMs,
+          note: _currentNote,
+        ),
       );
+    }
+  }
+
+  Future<void> _updateFloatSafely(Future<void> update) async {
+    try {
+      await update.timeout(const Duration(seconds: 3));
+    } on TimeoutException {
+      debugPrint('[PomodoroWorkbench] Float window update timed out');
+    } catch (e) {
+      debugPrint('[PomodoroWorkbench] Float window update failed: $e');
     }
   }
 
