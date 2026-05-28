@@ -3014,25 +3014,35 @@ class _HomeDashboardState extends State<HomeDashboard>
         await CourseCalendarAdjustmentService.pendingOfficialHolidayWindow();
     if (window == null || !mounted) return;
 
-    final openSettings = await showDialog<bool>(
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('${window.name}课表调整提醒'),
         content: const Text('临近法定节假日。不同学校放假和补课安排可能不同，请手动选择放假日期，并确认哪一天的课调到哪一天。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 'later'),
             child: const Text('稍后'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'snooze_today'),
+            child: const Text('今日不再提醒'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(ctx, 'open'),
             child: const Text('去选择'),
           ),
         ],
       ),
     );
 
-    if (openSettings == true && mounted) {
+    if (action == 'snooze_today') {
+      await CourseCalendarAdjustmentService.snoozeOfficialHolidayPromptForToday(
+          window.key);
+      return;
+    }
+
+    if (action == 'open' && mounted) {
       await Navigator.push(
         context,
         PageTransitions.slideHorizontal(

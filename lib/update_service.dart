@@ -259,6 +259,8 @@ class UpdateService {
       'changelog_archive_cache_json';
   static const String _changelogArchiveCacheTimeKey =
       'changelog_archive_cache_time';
+  static const String _updateDialogSnoozeTodayKey =
+      'update_dialog_snooze_today';
   static Future<AppManifest?>? _manifestRefreshFuture;
 
   static bool _isDialogShowing = false;
@@ -834,6 +836,13 @@ class UpdateService {
     }
     bool hasNotice = announcementsToShow.isNotEmpty;
 
+    if (hasUpdate &&
+        !manifest.forceUpdate &&
+        !isManual &&
+        await _isUpdateDialogSnoozedToday(manifest.versionName)) {
+      hasUpdate = false;
+    }
+
     if (!hasUpdate && !hasNotice) {
       if (isManual && context.mounted) {
         showDialog(
@@ -864,12 +873,14 @@ class UpdateService {
         showAnnouncementDialog(context, announcementsToShow, () {
           if (hasUpdate && context.mounted) {
             showUpdateDialog(context, manifest, localVersion,
-                hasUpdate: true, hasNotice: false);
+                hasUpdate: true,
+                hasNotice: false,
+                respectTodaySnooze: !isManual);
           }
         });
       } else if (hasUpdate) {
         showUpdateDialog(context, manifest, localVersion,
-            hasUpdate: true, hasNotice: false);
+            hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
       }
     }
   }
@@ -887,6 +898,7 @@ class UpdateService {
     // 核心版本对比逻辑
     bool hasUpdate = _compareVersions(latestVersion, localVersion);
     if (!hasUpdate) return;
+    if (await _isUpdateDialogSnoozedToday(latestVersion)) return;
 
     // 🚀 即使弹窗已显示，也要更新通知栏，以显示“紧急直连”状态
     NotificationService.showUpdateNotification(
@@ -972,8 +984,16 @@ class UpdateService {
 
   static Future<void> showUpdateDialog(
       BuildContext context, AppManifest manifest, String currentVersion,
-      {bool hasUpdate = true, bool hasNotice = false}) async {
+      {bool hasUpdate = true,
+      bool hasNotice = false,
+      bool respectTodaySnooze = true}) async {
     if (_isDialogShowing) return;
+    if (hasUpdate &&
+        respectTodaySnooze &&
+        !manifest.forceUpdate &&
+        await _isUpdateDialogSnoozedToday(manifest.versionName)) {
+      return;
+    }
     _isDialogShowing = true;
 
     // 🚀 只要弹窗显示了，就说明用户已经进入更新流程，立即取消通知栏提醒
@@ -1152,6 +1172,13 @@ class UpdateService {
                 ),
               ),
               actions: [
+                if (!manifest.forceUpdate && hasUpdate && !_isDownloading)
+                  TextButton(
+                      onPressed: () async {
+                        await _snoozeUpdateDialogForToday(manifest.versionName);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                      child: const Text("今日不再提醒")),
                 if (!manifest.forceUpdate)
                   TextButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -1171,6 +1198,28 @@ class UpdateService {
       _uiCompleteCallback = null;
       _uiErrorCallback = null;
     });
+  }
+
+  static String _todayKey([DateTime? now]) {
+    final date = now ?? DateTime.now();
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  static String _snoozeValue(String versionName, [DateTime? now]) =>
+      '${_todayKey(now)}|$versionName';
+
+  static Future<bool> _isUpdateDialogSnoozedToday(String versionName) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_updateDialogSnoozeTodayKey) ==
+        _snoozeValue(versionName);
+  }
+
+  static Future<void> _snoozeUpdateDialogForToday(String versionName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _updateDialogSnoozeTodayKey, _snoozeValue(versionName));
   }
 
   static Future<void> _startForegroundDownload(AppManifest manifest) async {
