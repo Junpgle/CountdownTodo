@@ -73,6 +73,19 @@ class MyHttpOverrides extends HttpOverrides {
   }
 }
 
+Future<T?> _runStartupTask<T>(
+  String label,
+  Future<T> future, {
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  try {
+    return await future.timeout(timeout);
+  } catch (e) {
+    debugPrint('[Main] $label startup skipped: $e');
+    return null;
+  }
+}
+
 void _configureRuntimeCaches() {
   final imageCache = PaintingBinding.instance.imageCache;
   if (kIsWeb) {
@@ -96,7 +109,11 @@ void _configureRuntimeCaches() {
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // 尽早绑定原生通知 channel，绑定完成后通知 native flush pending 事件
-  await NotificationService.bindNativeChannel();
+  await _runStartupTask(
+    'NotificationService.bindNativeChannel',
+    NotificationService.bindNativeChannel(),
+    timeout: const Duration(seconds: 1),
+  );
   _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
@@ -106,7 +123,11 @@ Future<void> main(List<String> args) async {
     databaseFactory = databaseFactoryFfi;
   }
 
-  await PageTransitions.init();
+  await _runStartupTask(
+    'PageTransitions.init',
+    PageTransitions.init(),
+    timeout: const Duration(seconds: 1),
+  );
 
   // If this engine was launched by desktop_multi_window for a secondary
   // window, the embedder will pass arguments like: ["multi_window", windowId, windowArgument]
@@ -121,13 +142,21 @@ Future<void> main(List<String> args) async {
     }
   } catch (_) {}
 
-  await AppDeepLinkService.init(args);
+  await _runStartupTask(
+    'AppDeepLinkService.init',
+    AppDeepLinkService.init(args),
+    timeout: const Duration(seconds: 2),
+  );
 
   // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
   HttpOverrides.global = MyHttpOverrides();
 
   // 初始化 WindowService（监听窗口关闭事件）
-  await WindowService.init();
+  await _runStartupTask(
+    'WindowService.init',
+    WindowService.init(),
+    timeout: const Duration(seconds: 3),
+  );
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
@@ -184,6 +213,7 @@ class _MyAppState extends State<MyApp> {
   bool _showPrivacyUpdate = false;
   bool _defaultSplashCompleted = false;
   bool _windowReadyForSplashTransition = true;
+  Timer? _defaultSplashFallbackTimer;
 
   @override
   void initState() {
@@ -191,6 +221,9 @@ class _MyAppState extends State<MyApp> {
     _windowReadyForSplashTransition =
         kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
+    _defaultSplashFallbackTimer =
+        Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
+    _scheduleSplashReadinessFallback();
     // 立即开始初始化，不等待首屏动画
     _initializeApp();
     // 处理开屏序列逻辑
@@ -198,16 +231,21 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _startSplashSequence() async {
-    // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
-    final splashContent = await SplashService.getCachedContent();
-    if (mounted) {
-      setState(() {
-        _splashContent = splashContent;
-        // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
-        if (_defaultSplashCompleted && splashContent != null) {
-          _showHolidaySplash = true;
-        }
-      });
+    try {
+      // 异步获取节日开屏内容，不在这加延迟，让 DefaultSplashScreen 自己跑
+      final splashContent = await SplashService.getCachedContent()
+          .timeout(const Duration(seconds: 1));
+      if (mounted) {
+        setState(() {
+          _splashContent = splashContent;
+          // 避免竞态：如果默认开屏已结束但缓存稍后才返回，也要能切到节日开屏。
+          if (_defaultSplashCompleted && splashContent != null) {
+            _showHolidaySplash = true;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
   }
 
@@ -285,7 +323,7 @@ class _MyAppState extends State<MyApp> {
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
             .timeout(const Duration(seconds: 2), onTimeout: () => false),
-      ]);
+      ]).timeout(const Duration(seconds: 5));
 
       // 解析并发结果
       final String? user = results[2] as String?;
@@ -342,6 +380,25 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  void _scheduleSplashReadinessFallback() {
+    if (kIsWeb ||
+        !(Platform.isWindows || Platform.isLinux || Platform.isMacOS) ||
+        _windowReadyForSplashTransition) {
+      return;
+    }
+
+    // 桌面端窗口 ready 回调偶发不返回时，不能让默认开屏永久卡住。
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted || _windowReadyForSplashTransition) {
+        return;
+      }
+      setState(() {
+        _windowReadyForSplashTransition = true;
+      });
+      _applySplashTransitionIfReady();
+    });
+  }
+
   Future<void> _showPrivacyUpdateDialog() async {
     final navContext = appNavigatorKey.currentContext;
     if (navContext == null) return;
@@ -392,6 +449,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onDefaultSplashComplete() {
+    _defaultSplashFallbackTimer?.cancel();
+    _defaultSplashFallbackTimer = null;
     _defaultSplashCompleted = true;
     _applySplashTransitionIfReady();
   }
@@ -598,6 +657,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _defaultSplashFallbackTimer?.cancel();
     _bandPomodoroSub?.cancel();
     unawaited(FloatWindowService.dispose());
     BandSyncService.dispose();

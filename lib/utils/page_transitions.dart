@@ -319,6 +319,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   @override
   void didChangeMetrics() {
     _cacheMediaQuery();
+    _lastRoute = -1;
+    _lastBg = -1;
+    _cachedFrame = null;
   }
 
   void _cacheMediaQuery() {
@@ -338,6 +341,11 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         oldWidget.secondaryAnimation != widget.secondaryAnimation) {
       _disposeAnimations();
       _initAnimations();
+      _lastRoute = -1;
+      _lastBg = -1;
+      _cachedFrame = null;
+    } else if (oldWidget.child != widget.child ||
+        oldWidget.mode != widget.mode) {
       _lastRoute = -1;
       _lastBg = -1;
       _cachedFrame = null;
@@ -387,7 +395,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         final bgVal = _backgroundCurve.value;
 
         // Frame-skip — return cached widget when animation is idle.
-        if (routeVal == _lastRoute && bgVal == _lastBg && _cachedFrame != null) {
+        if (routeVal == _lastRoute &&
+            bgVal == _lastBg &&
+            _cachedFrame != null) {
           return _cachedFrame!;
         }
         _lastRoute = routeVal;
@@ -400,8 +410,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         Widget current = child ?? const SizedBox.shrink();
 
         if (isBackground) {
-          final isReverse =
-              widget.animation.status == AnimationStatus.reverse;
+          final isReverse = widget.animation.status == AnimationStatus.reverse;
           current = _buildBackgroundPage(current, backgroundProgress,
               isReverse: isReverse);
         }
@@ -640,7 +649,14 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
     if (_AnimSettings.lazyLoad) {
       Future.delayed(
           Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
-        if (mounted) setState(() => _contentVisible = true);
+        if (mounted) {
+          setState(() {
+            _contentVisible = true;
+            _lastForward = -1;
+            _lastBackground = -1;
+            _cachedFrame = null;
+          });
+        }
       });
     } else {
       _contentVisible = true;
@@ -659,6 +675,24 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
   @override
   void didChangeMetrics() {
     _cacheScreenMetrics();
+    _lastForward = -1;
+    _lastBackground = -1;
+    _cachedFrame = null;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ContainerTransformWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.child != widget.child ||
+        oldWidget.sourceRect != widget.sourceRect ||
+        oldWidget.targetRect != widget.targetRect ||
+        oldWidget.sourceColor != widget.sourceColor ||
+        oldWidget.sourceBorderRadius != widget.sourceBorderRadius ||
+        oldWidget.targetBorderRadius != widget.targetBorderRadius) {
+      _lastForward = -1;
+      _lastBackground = -1;
+      _cachedFrame = null;
+    }
   }
 
   void _cacheScreenMetrics() {
@@ -737,7 +771,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         final bg = _backgroundCurve.value;
 
         // Frame-skip — return cached widget when animation is idle.
-        if (t == _lastForward && bg == _lastBackground && _cachedFrame != null) {
+        if (t == _lastForward &&
+            bg == _lastBackground &&
+            _cachedFrame != null) {
           return _cachedFrame!;
         }
         _lastForward = t;
@@ -749,8 +785,7 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
         final width = begin.width + dWidth * t;
         final height = begin.height + dHeight * t;
 
-        final isReverse =
-            widget.animation.status == AnimationStatus.reverse;
+        final isReverse = widget.animation.status == AnimationStatus.reverse;
 
         final contentProgress =
             ((t - _contentStartThreshold) * invContentRange).clamp(0.0, 1.0);
@@ -765,8 +800,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
           final s = width * invScreenWidth;
           final tx = left - halfWScreen + width * 0.5;
           final ty = top - halfHScreen + height * 0.5;
-          _gestureMatrix
-              .setValues(s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
+          _gestureMatrix.setValues(
+              s, 0, 0, 0, 0, s, 0, 0, 0, 0, 1, 0, tx, ty, 0, 1);
           contentLayer = Transform(
             transform: _gestureMatrix,
             transformHitTests: false,
@@ -810,16 +845,12 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget>
             ? BorderRadius.zero
             : BorderRadius.only(
                 topLeft: Radius.elliptical(
-                    beginR.topLeft.x + dRTLX * t,
-                    beginR.topLeft.y + dRTLY * t),
-                topRight: Radius.elliptical(
-                    beginR.topRight.x + dRTRX * t,
+                    beginR.topLeft.x + dRTLX * t, beginR.topLeft.y + dRTLY * t),
+                topRight: Radius.elliptical(beginR.topRight.x + dRTRX * t,
                     beginR.topRight.y + dRTRY * t),
-                bottomLeft: Radius.elliptical(
-                    beginR.bottomLeft.x + dRBLX * t,
+                bottomLeft: Radius.elliptical(beginR.bottomLeft.x + dRBLX * t,
                     beginR.bottomLeft.y + dRBLY * t),
-                bottomRight: Radius.elliptical(
-                    beginR.bottomRight.x + dRBRX * t,
+                bottomRight: Radius.elliptical(beginR.bottomRight.x + dRBRX * t,
                     beginR.bottomRight.y + dRBRY * t),
               );
 
