@@ -54,6 +54,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   // 从远端加载的数据
   String _currentVersion = '';
+  String _previousShownVersion = '';
   List<ChangelogEntry> _changelogHistory = [];
   bool _loadingChangelog = true;
   String? _changelogNotice;
@@ -64,6 +65,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   bool _hasUsageStats = false;
   bool _hasExactAlarm = false;
   bool _ignoringBatteryOptimizations = false;
+  bool _showDatabaseUpdatePage = false;
 
   // Tai目录
   String _taiDbPath = '';
@@ -102,8 +104,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     // 无论如何，第一页永远是更新日志
     pages.add(_buildChangelogPage);
 
-    // 🚀 Uni-Sync 4.0 特别逻辑：针对老用户升级后的数据迁移提示
-    if (!isFirstLaunch && !widget.isManualReview) {
+    // 仅当本次版本范围内确实包含数据库/存储迁移相关变更时展示。
+    if (!isFirstLaunch && !widget.isManualReview && _showDatabaseUpdatePage) {
       pages.add(_buildUniSyncMigrationPage);
     }
 
@@ -158,6 +160,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     final shownVersion = prefs.getString(FeatureGuideScreen._guideKey) ?? '';
+    _previousShownVersion = shownVersion;
     // 仅在“更新后的第一次开屏”时优先联网，避免看到旧缓存更新日志。
     final isFirstSplashAfterUpdate =
         shownVersion.isNotEmpty && shownVersion != _currentVersion;
@@ -168,11 +171,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         refreshInBackground: !isFirstSplashAfterUpdate,
       );
       if (manifest != null && mounted) {
+        final changelogHistory = await _resolveChangelogHistoryForGuide(
+          manifest,
+          shownVersion,
+          preferArchiveCache: !isFirstSplashAfterUpdate,
+        );
+        final showDatabaseUpdatePage =
+            _shouldShowDatabaseUpdatePage(changelogHistory);
         setState(() {
-          _changelogHistory = manifest.changelogHistory;
+          _changelogHistory = changelogHistory;
+          _showDatabaseUpdatePage = showDatabaseUpdatePage;
           _loadingChangelog = false;
           _changelogNotice = null;
         });
+        await _setupPages();
         return;
       }
 
@@ -183,11 +195,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           refreshInBackground: true,
         );
         if (cachedManifest != null && mounted) {
+          final changelogHistory = await _resolveChangelogHistoryForGuide(
+            cachedManifest,
+            shownVersion,
+            preferArchiveCache: true,
+          );
+          final showDatabaseUpdatePage =
+              _shouldShowDatabaseUpdatePage(changelogHistory);
           setState(() {
-            _changelogHistory = cachedManifest.changelogHistory;
+            _changelogHistory = changelogHistory;
+            _showDatabaseUpdatePage = showDatabaseUpdatePage;
             _loadingChangelog = false;
             _changelogNotice = '当前显示离线缓存更新日志，网络恢复后会自动刷新。';
           });
+          await _setupPages();
           return;
         }
       }
@@ -196,10 +217,115 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (mounted) {
       setState(() {
         _changelogHistory = [];
+        _showDatabaseUpdatePage = false;
         _loadingChangelog = false;
         _changelogNotice = null;
       });
+      await _setupPages();
     }
+  }
+
+  Future<List<ChangelogEntry>> _resolveChangelogHistoryForGuide(
+    AppManifest manifest,
+    String previousVersion, {
+    required bool preferArchiveCache,
+  }) async {
+    final currentVersion = _normalizeVersion(_currentVersion);
+    final previous = _normalizeVersion(previousVersion);
+    final hasPrevious = previous.isNotEmpty;
+    final isDowngrade =
+        hasPrevious && _compareVersionNames(previous, currentVersion) > 0;
+
+    final merged = <ChangelogEntry>[];
+    final seen = <String>{};
+    void addEntries(Iterable<ChangelogEntry> entries) {
+      for (final entry in entries) {
+        if (entry.versionName.isEmpty) continue;
+        if (seen.add(_normalizeVersion(entry.versionName))) {
+          merged.add(entry);
+        }
+      }
+    }
+
+    addEntries(manifest.changelogHistory);
+
+    if (hasPrevious && !isDowngrade && manifest.changelogArchive.isAvailable) {
+      try {
+        final archive = await UpdateService.loadChangelogArchive(
+          manifest: manifest,
+          preferCache: preferArchiveCache,
+        );
+        addEntries(archive);
+      } catch (_) {}
+    }
+
+    merged.sort((a, b) => _compareVersionNames(b.versionName, a.versionName));
+
+    if (!hasPrevious || isDowngrade) {
+      return _currentVersionOnly(merged);
+    }
+
+    final inRange = merged.where((entry) {
+      final version = entry.versionName;
+      return _compareVersionNames(version, previous) > 0 &&
+          _compareVersionNames(version, currentVersion) <= 0;
+    }).toList();
+
+    return inRange.isNotEmpty ? inRange : _currentVersionOnly(merged);
+  }
+
+  List<ChangelogEntry> _currentVersionOnly(List<ChangelogEntry> entries) {
+    final current = _normalizeVersion(_currentVersion);
+    return entries
+        .where((entry) => _compareVersionNames(entry.versionName, current) == 0)
+        .take(1)
+        .toList();
+  }
+
+  String _normalizeVersion(String version) =>
+      version.trim().split('+').first.split('-').first;
+
+  int _compareVersionNames(String a, String b) {
+    final left = _normalizeVersion(a)
+        .split('.')
+        .map((part) => int.tryParse(part) ?? 0)
+        .toList();
+    final right = _normalizeVersion(b)
+        .split('.')
+        .map((part) => int.tryParse(part) ?? 0)
+        .toList();
+    final maxLength = left.length > right.length ? left.length : right.length;
+    for (var i = 0; i < maxLength; i++) {
+      final l = i < left.length ? left[i] : 0;
+      final r = i < right.length ? right[i] : 0;
+      if (l != r) return l.compareTo(r);
+    }
+    return 0;
+  }
+
+  bool _shouldShowDatabaseUpdatePage(List<ChangelogEntry> entries) {
+    const databaseKeywords = [
+      '数据库',
+      'sqlite',
+      'sql',
+      '表结构',
+      '字段',
+      '存储引擎',
+      '数据迁移',
+      '迁移至',
+      'migration',
+      'schema',
+    ];
+
+    for (final entry in entries) {
+      for (final item in entry.items) {
+        final lower = item.toLowerCase();
+        if (databaseKeywords.any(lower.contains)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   Future<void> _loadTaiConfig() async {
@@ -383,6 +509,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ? _changelogHistory.sublist(1)
         : <ChangelogEntry>[];
     final scheme = Theme.of(context).colorScheme;
+    final previous = _normalizeVersion(_previousShownVersion);
+    final currentVersion = _normalizeVersion(_currentVersion);
+    final showVersionRange = previous.isNotEmpty &&
+        _compareVersionNames(previous, currentVersion) < 0 &&
+        _changelogHistory.length > 1;
 
     return _buildPageContainer(
         content: Column(
@@ -403,6 +534,17 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           ]),
         ),
         const SizedBox(height: 16),
+        if (showVersionRange) ...[
+          Text(
+            '从 v$previous 升级到 v$currentVersion，以下是本次跨版本变动。',
+            style: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.65),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_changelogNotice != null) ...[
           Container(
             width: double.infinity,
@@ -1174,18 +1316,26 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               children: [
                 Icon(Icons.verified_user_rounded, color: Colors.teal, size: 48),
                 SizedBox(height: 16),
-                Text("本地数据迁移完成", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)),
+                Text("本地数据迁移完成",
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal)),
                 SizedBox(height: 8),
-                Text("单一事实来源 (SSoT) 架构已激活", style: TextStyle(fontSize: 12, color: Colors.teal)),
+                Text("单一事实来源 (SSoT) 架构已激活",
+                    style: TextStyle(fontSize: 12, color: Colors.teal)),
               ],
             ),
           ),
           const SizedBox(height: 40),
-          _buildMigrationPoint(Icons.bolt_rounded, "极致搜索性能", "基于 FTS5 全文索引，即便万条待办，检索只需毫秒。"),
+          _buildMigrationPoint(
+              Icons.bolt_rounded, "极致搜索性能", "基于 FTS5 全文索引，即便万条待办，检索只需毫秒。"),
           const SizedBox(height: 20),
-          _buildMigrationPoint(Icons.offline_pin_rounded, "离线操作拦截", "内置 Oplog 离线记录仪，断网改动自动入库，联网秒速对齐。"),
+          _buildMigrationPoint(Icons.offline_pin_rounded, "离线操作拦截",
+              "内置 Oplog 离线记录仪，断网改动自动入库，联网秒速对齐。"),
           const SizedBox(height: 20),
-          _buildMigrationPoint(Icons.security_rounded, "核心数据双活", "本地 SQL 与 Prefs 互为备份，最大限度抵御外部文件损毁风险。"),
+          _buildMigrationPoint(Icons.security_rounded, "核心数据双活",
+              "本地 SQL 与 Prefs 互为备份，最大限度抵御外部文件损毁风险。"),
         ],
       ),
     );
@@ -1201,9 +1351,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              Text(desc, style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.4)),
+              Text(desc,
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey[600], height: 1.4)),
             ],
           ),
         ),
