@@ -200,9 +200,9 @@ class IslandChannel {
 
   static Future<bool> showWindow(String windowId) async {
     try {
-      final res = await _dmw.invokeMethod(
-          'showWindow', {'windowId': windowId}).timeout(_nativeCallTimeout);
-      return res == true;
+      await _dmw.invokeMethod(
+          'window_show', {'windowId': windowId}).timeout(_nativeCallTimeout);
+      return true;
     } catch (e) {
       debugPrint('[IslandChannel] showWindow failed: $e');
       return false;
@@ -211,9 +211,9 @@ class IslandChannel {
 
   static Future<bool> hideWindow(String windowId) async {
     try {
-      final res = await _dmw.invokeMethod(
+      await _dmw.invokeMethod(
           'window_hide', {'windowId': windowId}).timeout(_nativeCallTimeout);
-      return res == true;
+      return true;
     } catch (e) {
       debugPrint('[IslandChannel] hideWindow failed: $e');
       return false;

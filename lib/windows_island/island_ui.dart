@@ -134,6 +134,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   // ── 窗口控制
   WindowController? _windowController;
   Size _currentWindowSize = const Size(100, 34);
+  static const double _maxNativeResizeWidth = 480.0;
+  static const double _maxNativeResizeHeight = 340.0;
   // ── 便捷 getter ─────────────────────────────────────────────────────────
   bool get _isFocusing => _stack.base == IslandState.focusing;
 
@@ -238,6 +240,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   Future<void> _resizeWindowOnce(Size targetSize) async {
     if (widget.inLayoutDebugMode) return;
     if (targetSize == _currentWindowSize) return;
+    if (targetSize.width > _maxNativeResizeWidth ||
+        targetSize.height > _maxNativeResizeHeight) {
+      debugPrint(
+          '[IslandUI] skip native resize for oversized target: $targetSize');
+      return;
+    }
     // 防抖：快速连续调用只执行最后一次
     _resizeDebounce?.cancel();
     _resizeDebounce = Timer(const Duration(milliseconds: 50), () async {
@@ -650,7 +658,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     const cardWidth = 76.0;
     const gap = 6.0;
     final width = (horizontalPadding + count * cardWidth + (count - 1) * gap)
-        .clamp(220.0, 680.0);
+        .clamp(220.0, _maxNativeResizeWidth);
     return Size(width, 96);
   }
 
@@ -799,7 +807,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         duration: IslandConfig.switchDuration,
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
-                        layoutBuilder: (currentChild, previousChildren) => Stack(
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
                           alignment: Alignment.center,
                           children: [
                             ...previousChildren,
@@ -823,13 +832,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             ),
                           );
                         },
-                      child: KeyedSubtree(
-                        key: ValueKey(_contentKeyForCurrentState()),
-                        child: _buildContent(),
+                        child: KeyedSubtree(
+                          key: ValueKey(_contentKeyForCurrentState()),
+                          child: _buildContent(),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ),
               ),
             );
@@ -1088,92 +1097,92 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return RepaintBoundary(
       child: AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _isPulsing ? _pulseAnimation.value : 1.0,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            alignment: Alignment.center,
-            clipBehavior: Clip.hardEdge,
-            decoration: const BoxDecoration(color: Colors.transparent),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxHeight <= 56;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!compact)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (fd?['isPaused'] == true) ...[
-                            const Text(
-                              '⏸️ ',
-                              style: TextStyle(fontSize: 10),
+        animation: _pulseController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _isPulsing ? _pulseAnimation.value : 1.0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              alignment: Alignment.center,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(color: Colors.transparent),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxHeight <= 56;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (!compact)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (fd?['isPaused'] == true) ...[
+                              const Text(
+                                '⏸️ ',
+                                style: TextStyle(fontSize: 10),
+                              ),
+                            ],
+                            Flexible(
+                              child: ValueListenableBuilder<String>(
+                                valueListenable: _pauseTimeNotifier,
+                                builder: (context, pauseTime, _) {
+                                  return Text(
+                                    fd?['isPaused'] == true
+                                        ? '暂停中 $pauseTime'
+                                        : title,
+                                    style: TextStyle(
+                                      color: _isPulsing
+                                          ? _colorAnimation.value
+                                                  ?.withValues(alpha: 0.7) ??
+                                              Colors.white70
+                                          : Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.0,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
+                              ),
                             ),
                           ],
-                          Flexible(
-                            child: ValueListenableBuilder<String>(
-                              valueListenable: _pauseTimeNotifier,
-                              builder: (context, pauseTime, _) {
-                                return Text(
-                                  fd?['isPaused'] == true
-                                      ? '暂停中 $pauseTime'
-                                      : title,
-                                  style: TextStyle(
-                                    color: _isPulsing
-                                        ? _colorAnimation.value
-                                                ?.withValues(alpha: 0.7) ??
-                                            Colors.white70
-                                        : Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    height: 1.0,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                );
-                              },
+                        ),
+                      if (!compact) const SizedBox(height: 1),
+                      ValueListenableBuilder<String>(
+                        valueListenable: _timeNotifier,
+                        builder: (_, time, __) {
+                          if (_isCountdown &&
+                              _remainingSecs == 0 &&
+                              !_isPulsing) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _triggerPomodoroAlert();
+                            });
+                          }
+                          return FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              time,
+                              style: TextStyle(
+                                color: _isPulsing
+                                    ? _colorAnimation.value ?? Colors.white
+                                    : Colors.white,
+                                fontSize: compact ? 16 : 16,
+                                fontWeight: FontWeight.w900,
+                                height: 1.0,
+                              ),
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    if (!compact) const SizedBox(height: 1),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _timeNotifier,
-                      builder: (_, time, __) {
-                        if (_isCountdown &&
-                            _remainingSecs == 0 &&
-                            !_isPulsing) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            _triggerPomodoroAlert();
-                          });
-                        }
-                        return FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            time,
-                            style: TextStyle(
-                              color: _isPulsing
-                                  ? _colorAnimation.value ?? Colors.white
-                                  : Colors.white,
-                              fontSize: compact ? 16 : 16,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
       ),
     );
   }
@@ -2933,16 +2942,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 (smtcHasMusic ? smtc.artist : '');
             final isPlaying = musicData?['isPlaying'] as bool? ??
                 (smtc.status == PlaybackStatus.playing);
-            final currentTime =
-                musicData?['currentTime']?.toString() ?? '0:00';
-            final totalTime =
-                musicData?['totalTime']?.toString() ?? '0:00';
+            final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
+            final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
             final lyrics = musicData?['lyrics']?.toString() ?? '';
             final currentLyricIndex =
                 musicData?['currentLyricIndex'] as int? ?? 0;
             final shuffleOn = musicData?['shuffle'] as bool? ?? false;
-            final repeatMode =
-                musicData?['repeat']?.toString() ?? 'off';
+            final repeatMode = musicData?['repeat']?.toString() ?? 'off';
             final showContent = hasMusic || smtcHasMusic;
             return showContent
                 ? _buildMusicPlayerContent(

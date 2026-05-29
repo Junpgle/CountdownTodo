@@ -65,7 +65,7 @@ class FloatWindowService {
 
   static bool get _isRealIslandEnabled {
     if (!Platform.isWindows) return false;
-    return true;
+    return !const bool.fromEnvironment('DISABLE_REAL_WINDOWS_ISLAND');
   }
 
   static bool get _isDebugOverlayEnabled {

@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' hide window;
-import 'dart:ffi' hide Size;
-import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
-import 'package:win32/win32.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
@@ -94,6 +91,8 @@ Future<void> islandMain(List<String> args) async {
   clearIslandHwndCache();
 
   WidgetsFlutterBinding.ensureInitialized();
+  const enableNativeChrome =
+      bool.fromEnvironment('ENABLE_WINDOWS_ISLAND_NATIVE_CHROME');
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('[Island] Unhandled error: $error\n$stack');
@@ -123,15 +122,19 @@ Future<void> islandMain(List<String> args) async {
       await controller.invokeMethod('setAlwaysOnTop', true);
     } catch (_) {}
 
-    Timer(const Duration(milliseconds: 120), ensureIslandFrameless);
-    Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
-    Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
+    if (enableNativeChrome) {
+      Timer(const Duration(milliseconds: 120), ensureIslandFrameless);
+      Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
+      Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
+    }
 
     Future.delayed(IslandConfig.windowRestoreDelay, () {
       _restoreWindowPosition();
     });
 
-    initFfiTransparent();
+    if (enableNativeChrome) {
+      initFfiTransparent();
+    }
 
     debugPrint(
         '[Island] islandMain started for windowId=${controller.windowId}');
@@ -266,31 +269,14 @@ Future<void> islandMain(List<String> args) async {
             final left = ib['left'];
             final top = ib['top'];
             if (width is num && height is num && left is num && top is num) {
-              Future.microtask(() async {
-                for (int i = 0; i < 20; i++) {
-                  final hw = getSmallestFlutterWindow();
-                  if (hw != null) {
-                    final scale = getIslandScaleFactor(hw);
-                    final phyW = (width * scale).ceil();
-                    final phyH = (height * scale).ceil();
-                    final phyLeft = (left * scale).toInt();
-                    final phyTop = (top * scale).toInt();
-                    const int hwndTopmost = -1;
-                    const int swpNoactivate = 0x0010;
-                    using((arena) {
-                      final rectPtr = arena<RECT>();
-                      rectPtr.ref.left = phyLeft;
-                      rectPtr.ref.top = phyTop;
-                      rectPtr.ref.right = phyLeft + phyW;
-                      rectPtr.ref.bottom = phyTop + phyH;
-                      SetWindowPos(hw, hwndTopmost, rectPtr.ref.left,
-                          rectPtr.ref.top, phyW, phyH, swpNoactivate);
-                    });
-                    break;
-                  }
-                  await Future.delayed(IslandConfig.ffiRetryInterval);
-                }
-              });
+              Future.microtask(
+                () => setWindowPosition(
+                  left.toInt(),
+                  top.toInt(),
+                  width.toInt(),
+                  height.toInt(),
+                ),
+              );
             }
           }
         } catch (e) {
@@ -339,7 +325,9 @@ Future<void> islandMain(List<String> args) async {
           return;
         }
 
-        ensureIslandFrameless();
+        if (enableNativeChrome) {
+          ensureIslandFrameless();
+        }
 
         final rect = getWindowRect();
         if (rect != null &&
