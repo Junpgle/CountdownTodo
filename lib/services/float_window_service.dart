@@ -243,6 +243,7 @@ class FloatWindowService {
         case 'bounds_changed':
           final bounds = payload?['bounds'] as Map<String, dynamic>?;
           if (bounds != null) {
+            saveIslandBounds('island-1', bounds);
             StorageService.saveIslandBounds('island-1', bounds);
           }
           break;

@@ -158,7 +158,8 @@ class IslandManager {
       'payload': structuredPayload,
     };
     try {
-      final bounds = await StorageService.getIslandBounds(islandId);
+      final bounds = await loadIslandBounds(islandId) ??
+          await StorageService.getIslandBounds(islandId);
       if (bounds != null && bounds.isNotEmpty) {
         args['initialBounds'] = bounds;
       }

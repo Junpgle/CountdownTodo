@@ -49,13 +49,13 @@ class IslandConfig {
   static const Duration payloadDebounce = Duration(milliseconds: 16);
 
   /// Bounds save enable delay after init
-  static const Duration boundsSaveEnableDelay = Duration(seconds: 3);
+  static const Duration boundsSaveEnableDelay = Duration(seconds: 1);
 
   /// Bounds save ready delay after enable
-  static const Duration boundsSaveReadyDelay = Duration(seconds: 2);
+  static const Duration boundsSaveReadyDelay = Duration(milliseconds: 500);
 
   /// Bounds polling interval
-  static const Duration boundsPollInterval = Duration(seconds: 2);
+  static const Duration boundsPollInterval = Duration(seconds: 1);
 
   /// Reminder check interval
   static const Duration reminderCheckInterval = Duration(seconds: 10);

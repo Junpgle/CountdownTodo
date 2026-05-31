@@ -79,7 +79,7 @@ Future<void> _launchUrl(String url) async {
 /// Restore window position from storage
 Future<void> _restoreWindowPosition() async {
   try {
-    final bounds =
+    final bounds = await loadIslandBounds(IslandConfig.defaultIslandId) ??
         await StorageService.getIslandBounds(IslandConfig.defaultIslandId);
     if (bounds != null && bounds.isNotEmpty) {
       final left = (bounds['left'] as num?)?.toInt();
@@ -91,6 +91,9 @@ Future<void> _restoreWindowPosition() async {
 
       if (left != null && top != null) {
         setWindowPosition(left, top, width, height);
+        await appendIslandIpcLog(
+          'island restored bounds left=$left top=$top width=$width height=$height',
+        );
         debugPrint('[Island] Restored window position: left=$left, top=$top');
       }
     }
@@ -219,6 +222,51 @@ Future<void> islandMain(List<String> args) async {
     await loadLatestPayloadFromFile();
   });
 
+  Future.delayed(IslandConfig.windowRestoreDelay, () {
+    _restoreWindowPosition();
+  });
+  Future.delayed(const Duration(milliseconds: 1500), () {
+    _restoreWindowPosition();
+  });
+
+  Timer(IslandConfig.boundsSaveEnableDelay, () {
+    boundsSaveEnabled = true;
+    Timer(IslandConfig.boundsSaveReadyDelay, () {
+      boundsSaveReady = true;
+    });
+  });
+
+  Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
+    try {
+      final hwnd = getSmallestFlutterWindow();
+      if (hwnd == null) return;
+
+      if (!isWindowValid(hwnd)) {
+        timer.cancel();
+        return;
+      }
+
+      if (enableNativeChrome) {
+        ensureIslandFrameless();
+      }
+
+      final rect = getWindowRect();
+      if (rect != null && boundsSaveEnabled && boundsSaveReady && !isDragging) {
+        if (lastReportedBounds == null ||
+            _boundsChanged(lastReportedBounds!, rect)) {
+          lastReportedBounds = rect;
+          if (needsSaveAfterDrag) needsSaveAfterDrag = false;
+          await saveIslandBounds(IslandConfig.defaultIslandId, rect);
+          StorageService.saveIslandBounds(IslandConfig.defaultIslandId, rect)
+              .catchError((_) {});
+          await appendIslandIpcLog(
+            'island saved bounds left=${rect['left']} top=${rect['top']} width=${rect['width']} height=${rect['height']}',
+          );
+        }
+      }
+    } catch (_) {}
+  });
+
   try {
     controller = await WindowController.fromCurrentEngine()
         .timeout(const Duration(milliseconds: 350));
@@ -236,10 +284,6 @@ Future<void> islandMain(List<String> args) async {
       Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
       Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
     }
-
-    Future.delayed(IslandConfig.windowRestoreDelay, () {
-      _restoreWindowPosition();
-    });
 
     if (enableNativeChrome) {
       initFfiTransparent();
@@ -391,43 +435,6 @@ Future<void> islandMain(List<String> args) async {
 
     final Set<String> acknowledgedReminders = {};
     String? lastShownReminderId;
-
-    Timer(IslandConfig.boundsSaveEnableDelay, () {
-      boundsSaveEnabled = true;
-      Timer(IslandConfig.boundsSaveReadyDelay, () {
-        boundsSaveReady = true;
-      });
-    });
-
-    Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
-      try {
-        final hwnd = getSmallestFlutterWindow();
-        if (hwnd == null) return;
-
-        if (!isWindowValid(hwnd)) {
-          timer.cancel();
-          return;
-        }
-
-        if (enableNativeChrome) {
-          ensureIslandFrameless();
-        }
-
-        final rect = getWindowRect();
-        if (rect != null &&
-            boundsSaveEnabled &&
-            boundsSaveReady &&
-            !isDragging) {
-          if (lastReportedBounds == null ||
-              _boundsChanged(lastReportedBounds!, rect)) {
-            lastReportedBounds = rect;
-            if (needsSaveAfterDrag) needsSaveAfterDrag = false;
-            StorageService.saveIslandBounds(IslandConfig.defaultIslandId, rect)
-                .catchError((_) {});
-          }
-        }
-      } catch (_) {}
-    });
 
     Future<void> checkAndShowReminder() async {
       try {
