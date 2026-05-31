@@ -3,25 +3,59 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' hide window;
-import 'dart:ffi' hide Size;
-import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
-import 'package:win32/win32.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import 'island_config.dart';
+import 'island_ipc_paths.dart';
 import 'island_win32.dart';
 import 'island_reminder.dart';
 import '../storage_service.dart';
 
 /// Get the action file for IPC
 Future<File> _getActionFile() async {
-  final dir = await getApplicationSupportDirectory();
-  return File('${dir.path}/${IslandConfig.actionFileName}');
+  return getIslandIpcFile(IslandConfig.actionFileName);
+}
+
+/// Get the latest payload file for file-based IPC fallback.
+Future<File> _getPayloadFile() async {
+  return getIslandIpcFile(IslandConfig.payloadFileName);
+}
+
+Map<String, dynamic>? _payloadFromRaw(dynamic raw) {
+  if (raw is! Map) return null;
+  final rawMap = Map<String, dynamic>.from(raw);
+  final dynamic payloadRaw =
+      rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+  if (payloadRaw is! Map) return null;
+  return Map<String, dynamic>.from(payloadRaw);
+}
+
+void _applyIncomingPayload(
+  Map<String, dynamic> payload,
+  ValueNotifier<Map<String, dynamic>?> payloadNotifier,
+  WindowController? controller,
+  String windowId,
+) {
+  if (payload['handshake'] == 'ping') {
+    controller?.invokeMethod('onAction', {
+      'action': 'handshake_pong',
+      'windowId': windowId,
+    }).catchError((_) {});
+    return;
+  }
+
+  if (payload.containsKey('focusData') || payload.containsKey('state')) {
+    payloadNotifier.value = Map<String, dynamic>.from(payload);
+  } else if (payload.containsKey('legacy') && payload['legacy'] is Map) {
+    payloadNotifier.value = Map<String, dynamic>.from(payload['legacy'] as Map);
+  } else {
+    final dto = IslandPayload.fromMap(payload);
+    payloadNotifier.value = dto.toMap();
+  }
 }
 
 /// Launch a URL with fallback to Process
@@ -45,7 +79,7 @@ Future<void> _launchUrl(String url) async {
 /// Restore window position from storage
 Future<void> _restoreWindowPosition() async {
   try {
-    final bounds =
+    final bounds = await loadIslandBounds(IslandConfig.defaultIslandId) ??
         await StorageService.getIslandBounds(IslandConfig.defaultIslandId);
     if (bounds != null && bounds.isNotEmpty) {
       final left = (bounds['left'] as num?)?.toInt();
@@ -57,12 +91,32 @@ Future<void> _restoreWindowPosition() async {
 
       if (left != null && top != null) {
         setWindowPosition(left, top, width, height);
+        await appendIslandIpcLog(
+          'island restored bounds left=$left top=$top width=$width height=$height',
+        );
         debugPrint('[Island] Restored window position: left=$left, top=$top');
       }
     }
   } catch (e) {
     debugPrint('[Island] Failed to restore window position: $e');
   }
+}
+
+bool _boundsChanged(
+  Map<String, dynamic> previous,
+  Map<String, dynamic> current,
+) {
+  bool changed(String key) {
+    final prev = previous[key] as num?;
+    final next = current[key] as num?;
+    if (prev == null || next == null) return true;
+    return (prev.toDouble() - next.toDouble()).abs() > 1.0;
+  }
+
+  return changed('left') ||
+      changed('top') ||
+      changed('width') ||
+      changed('height');
 }
 
 /// Set up reminder expire timer
@@ -94,6 +148,8 @@ Future<void> islandMain(List<String> args) async {
   clearIslandHwndCache();
 
   WidgetsFlutterBinding.ensureInitialized();
+  const enableNativeChrome =
+      bool.fromEnvironment('ENABLE_WINDOWS_ISLAND_NATIVE_CHROME');
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('[Island] Unhandled error: $error\n$stack');
@@ -112,29 +168,129 @@ Future<void> islandMain(List<String> args) async {
   bool boundsSaveReady = false;
   bool isDragging = false;
   bool needsSaveAfterDrag = false;
+  WindowController? controller;
+  final argWindowId = args.length > 1 ? args[1] : '';
+  String currentWindowId() => controller?.windowId ?? argWindowId;
+
+  int lastPayloadFileSequence = 0;
+  int lastPayloadFileTimestamp = 0;
+  Future<void> loadLatestPayloadFromFile() async {
+    try {
+      final file = await _getPayloadFile();
+      if (!await file.exists()) return;
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return;
+      final envelope = Map<String, dynamic>.from(decoded);
+      final sequence = (envelope['sequence'] as num?)?.toInt() ?? 0;
+      final timestamp = (envelope['timestamp'] as num?)?.toInt() ?? 0;
+      if (sequence > 0) {
+        final sameRunPayload = sequence <= lastPayloadFileSequence;
+        final oldTimestamp =
+            timestamp > 0 && timestamp <= lastPayloadFileTimestamp;
+        if (sameRunPayload && oldTimestamp) return;
+      } else if (timestamp > 0 && timestamp <= lastPayloadFileTimestamp) {
+        return;
+      }
+      final payload = _payloadFromRaw(envelope);
+      if (payload == null) return;
+      _applyIncomingPayload(
+        payload,
+        payloadNotifier,
+        controller,
+        currentWindowId(),
+      );
+      if (sequence > 0) {
+        lastPayloadFileSequence = sequence;
+      }
+      if (timestamp > 0) {
+        lastPayloadFileTimestamp = timestamp;
+      }
+      await appendIslandIpcLog(
+        'island applied file payload seq=$sequence state=${payload['state']}',
+      );
+      debugPrint(
+          '[Island] Applied payload from file: state=${payload['state']}');
+    } catch (e) {
+      debugPrint('[Island] load latest payload failed: $e');
+      await appendIslandIpcLog('island failed to load payload: $e');
+    }
+  }
+
+  await appendIslandIpcLog('islandMain entered args=${args.join('|')}');
+  await loadLatestPayloadFromFile();
+  Timer.periodic(IslandConfig.ipcPollInterval, (_) async {
+    await loadLatestPayloadFromFile();
+  });
+
+  Future.delayed(IslandConfig.windowRestoreDelay, () {
+    _restoreWindowPosition();
+  });
+  Future.delayed(const Duration(milliseconds: 1500), () {
+    _restoreWindowPosition();
+  });
+
+  Timer(IslandConfig.boundsSaveEnableDelay, () {
+    boundsSaveEnabled = true;
+    Timer(IslandConfig.boundsSaveReadyDelay, () {
+      boundsSaveReady = true;
+    });
+  });
+
+  Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
+    try {
+      final hwnd = getSmallestFlutterWindow();
+      if (hwnd == null) return;
+
+      if (!isWindowValid(hwnd)) {
+        timer.cancel();
+        return;
+      }
+
+      if (enableNativeChrome) {
+        ensureIslandFrameless();
+      }
+
+      final rect = getWindowRect();
+      if (rect != null && boundsSaveEnabled && boundsSaveReady && !isDragging) {
+        if (lastReportedBounds == null ||
+            _boundsChanged(lastReportedBounds!, rect)) {
+          lastReportedBounds = rect;
+          if (needsSaveAfterDrag) needsSaveAfterDrag = false;
+          await saveIslandBounds(IslandConfig.defaultIslandId, rect);
+          StorageService.saveIslandBounds(IslandConfig.defaultIslandId, rect)
+              .catchError((_) {});
+          await appendIslandIpcLog(
+            'island saved bounds left=${rect['left']} top=${rect['top']} width=${rect['width']} height=${rect['height']}',
+          );
+        }
+      }
+    } catch (_) {}
+  });
 
   try {
-    final controller = await WindowController.fromCurrentEngine();
+    controller = await WindowController.fromCurrentEngine()
+        .timeout(const Duration(milliseconds: 350));
+    final windowController = controller;
     try {
-      await controller.invokeMethod('setFrame', {
+      await windowController.invokeMethod('setFrame', {
         'width': IslandConfig.defaultWidth,
         'height': IslandConfig.defaultHeight,
       });
-      await controller.invokeMethod('setAlwaysOnTop', true);
+      await windowController.invokeMethod('setAlwaysOnTop', true);
     } catch (_) {}
 
-    Timer(const Duration(milliseconds: 120), ensureIslandFrameless);
-    Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
-    Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
+    if (enableNativeChrome) {
+      Timer(const Duration(milliseconds: 120), ensureIslandFrameless);
+      Timer(const Duration(milliseconds: 500), ensureIslandFrameless);
+      Timer(const Duration(milliseconds: 1200), ensureIslandFrameless);
+    }
 
-    Future.delayed(IslandConfig.windowRestoreDelay, () {
-      _restoreWindowPosition();
-    });
-
-    initFfiTransparent();
+    if (enableNativeChrome) {
+      initFfiTransparent();
+    }
 
     debugPrint(
-        '[Island] islandMain started for windowId=${controller.windowId}');
+        '[Island] islandMain started for windowId=${windowController.windowId}');
 
     const globalChannel = MethodChannel('mixin.one/desktop_multi_window');
     globalChannel.setMethodCallHandler((call) async {
@@ -143,73 +299,48 @@ Future<void> islandMain(List<String> args) async {
       debugPrint('[Island] GLOBAL CALL: "${call.method}" from=$fromWindowId');
 
       if (call.method == 'postWindowMessage' || call.method == 'updateState') {
-        final m = call.arguments as Map?;
-        if (m != null) {
-          try {
-            final rawMap = Map<String, dynamic>.from(m);
-            final dynamic mmRaw =
-                rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-            if (mmRaw is! Map) return null;
-
-            final mm = Map<String, dynamic>.from(mmRaw);
-
-            if (mm['handshake'] == 'ping') {
-              controller.invokeMethod('onAction', {
-                'action': 'handshake_pong',
-                'windowId': controller.windowId
-              }).catchError((_) {});
-              return null;
-            }
-
-            if (mm.containsKey('focusData') || mm.containsKey('state')) {
-              payloadNotifier.value = mm;
-            } else if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-              payloadNotifier.value =
-                  Map<String, dynamic>.from(mm['legacy'] as Map);
-            } else {
-              final dto = IslandPayload.fromMap(mm);
-              payloadNotifier.value = dto.toMap();
-            }
-          } catch (e) {
-            debugPrint('[Island] Global handler parse error: $e');
+        try {
+          final payload = _payloadFromRaw(call.arguments);
+          if (payload != null) {
+            _applyIncomingPayload(
+              payload,
+              payloadNotifier,
+              controller,
+              currentWindowId(),
+            );
+            await appendIslandIpcLog(
+              'island applied global channel payload state=${payload['state']}',
+            );
           }
+        } catch (e) {
+          debugPrint('[Island] Global handler parse error: $e');
+          await appendIslandIpcLog('island global channel parse failed: $e');
         }
       }
       return null;
     });
 
-    await controller.setWindowMethodHandler((call) async {
+    await windowController.setWindowMethodHandler((call) async {
       debugPrint('[Island] CALL: "${call.method}" | ${call.arguments}');
       try {
         if (call.method == 'postWindowMessage' ||
             call.method == 'updateState') {
-          final m = call.arguments as Map?;
-          if (m != null) {
-            try {
-              final rawMap = Map<String, dynamic>.from(m);
-              final dynamic mmRaw =
-                  rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-              if (mmRaw is! Map) return null;
-
-              final mm = Map<String, dynamic>.from(mmRaw);
-              if (mm['handshake'] == 'ping') {
-                controller.invokeMethod('onAction', {
-                  'action': 'handshake_pong',
-                  'windowId': controller.windowId
-                }).catchError((_) {});
-              }
-              if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-                payloadNotifier.value = Map<String, dynamic>.from(mm['legacy']);
-              } else if (mm.containsKey('focusData') ||
-                  mm.containsKey('state')) {
-                payloadNotifier.value = Map<String, dynamic>.from(mm);
-              } else {
-                final dto = IslandPayload.fromMap(mm);
-                payloadNotifier.value = dto.toMap();
-              }
-            } catch (e) {
-              debugPrint('[Island] Failed to parse payload: $e');
+          try {
+            final payload = _payloadFromRaw(call.arguments);
+            if (payload != null) {
+              _applyIncomingPayload(
+                payload,
+                payloadNotifier,
+                controller,
+                currentWindowId(),
+              );
+              await appendIslandIpcLog(
+                'island applied window channel payload state=${payload['state']}',
+              );
             }
+          } catch (e) {
+            debugPrint('[Island] Failed to parse payload: $e');
+            await appendIslandIpcLog('island window channel parse failed: $e');
           }
         }
 
@@ -252,7 +383,7 @@ Future<void> islandMain(List<String> args) async {
     });
 
     try {
-      final def = await controller
+      final def = await windowController
           .invokeMethod('getWindowDefinition', null)
           .timeout(const Duration(milliseconds: 800), onTimeout: () => null);
       if (def is Map) {
@@ -266,31 +397,14 @@ Future<void> islandMain(List<String> args) async {
             final left = ib['left'];
             final top = ib['top'];
             if (width is num && height is num && left is num && top is num) {
-              Future.microtask(() async {
-                for (int i = 0; i < 20; i++) {
-                  final hw = getSmallestFlutterWindow();
-                  if (hw != null) {
-                    final scale = getIslandScaleFactor(hw);
-                    final phyW = (width * scale).ceil();
-                    final phyH = (height * scale).ceil();
-                    final phyLeft = (left * scale).toInt();
-                    final phyTop = (top * scale).toInt();
-                    const int hwndTopmost = -1;
-                    const int swpNoactivate = 0x0010;
-                    using((arena) {
-                      final rectPtr = arena<RECT>();
-                      rectPtr.ref.left = phyLeft;
-                      rectPtr.ref.top = phyTop;
-                      rectPtr.ref.right = phyLeft + phyW;
-                      rectPtr.ref.bottom = phyTop + phyH;
-                      SetWindowPos(hw, hwndTopmost, rectPtr.ref.left,
-                          rectPtr.ref.top, phyW, phyH, swpNoactivate);
-                    });
-                    break;
-                  }
-                  await Future.delayed(IslandConfig.ffiRetryInterval);
-                }
-              });
+              Future.microtask(
+                () => setWindowPosition(
+                  left.toInt(),
+                  top.toInt(),
+                  width.toInt(),
+                  height.toInt(),
+                ),
+              );
             }
           }
         } catch (e) {
@@ -321,48 +435,6 @@ Future<void> islandMain(List<String> args) async {
 
     final Set<String> acknowledgedReminders = {};
     String? lastShownReminderId;
-
-    Timer(IslandConfig.boundsSaveEnableDelay, () {
-      boundsSaveEnabled = true;
-      Timer(IslandConfig.boundsSaveReadyDelay, () {
-        boundsSaveReady = true;
-      });
-    });
-
-    Timer.periodic(IslandConfig.boundsPollInterval, (timer) async {
-      try {
-        final hwnd = getSmallestFlutterWindow();
-        if (hwnd == null) return;
-
-        if (!isWindowValid(hwnd)) {
-          timer.cancel();
-          return;
-        }
-
-        ensureIslandFrameless();
-
-        final rect = getWindowRect();
-        if (rect != null &&
-            boundsSaveEnabled &&
-            boundsSaveReady &&
-            !isDragging) {
-          final logicalX = rect['left']!;
-          final lastLeft = lastReportedBounds?['left'] as double?;
-
-          if (lastReportedBounds == null ||
-              lastLeft == null ||
-              (lastLeft - logicalX).abs() > 1.0) {
-            lastReportedBounds = rect;
-            if (needsSaveAfterDrag) {
-              needsSaveAfterDrag = false;
-              StorageService.saveIslandBounds(
-                      IslandConfig.defaultIslandId, rect)
-                  .catchError((_) {});
-            }
-          }
-        }
-      } catch (_) {}
-    });
 
     Future<void> checkAndShowReminder() async {
       try {
@@ -487,7 +559,7 @@ Future<void> islandMain(List<String> args) async {
                           await file.writeAsString(jsonEncode({
                             'action': action,
                             'itemId': itemId,
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -499,7 +571,7 @@ Future<void> islandMain(List<String> args) async {
                           final file = await _getActionFile();
                           await file.writeAsString(jsonEncode({
                             'action': action,
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -564,7 +636,7 @@ Future<void> islandMain(List<String> args) async {
                           final file = await _getActionFile();
                           await file.writeAsString(jsonEncode({
                             'action': 'link_opened',
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -600,7 +672,7 @@ Future<void> islandMain(List<String> args) async {
                         await file.writeAsString(jsonEncode({
                           'action': action,
                           'modifiedSecs': modifiedSecs ?? 0,
-                          'windowId': controller.windowId,
+                          'windowId': currentWindowId(),
                           'timestamp': DateTime.now().millisecondsSinceEpoch,
                         }));
                       } catch (_) {}
@@ -637,7 +709,7 @@ Future<void> islandMain(List<String> args) async {
         final file = await _getActionFile();
         await file.writeAsString(jsonEncode({
           'action': 'ready',
-          'windowId': controller.windowId,
+          'windowId': currentWindowId(),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         }));
       } catch (_) {}
@@ -654,8 +726,12 @@ Future<void> islandMain(List<String> args) async {
           backgroundColor: IslandConfig.scaffoldBg,
           body: Focus(
             onKeyEvent: (node, event) => KeyEventResult.handled,
-            child:
-                Center(child: IslandUI(initialPayload: payloadNotifier.value)),
+            child: Center(
+              child: IslandUI(
+                payloadNotifier: payloadNotifier,
+                initialPayload: payloadNotifier.value,
+              ),
+            ),
           ),
         ),
       ),

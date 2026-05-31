@@ -68,3 +68,5 @@ flutter:
     - assets/icon/
     - assets/icon/app_icon.ico
     - assets/images/
+    - update_manifest.json
+    - update_changelog_archive.json

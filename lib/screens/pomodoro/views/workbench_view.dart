@@ -166,7 +166,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   bool _suppressRunStateEvents = false;
   void _listenToRunState() {
     _runStateSub = PomodoroService.onRunStateChanged.listen((state) {
-      if (_suppressRunStateEvents) return;
+      if (_suppressRunStateEvents || _isHandlingEnd) return;
       if (state == null &&
           (_phase == PomodoroPhase.focusing ||
               _phase == PomodoroPhase.breaking)) {
@@ -193,6 +193,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _recoverState(state);
       }
     });
+  }
+
+  Future<void> _clearRunStateSilently() async {
+    _suppressRunStateEvents = true;
+    try {
+      await PomodoroService.clearRunState();
+      await Future<void>.delayed(Duration.zero);
+    } finally {
+      _suppressRunStateEvents = false;
+    }
   }
 
   @override
@@ -969,7 +979,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _selectedTagUuids = saved.tagUuids;
         _remainingSeconds = _settings.focusMinutes * 60;
       });
-      await PomodoroService.clearRunState();
+      await _clearRunStateSilently();
       await _askCompletionAndRecord(
         sessionUuid: saved.sessionUuid ?? const Uuid().v4(),
         durationSeconds: saved.focusSeconds,
@@ -1003,7 +1013,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         }
       }
       await _persistIdleBoundTodo(boundTodo, tagUuids: saved.tagUuids);
-      await PomodoroService.clearRunState();
+      await _clearRunStateSilently();
       if (mounted) {
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -1443,7 +1453,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final isCountUp = _settings.mode == TimerMode.countUp;
 
       await _persistIdleBoundTodo(_boundTodo);
-      await PomodoroService.clearRunState();
+      await _clearRunStateSilently();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
       // Notify island to switch to idle immediately.
       await _updateFloatSafely(
@@ -1474,7 +1484,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final now = DateTime.now().millisecondsSinceEpoch;
       final isCountUp = _settings.mode == TimerMode.countUp;
       await _persistIdleBoundTodo(_boundTodo);
-      await PomodoroService.clearRunState();
+      await _clearRunStateSilently();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
       // Notify island to switch to idle immediately.
       await _updateFloatSafely(
@@ -1656,7 +1666,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       });
       _syncService.setLocalFocusing(false);
       widget.onPhaseChanged(_phase);
-      PomodoroService.clearRunState();
+      await _clearRunStateSilently();
       await _persistIdleBoundTodo(_boundTodo);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -1735,7 +1745,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         _syncService.setLocalFocusing(false);
         widget.onPhaseChanged(_phase);
         _persistIdleBoundTodo(_boundTodo);
-        PomodoroService.clearRunState();
+        await _clearRunStateSilently();
       } else {
         _startTicker();
       }
@@ -2758,7 +2768,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         NotificationService.cancelNotification();
         NotificationService.cancelReminder(40002);
         await _persistIdleBoundTodo(_boundTodo);
-        await PomodoroService.clearRunState();
+        await _clearRunStateSilently();
         setState(() {
           _phase = PomodoroPhase.idle;
           _currentCycle += 1;

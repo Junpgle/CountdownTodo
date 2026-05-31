@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:CountDownTodo/services/band_sync_service.dart';
 import 'package:CountDownTodo/services/notification_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -514,6 +515,16 @@ class UpdateService {
     }
   }
 
+  static Future<AppManifest?> _readBundledManifest() async {
+    try {
+      final rawJson = await rootBundle.loadString('update_manifest.json');
+      return AppManifest.fromJson(jsonDecode(rawJson));
+    } catch (e) {
+      debugPrint('[UpdateService] bundled manifest unavailable: $e');
+      return null;
+    }
+  }
+
   static Future<void> _writeManifestCache(String rawJson) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -559,6 +570,17 @@ class UpdateService {
     }
   }
 
+  static Future<List<ChangelogEntry>> _readBundledChangelogArchive() async {
+    try {
+      final rawJson =
+          await rootBundle.loadString('update_changelog_archive.json');
+      return _parseChangelogArchive(rawJson);
+    } catch (e) {
+      debugPrint('[UpdateService] bundled changelog archive unavailable: $e');
+      return const [];
+    }
+  }
+
   static Future<void> _writeChangelogArchiveCache(String rawJson) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -591,7 +613,10 @@ class UpdateService {
       }
     } catch (_) {}
 
-    return _readChangelogArchiveCache();
+    final cached = await _readChangelogArchiveCache();
+    if (cached.isNotEmpty) return cached;
+
+    return _readBundledChangelogArchive();
   }
 
   /// 强制联网刷新 Manifest 缓存。
@@ -640,7 +665,10 @@ class UpdateService {
     final network = await refreshManifestCache();
     if (network != null) return network;
 
-    return preferCache ? _readManifestCache() : null;
+    final cached = await _readManifestCache();
+    if (cached != null) return cached;
+
+    return _readBundledManifest();
   }
 
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async {

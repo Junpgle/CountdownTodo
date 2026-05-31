@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <windows.h>
 #include <optional>
 #include <string>
 #include <vector>
@@ -17,6 +18,37 @@ FlutterWindow::~FlutterWindow() {}
 
 namespace {
 constexpr ULONG_PTR kDeepLinkCopyData = 0x43445444;  // CDTD
+
+void ConfigureFloatingIslandWindow(flutter::FlutterViewController *controller) {
+    if (controller == nullptr || controller->view() == nullptr) {
+        return;
+    }
+
+    HWND content = controller->view()->GetNativeWindow();
+    HWND window = GetAncestor(content, GA_ROOT);
+    if (window == nullptr) {
+        return;
+    }
+
+    LONG_PTR style = GetWindowLongPtr(window, GWL_STYLE);
+    style &= ~WS_CAPTION;
+    style &= ~WS_THICKFRAME;
+    style &= ~WS_SYSMENU;
+    style &= ~WS_MINIMIZEBOX;
+    style &= ~WS_MAXIMIZEBOX;
+    SetWindowLongPtr(window, GWL_STYLE, style);
+
+    LONG_PTR ex_style = GetWindowLongPtr(window, GWL_EXSTYLE);
+    ex_style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED;
+    ex_style &= ~WS_EX_APPWINDOW;
+    SetWindowLongPtr(window, GWL_EXSTYLE, ex_style);
+
+    SetLayeredWindowAttributes(window, RGB(0, 0, 0), 0, LWA_COLORKEY);
+
+    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                 SWP_FRAMECHANGED);
+}
 }
 
 bool FlutterWindow::OnCreate() {
@@ -42,6 +74,7 @@ bool FlutterWindow::OnCreate() {
     DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
         auto *flutter_view_controller =
                 reinterpret_cast<flutter::FlutterViewController *>(controller);
+        ConfigureFloatingIslandWindow(flutter_view_controller);
         auto *registry = flutter_view_controller->engine();
         RegisterPlugins(registry);
     });

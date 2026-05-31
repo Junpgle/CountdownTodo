@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'island_config.dart';
 import 'island_state_stack.dart';
+import 'island_win32.dart';
 import '../services/system_control_service.dart';
 
 // 导入鼠标事件类型
@@ -132,22 +132,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _confirmActionSent = false;
 
   // ── 窗口控制
-  WindowController? _windowController;
   Size _currentWindowSize = const Size(100, 34);
+  static const double _maxNativeResizeWidth = 480.0;
+  static const double _maxNativeResizeHeight = 340.0;
   // ── 便捷 getter ─────────────────────────────────────────────────────────
   bool get _isFocusing => _stack.base == IslandState.focusing;
-
-  Future<WindowController> _getController() async {
-    _windowController ??= await WindowController.fromCurrentEngine();
-    return _windowController!;
-  }
 
   @override
   void initState() {
     super.initState();
-    if (!widget.inLayoutDebugMode) {
-      _getController();
-    }
 
     _splitController = AnimationController(
       vsync: this,
@@ -227,7 +220,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _pulseController.dispose(); // 清理脉冲动画控制器
     _mediaRefreshTimer?.cancel();
     SystemControlService.dispose();
-    _windowController?.setWindowMethodHandler(null);
     super.dispose();
   }
 
@@ -235,21 +227,23 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Timer? _resizeDebounce;
 
-  Future<void> _resizeWindowOnce(Size targetSize) async {
+  void _resizeWindowOnce(Size targetSize) {
     if (widget.inLayoutDebugMode) return;
     if (targetSize == _currentWindowSize) return;
+    if (targetSize.width > _maxNativeResizeWidth ||
+        targetSize.height > _maxNativeResizeHeight) {
+      debugPrint(
+          '[IslandUI] skip native resize for oversized target: $targetSize');
+      return;
+    }
     // 防抖：快速连续调用只执行最后一次
     _resizeDebounce?.cancel();
-    _resizeDebounce = Timer(const Duration(milliseconds: 50), () async {
+    _resizeDebounce = Timer(const Duration(milliseconds: 50), () {
       if (!mounted) return;
       if (targetSize == _currentWindowSize) return;
       try {
-        final ctrl = await _getController();
-        if (!mounted) return;
-        await ctrl.invokeMethod('setWindowSize', {
-          'width': targetSize.width.toDouble(),
-          'height': targetSize.height.toDouble(),
-        });
+        resizeCurrentWindow(
+            targetSize.width.round(), targetSize.height.round());
         _currentWindowSize = targetSize;
       } catch (e) {
         debugPrint('[IslandUI] resize error: $e');
@@ -367,6 +361,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (_stack.isProtected) {
       debugPrint('[IslandUI] Blocked - state is protected');
       _ensureTimerRunning();
+      if (mounted) {
+        setState(() {});
+      }
       return;
     }
 
@@ -490,6 +487,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _updateFocusTimer(payload);
 
     _ensureTimerRunning();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _updateFocusTimer(Map<String, dynamic>? payload) {
@@ -650,7 +650,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     const cardWidth = 76.0;
     const gap = 6.0;
     final width = (horizontalPadding + count * cardWidth + (count - 1) * gap)
-        .clamp(220.0, 680.0);
+        .clamp(220.0, _maxNativeResizeWidth);
     return Size(width, 96);
   }
 
@@ -799,7 +799,8 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                         duration: IslandConfig.switchDuration,
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
-                        layoutBuilder: (currentChild, previousChildren) => Stack(
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
                           alignment: Alignment.center,
                           children: [
                             ...previousChildren,
@@ -823,13 +824,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                             ),
                           );
                         },
-                      child: KeyedSubtree(
-                        key: ValueKey(_contentKeyForCurrentState()),
-                        child: _buildContent(),
+                        child: KeyedSubtree(
+                          key: ValueKey(_contentKeyForCurrentState()),
+                          child: _buildContent(),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ),
               ),
             );
@@ -1088,92 +1089,92 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
     return RepaintBoundary(
       child: AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _isPulsing ? _pulseAnimation.value : 1.0,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            alignment: Alignment.center,
-            clipBehavior: Clip.hardEdge,
-            decoration: const BoxDecoration(color: Colors.transparent),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxHeight <= 56;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (!compact)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (fd?['isPaused'] == true) ...[
-                            const Text(
-                              '⏸️ ',
-                              style: TextStyle(fontSize: 10),
+        animation: _pulseController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _isPulsing ? _pulseAnimation.value : 1.0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              alignment: Alignment.center,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(color: Colors.transparent),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxHeight <= 56;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (!compact)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (fd?['isPaused'] == true) ...[
+                              const Text(
+                                '⏸️ ',
+                                style: TextStyle(fontSize: 10),
+                              ),
+                            ],
+                            Flexible(
+                              child: ValueListenableBuilder<String>(
+                                valueListenable: _pauseTimeNotifier,
+                                builder: (context, pauseTime, _) {
+                                  return Text(
+                                    fd?['isPaused'] == true
+                                        ? '暂停中 $pauseTime'
+                                        : title,
+                                    style: TextStyle(
+                                      color: _isPulsing
+                                          ? _colorAnimation.value
+                                                  ?.withValues(alpha: 0.7) ??
+                                              Colors.white70
+                                          : Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.0,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
+                              ),
                             ),
                           ],
-                          Flexible(
-                            child: ValueListenableBuilder<String>(
-                              valueListenable: _pauseTimeNotifier,
-                              builder: (context, pauseTime, _) {
-                                return Text(
-                                  fd?['isPaused'] == true
-                                      ? '暂停中 $pauseTime'
-                                      : title,
-                                  style: TextStyle(
-                                    color: _isPulsing
-                                        ? _colorAnimation.value
-                                                ?.withValues(alpha: 0.7) ??
-                                            Colors.white70
-                                        : Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    height: 1.0,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                );
-                              },
+                        ),
+                      if (!compact) const SizedBox(height: 1),
+                      ValueListenableBuilder<String>(
+                        valueListenable: _timeNotifier,
+                        builder: (_, time, __) {
+                          if (_isCountdown &&
+                              _remainingSecs == 0 &&
+                              !_isPulsing) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _triggerPomodoroAlert();
+                            });
+                          }
+                          return FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              time,
+                              style: TextStyle(
+                                color: _isPulsing
+                                    ? _colorAnimation.value ?? Colors.white
+                                    : Colors.white,
+                                fontSize: compact ? 16 : 16,
+                                fontWeight: FontWeight.w900,
+                                height: 1.0,
+                              ),
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    if (!compact) const SizedBox(height: 1),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _timeNotifier,
-                      builder: (_, time, __) {
-                        if (_isCountdown &&
-                            _remainingSecs == 0 &&
-                            !_isPulsing) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            _triggerPomodoroAlert();
-                          });
-                        }
-                        return FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            time,
-                            style: TextStyle(
-                              color: _isPulsing
-                                  ? _colorAnimation.value ?? Colors.white
-                                  : Colors.white,
-                              fontSize: compact ? 16 : 16,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
       ),
     );
   }
@@ -2527,10 +2528,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         ),
       );
 
-  void _startDrag() async {
+  void _startDrag() {
     if (widget.inLayoutDebugMode) return;
     try {
-      (await _getController()).invokeMethod('startDragging');
+      startWindowDragging();
     } catch (_) {}
   }
 
@@ -2933,16 +2934,13 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
                 (smtcHasMusic ? smtc.artist : '');
             final isPlaying = musicData?['isPlaying'] as bool? ??
                 (smtc.status == PlaybackStatus.playing);
-            final currentTime =
-                musicData?['currentTime']?.toString() ?? '0:00';
-            final totalTime =
-                musicData?['totalTime']?.toString() ?? '0:00';
+            final currentTime = musicData?['currentTime']?.toString() ?? '0:00';
+            final totalTime = musicData?['totalTime']?.toString() ?? '0:00';
             final lyrics = musicData?['lyrics']?.toString() ?? '';
             final currentLyricIndex =
                 musicData?['currentLyricIndex'] as int? ?? 0;
             final shuffleOn = musicData?['shuffle'] as bool? ?? false;
-            final repeatMode =
-                musicData?['repeat']?.toString() ?? 'off';
+            final repeatMode = musicData?['repeat']?.toString() ?? 'off';
             final showContent = hasMusic || smtcHasMusic;
             return showContent
                 ? _buildMusicPlayerContent(

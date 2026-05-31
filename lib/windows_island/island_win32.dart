@@ -209,7 +209,6 @@ void resizeCurrentWindow(int targetW, int targetH) {
         if (curW > 0 && curW != physicalW) {
           newX = curX - ((physicalW - curW) ~/ 2);
         }
-        applyFramelessTransparent(hwnd);
         SetWindowPos(hwnd, HWND_TOPMOST, newX, newY, physicalW, physicalH,
             SWP_NOACTIVATE | SWP_FRAMECHANGED);
       }
@@ -235,7 +234,6 @@ void moveCurrentWindow(int targetX, int targetY) {
         final curW = rectPtr.ref.right - rectPtr.ref.left;
         final curH = rectPtr.ref.bottom - rectPtr.ref.top;
 
-        applyFramelessTransparent(hwnd);
         SetWindowPos(hwnd, HWND_TOPMOST, physicalX, physicalY, curW, curH,
             SWP_NOACTIVATE | SWP_NOSIZE | SWP_FRAMECHANGED);
       }
@@ -300,7 +298,6 @@ void setWindowPosition(int left, int top, int width, int height) {
         rectPtr.ref.top = top;
         rectPtr.ref.right = left + width;
         rectPtr.ref.bottom = top + height;
-        applyFramelessTransparent(hwnd);
         SetWindowPos(
             hwnd,
             HWND_TOPMOST,
