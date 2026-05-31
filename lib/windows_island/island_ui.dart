@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'island_config.dart';
@@ -133,24 +132,15 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   bool _confirmActionSent = false;
 
   // ── 窗口控制
-  WindowController? _windowController;
   Size _currentWindowSize = const Size(100, 34);
   static const double _maxNativeResizeWidth = 480.0;
   static const double _maxNativeResizeHeight = 340.0;
   // ── 便捷 getter ─────────────────────────────────────────────────────────
   bool get _isFocusing => _stack.base == IslandState.focusing;
 
-  Future<WindowController> _getController() async {
-    _windowController ??= await WindowController.fromCurrentEngine();
-    return _windowController!;
-  }
-
   @override
   void initState() {
     super.initState();
-    if (!widget.inLayoutDebugMode) {
-      _getController();
-    }
 
     _splitController = AnimationController(
       vsync: this,
@@ -230,7 +220,6 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _pulseController.dispose(); // 清理脉冲动画控制器
     _mediaRefreshTimer?.cancel();
     SystemControlService.dispose();
-    _windowController?.setWindowMethodHandler(null);
     super.dispose();
   }
 
@@ -238,7 +227,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
 
   Timer? _resizeDebounce;
 
-  Future<void> _resizeWindowOnce(Size targetSize) async {
+  void _resizeWindowOnce(Size targetSize) {
     if (widget.inLayoutDebugMode) return;
     if (targetSize == _currentWindowSize) return;
     if (targetSize.width > _maxNativeResizeWidth ||
@@ -249,16 +238,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     }
     // 防抖：快速连续调用只执行最后一次
     _resizeDebounce?.cancel();
-    _resizeDebounce = Timer(const Duration(milliseconds: 50), () async {
+    _resizeDebounce = Timer(const Duration(milliseconds: 50), () {
       if (!mounted) return;
       if (targetSize == _currentWindowSize) return;
       try {
-        final ctrl = await _getController();
-        if (!mounted) return;
-        await ctrl.invokeMethod('setWindowSize', {
-          'width': targetSize.width.toDouble(),
-          'height': targetSize.height.toDouble(),
-        });
+        resizeCurrentWindow(
+            targetSize.width.round(), targetSize.height.round());
         _currentWindowSize = targetSize;
       } catch (e) {
         debugPrint('[IslandUI] resize error: $e');
@@ -2537,11 +2522,10 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         ),
       );
 
-  void _startDrag() async {
+  void _startDrag() {
     if (widget.inLayoutDebugMode) return;
     try {
       startWindowDragging();
-      (await _getController()).invokeMethod('startDragging');
     } catch (_) {}
   }
 
