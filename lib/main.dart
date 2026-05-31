@@ -36,6 +36,7 @@ import 'services/environment_service.dart';
 import 'services/app_deep_link_service.dart';
 import 'windows_island/island_debug.dart';
 import 'windows_island/island_entry.dart' as island_entry;
+import 'windows_island/island_ipc_paths.dart';
 import 'windows_island/island_ui.dart';
 
 import 'utils/navigator_utils.dart';
@@ -108,6 +109,16 @@ void _configureRuntimeCaches() {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Secondary desktop_multi_window engines must not run the main-window
+  // startup chain. In release this can keep the island from ever reaching its
+  // own entrypoint, leaving the floating window alive but data-less.
+  if (!kIsWeb && args.isNotEmpty && args[0] == 'multi_window') {
+    await appendIslandIpcLog('main routed multi_window args=${args.join('|')}');
+    await island_entry.islandMain(args);
+    return;
+  }
+
   // 尽早绑定原生通知 channel，绑定完成后通知 native flush pending 事件
   await _runStartupTask(
     'NotificationService.bindNativeChannel',
@@ -128,19 +139,6 @@ Future<void> main(List<String> args) async {
     PageTransitions.init(),
     timeout: const Duration(seconds: 1),
   );
-
-  // If this engine was launched by desktop_multi_window for a secondary
-  // window, the embedder will pass arguments like: ["multi_window", windowId, windowArgument]
-  // In that case we should route directly to the island entrypoint instead
-  // of starting the full main app (which would spawn a duplicate main window).
-  try {
-    if (args.isNotEmpty && args[0] == 'multi_window') {
-      // Delegate to island entrypoint. islandMain will call runApp for the
-      // island UI and return.
-      await island_entry.islandMain(args);
-      return;
-    }
-  } catch (_) {}
 
   await _runStartupTask(
     'AppDeepLinkService.init',

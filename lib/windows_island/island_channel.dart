@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
-import 'dart:io';
 import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
+import 'island_config.dart';
+import 'island_ipc_paths.dart';
 
 class IslandChannel {
   // Use the desktop_multi_window plugin channel name to create/post/close windows
@@ -47,8 +47,7 @@ class IslandChannel {
     _actionFileTimer =
         Timer.periodic(const Duration(milliseconds: 500), (_) async {
       try {
-        final dir = await getApplicationSupportDirectory();
-        final file = File('${dir.path}/island_action.json');
+        final file = await getIslandIpcFile(IslandConfig.actionFileName);
         if (await file.exists()) {
           final content = await file.readAsString();
           // Delete immediately to prevent double-processing

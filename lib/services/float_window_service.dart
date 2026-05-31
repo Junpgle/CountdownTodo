@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
@@ -12,6 +11,8 @@ import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 import '../windows_island/island_manager.dart';
 import '../windows_island/island_channel.dart';
+import '../windows_island/island_config.dart';
+import '../windows_island/island_ipc_paths.dart';
 import 'clipboard_service.dart';
 import 'snooze_dialog.dart';
 import 'island_data_provider.dart';
@@ -711,9 +712,7 @@ class FloatWindowService {
       final islandId = 'island-1';
       final winId = IslandManager().getCachedWindowId(islandId);
       if (winId != null) {
-        final dir = await getApplicationSupportDirectory();
-        final filePath = '${dir.path}/island_action.json';
-        final file = File(filePath);
+        final file = await getIslandIpcFile(IslandConfig.actionFileName);
         await file.writeAsString(jsonEncode({
           'action': 'check_reminder',
           'windowId': winId,

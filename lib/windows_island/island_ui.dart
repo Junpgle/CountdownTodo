@@ -361,6 +361,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     if (_stack.isProtected) {
       debugPrint('[IslandUI] Blocked - state is protected');
       _ensureTimerRunning();
+      if (mounted) {
+        setState(() {});
+      }
       return;
     }
 
@@ -484,6 +487,9 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
     _updateFocusTimer(payload);
 
     _ensureTimerRunning();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _updateFocusTimer(Map<String, dynamic>? payload) {

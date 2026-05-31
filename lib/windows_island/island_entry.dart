@@ -7,18 +7,55 @@ import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
 import 'island_ui.dart';
 import 'island_payload.dart';
 import 'island_config.dart';
+import 'island_ipc_paths.dart';
 import 'island_win32.dart';
 import 'island_reminder.dart';
 import '../storage_service.dart';
 
 /// Get the action file for IPC
 Future<File> _getActionFile() async {
-  final dir = await getApplicationSupportDirectory();
-  return File('${dir.path}/${IslandConfig.actionFileName}');
+  return getIslandIpcFile(IslandConfig.actionFileName);
+}
+
+/// Get the latest payload file for file-based IPC fallback.
+Future<File> _getPayloadFile() async {
+  return getIslandIpcFile(IslandConfig.payloadFileName);
+}
+
+Map<String, dynamic>? _payloadFromRaw(dynamic raw) {
+  if (raw is! Map) return null;
+  final rawMap = Map<String, dynamic>.from(raw);
+  final dynamic payloadRaw =
+      rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
+  if (payloadRaw is! Map) return null;
+  return Map<String, dynamic>.from(payloadRaw);
+}
+
+void _applyIncomingPayload(
+  Map<String, dynamic> payload,
+  ValueNotifier<Map<String, dynamic>?> payloadNotifier,
+  WindowController? controller,
+  String windowId,
+) {
+  if (payload['handshake'] == 'ping') {
+    controller?.invokeMethod('onAction', {
+      'action': 'handshake_pong',
+      'windowId': windowId,
+    }).catchError((_) {});
+    return;
+  }
+
+  if (payload.containsKey('focusData') || payload.containsKey('state')) {
+    payloadNotifier.value = Map<String, dynamic>.from(payload);
+  } else if (payload.containsKey('legacy') && payload['legacy'] is Map) {
+    payloadNotifier.value = Map<String, dynamic>.from(payload['legacy'] as Map);
+  } else {
+    final dto = IslandPayload.fromMap(payload);
+    payloadNotifier.value = dto.toMap();
+  }
 }
 
 /// Launch a URL with fallback to Process
@@ -128,15 +165,70 @@ Future<void> islandMain(List<String> args) async {
   bool boundsSaveReady = false;
   bool isDragging = false;
   bool needsSaveAfterDrag = false;
+  WindowController? controller;
+  final argWindowId = args.length > 1 ? args[1] : '';
+  String currentWindowId() => controller?.windowId ?? argWindowId;
+
+  int lastPayloadFileSequence = 0;
+  int lastPayloadFileTimestamp = 0;
+  Future<void> loadLatestPayloadFromFile() async {
+    try {
+      final file = await _getPayloadFile();
+      if (!await file.exists()) return;
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return;
+      final envelope = Map<String, dynamic>.from(decoded);
+      final sequence = (envelope['sequence'] as num?)?.toInt() ?? 0;
+      final timestamp = (envelope['timestamp'] as num?)?.toInt() ?? 0;
+      if (sequence > 0) {
+        final sameRunPayload = sequence <= lastPayloadFileSequence;
+        final oldTimestamp =
+            timestamp > 0 && timestamp <= lastPayloadFileTimestamp;
+        if (sameRunPayload && oldTimestamp) return;
+      } else if (timestamp > 0 && timestamp <= lastPayloadFileTimestamp) {
+        return;
+      }
+      final payload = _payloadFromRaw(envelope);
+      if (payload == null) return;
+      _applyIncomingPayload(
+        payload,
+        payloadNotifier,
+        controller,
+        currentWindowId(),
+      );
+      if (sequence > 0) {
+        lastPayloadFileSequence = sequence;
+      }
+      if (timestamp > 0) {
+        lastPayloadFileTimestamp = timestamp;
+      }
+      await appendIslandIpcLog(
+        'island applied file payload seq=$sequence state=${payload['state']}',
+      );
+      debugPrint(
+          '[Island] Applied payload from file: state=${payload['state']}');
+    } catch (e) {
+      debugPrint('[Island] load latest payload failed: $e');
+      await appendIslandIpcLog('island failed to load payload: $e');
+    }
+  }
+
+  await appendIslandIpcLog('islandMain entered args=${args.join('|')}');
+  await loadLatestPayloadFromFile();
+  Timer.periodic(IslandConfig.ipcPollInterval, (_) async {
+    await loadLatestPayloadFromFile();
+  });
 
   try {
-    final controller = await WindowController.fromCurrentEngine();
+    controller = await WindowController.fromCurrentEngine()
+        .timeout(const Duration(milliseconds: 350));
+    final windowController = controller;
     try {
-      await controller.invokeMethod('setFrame', {
+      await windowController.invokeMethod('setFrame', {
         'width': IslandConfig.defaultWidth,
         'height': IslandConfig.defaultHeight,
       });
-      await controller.invokeMethod('setAlwaysOnTop', true);
+      await windowController.invokeMethod('setAlwaysOnTop', true);
     } catch (_) {}
 
     if (enableNativeChrome) {
@@ -154,7 +246,7 @@ Future<void> islandMain(List<String> args) async {
     }
 
     debugPrint(
-        '[Island] islandMain started for windowId=${controller.windowId}');
+        '[Island] islandMain started for windowId=${windowController.windowId}');
 
     const globalChannel = MethodChannel('mixin.one/desktop_multi_window');
     globalChannel.setMethodCallHandler((call) async {
@@ -163,73 +255,48 @@ Future<void> islandMain(List<String> args) async {
       debugPrint('[Island] GLOBAL CALL: "${call.method}" from=$fromWindowId');
 
       if (call.method == 'postWindowMessage' || call.method == 'updateState') {
-        final m = call.arguments as Map?;
-        if (m != null) {
-          try {
-            final rawMap = Map<String, dynamic>.from(m);
-            final dynamic mmRaw =
-                rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-            if (mmRaw is! Map) return null;
-
-            final mm = Map<String, dynamic>.from(mmRaw);
-
-            if (mm['handshake'] == 'ping') {
-              controller.invokeMethod('onAction', {
-                'action': 'handshake_pong',
-                'windowId': controller.windowId
-              }).catchError((_) {});
-              return null;
-            }
-
-            if (mm.containsKey('focusData') || mm.containsKey('state')) {
-              payloadNotifier.value = mm;
-            } else if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-              payloadNotifier.value =
-                  Map<String, dynamic>.from(mm['legacy'] as Map);
-            } else {
-              final dto = IslandPayload.fromMap(mm);
-              payloadNotifier.value = dto.toMap();
-            }
-          } catch (e) {
-            debugPrint('[Island] Global handler parse error: $e');
+        try {
+          final payload = _payloadFromRaw(call.arguments);
+          if (payload != null) {
+            _applyIncomingPayload(
+              payload,
+              payloadNotifier,
+              controller,
+              currentWindowId(),
+            );
+            await appendIslandIpcLog(
+              'island applied global channel payload state=${payload['state']}',
+            );
           }
+        } catch (e) {
+          debugPrint('[Island] Global handler parse error: $e');
+          await appendIslandIpcLog('island global channel parse failed: $e');
         }
       }
       return null;
     });
 
-    await controller.setWindowMethodHandler((call) async {
+    await windowController.setWindowMethodHandler((call) async {
       debugPrint('[Island] CALL: "${call.method}" | ${call.arguments}');
       try {
         if (call.method == 'postWindowMessage' ||
             call.method == 'updateState') {
-          final m = call.arguments as Map?;
-          if (m != null) {
-            try {
-              final rawMap = Map<String, dynamic>.from(m);
-              final dynamic mmRaw =
-                  rawMap.containsKey('payload') ? rawMap['payload'] : rawMap;
-              if (mmRaw is! Map) return null;
-
-              final mm = Map<String, dynamic>.from(mmRaw);
-              if (mm['handshake'] == 'ping') {
-                controller.invokeMethod('onAction', {
-                  'action': 'handshake_pong',
-                  'windowId': controller.windowId
-                }).catchError((_) {});
-              }
-              if (mm.containsKey('legacy') && mm['legacy'] is Map) {
-                payloadNotifier.value = Map<String, dynamic>.from(mm['legacy']);
-              } else if (mm.containsKey('focusData') ||
-                  mm.containsKey('state')) {
-                payloadNotifier.value = Map<String, dynamic>.from(mm);
-              } else {
-                final dto = IslandPayload.fromMap(mm);
-                payloadNotifier.value = dto.toMap();
-              }
-            } catch (e) {
-              debugPrint('[Island] Failed to parse payload: $e');
+          try {
+            final payload = _payloadFromRaw(call.arguments);
+            if (payload != null) {
+              _applyIncomingPayload(
+                payload,
+                payloadNotifier,
+                controller,
+                currentWindowId(),
+              );
+              await appendIslandIpcLog(
+                'island applied window channel payload state=${payload['state']}',
+              );
             }
+          } catch (e) {
+            debugPrint('[Island] Failed to parse payload: $e');
+            await appendIslandIpcLog('island window channel parse failed: $e');
           }
         }
 
@@ -272,7 +339,7 @@ Future<void> islandMain(List<String> args) async {
     });
 
     try {
-      final def = await controller
+      final def = await windowController
           .invokeMethod('getWindowDefinition', null)
           .timeout(const Duration(milliseconds: 800), onTimeout: () => null);
       if (def is Map) {
@@ -485,7 +552,7 @@ Future<void> islandMain(List<String> args) async {
                           await file.writeAsString(jsonEncode({
                             'action': action,
                             'itemId': itemId,
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -497,7 +564,7 @@ Future<void> islandMain(List<String> args) async {
                           final file = await _getActionFile();
                           await file.writeAsString(jsonEncode({
                             'action': action,
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -562,7 +629,7 @@ Future<void> islandMain(List<String> args) async {
                           final file = await _getActionFile();
                           await file.writeAsString(jsonEncode({
                             'action': 'link_opened',
-                            'windowId': controller.windowId,
+                            'windowId': currentWindowId(),
                             'timestamp': DateTime.now().millisecondsSinceEpoch,
                           }));
                         } catch (_) {}
@@ -598,7 +665,7 @@ Future<void> islandMain(List<String> args) async {
                         await file.writeAsString(jsonEncode({
                           'action': action,
                           'modifiedSecs': modifiedSecs ?? 0,
-                          'windowId': controller.windowId,
+                          'windowId': currentWindowId(),
                           'timestamp': DateTime.now().millisecondsSinceEpoch,
                         }));
                       } catch (_) {}
@@ -635,7 +702,7 @@ Future<void> islandMain(List<String> args) async {
         final file = await _getActionFile();
         await file.writeAsString(jsonEncode({
           'action': 'ready',
-          'windowId': controller.windowId,
+          'windowId': currentWindowId(),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         }));
       } catch (_) {}
@@ -652,8 +719,12 @@ Future<void> islandMain(List<String> args) async {
           backgroundColor: IslandConfig.scaffoldBg,
           body: Focus(
             onKeyEvent: (node, event) => KeyEventResult.handled,
-            child:
-                Center(child: IslandUI(initialPayload: payloadNotifier.value)),
+            child: Center(
+              child: IslandUI(
+                payloadNotifier: payloadNotifier,
+                initialPayload: payloadNotifier.value,
+              ),
+            ),
           ),
         ),
       ),

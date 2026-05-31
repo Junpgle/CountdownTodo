@@ -22,7 +22,7 @@ class IslandConfig {
   // ── Timing ───────────────────────────────────────────────────────────────
 
   /// File IPC polling interval
-  static const Duration ipcPollInterval = Duration(milliseconds: 200);
+  static const Duration ipcPollInterval = Duration(milliseconds: 80);
 
   /// Window ready timeout
   static const Duration readyTimeout = Duration(milliseconds: 2000);
@@ -46,7 +46,7 @@ class IslandConfig {
   static const int transitionDebounceMs = 200;
 
   /// Payload debounce delay
-  static const Duration payloadDebounce = Duration(milliseconds: 50);
+  static const Duration payloadDebounce = Duration(milliseconds: 16);
 
   /// Bounds save enable delay after init
   static const Duration boundsSaveEnableDelay = Duration(seconds: 3);
@@ -173,6 +173,9 @@ class IslandConfig {
 
   /// Action IPC file name
   static const String actionFileName = 'island_action.json';
+
+  /// Latest payload IPC file name
+  static const String payloadFileName = 'island_payload.json';
 
   /// Todo data file name
   static const String todoFileName = 'island_todos.json';

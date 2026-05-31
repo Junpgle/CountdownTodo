@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'island_channel.dart';
+import 'island_config.dart';
+import 'island_ipc_paths.dart';
 import 'island_payload.dart';
 import '../storage_service.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,6 +18,7 @@ class IslandManager {
 
   final Map<String, String> _windowIdCache = {}; // islandId -> windowId
   final Map<String, Future<String?>> _creating = {};
+  int _payloadSequence = 0;
   // Cache whether the host supports transparent windows for each islandId
   final Map<String, bool> _transparentSupport = {};
 
@@ -23,8 +26,11 @@ class IslandManager {
   // The window ID is persisted to a file so that even after an app restart,
   // we can find and close orphaned island windows.
   static Future<File> _windowIdFile(String islandId) async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/island_wid_$islandId.txt');
+    return getIslandIpcFile('island_wid_$islandId.txt');
+  }
+
+  static Future<File> _payloadFile() async {
+    return getIslandIpcFile(IslandConfig.payloadFileName);
   }
 
   Future<void> _persistWindowId(String islandId, String windowId) async {
@@ -32,6 +38,30 @@ class IslandManager {
       final f = await _windowIdFile(islandId);
       await f.writeAsString(windowId);
     } catch (_) {}
+  }
+
+  Future<void> _persistLatestPayload(
+    String islandId,
+    Map<String, dynamic> payload, {
+    String? windowId,
+  }) async {
+    try {
+      final file = await _payloadFile();
+      final sequence = ++_payloadSequence;
+      await file.writeAsString(jsonEncode({
+        'islandId': islandId,
+        if (windowId != null) 'windowId': windowId,
+        'sequence': sequence,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'payload': payload,
+      }));
+      await appendIslandIpcLog(
+        'main wrote payload seq=$sequence windowId=${windowId ?? '-'} state=${payload['state']}',
+      );
+    } catch (e) {
+      debugPrint('[IslandManager] persist latest payload failed: $e');
+      await appendIslandIpcLog('main failed to write payload: $e');
+    }
   }
 
   Future<String?> _loadPersistedWindowId(String islandId) async {
@@ -117,6 +147,7 @@ class IslandManager {
     };
 
     final structuredPayload = initialPayload ?? initialStructured;
+    await _persistLatestPayload(islandId, structuredPayload);
 
     final args = {
       'arguments': 'islandMain',
@@ -258,6 +289,8 @@ class IslandManager {
   Future<bool> sendPayload(String islandId, IslandPayload payload) async {
     final windowId = _windowIdCache[islandId];
     if (windowId == null) return false;
+    final payloadMap = payload.toMap();
+    await _persistLatestPayload(islandId, payloadMap, windowId: windowId);
     try {
       final ready = await IslandChannel.waitForReady(windowId,
           timeout: const Duration(milliseconds: 600));
@@ -270,7 +303,7 @@ class IslandManager {
       attempts++;
       debugPrint(
           '[IslandManager] sendPayload attempt $attempts -> windowId=$windowId');
-      final ok = await IslandChannel.postMessage(windowId, payload.toMap());
+      final ok = await IslandChannel.postMessage(windowId, payloadMap);
       if (ok) return true;
       await Future.delayed(Duration(milliseconds: delayMs));
       delayMs = (delayMs * 2).clamp(50, 800);
@@ -362,6 +395,7 @@ class IslandManager {
       String islandId, Map<String, dynamic> payload) async {
     final windowId = _windowIdCache[islandId];
     if (windowId == null) return false;
+    await _persistLatestPayload(islandId, payload, windowId: windowId);
     try {
       await IslandChannel.waitForReady(windowId,
           timeout: const Duration(milliseconds: 600));
