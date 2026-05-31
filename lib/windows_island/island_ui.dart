@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'island_config.dart';
 import 'island_state_stack.dart';
+import 'island_win32.dart';
 import '../services/system_control_service.dart';
 
 // 导入鼠标事件类型
@@ -2539,6 +2540,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
   void _startDrag() async {
     if (widget.inLayoutDebugMode) return;
     try {
+      startWindowDragging();
       (await _getController()).invokeMethod('startDragging');
     } catch (_) {}
   }

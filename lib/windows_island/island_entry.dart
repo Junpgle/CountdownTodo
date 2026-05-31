@@ -62,6 +62,23 @@ Future<void> _restoreWindowPosition() async {
   }
 }
 
+bool _boundsChanged(
+  Map<String, dynamic> previous,
+  Map<String, dynamic> current,
+) {
+  bool changed(String key) {
+    final prev = previous[key] as num?;
+    final next = current[key] as num?;
+    if (prev == null || next == null) return true;
+    return (prev.toDouble() - next.toDouble()).abs() > 1.0;
+  }
+
+  return changed('left') ||
+      changed('top') ||
+      changed('width') ||
+      changed('height');
+}
+
 /// Set up reminder expire timer
 void _setupReminderExpireTimer(
   Map<String, dynamic> reminder,
@@ -334,19 +351,12 @@ Future<void> islandMain(List<String> args) async {
             boundsSaveEnabled &&
             boundsSaveReady &&
             !isDragging) {
-          final logicalX = rect['left']!;
-          final lastLeft = lastReportedBounds?['left'] as double?;
-
           if (lastReportedBounds == null ||
-              lastLeft == null ||
-              (lastLeft - logicalX).abs() > 1.0) {
+              _boundsChanged(lastReportedBounds!, rect)) {
             lastReportedBounds = rect;
-            if (needsSaveAfterDrag) {
-              needsSaveAfterDrag = false;
-              StorageService.saveIslandBounds(
-                      IslandConfig.defaultIslandId, rect)
-                  .catchError((_) {});
-            }
+            if (needsSaveAfterDrag) needsSaveAfterDrag = false;
+            StorageService.saveIslandBounds(IslandConfig.defaultIslandId, rect)
+                .catchError((_) {});
           }
         }
       } catch (_) {}

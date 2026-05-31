@@ -172,7 +172,8 @@ class IslandManager {
       debugPrint('[IslandManager] _doCreate result for $islandId -> $windowId');
       if (windowId != null) {
         try {
-          await IslandChannel.postMessage(windowId, structuredPayload);
+          await _postStructuredPayloadWithRetry(windowId, structuredPayload,
+              attempts: 2);
         } catch (_) {}
         try {
           final ib = args['initialBounds'] as Map<String, dynamic>?;
@@ -234,9 +235,17 @@ class IslandManager {
               await sub.cancel();
             } catch (_) {}
           }
+          final resent = await _postStructuredPayloadWithRetry(
+              windowId, structuredPayload);
+          debugPrint(
+              '[IslandManager] post-ready payload resend for $windowId -> $resent');
         } catch (e) {
           debugPrint(
               '[IslandManager] waitForReady exception for $windowId: $e');
+          final resent = await _postStructuredPayloadWithRetry(
+              windowId, structuredPayload);
+          debugPrint(
+              '[IslandManager] fallback payload resend for $windowId -> $resent');
         }
       }
       return windowId;
@@ -275,6 +284,21 @@ class IslandManager {
 
   bool getTransparentSupport(String islandId) =>
       _transparentSupport[islandId] ?? false;
+
+  Future<bool> _postStructuredPayloadWithRetry(
+    String windowId,
+    Map<String, dynamic> payload, {
+    int attempts = 5,
+  }) async {
+    var delayMs = 80;
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      final ok = await IslandChannel.postMessage(windowId, payload);
+      if (ok) return true;
+      await Future.delayed(Duration(milliseconds: delayMs));
+      delayMs = (delayMs * 2).clamp(80, 800);
+    }
+    return false;
+  }
 
   Future<void> recreateIsland(String islandId) async {
     await destroyCachedIsland(islandId);
@@ -342,7 +366,7 @@ class IslandManager {
       await IslandChannel.waitForReady(windowId,
           timeout: const Duration(milliseconds: 600));
     } catch (_) {}
-    final ok = await IslandChannel.postMessage(windowId, payload);
+    final ok = await _postStructuredPayloadWithRetry(windowId, payload);
     if (!ok) {
       debugPrint(
           '[IslandManager] sendStructuredPayload failed for $windowId; NOT clearing cache to avoid duplication');
