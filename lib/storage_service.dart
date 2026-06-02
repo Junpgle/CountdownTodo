@@ -1047,6 +1047,31 @@ class StorageService {
         existingItemsMap[row['uuid']] = row;
       }
     }
+    // 🚀 同步写入时，查询 collabType=1 的 is_completed（从 todo_completions 读取），
+    // 防止覆盖用户本地修改
+    Map<String, int> existingCompletionMap = {};
+    if (isSyncSource && dedupeList.isNotEmpty) {
+      final collabType1Items = dedupeList.where((item) => item.collabType == 1).toList();
+      if (collabType1Items.isNotEmpty) {
+        final localPrefs = await prefs;
+        final int currentUserId = localPrefs.getInt('current_user_id') ?? 0;
+        if (currentUserId > 0) {
+          final uuids = collabType1Items.map((e) => e.id).toList();
+          final placeholders = List.filled(uuids.length, '?').join(',');
+          // 使用 JOIN 查询，collabType=1 时 is_completed 来自 todo_completions 表
+          final rows = await db.rawQuery(
+            'SELECT t.uuid, CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed '
+            'FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = ? '
+            'WHERE t.uuid IN ($placeholders)',
+            [currentUserId, ...uuids],
+          );
+          for (var row in rows) {
+            existingCompletionMap[row['uuid'] as String] = (row['is_completed'] as int?) ?? 0;
+          }
+          debugPrint('🧪 [SyncDiag][saveTodos-sync] existingCompletionMap=$existingCompletionMap');
+        }
+      }
+    }
 
     // 🚀 Batch 极速批量写入
     final batch = db.batch();
@@ -1096,6 +1121,14 @@ class StorageService {
       }
 
       if (hasChanged || oldData == null) {
+        // 🚀 同步写入时，collabType=1 保留 DB 中的 is_completed（因为服务端不更新主表该字段，
+        // 用户本地修改通过 _persistTodosSnapshot 已写入 DB，不应被同步覆盖）
+        final int isCompleted;
+        if (isSyncSource && item.collabType == 1 && existingCompletionMap.containsKey(item.id)) {
+          isCompleted = existingCompletionMap[item.id]!;
+        } else {
+          isCompleted = item.isDone ? 1 : 0;
+        }
         batch.insert(
             'todos',
             {
@@ -1106,7 +1139,7 @@ class StorageService {
               'team_name': item.teamName,
               'creator_id': item.creatorId,
               'creator_name': item.creatorName,
-              'is_completed': item.isDone ? 1 : 0,
+              'is_completed': isCompleted,
               'is_deleted': item.isDeleted ? 1 : 0,
               'version': item.version,
               'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
@@ -3512,12 +3545,18 @@ class StorageService {
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions =
             response['independent_completions'];
+        debugPrint('🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
           final batch = db.batch();
           for (var ic in indCompletions) {
             if (ic is! Map) continue;
             final todoUuid = ic['todo_uuid']?.toString();
             if (todoUuid == null || todoUuid.isEmpty) continue;
+            final rawCompleted = ic['is_completed'];
+            final isCompleted = rawCompleted == 1 ||
+                rawCompleted == true ||
+                rawCompleted?.toString() == '1' ||
+                rawCompleted?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
             final existing = await db.query(
@@ -3530,14 +3569,16 @@ class StorageService {
                 ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
                 : 0;
             if (serverUpdatedAt > 0 && serverUpdatedAt < localUpdatedAt) {
+              debugPrint('🧪 [SyncDiag][IndepCompletion] SKIP $todoUuid (server $serverUpdatedAt < local $localUpdatedAt)');
               continue;
             }
+            debugPrint('🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
             batch.insert(
                 'todo_completions',
                 {
                   'todo_uuid': todoUuid,
                   'user_id': userId,
-                  'is_completed': ic['is_completed'],
+                  'is_completed': isCompleted ? 1 : 0,
                   'updated_at': serverUpdatedAt > 0
                       ? serverUpdatedAt
                       : DateTime.now().millisecondsSinceEpoch,
