@@ -57,6 +57,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   String _previousShownVersion = '';
   List<ChangelogEntry> _changelogHistory = [];
   bool _loadingChangelog = true;
+  bool _changelogFetchFailed = false; // 🚀 区分"无网络"和"本版本无更新日志"
   String? _changelogNotice;
   final Set<String> _expandedVersions = {};
 
@@ -219,6 +220,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _changelogHistory = [];
         _showDatabaseUpdatePage = false;
         _loadingChangelog = false;
+        _changelogFetchFailed = true; // 🚀 标记为获取失败（通常是无网络）
         _changelogNotice = null;
       });
       await _setupPages();
@@ -623,8 +625,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               const SizedBox(height: 14),
               if (_loadingChangelog)
                 const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              else if (current == null || current.items.isEmpty)
+              else if (_changelogFetchFailed)
                 Text('请联网后查看详细更新内容。',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurface.withValues(alpha: 0.6)))
+              else if (current == null || current.items.isEmpty)
+                Text('本版本暂无更新日志。',
                     style: TextStyle(
                         fontSize: 13,
                         color: scheme.onSurface.withValues(alpha: 0.6)))

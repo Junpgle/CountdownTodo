@@ -3172,7 +3172,7 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
-      // 🚀 记录有待同步 oplog 的 todo UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
+      // 🚀 记录有待同步 oplog 的 待办 UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
       _pendingSyncOplogUuids = pendingOps
           .where((op) => op['target_table'] == 'todos')
           .map((op) => op['target_uuid']?.toString() ?? '')
