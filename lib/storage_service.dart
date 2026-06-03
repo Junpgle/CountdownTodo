@@ -3821,6 +3821,13 @@ class StorageService {
           if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
+            // 🚀 独立完成待办不参与冲突，清除可能的残留冲突标记
+            if (sItem.collabType == 1 && (sItem.hasConflict || localItem.hasConflict)) {
+              localItem.hasConflict = false;
+              localItem.serverVersionData = null;
+              hasChanges = true;
+              continue;
+            }
             if (sItem.hasConflict && !localItem.hasConflict) {
               if (isRecentlyResolved(localItem.id)) {
                 debugPrint(
@@ -4274,7 +4281,7 @@ class StorageService {
       final isAllDayRange =
           startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
 
-      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
+      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange || todo.collabType == 1) {
         continue;
       }
 

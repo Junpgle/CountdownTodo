@@ -85,6 +85,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     items.addAll(todos.where((t) {
       if (t.isDeleted) return false;
       if (!t.hasConflict) return false;
+      if (t.collabType == 1) return false; // 🚀 独立完成待办不参与冲突展示
       if (_isAllDayTask(t.toJson())) return false;
 
       // 如果有详细的冲突数据，检查其冲突对象是否全是全天任务

@@ -376,9 +376,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         String? teamUuid;
 
         if (item is TodoItem) {
-          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
+          if (item.isDeleted) continue;
           if (!item.hasConflict) continue;
-          // 🚀 对齐 ConflictInboxScreen：跳过全天任务的冲突
+          if (item.collabType == 1) continue; // 🚀 独立完成待办不参与冲突展示
           if (item.isAllDayTask) continue;
 
           // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过
