@@ -92,7 +92,6 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<ConflictInfo> _latestSyncConflicts = [];
   Map<String, dynamic> _mathStats = {};
   List<dynamic> _screenTimeStats = [];
-  DateTime? _lastUserChangeAt; // 🚀 用户最后一次修改的时间，用于防止同步覆盖
   Map<String, dynamic> _dashboardCourseData = {
     'title': '课程提醒',
     'courses': <CourseItem>[]
@@ -3126,13 +3125,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (final snapshot in snapshots) {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
-        // 🚀 用户主动修改优先：updatedAt >= 时信任挂起快照；
-        // 额外保护：如果用户刚改过（3秒内），也信任挂起快照，防止同步覆盖
-        final userChangedRecently = _lastUserChangeAt != null &&
-            DateTime.now().difference(_lastUserChangeAt!).inSeconds < 3;
-        if (existing == null ||
-            pending.updatedAt >= existing.updatedAt ||
-            userChangedRecently) {
+        // 🚀 用户主动修改优先：updatedAt >= 时信任挂起快照
+        if (existing == null || pending.updatedAt >= existing.updatedAt) {
           byId[pending.id] = pending;
         }
       }
@@ -3143,8 +3137,6 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _handleTodosChanged(List<TodoItem> newTodos) async {
     final oldTodos = List<TodoItem>.from(_todos);
     final nextTodos = List<TodoItem>.from(newTodos);
-
-    _lastUserChangeAt = DateTime.now(); // 🚀 记录用户修改时间
 
     if (mounted) {
       setState(() => _todos = nextTodos);
@@ -3232,12 +3224,19 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
     // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
-    // 保存 pending 引用但不清除，让 _mergePendingTodoSnapshots 在同步后仍能保护用户修改。
     final pendingSnapshotBeforeSync = _pendingTodosToPersist;
     if (pendingSnapshotBeforeSync != null) {
+      _pendingTodosToPersist = null;
       _todoPersistDebounce?.cancel();
-      await _persistTodosSnapshot(pendingSnapshotBeforeSync);
-      debugPrint('🧪 [SyncDiag][forceFlush] 已保存 ${pendingSnapshotBeforeSync.length} 条待持久化待办');
+      final changedDesc = pendingSnapshotBeforeSync
+          .where((t) => !t.isDeleted)
+          .map((t) => '${t.id.substring(0,8)} isDone=${t.isDone}')
+          .join(', ');
+      debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
+      await StorageService.saveTodos(widget.username, pendingSnapshotBeforeSync);
+      // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
+      StorageService.setForceFlushProtectedUuids(
+          pendingSnapshotBeforeSync.map((t) => t.id).toSet());
     }
 
     setState(() {
@@ -3376,9 +3375,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
       }
       // 🚀 同步完成后清除保护，防止后续加载被干扰
-      _lastUserChangeAt = null;
       _pendingTodosToPersist = null;
       _persistingTodosSnapshot = null;
+      StorageService.setForceFlushProtectedUuids({});
     }
   }
 

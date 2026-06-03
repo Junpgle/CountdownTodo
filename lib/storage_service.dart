@@ -267,6 +267,8 @@ class StorageService {
       "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
+  static Set<String> _pendingSyncOplogUuids = {}; // 🚀 同步前有待同步 oplog 的 UUID
+  static Set<String> _forceFlushProtectedUuids = {}; // 🚀 force-flush 保护的 UUID，merge 时跳过
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -293,6 +295,10 @@ class StorageService {
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
     });
+  }
+
+  static void setForceFlushProtectedUuids(Set<String> uuids) {
+    _forceFlushProtectedUuids = uuids;
   }
 
   static void requestSync(String username) {
@@ -1047,28 +1053,29 @@ class StorageService {
         existingItemsMap[row['uuid']] = row;
       }
     }
-    // 🚀 同步写入时，查询 collabType=1 的 is_completed（从 todo_completions 读取），
-    // 防止覆盖用户本地修改
+    // 🚀 同步写入时，查询有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
+    // 使用 _pendingSyncOplogUuids（在 oplog 标记为已同步之前保存），不依赖 force-flush
     Map<String, int> existingCompletionMap = {};
-    if (isSyncSource && dedupeList.isNotEmpty) {
-      final collabType1Items = dedupeList.where((item) => item.collabType == 1).toList();
-      if (collabType1Items.isNotEmpty) {
-        final localPrefs = await prefs;
-        final int currentUserId = localPrefs.getInt('current_user_id') ?? 0;
-        if (currentUserId > 0) {
-          final uuids = collabType1Items.map((e) => e.id).toList();
-          final placeholders = List.filled(uuids.length, '?').join(',');
-          // 使用 JOIN 查询，collabType=1 时 is_completed 来自 todo_completions 表
+    if (isSyncSource && dedupeList.isNotEmpty && _pendingSyncOplogUuids.isNotEmpty) {
+      final localPrefs = await prefs;
+      final int currentUserId = localPrefs.getInt('current_user_id') ?? 0;
+      if (currentUserId > 0) {
+        final uuidsToPreserve = dedupeList
+            .where((item) => _pendingSyncOplogUuids.contains(item.id))
+            .map((item) => item.id)
+            .toList();
+        if (uuidsToPreserve.isNotEmpty) {
+          final placeholders = List.filled(uuidsToPreserve.length, '?').join(',');
           final rows = await db.rawQuery(
             'SELECT t.uuid, CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed '
             'FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = ? '
             'WHERE t.uuid IN ($placeholders)',
-            [currentUserId, ...uuids],
+            [currentUserId, ...uuidsToPreserve],
           );
           for (var row in rows) {
             existingCompletionMap[row['uuid'] as String] = (row['is_completed'] as int?) ?? 0;
           }
-          debugPrint('🧪 [SyncDiag][saveTodos-sync] existingCompletionMap=$existingCompletionMap');
+          debugPrint('🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} pending completions: $existingCompletionMap');
         }
       }
     }
@@ -1118,16 +1125,23 @@ class StorageService {
           'sync_error': '',
         });
         queuedTodoOps++;
+        if (!isSyncSource) {
+          debugPrint('🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
+        }
       }
 
       if (hasChanged || oldData == null) {
-        // 🚀 同步写入时，collabType=1 保留 DB 中的 is_completed（因为服务端不更新主表该字段，
-        // 用户本地修改通过 _persistTodosSnapshot 已写入 DB，不应被同步覆盖）
+        // 🚀 同步写入时，如果有待同步 oplog，保留 DB 中的 is_completed，
+        // 防止 syncData 的 saveTodos 覆盖用户本地修改（force-flush 写入的值）
         final int isCompleted;
-        if (isSyncSource && item.collabType == 1 && existingCompletionMap.containsKey(item.id)) {
+        if (isSyncSource && existingCompletionMap.containsKey(item.id)) {
           isCompleted = existingCompletionMap[item.id]!;
+          debugPrint('🧪 [SyncDiag][saveTodos-sync] PRESERVED UUID=${item.id} isCompleted=$isCompleted');
         } else {
           isCompleted = item.isDone ? 1 : 0;
+          if (isSyncSource) {
+            debugPrint('🧪 [SyncDiag][saveTodos-sync] OVERWRITE UUID=${item.id} isCompleted=$isCompleted (from merge)');
+          }
         }
         batch.insert(
             'todos',
@@ -3145,6 +3159,12 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      // 🚀 记录有待同步 oplog 的 todo UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
+      _pendingSyncOplogUuids = pendingOps
+          .where((op) => op['target_table'] == 'todos')
+          .map((op) => op['target_uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty)
+          .toSet();
       final pendingByTable = <String, int>{};
       for (final op in pendingOps) {
         final t = (op['target_table'] ?? 'unknown').toString();
@@ -3548,6 +3568,7 @@ class StorageService {
         debugPrint('🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
           final batch = db.batch();
+          var independentCompletionChanged = false;
           for (var ic in indCompletions) {
             if (ic is! Map) continue;
             final todoUuid = ic['todo_uuid']?.toString();
@@ -3569,7 +3590,19 @@ class StorageService {
                 ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
                 : 0;
             if (serverUpdatedAt > 0 && serverUpdatedAt < localUpdatedAt) {
-              debugPrint('🧪 [SyncDiag][IndepCompletion] SKIP $todoUuid (server $serverUpdatedAt < local $localUpdatedAt)');
+              // 本地更新，跳过 DB 写入，但仍需从 DB 读取正确值更新内存
+              final localIsCompleted = existing.isNotEmpty
+                  ? (existing.first['is_completed'] as int?) ?? 0
+                  : 0;
+              final localIdx = allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
+              if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
+                if (allLocalTodos[localIdx].isDone != (localIsCompleted == 1)) {
+                  allLocalTodos[localIdx].isDone = localIsCompleted == 1;
+                  independentCompletionChanged = true;
+                  if (!allLocalTodos[localIdx].isDeleted) updatedTodoIds.add(todoUuid);
+                }
+              }
+              debugPrint('🧪 [SyncDiag][IndepCompletion] SKIP_DB $todoUuid (server $serverUpdatedAt < local $localUpdatedAt), memory isDone=${localIsCompleted == 1}');
               continue;
             }
             debugPrint('🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
@@ -3584,8 +3617,20 @@ class StorageService {
                       : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
+            final localIdx =
+                allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
+            if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
+              if (allLocalTodos[localIdx].isDone != isCompleted) {
+                allLocalTodos[localIdx].isDone = isCompleted;
+                independentCompletionChanged = true;
+                if (!allLocalTodos[localIdx].isDeleted) updatedTodoIds.add(todoUuid);
+              }
+            }
           }
           await batch.commit(noResult: true);
+          if (independentCompletionChanged) {
+            hasChanges = true;
+          }
         }
 
         // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
@@ -3687,6 +3732,13 @@ class StorageService {
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
+
+          // 🚀 核心保护：force-flush 的待办跳过 merge，防止同步覆盖用户刚做的修改
+          if (_forceFlushProtectedUuids.contains(sItem.id)) {
+            debugPrint('🛡️ [merge] SKIP UUID=${sItem.id} (force-flush protected)');
+            continue;
+          }
+
           debugPrint(
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
@@ -4130,6 +4182,8 @@ class StorageService {
           await savePlanBlocks(username, allLocalPlanBlocks,
               sync: false, isSyncSource: true);
         }
+        _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
+        _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
       }
 
       // 8. 更新同步水位线
