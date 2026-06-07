@@ -76,12 +76,21 @@ class NotificationService {
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
   static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};
 
+  static const NotificationDetails _desktopNotificationDetails =
+      NotificationDetails(
+    windows: WindowsNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
+
+  static bool get _isDesktopSupported =>
+      Platform.isWindows || Platform.isMacOS;
+
   static Future<void> init() async {
     await ensureInitialized();
   }
 
   static Future<void> ensureInitialized() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows && !Platform.isMacOS) return;
     if (_initialized) return;
     final existing = _initializationFuture;
     if (existing != null) return existing;
@@ -104,10 +113,18 @@ class NotificationService {
       guid: 'a1b2c3d4-e5f6-7a8b-9c0d-e1f2a3b4c5d6',
     );
 
+    const DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
     const InitializationSettings initializationSettings =
         InitializationSettings(
       android: initializationSettingsAndroid,
       windows: initializationSettingsWindows,
+      macOS: initializationSettingsDarwin,
     );
 
     try {
@@ -133,16 +150,15 @@ class NotificationService {
     required String teacher,
   }) async {
     if (!await StorageService.isCourseNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await _plugin.show(
         id: courseName.hashCode,
         title: '📚 上课提醒: $courseName',
         body: '$timeStr | 教室: $room | $teacher',
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -335,7 +351,7 @@ class NotificationService {
   }
 
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (todo.dueDate == null) return;
     if (!_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) return;
 
@@ -362,7 +378,7 @@ class NotificationService {
     debugPrint(
         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       if (isAllDayTodo) {
         final todaySuffix =
             '@${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
@@ -371,7 +387,7 @@ class NotificationService {
 
         final dedupeKey = _windowsAllDayTodoKey(todo);
         if (_windowsAllDayTodoNotifiedKeys.contains(dedupeKey)) {
-          debugPrint('⏭️ 跳过重复的 Windows 全天待办通知: $dedupeKey');
+          debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
           return;
         }
         _windowsAllDayTodoNotifiedKeys.add(dedupeKey);
@@ -381,8 +397,7 @@ class NotificationService {
         id: todo.id.hashCode,
         title: '🔔 待办提醒: ${todo.title}',
         body: '$timeStr\n${todo.remark ?? ''}',
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -445,10 +460,10 @@ class NotificationService {
     bool isBreak = false,
   }) async {
     if (!await StorageService.isPomodoroEndNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       final title = isBreak ? '☕ 休息结束' : '🍅 专注完成';
       final body = todoTitle?.isNotEmpty == true
           ? '任务 "$todoTitle" 阶段已结束'
@@ -458,8 +473,7 @@ class NotificationService {
         id: alertKey.hashCode,
         title: title,
         body: body,
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -496,17 +510,17 @@ class NotificationService {
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
       {bool clearFirst = true}) async {
     if (!await StorageService.isReminderNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (reminders.isEmpty && !clearFirst) return;
     await ensureInitialized();
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       if (clearFirst) {
         await _plugin.cancelAll();
         await StorageService.saveWindowsScheduledReminders([]);
       }
 
-      final List<Map<String, dynamic>> scheduledOnWindows = [];
+      final List<Map<String, dynamic>> scheduledOnDesktop = [];
 
       for (final r in reminders) {
         final triggerAtMs = r['triggerAtMs'];
@@ -517,20 +531,19 @@ class NotificationService {
           await _plugin.zonedSchedule(
             id: r['notifId'],
             scheduledDate: tz.TZDateTime.from(triggerAt, tz.local),
-            notificationDetails: const NotificationDetails(
-                windows: WindowsNotificationDetails()),
+            notificationDetails: _desktopNotificationDetails,
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
             title: r['title'] ?? '',
             body: r['text'] ?? '',
           );
-          scheduledOnWindows.add(r);
+          scheduledOnDesktop.add(r);
         } catch (e) {
-          debugPrint('Windows 预约提醒失败: $e');
+          debugPrint('桌面端预约提醒失败: $e');
         }
       }
 
-      if (scheduledOnWindows.isNotEmpty || clearFirst) {
-        await StorageService.saveWindowsScheduledReminders(scheduledOnWindows);
+      if (scheduledOnDesktop.isNotEmpty || clearFirst) {
+        await StorageService.saveWindowsScheduledReminders(scheduledOnDesktop);
       }
       return;
     }
@@ -567,10 +580,10 @@ class NotificationService {
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows)
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported)
       return [];
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       return await StorageService.getWindowsScheduledReminders();
     }
 
@@ -588,9 +601,9 @@ class NotificationService {
   }
 
   static Future<void> cancelReminder(int notifId) async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await ensureInitialized();
       await _plugin.cancel(id: notifId);
       final current = await StorageService.getWindowsScheduledReminders();
@@ -637,19 +650,18 @@ class NotificationService {
     required String status,
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
     final title = '🔍 图片识别待办中...';
     final body = '第$currentAttempt/$maxAttempts次尝试 | $status';
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await _plugin.show(
         id: NOTIF_ID_TODO_RECOGNIZE,
         title: title,
         body: body,
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -676,19 +688,18 @@ class NotificationService {
     required int todoCount,
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
     final title = '✅ 图片识别完成';
     final body = '发现$todoCount个待办事项，点击查看详情';
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await _plugin.show(
         id: NOTIF_ID_TODO_RECOGNIZE,
         title: title,
         body: body,
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -710,20 +721,19 @@ class NotificationService {
     required String errorMsg,
   }) async {
     if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
     final title = '❌ 图片识别失败';
     final body =
         errorMsg.length > 50 ? '${errorMsg.substring(0, 50)}...' : errorMsg;
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await _plugin.show(
         id: NOTIF_ID_TODO_RECOGNIZE,
         title: title,
         body: body,
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -741,9 +751,9 @@ class NotificationService {
 
   /// 取消图片识别相关通知
   static Future<void> cancelTodoRecognizeNotification() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await ensureInitialized();
       await _plugin.cancel(id: NOTIF_ID_TODO_RECOGNIZE);
       return;
@@ -760,16 +770,15 @@ class NotificationService {
     required String updateTitle,
     required String updateContent,
   }) async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await _plugin.show(
-        id: 12354, // 与 Android 的 UPDATE_NOTIFICATION_ID 保持一致
+        id: 12354,
         title: '🚀 $updateTitle',
         body: '$versionName: $updateContent',
-        notificationDetails:
-            const NotificationDetails(windows: WindowsNotificationDetails()),
+        notificationDetails: _desktopNotificationDetails,
       );
       return;
     }
@@ -788,9 +797,9 @@ class NotificationService {
 
   /// 取消版本更新通知
   static Future<void> cancelUpdateNotification() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
 
-    if (Platform.isWindows) {
+    if (_isDesktopSupported) {
       await ensureInitialized();
       await _plugin.cancel(id: 12354);
       return;

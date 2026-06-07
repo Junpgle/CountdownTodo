@@ -475,13 +475,15 @@ class UpdateService {
 
   // 🚀 动态区分 Android 和 Windows 的安装包后缀
   static String getUpdateFileName(String versionName) {
-    if (Platform.isWindows) return "MathQuiz_v$versionName.exe";
-    return "MathQuiz_v$versionName.apk";
+    if (Platform.isWindows) return "CountdownTodo_v$versionName.exe";
+    if (Platform.isMacOS) return "CountdownTodo_v$versionName.dmg";
+    return "CountdownTodo_v$versionName.apk";
   }
 
   // 🚀 获取当前设备架构
   static Future<String> getDeviceArchitecture() async {
     if (Platform.isWindows) return 'windows';
+    if (Platform.isMacOS) return 'macos';
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
     final supportedAbis = androidInfo.supportedAbis;
@@ -493,7 +495,8 @@ class UpdateService {
 
   // 🚀 根据设备架构获取对应的下载链接
   static String getDownloadUrlForArch(AppManifest manifest) {
-    if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
+    if ((Platform.isWindows || Platform.isMacOS) &&
+        manifest.updateInfo.pcPackageUrl.isNotEmpty) {
       return manifest.updateInfo.pcPackageUrl;
     }
     final archPackages = manifest.updateInfo.androidArchPackages;
@@ -782,6 +785,11 @@ class UpdateService {
 
     if (Platform.isWindows) {
       await Process.run(file.path, [], runInShell: true);
+      return;
+    }
+
+    if (Platform.isMacOS) {
+      await Process.run('open', [file.path]);
       return;
     }
 
