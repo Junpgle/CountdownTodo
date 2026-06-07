@@ -3,8 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
@@ -50,19 +52,27 @@ class WidgetService {
   static const int maxWidgetItems = 8;
   static Timer? _periodicTimer;
 
+  static const MethodChannel _macOSWidgetChannel =
+      MethodChannel('com.countdowntodo/widget');
+
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
     _periodicTimer = null;
   }
 
   static Future<void> init() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_initialized) return;
-    try {
-      await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      try {
+        await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+        _initialized = true;
+      } catch (e) {
+        print('WidgetBackground 注册失败: $e');
+      }
+    } else if (Platform.isMacOS) {
       _initialized = true;
-    } catch (e) {
-      print('WidgetBackground 注册失败: $e');
     }
 
     // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
@@ -110,7 +120,7 @@ class WidgetService {
 
   static Future<void> updateAllWidgetData(
       String username, List<TodoItem> todos) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -242,40 +252,67 @@ class WidgetService {
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
 
-    // 批量写入结果
-    final List<Future<void>> widgetWrites = [];
-    widgetData.forEach((key, value) {
-      widgetWrites.add(HomeWidget.saveWidgetData(key, value));
-    });
+    // 生成通用 WidgetSnapshot（Android 和 macOS 共用）
+    final snapshot = WidgetSnapshot.fromWidgetData(widgetData, now);
 
-    await Future.wait(widgetWrites);
+    // Android：写入 SharedPreferences 并更新 widget
+    if (Platform.isAndroid || Platform.isIOS) {
+      await _updateAndroidWidgets(widgetData);
+    }
 
+    // macOS：通过 MethodChannel 写入 App Group JSON 并刷新 WidgetKit
+    if (Platform.isMacOS) {
+      await _updateMacOSWidget(snapshot);
+    }
+  }
+
+  static Future<void> _updateAndroidWidgets(Map<String, dynamic> widgetData) async {
     try {
-      // 使用 qualifiedAndroidName 传入完整类名，避免 debug 构建中 applicationId 带 .debug 后缀导致 Class.forName 失败
-      final results = await Future.wait([
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$androidWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
-          return false;
-        }),
-      ]);
+      final List<Future<void>> widgetWrites = [];
+      widgetData.forEach((key, value) {
+        widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+      });
+
+      await Future.wait(widgetWrites);
+
+      try {
+        await Future.wait([
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$androidWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+            return false;
+          }),
+        ]);
+      } catch (e) {
+        debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+      }
     } catch (e) {
-      debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+      debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
+    }
+  }
+
+  static Future<void> _updateMacOSWidget(WidgetSnapshot snapshot) async {
+    try {
+      await _macOSWidgetChannel.invokeMethod('saveWidgetSnapshot', {
+        'json': snapshot.toJsonString(),
+      });
+    } catch (e) {
+      debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
   }
 

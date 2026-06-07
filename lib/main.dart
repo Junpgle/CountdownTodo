@@ -28,6 +28,7 @@ import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
 import 'services/pomodoro_service.dart';
+import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
 import 'services/splash_service.dart';
@@ -740,7 +741,8 @@ class _MyAppState extends State<MyApp> {
             currentThemeMode = ThemeMode.system;
         }
 
-        return MaterialApp(
+        return MacosMenuBar(
+          child: MaterialApp(
           title: 'CountDownTodo',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,
@@ -829,6 +831,7 @@ class _MyAppState extends State<MyApp> {
                                   username: _loggedInUser!,
                                 )
                               : const LoginScreen(),
+          ),
         );
       },
     );
