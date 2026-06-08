@@ -1,6 +1,21 @@
 import WidgetKit
 import SwiftUI
 
+extension View {
+    @ViewBuilder
+    func widgetContainerBackground<Background: View>(
+        @ViewBuilder _ background: () -> Background
+    ) -> some View {
+        if #available(macOSApplicationExtension 14.0, iOSApplicationExtension 17.0, *) {
+            self.containerBackground(for: .widget) {
+                background()
+            }
+        } else {
+            self.background(background())
+        }
+    }
+}
+
 struct WidgetSnapshot: Codable {
     let todayTodoCount: Int
     let nextTodoTitle: String
@@ -78,6 +93,14 @@ struct CountDownTodoWidgetEntryView: View {
     var entry: Provider.Entry
 
     var body: some View {
+        content
+            .widgetContainerBackground {
+                Color.clear
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch family {
         case .systemSmall:
             smallView
