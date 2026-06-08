@@ -69,6 +69,7 @@ class MacPomodoroStatusBarService {
       'accumulatedMs': state.accumulatedMs,
       'pauseStartMs': state.pauseStartMs,
       'todoTitle': state.todoTitle ?? '',
+      'isRemote': false,
     });
   }
 
@@ -78,7 +79,6 @@ class MacPomodoroStatusBarService {
     final targetEndMs = remote.targetEndMs ?? 0;
     final timestamp = remote.timestamp ?? now;
 
-    // 远端专注只做展示，不维护精确状态
     _channel.invokeMethod('updatePomodoroStatus', {
       'phase': 'focusing',
       'targetEndMs': targetEndMs,
@@ -89,6 +89,7 @@ class MacPomodoroStatusBarService {
       'accumulatedMs': 0,
       'pauseStartMs': 0,
       'todoTitle': remote.todoTitle ?? '',
+      'isRemote': true,
     });
   }
 
