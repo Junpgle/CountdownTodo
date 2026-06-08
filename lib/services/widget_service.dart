@@ -252,18 +252,164 @@ class WidgetService {
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
 
-    // 生成通用 WidgetSnapshot（Android 和 macOS 共用）
-    final snapshot = WidgetSnapshot.fromWidgetData(widgetData, now);
-
     // Android：写入 SharedPreferences 并更新 widget
     if (Platform.isAndroid || Platform.isIOS) {
       await _updateAndroidWidgets(widgetData);
     }
 
-    // macOS：通过 MethodChannel 写入 App Group JSON 并刷新 WidgetKit
+    // macOS：构建富数据快照并刷新 WidgetKit
     if (Platform.isMacOS) {
-      await _updateMacOSWidget(snapshot);
+      final macSnapshot = await _buildMacOSSnapshot(allTodos, allCourses, countdownsRaw, now, today);
+      await _updateMacOSWidget(macSnapshot);
     }
+  }
+
+  static Future<WidgetSnapshot> _buildMacOSSnapshot(
+    List<TodoItem> allTodos,
+    List<CourseItem> allCourses,
+    List<CountdownItem> countdownsRaw,
+    DateTime now,
+    DateTime today,
+  ) async {
+    // 1. 倒数日：未删除、未过期，按目标日期排序
+    final countdownItems = countdownsRaw
+        .where((c) => !c.isDeleted && !c.isCompleted)
+        .map((c) {
+          final diffDays = DateTime(c.targetDate.year, c.targetDate.month, c.targetDate.day)
+              .difference(today)
+              .inDays;
+          return WidgetCountdownItem(
+            title: c.title,
+            daysLeft: diffDays,
+            dateText: DateFormat('yyyy-MM-dd').format(c.targetDate),
+          );
+        })
+        .where((c) => c.daysLeft >= 0)
+        .toList()
+      ..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+
+    // 2. 待办：未完成、未删除，按紧急度排序
+    final todoItems = allTodos
+        .where((t) => !t.isDone && !t.isDeleted)
+        .map((t) {
+          String? timeText;
+          int priority = 0;
+          if (t.dueDate != null) {
+            final diffDays = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
+                .difference(today)
+                .inDays;
+            if (diffDays < 0) {
+              timeText = '已逾期';
+              priority = 3;
+            } else if (diffDays == 0) {
+              timeText = '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+              priority = 2;
+            } else if (diffDays == 1) {
+              timeText = '明天';
+              priority = 1;
+            } else {
+              timeText = '$diffDays天后';
+            }
+          }
+          return WidgetTodoItem(
+            title: t.title,
+            timeText: timeText,
+            priority: priority,
+            isDone: t.isDone,
+          );
+        })
+        .toList()
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        if (a.priority != b.priority) return b.priority.compareTo(a.priority);
+        return 0;
+      });
+
+    // 3. 课程：今日课程，按时间排序
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final courseItems = allCourses
+        .where((c) => !c.isDeleted && c.date == todayStr)
+        .map((c) {
+          String? statusText;
+          final startH = c.startTime ~/ 100;
+          final startM = c.startTime % 100;
+          final endH = c.endTime ~/ 100;
+          final endM = c.endTime % 100;
+          final courseStart = DateTime(now.year, now.month, now.day, startH, startM);
+          final courseEnd = DateTime(now.year, now.month, now.day, endH, endM);
+
+          if (now.isAfter(courseStart) && now.isBefore(courseEnd)) {
+            final remaining = courseEnd.difference(now).inMinutes;
+            statusText = '正在上课 · 还剩${remaining}分钟';
+          } else if (now.isBefore(courseStart)) {
+            final diff = courseStart.difference(now).inMinutes;
+            if (diff <= 30) {
+              statusText = '即将开始 · ${diff}分钟后';
+            } else {
+              statusText = '待上';
+            }
+          } else {
+            statusText = '已结束';
+          }
+
+          return WidgetCourseItem(
+            title: c.courseName,
+            timeText: '${c.formattedStartTime} - ${c.formattedEndTime}',
+            location: c.roomName,
+            statusText: statusText,
+          );
+        })
+        .toList()
+      ..sort((a, b) => a.timeText.compareTo(b.timeText));
+
+    // 4. 专注状态
+    int todayMinutes = 0;
+    bool isRunning = false;
+    String? currentTitle;
+    int remainingSeconds = 0;
+
+    try {
+      final runState = await PomodoroService.loadRunState();
+      if (runState != null && runState.phase == PomodoroPhase.focusing) {
+        isRunning = true;
+        currentTitle = runState.todoTitle ?? '专注中';
+        final elapsed = runState.isPaused
+            ? (runState.accumulatedMs ~/ 1000)
+            : (DateTime.now().millisecondsSinceEpoch - runState.sessionStartMs) ~/ 1000 +
+                (runState.accumulatedMs ~/ 1000);
+        final planned = runState.plannedFocusSeconds;
+        if (planned > 0) {
+          remainingSeconds = (planned - elapsed).clamp(0, planned);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final todayRecords = await PomodoroService.getTodayRecords();
+      for (final r in todayRecords) {
+        final end = r.endTime;
+        final start = r.startTime;
+        if (!r.isDeleted && end != null && end > 0 && start > 0) {
+          todayMinutes += ((end - start) ~/ 60000);
+        }
+      }
+    } catch (_) {}
+
+    final focusState = WidgetFocusState(
+      isRunning: isRunning,
+      currentTitle: currentTitle,
+      todayMinutes: todayMinutes,
+      sessionMinutes: remainingSeconds > 0 ? (remainingSeconds / 60).ceil() : 0,
+      remainingSeconds: remainingSeconds,
+    );
+
+    return WidgetSnapshot(
+      updatedAt: now,
+      countdowns: countdownItems.take(5).toList(),
+      todos: todoItems.take(8).toList(),
+      courses: courseItems.take(6).toList(),
+      focus: focusState,
+    );
   }
 
   static Future<void> _updateAndroidWidgets(Map<String, dynamic> widgetData) async {

@@ -42,7 +42,6 @@ ios/Podfile.lock
 
 # macOS generated
 macos/Flutter/Flutter-*.xcconfig
-macos/Flutter/GeneratedPluginRegistrant.swift
 macos/Podfile
 macos/Podfile.lock
 macos/Runner.xcworkspace/

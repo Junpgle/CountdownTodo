@@ -40,31 +40,33 @@ class MainFlutterWindow: NSWindow {
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     widgetChannel.setMethodCallHandler { (call, result) in
-      if call.method == "saveWidgetSnapshot" {
+      if call.method == "writeWidgetSnapshot" || call.method == "saveWidgetSnapshot" {
         guard let args = call.arguments as? [String: Any],
               let jsonString = args["json"] as? String else {
           result(FlutterError(code: "INVALID_ARGS", message: "Missing 'json' argument", details: nil))
           return
         }
 
-        guard let containerURL = FileManager.default.containerURL(
-          forSecurityApplicationGroupIdentifier: "group.com.mathquiz.junpgle.countdowntodo"
-        ) else {
-          result(FlutterError(code: "APP_GROUP_UNAVAILABLE", message: "App Group container not available", details: nil))
-          return
+        let appGroupId = "group.com.mathquiz.junpgle.countdowntodo"
+
+        // Write to UserDefaults for Widget Extension
+        if let userDefaults = UserDefaults(suiteName: appGroupId) {
+          userDefaults.set(jsonString, forKey: "widget_snapshot_json")
+          userDefaults.synchronize()
         }
 
-        let fileURL = containerURL.appendingPathComponent("widget_snapshot.json")
-
-        do {
-          try jsonString.write(to: fileURL, atomically: true, encoding: .utf8)
-          if #available(macOS 11.0, *) {
-            WidgetCenter.shared.reloadAllTimelines()
-          }
-          result(true)
-        } catch {
-          result(FlutterError(code: "WRITE_FAILED", message: "Failed to write snapshot: \(error.localizedDescription)", details: nil))
+        // Also write to file (backward compatibility)
+        if let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupId
+        ) {
+          let fileURL = containerURL.appendingPathComponent("widget_snapshot.json")
+          try? jsonString.write(to: fileURL, atomically: true, encoding: .utf8)
         }
+
+        if #available(macOS 11.0, *) {
+          WidgetCenter.shared.reloadAllTimelines()
+        }
+        result(true)
       } else if call.method == "reloadWidgets" {
         if #available(macOS 11.0, *) {
           WidgetCenter.shared.reloadAllTimelines()
