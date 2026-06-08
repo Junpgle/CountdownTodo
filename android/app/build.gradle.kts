@@ -101,10 +101,13 @@ android {
         }
     }
 
-    // 按 CPU 架构拆分 APK 以减小体积
+    // 按 CPU 架构拆分 APK 以减小体积（仅 Release 启用，Debug 跳过以加快构建）
     splits {
         abi {
-            isEnable = true
+            val isReleaseBuild = gradle.startParameter.taskNames.any {
+                it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
+            }
+            isEnable = isReleaseBuild
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86_64")
             isUniversalApk = true  // 同时生成包含所有架构的通用 APK

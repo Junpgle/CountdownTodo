@@ -77,6 +77,31 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    // Setup status bar controller
+    MacPomodoroStatusBarController.shared.setup()
+
+    // Status bar MethodChannel
+    let statusBarChannel = FlutterMethodChannel(
+      name: "countdown_todo/macos_status_bar",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    statusBarChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "updatePomodoroStatus":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.updatePomodoroStatus(args: args)
+        result(true)
+      case "clearPomodoroStatus":
+        MacPomodoroStatusBarController.shared.clearPomodoroStatus()
+        result(true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     super.awakeFromNib()
   }
 }

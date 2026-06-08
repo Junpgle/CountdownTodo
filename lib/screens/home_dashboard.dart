@@ -24,6 +24,7 @@ import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
+import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
@@ -311,6 +312,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
+    MacPomodoroStatusBarService.init();
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -492,6 +494,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
     _pomodoroTickNotifier.dispose();
+    MacPomodoroStatusBarService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

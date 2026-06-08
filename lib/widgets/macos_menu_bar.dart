@@ -78,18 +78,6 @@ class MacosMenuBar extends StatelessWidget {
                   meta: true, shift: true),
               onSelected: _onNewCountdown,
             ),
-            PlatformMenuItemGroup(
-              members: [
-                PlatformMenuItem(
-                  label: '导入数据',
-                  onSelected: _onImportData,
-                ),
-                PlatformMenuItem(
-                  label: '导出数据',
-                  onSelected: _onExportData,
-                ),
-              ],
-            ),
           ],
         ),
 
