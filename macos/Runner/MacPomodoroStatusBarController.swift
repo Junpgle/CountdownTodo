@@ -22,9 +22,7 @@ class MacPomodoroStatusBarController {
     // MARK: - Public
 
     func setup() {
-        DispatchQueue.main.async { [weak self] in
-            self?.createStatusItem()
-        }
+        // 不预创建，专注时才创建
     }
 
     func updatePomodoroStatus(args: [String: Any]) {
@@ -58,19 +56,31 @@ class MacPomodoroStatusBarController {
 
         DispatchQueue.main.async { [weak self] in
             self?.cancelTimer()
-            self?.statusItem?.button?.title = ""
-            self?.statusItem?.button?.toolTip = "CountDownTodo"
+            self?.removeStatusItem()
         }
     }
 
     // MARK: - Private
 
-    private func createStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private func showStatusItem() {
+        if statusItem == nil {
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            setupMenu()
+        }
+        statusItem?.isVisible = true
+    }
 
+    private func removeStatusItem() {
+        if let item = statusItem {
+            item.isVisible = false
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
+
+    private func setupMenu() {
         guard let button = statusItem?.button else { return }
         button.title = ""
-        button.toolTip = "CountDownTodo"
 
         let menu = NSMenu()
 
@@ -102,10 +112,10 @@ class MacPomodoroStatusBarController {
     }
 
     private func refreshDisplay() {
-        guard let button = statusItem?.button else { return }
-
         switch phase {
         case "focusing":
+            showStatusItem()
+            guard let button = statusItem?.button else { return }
             if isPaused {
                 let minutes = calculatePausedMinutes()
                 button.title = "⏸ \(minutes)分"
@@ -122,14 +132,15 @@ class MacPomodoroStatusBarController {
             updatePauseMenuTitle()
 
         case "breaking":
+            showStatusItem()
+            guard let button = statusItem?.button else { return }
             let minutes = calculateCountdownMinutes()
             button.title = "☕ \(minutes)分"
             button.toolTip = "休息中，剩余 \(minutes) 分钟"
             updatePauseMenuTitle()
 
         default:
-            button.title = ""
-            button.toolTip = "CountDownTodo"
+            removeStatusItem()
             cancelTimer()
         }
     }
