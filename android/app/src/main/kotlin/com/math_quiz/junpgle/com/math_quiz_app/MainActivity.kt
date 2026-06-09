@@ -1218,14 +1218,14 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     lastNotificationFingerprint.remove(notifId)
                     lastNotificationTimestampMs.remove(notifId)
 
-                    // 滚动调度：重新注册下一个最近提醒
+                    // 滚动调度：重新计算课程 rolling alarm
                     val rescheduleIntent = Intent(this, ReminderService::class.java).apply {
                         action = ReminderService.ACTION_RESCHEDULE
                     }
                     try {
                         startForegroundService(rescheduleIntent)
                     } catch (e: Exception) {
-                        Log.w(TAG, "RollingAlarm: reschedule after cancel failed", e)
+                        Log.w(TAG, "HybridSchedule: reschedule after cancel failed", e)
                     }
 
                     result.success(true)

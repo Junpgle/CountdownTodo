@@ -16,21 +16,19 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 
 /**
- * 单 Alarm 滚动调度方案：
+ * 混合调度方案：课程单 Alarm 滚动 + 非课程全量 Alarm
  *
  * ┌──────────────────────────────────────────────────────────────┐
- * │  设计原则：系统同时只维护一个最近提醒的 Alarm                     │
+ * │  课程提醒：单 Alarm 滚动调度                                    │
+ * │    - 系统中同时只维护一个最近课程提醒的 Alarm                     │
+ * │    - 到点后发通知，再注册下一节课程提醒                           │
  * │                                                              │
- * │  1. App 首次启动 / 添加提醒 → Flutter 通知原生 scheduleReminders│
- * │  2. ReminderService 读取 SharedPreferences 里的提醒列表         │
- * │  3. 只找 triggerAtMs 最近的未来提醒，注册一个精确 Alarm          │
- * │  4. Alarm 触发 → ReminderAlarmReceiver → startForegroundService│
- * │  5. Service 发完通知后重新读取列表，注册下一个最近提醒            │
- * │  6. 如此滚动，系统中始终只有一个 Alarm                          │
- * │  7. 开机 / 更新后 → BOOT_COMPLETED → 重新 scheduleReminders    │
+ * │  非课程提醒（待办/规划块/特殊待办）：全量 Alarm                   │
+ * │    - 每条提醒独立注册 Alarm（requestCode = notifId）             │
+ * │    - 同一时间多个也不会漏                                       │
+ * │                                                              │
+ * │  开机 / 更新后 → BOOT_COMPLETED → 重新全部调度                  │
  * └──────────────────────────────────────────────────────────────┘
- *
- * 功耗极低：仅在 Alarm 触发时短暂运行（< 2s），其余时间进程可被系统回收。
  */
 class ReminderService : Service() {
 
@@ -54,8 +52,8 @@ class ReminderService : Service() {
         private const val COURSE_ISLAND_BIZ_TAG = "math_quiz_course"
         private const val SPECIAL_TODO_ISLAND_BIZ_TAG = "math_quiz_special_todo"
 
-        // 单 Alarm 滚动调度：固定 requestCode
-        private const val ROLLING_ALARM_REQUEST_CODE = 0xCD7001
+        // 课程单 Alarm 滚动调度：固定 requestCode
+        private const val COURSE_ROLLING_ALARM_REQUEST_CODE = 0xC011E9
     }
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -94,11 +92,11 @@ class ReminderService : Service() {
                 val title = intent.getStringExtra("title") ?: "提醒"
                 val text  = intent.getStringExtra("text")  ?: ""
                 val notifId = intent.getIntExtra("notifId", 20000)
-                Log.d(TAG, "RollingAlarm: ACTION_FIRE received, notifId = $notifId, title = $title")
-                val imagePath = intent.getStringExtra("analysis_image_path")
                 val type = intent.getStringExtra("type")
-                val todoType = intent.getStringExtra("todo_type")
                 val courseName = intent.getStringExtra("course_name")
+                Log.d(TAG, "ACTION_FIRE received, notifId = $notifId, title = $title, type = $type")
+                val imagePath = intent.getStringExtra("analysis_image_path")
+                val todoType = intent.getStringExtra("todo_type")
                 val room = intent.getStringExtra("room")
                 val timeStr = intent.getStringExtra("time_str")
                 val teacher = intent.getStringExtra("teacher")
@@ -121,11 +119,12 @@ class ReminderService : Service() {
                         planBlockId = planBlockId,
                         todoId = todoId
                     )
-                    // 发完通知就结束，不常驻
+                    // 课程提醒：滚动调度下一节
+                    if (isCourseReminderFromExtras(type, notifId, courseName)) {
+                        Log.d(TAG, "CourseRollingAlarm: course notification posted, reschedule next course")
+                        rescheduleAll()
+                    }
                     stopSelf(startId)
-                    // 滚动调度：注册下一个最近提醒
-                    Log.d(TAG, "RollingAlarm: notification posted, reschedule next")
-                    rescheduleAll()
                 }
             }
             ACTION_RESCHEDULE -> {
@@ -149,11 +148,26 @@ class ReminderService : Service() {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 核心：单 Alarm 滚动调度
+    // 核心：混合调度（课程滚动 + 非课程全量）
     // ─────────────────────────────────────────────────────────────
 
+    private fun isCourseReminder(item: JSONObject): Boolean {
+        val type = item.optString("type", "")
+        val notifId = item.optInt("notifId", -1)
+        val courseName = item.optString("courseName", "")
+        return type == "course" || notifId in 31001..31999 || courseName.isNotBlank()
+    }
+
+    private fun isCourseReminderFromExtras(
+        type: String?,
+        notifId: Int,
+        courseName: String?
+    ): Boolean {
+        return type == "course" || notifId in 31001..31999 || !courseName.isNullOrBlank()
+    }
+
     private fun rescheduleAll() {
-        Log.d(TAG, "RollingAlarm: rescheduleAll start")
+        Log.d(TAG, "HybridSchedule: rescheduleAll start")
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json  = prefs.getString(KEY_REMINDERS, "[]") ?: "[]"
 
@@ -161,34 +175,56 @@ class ReminderService : Service() {
             val arr = JSONArray(json)
             val now = System.currentTimeMillis()
 
-            Log.d(TAG, "RollingAlarm: loaded reminders count = ${arr.length()}")
+            Log.d(TAG, "HybridSchedule: loaded reminders count = ${arr.length()}")
 
-            cancelRollingAlarm()
+            // 1. 取消旧的课程 rolling alarm
+            cancelCourseRollingAlarm()
 
-            val nextItem = findNextFutureReminder(arr, now)
+            // 2. 遍历所有提醒，分流处理
+            var nextCourseItem: JSONObject? = null
+            var nextCourseTime = Long.MAX_VALUE
 
-            if (nextItem != null) {
-                val triggerAtMs = nextItem.getLong("triggerAtMs")
-                val notifId = nextItem.optInt("notifId", -1)
-                val title = nextItem.optString("title", "提醒")
+            for (i in 0 until arr.length()) {
+                val item = arr.getJSONObject(i)
+                val triggerAtMs = item.optLong("triggerAtMs", -1L)
+                if (triggerAtMs <= now) continue
+
+                if (isCourseReminder(item)) {
+                    // 课程：只记录最近的一条
+                    if (triggerAtMs < nextCourseTime) {
+                        nextCourseItem = item
+                        nextCourseTime = triggerAtMs
+                    }
+                } else {
+                    // 非课程：全量注册独立 Alarm
+                    scheduleOneAlarm(item)
+                }
+            }
+
+            // 3. 注册最近课程提醒
+            if (nextCourseItem != null) {
+                val triggerAtMs = nextCourseItem.getLong("triggerAtMs")
+                val notifId = nextCourseItem.optInt("notifId", -1)
+                val title = nextCourseItem.optString("title", "提醒")
                 val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
                     .format(java.util.Date(triggerAtMs))
-                Log.d(TAG, "RollingAlarm: next trigger = $date, notifId = $notifId, title = $title")
-                scheduleRollingAlarm(nextItem)
+                Log.d(TAG, "CourseRollingAlarm: next course trigger = $date, notifId = $notifId, title = $title")
+                scheduleCourseRollingAlarm(nextCourseItem)
             } else {
-                Log.d(TAG, "RollingAlarm: no future reminders")
+                Log.d(TAG, "CourseRollingAlarm: no future course reminders")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "RollingAlarm: rescheduleAll parse error", e)
+            Log.e(TAG, "HybridSchedule: rescheduleAll parse error", e)
         }
     }
 
-    private fun findNextFutureReminder(arr: JSONArray, now: Long): JSONObject? {
+    private fun findNextCourseReminder(arr: JSONArray, now: Long): JSONObject? {
         var next: JSONObject? = null
         var nextTime = Long.MAX_VALUE
 
         for (i in 0 until arr.length()) {
             val item = arr.getJSONObject(i)
+            if (!isCourseReminder(item)) continue
             val triggerAtMs = item.optLong("triggerAtMs", -1L)
             if (triggerAtMs > now && triggerAtMs < nextTime) {
                 next = item
@@ -199,12 +235,8 @@ class ReminderService : Service() {
         return next
     }
 
-    private fun scheduleRollingAlarm(item: JSONObject) {
-        val triggerAtMs = item.getLong("triggerAtMs")
-        val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
-            action = ReminderAlarmReceiver.ACTION_FIRE
-            setPackage(packageName)
-
+    private fun putReminderExtras(intent: Intent, item: JSONObject) {
+        intent.apply {
             putExtra("title", item.optString("title", "提醒"))
             putExtra("text", item.optString("text", ""))
             putExtra("notifId", item.optInt("notifId", 20000))
@@ -240,10 +272,22 @@ class ReminderService : Service() {
                 putExtra("todo_id", it)
             }
         }
+    }
+
+    /**
+     * 课程提醒：单 Alarm 滚动调度，固定 requestCode。
+     */
+    private fun scheduleCourseRollingAlarm(item: JSONObject) {
+        val triggerAtMs = item.getLong("triggerAtMs")
+        val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+            action = ReminderAlarmReceiver.ACTION_FIRE
+            setPackage(packageName)
+            putReminderExtras(this, item)
+        }
 
         val pi = PendingIntent.getBroadcast(
             this,
-            ROLLING_ALARM_REQUEST_CODE,
+            COURSE_ROLLING_ALARM_REQUEST_CODE,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -261,12 +305,12 @@ class ReminderService : Service() {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "RollingAlarm: scheduleRollingAlarm error", e)
+            Log.e(TAG, "CourseRollingAlarm: scheduleCourseRollingAlarm error", e)
         }
     }
 
-    private fun cancelRollingAlarm() {
-        Log.d(TAG, "RollingAlarm: cancel rolling alarm")
+    private fun cancelCourseRollingAlarm() {
+        Log.d(TAG, "CourseRollingAlarm: cancel course rolling alarm")
         val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
             action = ReminderAlarmReceiver.ACTION_FIRE
@@ -275,7 +319,7 @@ class ReminderService : Service() {
 
         val pi = PendingIntent.getBroadcast(
             this,
-            ROLLING_ALARM_REQUEST_CODE,
+            COURSE_ROLLING_ALARM_REQUEST_CODE,
             intent,
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
@@ -283,6 +327,44 @@ class ReminderService : Service() {
         pi?.let {
             am.cancel(it)
             it.cancel()
+        }
+    }
+
+    /**
+     * 非课程提醒：全量独立 Alarm，requestCode = notifId。
+     */
+    private fun scheduleOneAlarm(item: JSONObject) {
+        val triggerAtMs = item.optLong("triggerAtMs", -1L)
+        val notifId = item.optInt("notifId", 20000)
+
+        val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
+            action = ReminderAlarmReceiver.ACTION_FIRE
+            setPackage(packageName)
+            putReminderExtras(this, item)
+        }
+
+        val pi = PendingIntent.getBroadcast(
+            this,
+            notifId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (am.canScheduleExactAlarms()) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+                } else {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+                }
+            } else {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+            }
+            Log.d(TAG, "FullReminderAlarm: scheduled non-course reminder notifId = $notifId, triggerAtMs = $triggerAtMs")
+        } catch (e: Exception) {
+            Log.e(TAG, "FullReminderAlarm: scheduleOneAlarm error, notifId = $notifId", e)
         }
     }
 
