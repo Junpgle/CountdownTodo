@@ -12,3 +12,6 @@ PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.math_quiz.junpgle.com. All rights reserved.
+
+// 仅构建 Apple Silicon (arm64) 版本
+ARCHS = arm64;
