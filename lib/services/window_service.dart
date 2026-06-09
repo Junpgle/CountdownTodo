@@ -1,10 +1,9 @@
 import 'dart:async' show TimeoutException, Timer;
 import 'dart:io';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:win32/win32.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -19,6 +18,9 @@ class WindowService extends WindowListener with TrayListener {
   static const _keyH = 'main_window_h';
   static const double _minStartupWidth = 720;
   static const double _minStartupHeight = 480;
+
+  static const MethodChannel _nativeChannel =
+      MethodChannel('com.math_quiz_app/window_native');
 
   static Timer? _debounce;
   static Rect? _startupBounds;
@@ -51,11 +53,10 @@ class WindowService extends WindowListener with TrayListener {
         }
       }
 
-      // Register listener for move/resize to persist bounds with debounce
       windowManager.addListener(_instance);
       debugPrint('[WindowService] windowManager.addListener(_instance) done');
 
-      if (Platform.isWindows) {
+      if (Platform.isWindows || Platform.isMacOS) {
         await _initTray();
         await _initLaunchAtStartup();
       }
@@ -82,7 +83,12 @@ class WindowService extends WindowListener with TrayListener {
 
   static Future<void> _updateTrayMenu() async {
     try {
-      bool isLaunchAtStartup = await launchAtStartup.isEnabled();
+      bool isLaunchAtStartup = false;
+      try {
+        isLaunchAtStartup = await launchAtStartup.isEnabled();
+      } catch (_) {
+        // macOS 可能不支持 isEnabled
+      }
       Menu menu = Menu(
         items: [
           MenuItem(
@@ -141,9 +147,6 @@ class WindowService extends WindowListener with TrayListener {
       await windowManager.setBounds(bounds);
 
       if (Platform.isWindows) {
-        // Windows sometimes keeps the Flutter child view at a stale swap-chain
-        // size when restoring a non-default window size before the first show.
-        // A hidden 1px nudge forces a real WM_SIZE, then restores the user size.
         final nudged = Rect.fromLTWH(
           bounds.left,
           bounds.top,
@@ -215,7 +218,6 @@ class WindowService extends WindowListener with TrayListener {
     });
   }
 
-  // WindowListener overrides
   @override
   void onWindowMove() {
     _scheduleSave();
@@ -226,7 +228,6 @@ class WindowService extends WindowListener with TrayListener {
     _scheduleSave();
   }
 
-  // TrayListener overrides
   @override
   void onTrayIconMouseDown() {
     windowManager.show();
@@ -269,21 +270,17 @@ class WindowService extends WindowListener with TrayListener {
         _updateTrayMenu();
         break;
       case 'exit_app':
-        TerminateProcess(GetCurrentProcess(), 0);
-        break;
+        exit(0);
     }
   }
 
   bool _isHandlingClose = false;
   static Future<bool> Function()? onShowCloseConfirm;
 
-  // WindowListener overrides for closure
   @override
   void onWindowClose() {
     debugPrint(
-        '[WindowService] ⚠️ onWindowClose() called - preventing close immediately');
-
-    // 立即处理，不等待
+        '[WindowService] onWindowClose() called - preventing close immediately');
     _doHandleWindowClose();
   }
 
@@ -325,8 +322,8 @@ class WindowService extends WindowListener with TrayListener {
       } catch (e) {
         debugPrint(
             '[WindowService] Flutter dialog failed ($failureReason): $e, showing native dialog');
-        final result = _showNativeMessageBox();
-        shouldExit = (result == 6); // IDYES = 6
+        final result = await _showNativeCloseDialog();
+        shouldExit = (result == 6);
         debugPrint(
             '[WindowService] Native dialog result: $result, shouldExit=$shouldExit');
       }
@@ -338,8 +335,7 @@ class WindowService extends WindowListener with TrayListener {
         try {
           await windowManager.hide();
         } catch (_) {}
-        // 强制退出程序
-        TerminateProcess(GetCurrentProcess(), 0);
+        exit(0);
       } else {
         debugPrint('[WindowService] User chose minimize - hiding window');
         try {
@@ -347,8 +343,6 @@ class WindowService extends WindowListener with TrayListener {
         } catch (e) {
           debugPrint('[WindowService] Error hiding window: $e');
         }
-        // ⚠️ 关键修复：通过 setPreventClose(true) 来真正阻止窗口关闭
-        // 这会让 window_manager 知道我们处理了关闭事件
         try {
           await windowManager.setPreventClose(true);
           debugPrint('[WindowService] Successfully prevented window close');
@@ -358,33 +352,22 @@ class WindowService extends WindowListener with TrayListener {
       }
     } catch (e) {
       debugPrint('[WindowService] Critical error in close logic: $e');
-      TerminateProcess(GetCurrentProcess(), 0);
+      exit(0);
     } finally {
       _isHandlingClose = false;
     }
   }
 
-  int _showNativeMessageBox() {
-    const mbYesno = 0x00000004;
-    const mbDefbutton2 = 0x00000100;
-    const mbTopmost = 0x00040000;
-    const mbIconquestion = 0x00000020;
-
-    // 使用 0 作为父窗口句柄，确保对话框在任何情况下都能作为独立顶层窗口弹出
-    final title = '关闭确认'.toNativeUtf16();
-    final message = '选择操作：\n\n是 - 退出程序\n否 - 最小化到托盘'.toNativeUtf16();
-
-    final result = MessageBox(
-      0,
-      message,
-      title,
-      mbYesno | mbDefbutton2 | mbTopmost | mbIconquestion,
-    );
-
-    calloc.free(title);
-    calloc.free(message);
-
-    return result;
+  Future<int> _showNativeCloseDialog() async {
+    try {
+      final result = await _nativeChannel.invokeMethod<int>(
+        'showNativeCloseDialog',
+      );
+      return result ?? -1;
+    } catch (e) {
+      debugPrint('[WindowService] Native close dialog failed: $e');
+      return -1;
+    }
   }
 
   @override

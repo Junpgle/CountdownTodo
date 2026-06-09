@@ -322,6 +322,7 @@ class ApiService {
           'server_tags': data['server_pomodoro_tags'] ?? [],
           'server_plan_blocks': data['server_plan_blocks'] ?? [],
           'joined_team_uuids': data['joined_team_uuids'],
+          'independent_completions': data['independent_completions'], // 🚀 独立完成状态
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {

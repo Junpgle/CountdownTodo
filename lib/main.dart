@@ -28,6 +28,7 @@ import 'services/window_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/notification_service.dart';
 import 'services/pomodoro_service.dart';
+import 'widgets/macos_menu_bar.dart';
 import 'services/pomodoro_sync_service.dart';
 import 'services/widget_service.dart';
 import 'services/splash_service.dart';
@@ -128,7 +129,7 @@ Future<void> main(List<String> args) async {
   _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -740,7 +741,8 @@ class _MyAppState extends State<MyApp> {
             currentThemeMode = ThemeMode.system;
         }
 
-        return MaterialApp(
+        return MacosMenuBar(
+          child: MaterialApp(
           title: 'CountDownTodo',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,
@@ -829,6 +831,7 @@ class _MyAppState extends State<MyApp> {
                                   username: _loggedInUser!,
                                 )
                               : const LoginScreen(),
+          ),
         );
       },
     );

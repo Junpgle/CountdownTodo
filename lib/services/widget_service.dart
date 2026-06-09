@@ -3,8 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
@@ -50,19 +52,27 @@ class WidgetService {
   static const int maxWidgetItems = 8;
   static Timer? _periodicTimer;
 
+  static const MethodChannel _macOSWidgetChannel =
+      MethodChannel('com.countdowntodo/widget');
+
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
     _periodicTimer = null;
   }
 
   static Future<void> init() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_initialized) return;
-    try {
-      await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      try {
+        await HomeWidget.registerInteractivityCallback(widgetBackgroundCallback);
+        _initialized = true;
+      } catch (e) {
+        print('WidgetBackground 注册失败: $e');
+      }
+    } else if (Platform.isMacOS) {
       _initialized = true;
-    } catch (e) {
-      print('WidgetBackground 注册失败: $e');
     }
 
     // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
@@ -110,7 +120,7 @@ class WidgetService {
 
   static Future<void> updateAllWidgetData(
       String username, List<TodoItem> todos) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     if (_widgetUpdateDisabled) return;
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -242,40 +252,213 @@ class WidgetService {
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
 
-    // 批量写入结果
-    final List<Future<void>> widgetWrites = [];
-    widgetData.forEach((key, value) {
-      widgetWrites.add(HomeWidget.saveWidgetData(key, value));
-    });
+    // Android：写入 SharedPreferences 并更新 widget
+    if (Platform.isAndroid || Platform.isIOS) {
+      await _updateAndroidWidgets(widgetData);
+    }
 
-    await Future.wait(widgetWrites);
+    // macOS：构建富数据快照并刷新 WidgetKit
+    if (Platform.isMacOS) {
+      final macSnapshot = await _buildMacOSSnapshot(allTodos, allCourses, countdownsRaw, now, today);
+      await _updateMacOSWidget(macSnapshot);
+    }
+  }
+
+  static Future<WidgetSnapshot> _buildMacOSSnapshot(
+    List<TodoItem> allTodos,
+    List<CourseItem> allCourses,
+    List<CountdownItem> countdownsRaw,
+    DateTime now,
+    DateTime today,
+  ) async {
+    // 1. 倒数日：未删除、未过期，按目标日期排序
+    final countdownItems = countdownsRaw
+        .where((c) => !c.isDeleted && !c.isCompleted)
+        .map((c) {
+          final diffDays = DateTime(c.targetDate.year, c.targetDate.month, c.targetDate.day)
+              .difference(today)
+              .inDays;
+          return WidgetCountdownItem(
+            title: c.title,
+            daysLeft: diffDays,
+            dateText: DateFormat('yyyy-MM-dd').format(c.targetDate),
+          );
+        })
+        .where((c) => c.daysLeft >= 0)
+        .toList()
+      ..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
+
+    // 2. 待办：未完成、未删除，按紧急度排序
+    final todoItems = allTodos
+        .where((t) => !t.isDone && !t.isDeleted)
+        .map((t) {
+          String? timeText;
+          int priority = 0;
+          if (t.dueDate != null) {
+            final diffDays = DateTime(t.dueDate!.year, t.dueDate!.month, t.dueDate!.day)
+                .difference(today)
+                .inDays;
+            if (diffDays < 0) {
+              timeText = '已逾期';
+              priority = 3;
+            } else if (diffDays == 0) {
+              timeText = '今天 ${t.dueDate!.hour.toString().padLeft(2, '0')}:${t.dueDate!.minute.toString().padLeft(2, '0')}';
+              priority = 2;
+            } else if (diffDays == 1) {
+              timeText = '明天';
+              priority = 1;
+            } else {
+              timeText = '$diffDays天后';
+            }
+          }
+          return WidgetTodoItem(
+            title: t.title,
+            timeText: timeText,
+            priority: priority,
+            isDone: t.isDone,
+          );
+        })
+        .toList()
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        if (a.priority != b.priority) return b.priority.compareTo(a.priority);
+        return 0;
+      });
+
+    // 3. 课程：今日课程，按时间排序
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final courseItems = allCourses
+        .where((c) => !c.isDeleted && c.date == todayStr)
+        .map((c) {
+          String? statusText;
+          final startH = c.startTime ~/ 100;
+          final startM = c.startTime % 100;
+          final endH = c.endTime ~/ 100;
+          final endM = c.endTime % 100;
+          final courseStart = DateTime(now.year, now.month, now.day, startH, startM);
+          final courseEnd = DateTime(now.year, now.month, now.day, endH, endM);
+
+          if (now.isAfter(courseStart) && now.isBefore(courseEnd)) {
+            final remaining = courseEnd.difference(now).inMinutes;
+            statusText = '正在上课 · 还剩${remaining}分钟';
+          } else if (now.isBefore(courseStart)) {
+            final diff = courseStart.difference(now).inMinutes;
+            if (diff <= 30) {
+              statusText = '即将开始 · ${diff}分钟后';
+            } else {
+              statusText = '待上';
+            }
+          } else {
+            statusText = '已结束';
+          }
+
+          return WidgetCourseItem(
+            title: c.courseName,
+            timeText: '${c.formattedStartTime} - ${c.formattedEndTime}',
+            location: c.roomName,
+            statusText: statusText,
+          );
+        })
+        .toList()
+      ..sort((a, b) => a.timeText.compareTo(b.timeText));
+
+    // 4. 专注状态
+    int todayMinutes = 0;
+    bool isRunning = false;
+    String? currentTitle;
+    int remainingSeconds = 0;
 
     try {
-      // 使用 qualifiedAndroidName 传入完整类名，避免 debug 构建中 applicationId 带 .debug 后缀导致 Class.forName 失败
-      final results = await Future.wait([
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$androidWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
-          return false;
-        }),
-        HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName').catchError((e) {
-          debugPrint('⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
-          return false;
-        }),
-      ]);
+      final runState = await PomodoroService.loadRunState();
+      if (runState != null && runState.phase == PomodoroPhase.focusing) {
+        isRunning = true;
+        currentTitle = runState.todoTitle ?? '专注中';
+        final elapsed = runState.isPaused
+            ? (runState.accumulatedMs ~/ 1000)
+            : (DateTime.now().millisecondsSinceEpoch - runState.sessionStartMs) ~/ 1000 +
+                (runState.accumulatedMs ~/ 1000);
+        final planned = runState.plannedFocusSeconds;
+        if (planned > 0) {
+          remainingSeconds = (planned - elapsed).clamp(0, planned);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final todayRecords = await PomodoroService.getTodayRecords();
+      for (final r in todayRecords) {
+        final end = r.endTime;
+        final start = r.startTime;
+        if (!r.isDeleted && end != null && end > 0 && start > 0) {
+          todayMinutes += ((end - start) ~/ 60000);
+        }
+      }
+    } catch (_) {}
+
+    final focusState = WidgetFocusState(
+      isRunning: isRunning,
+      currentTitle: currentTitle,
+      todayMinutes: todayMinutes,
+      sessionMinutes: remainingSeconds > 0 ? (remainingSeconds / 60).ceil() : 0,
+      remainingSeconds: remainingSeconds,
+    );
+
+    return WidgetSnapshot(
+      updatedAt: now,
+      countdowns: countdownItems.take(5).toList(),
+      todos: todoItems.take(8).toList(),
+      courses: courseItems.take(6).toList(),
+      focus: focusState,
+    );
+  }
+
+  static Future<void> _updateAndroidWidgets(Map<String, dynamic> widgetData) async {
+    try {
+      final List<Future<void>> widgetWrites = [];
+      widgetData.forEach((key, value) {
+        widgetWrites.add(HomeWidget.saveWidgetData(key, value));
+      });
+
+      await Future.wait(widgetWrites);
+
+      try {
+        await Future.wait([
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$androidWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$countdownOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName').catchError((e) {
+            debugPrint('⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+            return false;
+          }),
+        ]);
+      } catch (e) {
+        debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+      }
     } catch (e) {
-      debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+      debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
+    }
+  }
+
+  static Future<void> _updateMacOSWidget(WidgetSnapshot snapshot) async {
+    try {
+      await _macOSWidgetChannel.invokeMethod('saveWidgetSnapshot', {
+        'json': snapshot.toJsonString(),
+      });
+    } catch (e) {
+      debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
   }
 

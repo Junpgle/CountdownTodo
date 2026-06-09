@@ -56,17 +56,36 @@ class AccountSection extends StatelessWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
-              ListTile(
-                leading: CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: const Icon(Icons.person)),
-                title: Text(username,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(userId != null ? "UID: $userId" : "离线模式"),
-                trailing:
-                    const Icon(Icons.edit_square, size: 20, color: Colors.grey),
+              InkWell(
                 onTap: onChangePassword,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          child: const Icon(Icons.person)),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(username,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            Text(userId != null ? "UID: $userId" : "离线模式",
+                                style: const TextStyle(
+                                    fontSize: 13, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.edit_square,
+                          size: 20, color: Colors.grey),
+                    ],
+                  ),
+                ),
               ),
               const Divider(height: 1, indent: 56),
               Padding(

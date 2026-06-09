@@ -126,8 +126,8 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
-      debugPrint(
-          '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
+      //debugPrint(
+      //    '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (sync) requestSync(username);
@@ -267,6 +267,9 @@ class StorageService {
       "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
+  static Set<String> _pendingSyncOplogUuids = {}; // 🚀 同步前有待同步 oplog 的 UUID
+  static Set<String> _forceFlushProtectedUuids =
+      {}; // 🚀 force-flush 保护的 UUID，merge 时跳过
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -293,6 +296,10 @@ class StorageService {
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
     });
+  }
+
+  static void setForceFlushProtectedUuids(Set<String> uuids) {
+    _forceFlushProtectedUuids = uuids;
   }
 
   static void requestSync(String username) {
@@ -1047,6 +1054,41 @@ class StorageService {
         existingItemsMap[row['uuid']] = row;
       }
     }
+    // 🚀 同步写入时，查询 force-flush 保护或有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
+    // 优先级：force-flush > pending oplog > normal sync
+    Map<String, int> existingCompletionMap = {};
+    if (isSyncSource &&
+        dedupeList.isNotEmpty &&
+        (_forceFlushProtectedUuids.isNotEmpty ||
+            _pendingSyncOplogUuids.isNotEmpty)) {
+      final localPrefs = await prefs;
+      final int currentUserId = localPrefs.getInt('current_user_id') ?? 0;
+      if (currentUserId > 0) {
+        // 需要保护的 UUID = force-flush 的 + pending oplog 的
+        final uuidsToPreserve = dedupeList
+            .where((item) =>
+                _forceFlushProtectedUuids.contains(item.id) ||
+                _pendingSyncOplogUuids.contains(item.id))
+            .map((item) => item.id)
+            .toList();
+        if (uuidsToPreserve.isNotEmpty) {
+          final placeholders =
+              List.filled(uuidsToPreserve.length, '?').join(',');
+          final rows = await db.rawQuery(
+            'SELECT t.uuid, CASE WHEN t.collab_type = 1 AND c.is_completed IS NOT NULL THEN c.is_completed ELSE t.is_completed END AS is_completed '
+            'FROM todos t LEFT JOIN todo_completions c ON t.uuid = c.todo_uuid AND c.user_id = ? '
+            'WHERE t.uuid IN ($placeholders)',
+            [currentUserId, ...uuidsToPreserve],
+          );
+          for (var row in rows) {
+            existingCompletionMap[row['uuid'] as String] =
+                (row['is_completed'] as int?) ?? 0;
+          }
+          //debugPrint(
+            //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
+        }
+      }
+    }
 
     // 🚀 Batch 极速批量写入
     final batch = db.batch();
@@ -1093,9 +1135,29 @@ class StorageService {
           'sync_error': '',
         });
         queuedTodoOps++;
+        //if (!isSyncSource) {
+          //debugPrint(
+          //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
+        //}
       }
 
       if (hasChanged || oldData == null) {
+        // 🚀 同步写入时，如果有待同步 oplog，保留 DB 中的 is_completed，
+        // 防止 syncData 的 saveTodos 覆盖用户本地修改（force-flush 写入的值）
+        final int isCompleted;
+        if (isSyncSource && existingCompletionMap.containsKey(item.id)) {
+          isCompleted = existingCompletionMap[item.id]!;
+          /*debugPrint(
+              '🧪 [SyncDiag][saveTodos-sync] PRESERVED UUID=${item.id} isCompleted=$isCompleted');
+              */
+        } else {
+          isCompleted = item.isDone ? 1 : 0;
+          if (isSyncSource) {
+            /*debugPrint(
+                '🧪 [SyncDiag][saveTodos-sync] OVERWRITE UUID=${item.id} isCompleted=$isCompleted (from merge)');
+          */
+          }
+        }
         batch.insert(
             'todos',
             {
@@ -1106,7 +1168,7 @@ class StorageService {
               'team_name': item.teamName,
               'creator_id': item.creatorId,
               'creator_name': item.creatorName,
-              'is_completed': item.isDone ? 1 : 0,
+              'is_completed': isCompleted,
               'is_deleted': item.isDeleted ? 1 : 0,
               'version': item.version,
               'due_date': item.dueDate?.millisecondsSinceEpoch ?? 0,
@@ -1163,9 +1225,11 @@ class StorageService {
         }
       }
 
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
+    */
     }
+
 
     if (recomputeScheduleConflicts) {
       await _refreshTodoScheduleConflicts(username);
@@ -3112,13 +3176,19 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      // 🚀 记录有待同步 oplog 的 待办 UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
+      _pendingSyncOplogUuids = pendingOps
+          .where((op) => op['target_table'] == 'todos')
+          .map((op) => op['target_uuid']?.toString() ?? '')
+          .where((uuid) => uuid.isNotEmpty)
+          .toSet();
       final pendingByTable = <String, int>{};
       for (final op in pendingOps) {
         final t = (op['target_table'] ?? 'unknown').toString();
         pendingByTable[t] = (pendingByTable[t] ?? 0) + 1;
       }
-      debugPrint(
-          '🧪 [SyncDiag][PendingOps] total=${pendingOps.length} byTable=$pendingByTable');
+      /*debugPrint(
+          '🧪 [SyncDiag][PendingOps] total=${pendingOps.length} byTable=$pendingByTable');*/
 
       final Map<String, Map<String, dynamic>> dedupTodos = {};
       final Map<String, Map<String, dynamic>> dedupGroups = {};
@@ -3175,8 +3245,8 @@ class StorageService {
           where: 'id IN ($placeholders)',
           whereArgs: consumedConflictOpIds,
         );
-        debugPrint(
-            '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');
+        /*debugPrint(
+            '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');*/
       }
 
       dirtyTodos = dedupTodos.values.toList();
@@ -3313,9 +3383,9 @@ class StorageService {
           .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
           .map((e) => (e['uuid'] ?? e['id']).toString())
           .toList();
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][Client->Server] deviceId=$deviceId lastSync=$lastSyncTime todos=${dirtyTodos.length} deletedTodos=${uploadedDeletedTodoUuids.length} todoUuids=$uploadedTodoUuids deletedTodoUuids=$uploadedDeletedTodoUuids planBlocks=${dirtyPlanBlocks.length} deletedPlanBlocks=${uploadedDeletedPlanUuids.length} planUuids=$uploadedPlanUuids deletedPlanUuids=$uploadedDeletedPlanUuids');
-
+*/
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -3354,9 +3424,9 @@ class StorageService {
           .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
           .map((e) => (e['uuid'] ?? e['id']).toString())
           .toList();
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][Server->Client] success=${response['success']} todos=${serverTodosPreview.length} deletedTodos=${serverDeletedTodoUuids.length} todoUuids=$serverTodoUuids deletedTodoUuids=$serverDeletedTodoUuids planBlocks=${serverPlanPreview.length} deletedPlanBlocks=${serverDeletedPlanUuids.length} planUuids=$serverPlanUuids deletedPlanUuids=$serverDeletedPlanUuids');
-
+*/
       bool hasPendingUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
@@ -3512,12 +3582,20 @@ class StorageService {
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions =
             response['independent_completions'];
+        //debugPrint(
+        //    '🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
           final batch = db.batch();
+          var independentCompletionChanged = false;
           for (var ic in indCompletions) {
             if (ic is! Map) continue;
             final todoUuid = ic['todo_uuid']?.toString();
             if (todoUuid == null || todoUuid.isEmpty) continue;
+            final rawCompleted = ic['is_completed'];
+            final isCompleted = rawCompleted == 1 ||
+                rawCompleted == true ||
+                rawCompleted?.toString() == '1' ||
+                rawCompleted?.toString().toLowerCase() == 'true';
             final serverUpdatedAt =
                 int.tryParse(ic['updated_at']?.toString() ?? '') ?? 0;
             final existing = await db.query(
@@ -3529,22 +3607,58 @@ class StorageService {
             final localUpdatedAt = existing.isNotEmpty
                 ? (existing.first['updated_at'] as num?)?.toInt() ?? 0
                 : 0;
-            if (serverUpdatedAt > 0 && serverUpdatedAt < localUpdatedAt) {
+            // 🚀 时间戳比较修复：如果本地没有完成状态记录，判定为从未修改（localUpdatedAt=0），此时应接受服务端更新
+            // 仅当本地有明确的更新时间且晚于服务端时，才跳过 DB 写入
+            final hasLocalModification = localUpdatedAt > 0;
+            if (hasLocalModification &&
+                serverUpdatedAt > 0 &&
+                serverUpdatedAt < localUpdatedAt) {
+              // 本地有更新且晚于服务端，跳过 DB 写入，但仍需从 DB 读取正确值更新内存
+              final localIsCompleted = existing.isNotEmpty
+                  ? (existing.first['is_completed'] as int?) ?? 0
+                  : 0;
+              final localIdx =
+                  allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
+              if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
+                if (allLocalTodos[localIdx].isDone != (localIsCompleted == 1)) {
+                  allLocalTodos[localIdx].isDone = localIsCompleted == 1;
+                  independentCompletionChanged = true;
+                  if (!allLocalTodos[localIdx].isDeleted)
+                    updatedTodoIds.add(todoUuid);
+                }
+              }
+              //debugPrint(
+              //    '🧪 [SyncDiag][IndepCompletion] SKIP_DB $todoUuid (server $serverUpdatedAt < local $localUpdatedAt), memory isDone=${localIsCompleted == 1}');
               continue;
             }
+            //debugPrint(
+           //    '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
             batch.insert(
                 'todo_completions',
                 {
                   'todo_uuid': todoUuid,
                   'user_id': userId,
-                  'is_completed': ic['is_completed'],
+                  'is_completed': isCompleted ? 1 : 0,
                   'updated_at': serverUpdatedAt > 0
                       ? serverUpdatedAt
                       : DateTime.now().millisecondsSinceEpoch,
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
+            final localIdx =
+                allLocalTodos.indexWhere((todo) => todo.id == todoUuid);
+            if (localIdx != -1 && allLocalTodos[localIdx].collabType == 1) {
+              if (allLocalTodos[localIdx].isDone != isCompleted) {
+                allLocalTodos[localIdx].isDone = isCompleted;
+                independentCompletionChanged = true;
+                if (!allLocalTodos[localIdx].isDeleted)
+                  updatedTodoIds.add(todoUuid);
+              }
+            }
           }
           await batch.commit(noResult: true);
+          if (independentCompletionChanged) {
+            hasChanges = true;
+          }
         }
 
         // 🚀 核心修复：清理本地孤立的团队数据 (处理离线被移出团队的情况)
@@ -3646,6 +3760,14 @@ class StorageService {
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
+
+          // 🚀 核心保护：force-flush 的待办跳过 merge，防止同步覆盖用户刚做的修改
+          if (_forceFlushProtectedUuids.contains(sItem.id)) {
+            debugPrint(
+                '🛡️ [merge] SKIP UUID=${sItem.id} (force-flush protected)');
+            continue;
+          }
+
           debugPrint(
               '🔄 [合并对比] UUID: ${sItem.id}, Server(V:${sItem.version}, D:${sItem.isDeleted}), Local(V:${local.version}, D:${local.isDeleted})');
 
@@ -3703,6 +3825,13 @@ class StorageService {
           if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
+            // 🚀 独立完成待办不参与冲突，清除可能的残留冲突标记
+            if (sItem.collabType == 1 && (sItem.hasConflict || localItem.hasConflict)) {
+              localItem.hasConflict = false;
+              localItem.serverVersionData = null;
+              hasChanges = true;
+              continue;
+            }
             if (sItem.hasConflict && !localItem.hasConflict) {
               if (isRecentlyResolved(localItem.id)) {
                 debugPrint(
@@ -4089,6 +4218,8 @@ class StorageService {
           await savePlanBlocks(username, allLocalPlanBlocks,
               sync: false, isSyncSource: true);
         }
+        _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
+        _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
       }
 
       // 8. 更新同步水位线
@@ -4130,6 +4261,9 @@ class StorageService {
       return {'success': false, 'hasChanges': false, 'error': e.toString()};
     } finally {
       _isSyncing = false;
+      // 🚀 无条件清除保护，防止跨越同步周期
+      _pendingSyncOplogUuids.clear();
+      _forceFlushProtectedUuids.clear();
     }
   }
 
@@ -4151,7 +4285,7 @@ class StorageService {
       final isAllDayRange =
           startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
 
-      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
+      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange || todo.collabType == 1) {
         continue;
       }
 

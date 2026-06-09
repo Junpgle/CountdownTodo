@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
@@ -24,6 +23,7 @@ import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
+import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
@@ -311,6 +311,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
+    MacPomodoroStatusBarService.init();
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -492,6 +493,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
     _pomodoroTickNotifier.dispose();
+    MacPomodoroStatusBarService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -2922,7 +2924,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       final bool hasTeamConflict = conflictDetectionEnabled &&
           (allTodos.any((t) {
-                if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) {
+                if (!t.hasConflict || t.collabType == 1 || (t.teamUuid?.isEmpty ?? true)) {
                   return false;
                 }
                 if (t.isAllDayTask) return false;
@@ -2954,6 +2956,10 @@ class _HomeDashboardState extends State<HomeDashboard>
           _safeListResult<TodoPlanBlock>(results[5]);
 
       if (mounted) {
+        // 🚀 诊断日志：打印 collabType=1 的 is_completed 值
+        /*for (final t in allTodos.where((t) => t.collabType == 1 && !t.isDeleted)) {
+          debugPrint('🧪 [SyncDiag][_loadAllData] collab1 UUID=${t.id} isDone=${t.isDone} version=${t.version}');
+        }*/
         // 🚀 Granular Update: Only update notifiers if content actually changed
         if (!_isListEqual(_todos, allTodos)) {
           _todos = allTodos;
@@ -3121,6 +3127,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (final snapshot in snapshots) {
       for (final pending in snapshot) {
         final existing = byId[pending.id];
+        // 🚀 用户主动修改优先：updatedAt >= 时信任挂起快照
         if (existing == null || pending.updatedAt >= existing.updatedAt) {
           byId[pending.id] = pending;
         }
@@ -3216,6 +3223,24 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool syncPlanBlocks = true,
   }) async {
     if (_isSyncing) return;
+
+    // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
+    // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
+    final pendingSnapshotBeforeSync = _pendingTodosToPersist;
+    if (pendingSnapshotBeforeSync != null) {
+      _pendingTodosToPersist = null;
+      _todoPersistDebounce?.cancel();
+      final changedDesc = pendingSnapshotBeforeSync
+          .where((t) => !t.isDeleted)
+          .map((t) => '${t.id.substring(0,8)} isDone=${t.isDone}')
+          .join(', ');
+      //debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
+      await StorageService.saveTodos(widget.username, pendingSnapshotBeforeSync);
+      // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
+      StorageService.setForceFlushProtectedUuids(
+          pendingSnapshotBeforeSync.map((t) => t.id).toSet());
+    }
+
     setState(() {
       _isSyncing = true;
     });
@@ -3351,6 +3376,10 @@ class _HomeDashboardState extends State<HomeDashboard>
           _isSyncing = false;
         });
       }
+      // 🚀 同步完成后清除保护，防止后续加载被干扰
+      _pendingTodosToPersist = null;
+      _persistingTodosSnapshot = null;
+      StorageService.setForceFlushProtectedUuids({});
     }
   }
 
@@ -3857,37 +3886,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                       _wallpaperUrl!,
                       fit: BoxFit.cover,
                     )
-                  : CachedNetworkImage(
-                      cacheManager: WallpaperCacheService.cacheManager,
-                      imageUrl: _wallpaperUrl!,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 1080,
-                      maxWidthDiskCache: 1920,
-                      fadeInDuration: const Duration(milliseconds: 800),
-                      imageBuilder: (context, imageProvider) {
-                        // 🚀 成功加载网络图片后，重置重试计数
+                  : _WallpaperNetworkImage(
+                      url: _wallpaperUrl!,
+                      onSuccess: () {
                         _wallpaperRetryCount = 0;
-                        return Container(
-                          decoration: BoxDecoration(
-                            image: DecorationImage(
-                              image: imageProvider,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
                       },
-                      placeholder: (context, url) => Image.asset(
-                        'assets/images/default_wallpaper.png',
-                        fit: BoxFit.cover,
-                      ),
-                      errorWidget: (context, url, error) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _handleWallpaperError();
-                        });
-                        return Image.asset(
-                          'assets/images/default_wallpaper.png',
-                          fit: BoxFit.cover,
-                        );
+                      onError: () {
+                        _handleWallpaperError();
                       },
                     ),
             ),
@@ -4798,4 +4803,90 @@ class HomeBannerEvent {
     this.actionIcon,
     this.onAction,
   });
+}
+
+class _WallpaperNetworkImage extends StatefulWidget {
+  final String url;
+  final VoidCallback onSuccess;
+  final VoidCallback onError;
+
+  const _WallpaperNetworkImage({
+    required this.url,
+    required this.onSuccess,
+    required this.onError,
+  });
+
+  @override
+  State<_WallpaperNetworkImage> createState() => _WallpaperNetworkImageState();
+}
+
+class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
+  Uint8List? _imageBytes;
+  bool _loading = true;
+  bool _reported = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WallpaperNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _imageBytes = null;
+      _loading = true;
+      _reported = false;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final resp = await http.get(
+        Uri.parse(widget.url),
+        headers: const {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        },
+      );
+      if (resp.statusCode == 200 && mounted) {
+        setState(() {
+          _imageBytes = resp.bodyBytes;
+          _loading = false;
+        });
+        widget.onSuccess();
+      } else {
+        _fail();
+      }
+    } catch (_) {
+      _fail();
+    }
+  }
+
+  void _fail() {
+    if (mounted) {
+      setState(() => _loading = false);
+      if (!_reported) {
+        _reported = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onError();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Image.asset('assets/images/default_wallpaper.png',
+          fit: BoxFit.cover);
+    }
+    if (_imageBytes == null) {
+      return Image.asset('assets/images/default_wallpaper.png',
+          fit: BoxFit.cover);
+    }
+    return Image.memory(_imageBytes!, fit: BoxFit.cover);
+  }
 }

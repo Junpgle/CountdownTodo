@@ -33,6 +33,20 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# iOS generated
+ios/Flutter/Debug.xcconfig
+ios/Flutter/Release.xcconfig
+ios/Flutter/Flutter-*.xcconfig
+ios/Podfile
+ios/Podfile.lock
+
+# macOS generated
+macos/Flutter/Flutter-*.xcconfig
+macos/Podfile
+macos/Podfile.lock
+macos/Runner.xcworkspace/
+macos/Runner.xcodeproj/project.xcworkspace/
+
 # Symbolication related
 app.*.symbols
 
@@ -84,3 +98,4 @@ todo.md
 .tmp
 /aliyun_release
 /test/
+/macos/build/

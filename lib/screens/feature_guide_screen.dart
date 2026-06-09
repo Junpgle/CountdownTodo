@@ -14,6 +14,9 @@ import '../storage_service.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../utils/page_transitions.dart';
+import 'course_screens.dart';
+import 'personal_timeline_screen.dart';
+import '../widgets/global_search_overlay.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -57,8 +60,19 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   String _previousShownVersion = '';
   List<ChangelogEntry> _changelogHistory = [];
   bool _loadingChangelog = true;
+  bool _changelogFetchFailed = false; // 🚀 区分"无网络"和"本版本无更新日志"
   String? _changelogNotice;
   final Set<String> _expandedVersions = {};
+
+  // 🚀 最近更新功能数据 —— 每次发版只改这里
+  List<_RecentFeature> get _recentFeatures => [
+    _RecentFeature(Icons.view_week_rounded, Colors.blue, '周视图午休折叠', '课程->周视图',
+        destinationBuilder: () => WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
+    _RecentFeature(Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
+        destinationBuilder: () => PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
+    _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
+        destinationBuilder: () => const GlobalSearchOverlay()),
+  ];
 
   // 权限状态
   PermissionStatus? _notificationStatus;
@@ -219,6 +233,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _changelogHistory = [];
         _showDatabaseUpdatePage = false;
         _loadingChangelog = false;
+        _changelogFetchFailed = true; // 🚀 标记为获取失败（通常是无网络）
         _changelogNotice = null;
       });
       await _setupPages();
@@ -623,8 +638,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               const SizedBox(height: 14),
               if (_loadingChangelog)
                 const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              else if (current == null || current.items.isEmpty)
+              else if (_changelogFetchFailed)
                 Text('请联网后查看详细更新内容。',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurface.withValues(alpha: 0.6)))
+              else if (current == null || current.items.isEmpty)
+                Text('本版本暂无更新日志。',
                     style: TextStyle(
                         fontSize: 13,
                         color: scheme.onSurface.withValues(alpha: 0.6)))
@@ -633,6 +653,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 24),
+        // 🚀 最近更新功能
+        _buildRecentFeaturesSection(scheme),
         const SizedBox(height: 24),
         // 历史版本
         if (history.isNotEmpty) ...[
@@ -766,6 +789,89 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ),
         const SizedBox(height: 6),
       ],
+    );
+  }
+
+  Widget _buildRecentFeaturesSection(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Icon(Icons.auto_awesome_rounded,
+              size: 16, color: scheme.onSurface.withValues(alpha: 0.45)),
+          const SizedBox(width: 6),
+          Text('最近更新功能',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface.withValues(alpha: 0.45))),
+        ]),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (int i = 0; i < _recentFeatures.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              Expanded(child: _buildRecentFeatureCard(_recentFeatures[i], scheme)),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentFeatureCard(_RecentFeature feature, ColorScheme scheme) {
+    final canNavigate = !_isFirstLaunch && feature.destinationBuilder != null;
+    return InkWell(
+      onTap: () {
+        if (canNavigate) {
+          // 更新后查看：直接跳转
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => feature.destinationBuilder!()),
+          );
+        } else {
+          // 首次使用：仅提示位置
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📍 ${feature.title}：${feature.subtitle}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        decoration: BoxDecoration(
+          color: feature.color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: feature.color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(feature.icon, size: 28, color: feature.color),
+            const SizedBox(height: 8),
+            Text(feature.title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface.withValues(alpha: 0.85))),
+            const SizedBox(height: 2),
+            Text(feature.subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: scheme.onSurface.withValues(alpha: 0.45))),
+            const SizedBox(height: 8),
+            Text('立即体验',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: feature.color)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1538,6 +1644,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       ),
     );
   }
+}
+
+class _RecentFeature {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final Widget Function()? destinationBuilder; // null = 不支持跳转（首次引导）
+  const _RecentFeature(this.icon, this.color, this.title, this.subtitle, {this.destinationBuilder});
 }
 
 class AssetVideoPlayer extends StatefulWidget {
