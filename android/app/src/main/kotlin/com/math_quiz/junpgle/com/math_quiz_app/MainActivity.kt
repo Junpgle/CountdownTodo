@@ -1201,6 +1201,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     }
                     prefs.edit().putString(ReminderService.KEY_REMINDERS, filtered.toString()).apply()
 
+                    // 兼容清理：按 notifId 取消旧格式 Alarm（历史版本残留）
                     val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
                     val intent = Intent(this, ReminderAlarmReceiver::class.java).apply {
                         action = ReminderAlarmReceiver.ACTION_FIRE
@@ -1211,11 +1212,21 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     )
                     pi?.let { am.cancel(it) }
 
-                    // 🚀 终极收尾：补全物理取消状态栏上已显示的闹钟提醒通知，并清理防抖指纹，防止状态栏常驻残留
+                    // 取消已显示的通知
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(notifId)
                     lastNotificationFingerprint.remove(notifId)
                     lastNotificationTimestampMs.remove(notifId)
+
+                    // 滚动调度：重新注册下一个最近提醒
+                    val rescheduleIntent = Intent(this, ReminderService::class.java).apply {
+                        action = ReminderService.ACTION_RESCHEDULE
+                    }
+                    try {
+                        startForegroundService(rescheduleIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "RollingAlarm: reschedule after cancel failed", e)
+                    }
 
                     result.success(true)
                 }
