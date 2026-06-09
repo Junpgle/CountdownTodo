@@ -126,8 +126,8 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
-      debugPrint(
-          '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
+      //debugPrint(
+      //    '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (sync) requestSync(username);
@@ -1084,8 +1084,8 @@ class StorageService {
             existingCompletionMap[row['uuid'] as String] =
                 (row['is_completed'] as int?) ?? 0;
           }
-          debugPrint(
-              '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
+          //debugPrint(
+            //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
         }
       }
     }
@@ -1135,10 +1135,10 @@ class StorageService {
           'sync_error': '',
         });
         queuedTodoOps++;
-        if (!isSyncSource) {
-          debugPrint(
-              '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
-        }
+        //if (!isSyncSource) {
+          //debugPrint(
+          //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
+        //}
       }
 
       if (hasChanged || oldData == null) {
@@ -1147,13 +1147,15 @@ class StorageService {
         final int isCompleted;
         if (isSyncSource && existingCompletionMap.containsKey(item.id)) {
           isCompleted = existingCompletionMap[item.id]!;
-          debugPrint(
+          /*debugPrint(
               '🧪 [SyncDiag][saveTodos-sync] PRESERVED UUID=${item.id} isCompleted=$isCompleted');
+              */
         } else {
           isCompleted = item.isDone ? 1 : 0;
           if (isSyncSource) {
-            debugPrint(
+            /*debugPrint(
                 '🧪 [SyncDiag][saveTodos-sync] OVERWRITE UUID=${item.id} isCompleted=$isCompleted (from merge)');
+          */
           }
         }
         batch.insert(
@@ -1223,9 +1225,11 @@ class StorageService {
         }
       }
 
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
+    */
     }
+
 
     if (recomputeScheduleConflicts) {
       await _refreshTodoScheduleConflicts(username);
@@ -3183,8 +3187,8 @@ class StorageService {
         final t = (op['target_table'] ?? 'unknown').toString();
         pendingByTable[t] = (pendingByTable[t] ?? 0) + 1;
       }
-      debugPrint(
-          '🧪 [SyncDiag][PendingOps] total=${pendingOps.length} byTable=$pendingByTable');
+      /*debugPrint(
+          '🧪 [SyncDiag][PendingOps] total=${pendingOps.length} byTable=$pendingByTable');*/
 
       final Map<String, Map<String, dynamic>> dedupTodos = {};
       final Map<String, Map<String, dynamic>> dedupGroups = {};
@@ -3241,8 +3245,8 @@ class StorageService {
           where: 'id IN ($placeholders)',
           whereArgs: consumedConflictOpIds,
         );
-        debugPrint(
-            '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');
+        /*debugPrint(
+            '🧪 [SyncDiag][PendingOps] consumed conflict ops=${consumedConflictOpIds.length}');*/
       }
 
       dirtyTodos = dedupTodos.values.toList();
@@ -3379,9 +3383,9 @@ class StorageService {
           .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
           .map((e) => (e['uuid'] ?? e['id']).toString())
           .toList();
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][Client->Server] deviceId=$deviceId lastSync=$lastSyncTime todos=${dirtyTodos.length} deletedTodos=${uploadedDeletedTodoUuids.length} todoUuids=$uploadedTodoUuids deletedTodoUuids=$uploadedDeletedTodoUuids planBlocks=${dirtyPlanBlocks.length} deletedPlanBlocks=${uploadedDeletedPlanUuids.length} planUuids=$uploadedPlanUuids deletedPlanUuids=$uploadedDeletedPlanUuids');
-
+*/
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -3420,9 +3424,9 @@ class StorageService {
           .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
           .map((e) => (e['uuid'] ?? e['id']).toString())
           .toList();
-      debugPrint(
+      /*debugPrint(
           '🧪 [SyncDiag][Server->Client] success=${response['success']} todos=${serverTodosPreview.length} deletedTodos=${serverDeletedTodoUuids.length} todoUuids=$serverTodoUuids deletedTodoUuids=$serverDeletedTodoUuids planBlocks=${serverPlanPreview.length} deletedPlanBlocks=${serverDeletedPlanUuids.length} planUuids=$serverPlanUuids deletedPlanUuids=$serverDeletedPlanUuids');
-
+*/
       bool hasPendingUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
@@ -3578,8 +3582,8 @@ class StorageService {
         // 🚀 处理独立待办完成情况
         final List<dynamic>? indCompletions =
             response['independent_completions'];
-        debugPrint(
-            '🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
+        //debugPrint(
+        //    '🧪 [SyncDiag][IndepCompletion] indCompletions=${indCompletions?.length ?? "null"}');
         if (indCompletions != null) {
           final batch = db.batch();
           var independentCompletionChanged = false;
@@ -3623,12 +3627,12 @@ class StorageService {
                     updatedTodoIds.add(todoUuid);
                 }
               }
-              debugPrint(
-                  '🧪 [SyncDiag][IndepCompletion] SKIP_DB $todoUuid (server $serverUpdatedAt < local $localUpdatedAt), memory isDone=${localIsCompleted == 1}');
+              //debugPrint(
+              //    '🧪 [SyncDiag][IndepCompletion] SKIP_DB $todoUuid (server $serverUpdatedAt < local $localUpdatedAt), memory isDone=${localIsCompleted == 1}');
               continue;
             }
-            debugPrint(
-                '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
+            //debugPrint(
+           //    '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
             batch.insert(
                 'todo_completions',
                 {

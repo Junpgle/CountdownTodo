@@ -2958,9 +2958,9 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       if (mounted) {
         // 🚀 诊断日志：打印 collabType=1 的 is_completed 值
-        for (final t in allTodos.where((t) => t.collabType == 1 && !t.isDeleted)) {
+        /*for (final t in allTodos.where((t) => t.collabType == 1 && !t.isDeleted)) {
           debugPrint('🧪 [SyncDiag][_loadAllData] collab1 UUID=${t.id} isDone=${t.isDone} version=${t.version}');
-        }
+        }*/
         // 🚀 Granular Update: Only update notifiers if content actually changed
         if (!_isListEqual(_todos, allTodos)) {
           _todos = allTodos;
@@ -3235,7 +3235,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           .where((t) => !t.isDeleted)
           .map((t) => '${t.id.substring(0,8)} isDone=${t.isDone}')
           .join(', ');
-      debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
+      //debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
       await StorageService.saveTodos(widget.username, pendingSnapshotBeforeSync);
       // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
       StorageService.setForceFlushProtectedUuids(
