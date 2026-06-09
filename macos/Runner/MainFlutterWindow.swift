@@ -47,7 +47,7 @@ class MainFlutterWindow: NSWindow {
           return
         }
 
-        let appGroupId = "group.com.mathquiz.junpgle.countdowntodo"
+        let appGroupId = "group.com.junpgle.countdowntodo"
 
         // Write to UserDefaults for Widget Extension
         if let userDefaults = UserDefaults(suiteName: appGroupId) {

@@ -112,12 +112,12 @@
 		8E0691EB397A22C5191CA5F6 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		AA0000000000000000000001 /* CountDownTodoWidgetExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountDownTodoWidgetExtension.swift; sourceTree = "<group>"; };
-		CC0000000000000000000002 /* MacPomodoroStatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPomodoroStatusBarController.swift; sourceTree = "<group>"; };
 		AA0000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA0000000000000000000004 /* CountDownTodoWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CountDownTodoWidgetExtension.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* CountDownTodoWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CountDownTodoWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB6A1710D94CF7315602B1AA /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0000000000000000000002 /* MacPomodoroStatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPomodoroStatusBarController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -588,7 +588,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 4.14.16;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
@@ -609,7 +609,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 4.14.16;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
@@ -630,7 +630,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 4.14.16;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
@@ -705,6 +705,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_VERSION = 5.0;
@@ -844,6 +845,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -868,6 +870,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_VERSION = 5.0;
@@ -899,8 +902,10 @@
 				CODE_SIGN_ENTITLEMENTS = CountDownTodoWidgetExtension/CountDownTodoWidgetExtension.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				DEVELOPMENT_TEAM = LRU9KV2FJJ;
+				INFOPLIST_KEY_CFBundleDisplayName = CountDownTodoWidgetExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.widget;
 				PRODUCT_NAME = CountDownTodoWidgetExtension;
 				REGISTER_APP_GROUPS = YES;
 			};
@@ -932,7 +937,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 4.14.16;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -966,7 +971,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.0;
 				MARKETING_VERSION = 4.14.16;
 				OTHER_LDFLAGS = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.mathquiz.junpgle.com.mathQuizApp.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.junpgle.countdowntodo.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;

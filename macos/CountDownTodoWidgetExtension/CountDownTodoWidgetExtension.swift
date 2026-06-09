@@ -77,7 +77,7 @@ struct WidgetFocusState: Codable {
 
 class WidgetDataLoader {
     static let shared = WidgetDataLoader()
-    private let appGroupId = "group.com.mathquiz.junpgle.countdowntodo"
+    private let appGroupId = "group.com.junpgle.countdowntodo"
     private let key = "widget_snapshot_json"
 
     func loadSnapshot() -> WidgetSnapshot {
