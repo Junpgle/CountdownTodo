@@ -174,6 +174,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
   Route<dynamic>? _pomodoroRoute;
+  int _lastPomodoroNavigateMs = 0;
   final Set<String> _updatedByOthersTodoIds = <String>{};
   int _remoteTodoHighlightSignal = 0;
   Timer? _remoteTodoHighlightTimer;
@@ -706,20 +707,26 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 用 remove + push 代替 popUntil，避免破坏栈中其他路由。
   void _navigateToPomodoro() {
     if (!mounted || _navigatingToPomodoro) return;
+    // 🚀 去重：如果已在番茄钟页，直接返回
+    if (_pomodoroRoute != null && _pomodoroRoute!.isCurrent) return;
+    // 🚀 时间戳防抖：500ms 内不重复导航
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastPomodoroNavigateMs < 500) return;
+    _lastPomodoroNavigateMs = now;
+
     final nav = Navigator.of(context);
 
     if (_pomodoroRoute != null) {
-      if (_pomodoroRoute!.isCurrent) return; // 已在栈顶，无需操作
       // 已有番茄钟页但被其他页面盖住：remove 后重新 push 到顶部
       try {
         nav.removeRoute(_pomodoroRoute!);
       } catch (_) {
         // route 已被 pop（如用户手动返回），清除引用
-        _pomodoroRoute = null;
       }
+      _pomodoroRoute = null;
     }
 
-    // push 新的（或被 remove 的）番茄钟页
+    // push 新的番茄钟页
     _navigatingToPomodoro = true;
     final route = MaterialPageRoute(
       builder: (_) => PomodoroScreen(username: widget.username),
@@ -4820,15 +4827,32 @@ class _WallpaperNetworkImage extends StatefulWidget {
   State<_WallpaperNetworkImage> createState() => _WallpaperNetworkImageState();
 }
 
-class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
+class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
+    with SingleTickerProviderStateMixin {
   Uint8List? _imageBytes;
   bool _loading = true;
   bool _reported = false;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -4838,6 +4862,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       _imageBytes = null;
       _loading = true;
       _reported = false;
+      _fadeController.reset();
       _load();
     }
   }
@@ -4856,6 +4881,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
           _imageBytes = resp.bodyBytes;
           _loading = false;
         });
+        _fadeController.forward();
         widget.onSuccess();
       } else {
         _fail();
@@ -4887,6 +4913,9 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       return Image.asset('assets/images/default_wallpaper.png',
           fit: BoxFit.cover);
     }
-    return Image.memory(_imageBytes!, fit: BoxFit.cover);
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Image.memory(_imageBytes!, fit: BoxFit.cover),
+    );
   }
 }

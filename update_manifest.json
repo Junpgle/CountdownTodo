@@ -1,12 +1,13 @@
 {
   "version_code": 1,
-  "version_name": "4.14.15",
+  "version_name": "4.15.7",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 4.14.15",
-    "description": "【新增】简单适配Mac\n【新增】适配Mac菜单栏\n【新增】适配Mac桌面小组件【修复】团队待办在文件夹内和文件夹外偶现的无法同步的问题\n【优化】文件夹、倒计时、各自独立完成的团队待办不参与冲突检测\n【新增】更新后的开屏首页区分开未联网和无日志的情况\n【新增】开屏日志区域新增最近更新功能引导",
+    "title": "版本更新 4.15.7",
+    "description": "【修复】壁纸渐显效果回归\n【新增】Mac支持开机自启\n【新增】Mac支持检查更新\n【修复】AnimatedCrossFade 在展开动画时宽度约束计算错误\n【修复】SegmentedButton 在窄屏容器溢出的问题\n【优化】课程周视图界面支持课表地点多行显示\n【优化】文件夹内的待办新增删除二次确认\n【优化】当文件夹内的待办为空时，会自动将文件夹收起并隐藏\n【修复】从通知栏打开App时，多次启动专注界面的问题\n【修复】创建待办界面的大模型解析不继承LLM配置的问题\n【去除】过时的选项\n【优化】关于此应用界面宽屏优化，支持mac",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
+    "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
     "android_arch_packages": {
       "arm64-v8a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
       "armeabi-v7a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-armeabi-v7a-release.apk",
@@ -29,6 +30,23 @@
   },
   "changelog_history": [
     {
+      "version_name": "4.15.7",
+      "date": "2026-06-11",
+      "items": [
+        "【修复】壁纸渐显效果回归",
+        "【新增】Mac支持开机自启",
+        "【新增】Mac支持检查更新",
+        "【修复】AnimatedCrossFade 在展开动画时宽度约束计算错误",
+        "【修复】SegmentedButton 在窄屏容器溢出的问题",
+        "【优化】课程周视图界面支持课表地点多行显示",
+        "【优化】文件夹内的待办新增删除二次确认",
+        "【优化】当文件夹内的待办为空时，会自动将文件夹收起并隐藏",
+        "【修复】从通知栏打开App时，多次启动专注界面的问题",
+        "【修复】创建待办界面的大模型解析不继承LLM配置的问题",
+        "【去除】过时的选项",
+        "【优化】关于此应用界面宽屏优化，支持mac"
+      ]
+    },{
       "version_name": "4.14.15",
       "date": "2026-06-08",
       "items": [

@@ -2437,15 +2437,20 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             course.courseName, course.weekday, course.startTime);
         final courseIndex = _weekCourses.indexOf(course);
 
-        // 🚀 根据课程卡片的物理高度动态计算课程名称的最大行数限制，四舍五入并收紧估算，让文本尽量多地展开
-        int courseMaxLines = 2;
+        // 🚀 根据课程卡片的物理高度动态计算课程名称的最大行数
+        const double titleLineHeight = 12.0;
+        const double paddingTotal = 2.0;
+        const double gapHeight = 2.0;
+
+        int courseMaxLines = 1;
         if (course.roomName.isNotEmpty && height > 30) {
-          double availableForCourse = (height - 2) - 14.5;
-          courseMaxLines = (availableForCourse / 12.0).round();
+          // 标题最多占一半高度，剩余给地点
+          double halfHeight = (height - paddingTotal - gapHeight) / 2;
+          courseMaxLines = (halfHeight / titleLineHeight).floor();
           if (courseMaxLines < 1) courseMaxLines = 1;
         } else {
-          double availableForCourse = (height - 2) - 5.0;
-          courseMaxLines = (availableForCourse / 12.0).round();
+          double availableForTitle = (height - paddingTotal) - 5.0;
+          courseMaxLines = (availableForTitle / titleLineHeight).floor();
           if (courseMaxLines < 1) courseMaxLines = 1;
         }
 
@@ -2509,6 +2514,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           offset: Offset(0, 1))
                     ]),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -2523,14 +2529,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                     ),
                     if (height > 30) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        course.roomName,
-                        style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 9,
-                            height: 1.1),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Flexible(
+                        child: Text(
+                          course.roomName,
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 9,
+                              height: 1.1),
+                          overflow: TextOverflow.clip,
+                        ),
                       ),
                     ],
                   ],

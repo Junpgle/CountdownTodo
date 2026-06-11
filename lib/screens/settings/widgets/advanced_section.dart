@@ -68,33 +68,33 @@ class AdvancedSection extends StatelessWidget {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
-              _buildTile(
-                context: context,
-                targetId: 'migration',
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                  minLeadingWidth: 36,
-                  leading: const CircleAvatar(
-                      radius: 18,
-                      backgroundColor: Colors.blueAccent,
-                      child: Icon(Icons.rocket_launch,
-                          size: 18, color: Colors.white)),
-                  title: const Text('从 Cloudflare 后端一键全量迁移',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                  trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(60, 32),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20))),
-                      onPressed: onShowMigrationDialog,
-                      child: const Text('开始', style: TextStyle(fontSize: 12))),
-                ),
-              ),
+              // _buildTile(
+              //   context: context,
+              //   targetId: 'migration',
+              //   child: ListTile(
+              //     contentPadding:
+              //         const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              //     minLeadingWidth: 36,
+              //     leading: const CircleAvatar(
+              //         radius: 18,
+              //         backgroundColor: Colors.blueAccent,
+              //         child: Icon(Icons.rocket_launch,
+              //             size: 18, color: Colors.white)),
+              //     title: const Text('从 Cloudflare 后端一键全量迁移',
+              //         style:
+              //             TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              //     subtitle: Text('自动将 D1 上您的整套账户(密码)、待办、番茄钟打包移植至当前阿里云节点',
+              //         style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+              //     trailing: ElevatedButton(
+              //         style: ElevatedButton.styleFrom(
+              //             minimumSize: const Size(60, 32),
+              //             padding: const EdgeInsets.symmetric(horizontal: 12),
+              //             shape: RoundedRectangleBorder(
+              //                 borderRadius: BorderRadius.circular(20))),
+              //         onPressed: onShowMigrationDialog,
+              //         child: const Text('开始', style: TextStyle(fontSize: 12))),
+              //   ),
+              // ),
               if (Platform.isAndroid) ...[
                 const Divider(height: 1, indent: 56),
                 _buildTile(

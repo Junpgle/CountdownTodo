@@ -134,6 +134,15 @@ class _AboutScreenState extends State<AboutScreen> {
                 'Windows ${windowsInfo.majorVersion}.${windowsInfo.minorVersion}';
           });
         }
+      } else if (Platform.isMacOS) {
+        final macInfo = await deviceInfo.macOsInfo;
+        if (mounted) {
+          setState(() {
+            _deviceArch = macInfo.arch;
+            _deviceModel = macInfo.model;
+            _osVersion = 'macOS ${macInfo.osRelease}';
+          });
+        }
       }
     } catch (e) {
       debugPrint('获取设备信息失败: $e');
@@ -318,113 +327,254 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth > 800;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('关于此应用'),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 32),
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Icon(
-                Icons.checklist_rounded,
-                size: 60,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'CountDownTodo',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '版本 $_version',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '您的个人效率助手',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 32),
-            _buildInfoCard(
-              context,
-              title: '软件介绍',
-              icon: Icons.info_outline,
-              child: const Text(
-                'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
-                '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
-                style: TextStyle(fontSize: 14),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildDeviceCard(context),
-            const SizedBox(height: 16),
-            _buildCleanupCard(context),
-            const SizedBox(height: 16),
-            _buildChangelogCard(context),
-            const SizedBox(height: 16),
-            _buildPrivacyCard(context),
-            const SizedBox(height: 16),
-            _buildLinkCard(
-              context,
-              items: [
-                _LinkItem(
-                  icon: Icons.code,
-                  title: '官方 GitHub',
-                  subtitle: 'github.com/Junpgle/math_quiz_app',
-                  onTap: () =>
-                      _launchURL('https://github.com/Junpgle/math_quiz_app'),
-                ),
-                _LinkItem(
-                  icon: Icons.bug_report_outlined,
-                  title: '问题反馈',
-                  subtitle: '在 GitHub 提交 Issues',
-                  onTap: () => _launchURL(
-                      'https://github.com/Junpgle/math_quiz_app/issues'),
-                ),
-                _LinkItem(
-                  icon: Icons.devices_other_outlined,
-                  title: '设备版本明细',
-                  subtitle: '查看在线设备与历史版本分布',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                        const DeviceVersionDetailPage(),
-                      ),
-                    );
-                  },
-                ),
-                _LinkItem(
-                  icon: Icons.email_outlined,
-                  title: '联系开发者',
-                  subtitle: 'junpgle@qq.com',
-                  onTap: () => _launchURL('mailto:junpgle@qq.com'),
-                ),
-              ],
-            ),
-            // 🚀 Uni-Sync 4.0 迁移面板
-            if (_needsMigration || _isMigrating || _migrationCompleted)
-              _buildMigrationPanel(context),
-            if (_syncFailures.isNotEmpty) _buildSyncIssueCenter(context),
+      body: isWide ? _buildWideLayout(context) : _buildNarrowLayout(context),
+    );
+  }
 
-            const SizedBox(height: 32),
-          ],
+  Widget _buildWideLayout(BuildContext context) {
+    return Row(
+      children: [
+        // 左侧固定面板
+        SizedBox(
+          width: 340,
+          child: Container(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        Icons.checklist_rounded,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'CountDownTodo',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '版本 $_version',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '您的个人效率助手',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 24),
+                    _buildInfoCard(
+                      context,
+                      title: '软件介绍',
+                      icon: Icons.info_outline,
+                      compact: true,
+                      child: const Text(
+                        'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
+                        '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildDeviceCard(context, compact: true),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
+        // 右侧滚动区域
+        Expanded(
+          child: SingleChildScrollView(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    children: [
+                      _buildCleanupCard(context),
+                      const SizedBox(height: 16),
+                      _buildChangelogCard(context),
+                      const SizedBox(height: 16),
+                      _buildPrivacyCard(context),
+                      const SizedBox(height: 16),
+                      _buildLinkCard(
+                        context,
+                        items: [
+                          _LinkItem(
+                            icon: Icons.code,
+                            title: '官方 GitHub',
+                            subtitle: 'github.com/Junpgle/math_quiz_app',
+                            onTap: () => _launchURL(
+                                'https://github.com/Junpgle/math_quiz_app'),
+                          ),
+                          _LinkItem(
+                            icon: Icons.bug_report_outlined,
+                            title: '问题反馈',
+                            subtitle: '在 GitHub 提交 Issues',
+                            onTap: () => _launchURL(
+                                'https://github.com/Junpgle/math_quiz_app/issues'),
+                          ),
+                          _LinkItem(
+                            icon: Icons.devices_other_outlined,
+                            title: '设备版本明细',
+                            subtitle: '查看在线设备与历史版本分布',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                PageTransitions.slideHorizontal(
+                                  const DeviceVersionDetailPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          _LinkItem(
+                            icon: Icons.email_outlined,
+                            title: '联系开发者',
+                            subtitle: 'junpgle@qq.com',
+                            onTap: () => _launchURL('mailto:junpgle@qq.com'),
+                          ),
+                        ],
+                      ),
+                      if (_needsMigration || _isMigrating || _migrationCompleted)
+                        _buildMigrationPanel(context),
+                      if (_syncFailures.isNotEmpty)
+                        _buildSyncIssueCenter(context),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNarrowLayout(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 32),
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(
+              Icons.checklist_rounded,
+              size: 60,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'CountDownTodo',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '版本 $_version',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '您的个人效率助手',
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+          const SizedBox(height: 32),
+          _buildInfoCard(
+            context,
+            title: '软件介绍',
+            icon: Icons.info_outline,
+            child: const Text(
+              'CountDownTodo 是一款集成了多种实用功能的个人效率管理应用，旨在帮助您更好地管理时间、任务和学习。\n\n'
+              '主要功能：待办事项管理、重要日倒计时、课程表管理、屏幕使用时间、番茄钟专注、数学测验、多设备同步等。',
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildDeviceCard(context),
+          const SizedBox(height: 16),
+          _buildCleanupCard(context),
+          const SizedBox(height: 16),
+          _buildChangelogCard(context),
+          const SizedBox(height: 16),
+          _buildPrivacyCard(context),
+          const SizedBox(height: 16),
+          _buildLinkCard(
+            context,
+            items: [
+              _LinkItem(
+                icon: Icons.code,
+                title: '官方 GitHub',
+                subtitle: 'github.com/Junpgle/math_quiz_app',
+                onTap: () =>
+                    _launchURL('https://github.com/Junpgle/math_quiz_app'),
+              ),
+              _LinkItem(
+                icon: Icons.bug_report_outlined,
+                title: '问题反馈',
+                subtitle: '在 GitHub 提交 Issues',
+                onTap: () => _launchURL(
+                    'https://github.com/Junpgle/math_quiz_app/issues'),
+              ),
+              _LinkItem(
+                icon: Icons.devices_other_outlined,
+                title: '设备版本明细',
+                subtitle: '查看在线设备与历史版本分布',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const DeviceVersionDetailPage(),
+                    ),
+                  );
+                },
+              ),
+              _LinkItem(
+                icon: Icons.email_outlined,
+                title: '联系开发者',
+                subtitle: 'junpgle@qq.com',
+                onTap: () => _launchURL('mailto:junpgle@qq.com'),
+              ),
+            ],
+          ),
+          if (_needsMigration || _isMigrating || _migrationCompleted)
+            _buildMigrationPanel(context),
+          if (_syncFailures.isNotEmpty) _buildSyncIssueCenter(context),
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
@@ -517,31 +667,34 @@ class _AboutScreenState extends State<AboutScreen> {
     required String title,
     required IconData icon,
     required Widget child,
+    bool compact = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Text(title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              child,
-            ],
-          ),
+    return Card(
+      elevation: compact ? 0 : 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: compact
+          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+          : null,
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon,
+                    size: compact ? 18 : 20,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: compact ? 14 : 15)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            child,
+          ],
         ),
       ),
     );
@@ -579,35 +732,37 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  Widget _buildDeviceCard(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.devices,
-                      size: 20, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  const Text('设备信息',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _buildInfoRow('设备型号', _deviceModel),
-              const SizedBox(height: 8),
-              _buildInfoRow('操作系统', _osVersion),
-              const SizedBox(height: 8),
-              _buildInfoRow('CPU 架构', _deviceArch),
-            ],
-          ),
+  Widget _buildDeviceCard(BuildContext context, {bool compact = false}) {
+    return Card(
+      elevation: compact ? 0 : 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: compact
+          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+          : null,
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 14 : 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.devices,
+                    size: compact ? 18 : 20,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('设备信息',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: compact ? 14 : 15)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow('设备型号', _deviceModel),
+            const SizedBox(height: 8),
+            _buildInfoRow('操作系统', _osVersion),
+            const SizedBox(height: 8),
+            _buildInfoRow('CPU 架构', _deviceArch),
+          ],
         ),
       ),
     );
