@@ -1724,15 +1724,10 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        AnimatedCrossFade(
-          firstChild: const SizedBox.shrink(),
-          secondChild: child,
-          crossFadeState:
-              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+        AnimatedSize(
           duration: const Duration(milliseconds: 300),
-          firstCurve: Curves.easeInOut,
-          secondCurve: Curves.easeInOut,
-          sizeCurve: Curves.easeInOut,
+          curve: Curves.easeInOut,
+          child: expanded ? child : const SizedBox.shrink(),
         ),
         const SizedBox(height: 8),
       ],
