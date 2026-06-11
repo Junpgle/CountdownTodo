@@ -4820,15 +4820,32 @@ class _WallpaperNetworkImage extends StatefulWidget {
   State<_WallpaperNetworkImage> createState() => _WallpaperNetworkImageState();
 }
 
-class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
+class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
+    with SingleTickerProviderStateMixin {
   Uint8List? _imageBytes;
   bool _loading = true;
   bool _reported = false;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -4838,6 +4855,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       _imageBytes = null;
       _loading = true;
       _reported = false;
+      _fadeController.reset();
       _load();
     }
   }
@@ -4856,6 +4874,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
           _imageBytes = resp.bodyBytes;
           _loading = false;
         });
+        _fadeController.forward();
         widget.onSuccess();
       } else {
         _fail();
@@ -4887,6 +4906,9 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
       return Image.asset('assets/images/default_wallpaper.png',
           fit: BoxFit.cover);
     }
-    return Image.memory(_imageBytes!, fit: BoxFit.cover);
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Image.memory(_imageBytes!, fit: BoxFit.cover),
+    );
   }
 }
