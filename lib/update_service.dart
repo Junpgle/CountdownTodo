@@ -113,6 +113,7 @@ class UpdateInfo {
   final String description;
   final String fullPackageUrl;
   final String pcPackageUrl;
+  final String macPackageUrl;
   final Map<String, String> androidArchPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
@@ -120,6 +121,7 @@ class UpdateInfo {
         description = json['description'] ?? '',
         fullPackageUrl = json['full_package_url'] ?? '',
         pcPackageUrl = json['PC_package_url'] ?? '',
+        macPackageUrl = json['mac_package_url'] ?? '',
         androidArchPackages = json['android_arch_packages'] != null
             ? Map<String, String>.from(json['android_arch_packages'])
             : {};
@@ -476,7 +478,7 @@ class UpdateService {
   // 🚀 动态区分 Android 和 Windows 的安装包后缀
   static String getUpdateFileName(String versionName) {
     if (Platform.isWindows) return "CountdownTodo_v$versionName.exe";
-    if (Platform.isMacOS) return "CountdownTodo_v$versionName.dmg";
+    if (Platform.isMacOS) return "CountdownTodo_v$versionName.zip";
     return "CountdownTodo_v$versionName.apk";
   }
 
@@ -495,15 +497,20 @@ class UpdateService {
 
   // 🚀 根据设备架构获取对应的下载链接
   static String getDownloadUrlForArch(AppManifest manifest) {
-    if ((Platform.isWindows || Platform.isMacOS) &&
-        manifest.updateInfo.pcPackageUrl.isNotEmpty) {
+    debugPrint('[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}');
+    if (Platform.isMacOS && manifest.updateInfo.macPackageUrl.isNotEmpty) {
+      debugPrint('[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}');
+      return manifest.updateInfo.macPackageUrl;
+    }
+    if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
       return manifest.updateInfo.pcPackageUrl;
     }
     final archPackages = manifest.updateInfo.androidArchPackages;
     if (archPackages.isNotEmpty) {
-      // 返回第一个可用的架构包（通常服务端会按优先级排列）
+      debugPrint('[UpdateService] Using androidArchPackages: ${archPackages.values.first}');
       return archPackages.values.first;
     }
+    debugPrint('[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}');
     return manifest.updateInfo.fullPackageUrl;
   }
 
@@ -777,7 +784,7 @@ class UpdateService {
         }
       }
     } else {
-      if (filePath.endsWith(".zip")) {
+      if (filePath.endsWith(".zip") && !Platform.isMacOS) {
         final apkPath = filePath.substring(0, filePath.length - 4);
         file = await file.rename(apkPath);
       }
@@ -789,7 +796,9 @@ class UpdateService {
     }
 
     if (Platform.isMacOS) {
-      await Process.run('open', [file.path]);
+      // macOS: 打开下载目录，让用户手动解压并拖到 Applications
+      final dir = file.parent.path;
+      await Process.run('open', [dir]);
       return;
     }
 
@@ -955,6 +964,7 @@ class UpdateService {
         'description': releaseNotes,
         'full_package_url': downloadUrl,
         'PC_package_url': downloadUrl,
+        'mac_package_url': downloadUrl,
       }),
       announcements: [],
       wallpaper: WallpaperConfig.fromJson({'show': false}),
@@ -1124,7 +1134,10 @@ class UpdateService {
                                     // 🚀 核心防崩区域：安全地保留纯 Text，禁止外部包裹任何 Expanded/Flexible
                                     ElevatedButton.icon(
                                       icon: const Icon(Icons.system_update),
-                                      label: const Text("下载完成，立即安装",
+                                      label: Text(
+                                          Platform.isMacOS
+                                              ? "下载完成，打开下载目录"
+                                              : "下载完成，立即安装",
                                           overflow: TextOverflow.ellipsis),
                                       style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.green,
@@ -1137,6 +1150,15 @@ class UpdateService {
                                         }
                                       },
                                     ),
+                                    if (Platform.isMacOS)
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 4),
+                                        child: Text(
+                                            "请在访达中解压 zip 文件，然后将 App 拖入「应用程序」文件夹",
+                                            style: TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 12)),
+                                      ),
                                     TextButton(
                                       onPressed: () {
                                         if (_isDownloading) return;
