@@ -2555,7 +2555,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           ? allGTodos
           : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
 
-      if (gTodos.isEmpty && !g.isExpanded) continue;
+      if (gTodos.isEmpty) {
+        if (g.isExpanded) {
+          g.isExpanded = false;
+          g.markAsChanged();
+        }
+        continue;
+      }
 
       bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
       DateTime? minDate;
