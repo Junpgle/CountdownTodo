@@ -6,7 +6,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.mathquiz.junpgle.countdowntodo</string>
+		<string>group.com.junpgle.countdowntodo</string>
 	</array>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
