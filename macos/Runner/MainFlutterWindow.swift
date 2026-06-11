@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import WidgetKit
+import LaunchAtLogin
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
@@ -73,6 +74,25 @@ class MainFlutterWindow: NSWindow {
         }
         result(true)
       } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // Launch at startup channel
+    let launchAtStartupChannel = FlutterMethodChannel(
+      name: "launch_at_startup",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    launchAtStartupChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "launchAtStartupIsEnabled":
+        result(LaunchAtLogin.isEnabled)
+      case "launchAtStartupSetEnabled":
+        if let arguments = call.arguments as? [String: Any] {
+          LaunchAtLogin.isEnabled = arguments["setEnabledValue"] as! Bool
+        }
+        result(nil)
+      default:
         result(FlutterMethodNotImplemented)
       }
     }
