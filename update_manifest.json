@@ -7,6 +7,7 @@
     "description": "【新增】简单适配Mac\n【新增】适配Mac菜单栏\n【新增】适配Mac桌面小组件【修复】团队待办在文件夹内和文件夹外偶现的无法同步的问题\n【优化】文件夹、倒计时、各自独立完成的团队待办不参与冲突检测\n【新增】更新后的开屏首页区分开未联网和无日志的情况\n【新增】开屏日志区域新增最近更新功能引导",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
+    "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
     "android_arch_packages": {
       "arm64-v8a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
       "armeabi-v7a": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-armeabi-v7a-release.apk",

@@ -60,6 +60,7 @@ class AppReportLaunchService {
             jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
         final info = (data['update_info'] as Map?) ?? const {};
         final pcUrl = info['PC_package_url']?.toString() ?? '';
+        final macUrl = info['mac_package_url']?.toString() ?? '';
         final apkUrl = info['full_package_url']?.toString() ?? '';
         final archPackages =
             (info['android_arch_packages'] as Map?) ?? const {};
@@ -71,6 +72,9 @@ class AppReportLaunchService {
 
         if (defaultTargetPlatform == TargetPlatform.android) {
           return firstArchApk ?? apkUrl.ifNotEmpty ?? _releasePageUrl;
+        }
+        if (defaultTargetPlatform == TargetPlatform.macOS) {
+          return macUrl.ifNotEmpty ??  _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.windows) {
           return pcUrl.ifNotEmpty ?? _releasePageUrl;

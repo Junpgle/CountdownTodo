@@ -351,8 +351,17 @@ class PomodoroSyncService {
 
         if (manifest != null && manifest['update_info'] != null) {
           final info = manifest['update_info'] as Map<String, dynamic>;
-          downloadUrl ??= info['full_package_url']?.toString() ??
-              info['PC_package_url']?.toString();
+          if (Platform.isMacOS) {
+            downloadUrl ??= info['mac_package_url']?.toString() ??
+                info['PC_package_url']?.toString() ??
+                info['full_package_url']?.toString();
+          } else if (Platform.isWindows) {
+            downloadUrl ??= info['PC_package_url']?.toString() ??
+                info['full_package_url']?.toString();
+          } else {
+            downloadUrl ??= info['full_package_url']?.toString() ??
+                info['PC_package_url']?.toString();
+          }
           releaseNotes ??= info['description']?.toString();
         }
 
