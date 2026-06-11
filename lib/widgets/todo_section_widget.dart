@@ -814,6 +814,42 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     );
                                     return;
                                   }
+
+                                  final config = await LLMService.getConfig();
+                                  if (config == null || !config.isConfigured) {
+                                    if (!context.mounted) return;
+                                    final goToSettings = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text("未配置大模型"),
+                                        content: const Text(
+                                          "使用大模型识别需要先配置API地址和密钥，是否前往设置？",
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text("取消"),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: const Text("去配置"),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (goToSettings == true &&
+                                        context.mounted) {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => const SettingsPage(),
+                                        ),
+                                      );
+                                    }
+                                    return;
+                                  }
+
                                   setDialogState(() {
                                     isParsing = true;
                                   });
@@ -823,68 +859,110 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     const Duration(milliseconds: 150),
                                   );
 
-                                  final results = TodoParserService.parseMulti(
-                                    aiInputCtrl.text,
-                                  );
+                                  try {
+                                    final results =
+                                        await LLMService.parseTodoWithLLM(
+                                      aiInputCtrl.text,
+                                    );
 
-                                  setDialogState(() {
-                                    parsedResults = results;
-                                    currentParseIndex = 0;
-                                    isParsing = false;
-                                    currentOriginalText = aiInputCtrl.text;
-                                  });
+                                    final parsedResultsList = results.map((
+                                      result,
+                                    ) {
+                                      return ParsedTodoResult(
+                                        title:
+                                            result['title'] ?? aiInputCtrl.text,
+                                        remark: result['remark'],
+                                        isAllDay: result['isAllDay'] ?? false,
+                                        startTime: result['startTime'] != null
+                                            ? DateTime.tryParse(
+                                                result['startTime'],
+                                              )
+                                            : null,
+                                        endTime: result['endTime'] != null
+                                            ? DateTime.tryParse(
+                                                result['endTime'],
+                                              )
+                                            : null,
+                                        recurrence: _parseRecurrenceType(
+                                          result['recurrence'],
+                                        ),
+                                        customIntervalDays:
+                                            result['customIntervalDays'],
+                                        originalText:
+                                            aiInputCtrl.text,
+                                      );
+                                    }).toList();
 
-                                  if (parsedResults.isNotEmpty) {
-                                    final first = parsedResults[0];
                                     setDialogState(() {
-                                      titleCtrl.text = first.title;
-                                      remarkCtrl.text = first.remark ?? "";
-                                      if (first.startTime != null) {
-                                        createdAt = first.startTime!;
-                                        if (first.isAllDay) {
-                                          createdAt = DateTime(
+                                      parsedResults = parsedResultsList;
+                                      currentParseIndex = 0;
+                                      isParsing = false;
+                                      currentOriginalText = aiInputCtrl.text;
+                                    });
+
+                                    if (parsedResults.isNotEmpty) {
+                                      final first = parsedResults[0];
+                                      setDialogState(() {
+                                        titleCtrl.text = first.title;
+                                        remarkCtrl.text = first.remark ?? "";
+                                        if (first.startTime != null) {
+                                          createdAt = first.startTime!;
+                                          if (first.isAllDay) {
+                                            createdAt = DateTime(
+                                              createdAt.year,
+                                              createdAt.month,
+                                              createdAt.day,
+                                              0,
+                                              0,
+                                            );
+                                          }
+                                        }
+                                        if (first.endTime != null) {
+                                          dueDate = first.endTime;
+                                        } else if (first.startTime != null &&
+                                            first.isAllDay) {
+                                          dueDate = DateTime(
                                             createdAt.year,
                                             createdAt.month,
                                             createdAt.day,
-                                            0,
-                                            0,
+                                            23,
+                                            59,
                                           );
                                         }
-                                      }
-                                      if (first.endTime != null) {
-                                        dueDate = first.endTime;
-                                      } else if (first.startTime != null &&
-                                          first.isAllDay) {
-                                        dueDate = DateTime(
-                                          createdAt.year,
-                                          createdAt.month,
-                                          createdAt.day,
-                                          23,
-                                          59,
+                                        isAllDay = first.isAllDay;
+                                        recurrence = first.recurrence;
+                                        customDays = first.customIntervalDays;
+                                        if (customDays != null) {
+                                          customDaysCtrl.text =
+                                              customDays.toString();
+                                        }
+
+                                        // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
+                                        selectedTabIndex = 0;
+                                      });
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              "大模型解析成功，共${parsedResults.length}个待办",
+                                            ),
+                                            duration: const Duration(seconds: 2),
+                                          ),
                                         );
                                       }
-                                      isAllDay = first.isAllDay;
-                                      recurrence = first.recurrence;
-                                      customDays = first.customIntervalDays;
-                                      if (customDays != null) {
-                                        customDaysCtrl.text =
-                                            customDays.toString();
-                                      }
-
-                                      // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
-                                      selectedTabIndex = 0;
+                                    }
+                                  } catch (e) {
+                                    setDialogState(() {
+                                      isParsing = false;
                                     });
-
                                     if (mounted) {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            "解析成功，共${parsedResults.length}个待办",
-                                          ),
-                                          duration: const Duration(seconds: 2),
-                                        ),
+                                        SnackBar(content: Text("大模型解析失败: $e")),
                                       );
                                     }
                                   }
