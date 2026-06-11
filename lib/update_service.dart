@@ -497,7 +497,9 @@ class UpdateService {
 
   // 🚀 根据设备架构获取对应的下载链接
   static String getDownloadUrlForArch(AppManifest manifest) {
+    debugPrint('[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}');
     if (Platform.isMacOS && manifest.updateInfo.macPackageUrl.isNotEmpty) {
+      debugPrint('[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}');
       return manifest.updateInfo.macPackageUrl;
     }
     if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
@@ -505,9 +507,10 @@ class UpdateService {
     }
     final archPackages = manifest.updateInfo.androidArchPackages;
     if (archPackages.isNotEmpty) {
-      // 返回第一个可用的架构包（通常服务端会按优先级排列）
+      debugPrint('[UpdateService] Using androidArchPackages: ${archPackages.values.first}');
       return archPackages.values.first;
     }
+    debugPrint('[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}');
     return manifest.updateInfo.fullPackageUrl;
   }
 

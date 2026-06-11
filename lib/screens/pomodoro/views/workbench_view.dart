@@ -2465,30 +2465,33 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_phase != PomodoroPhase.idle) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: SegmentedButton<TimerMode>(
-        segments: const [
-          ButtonSegment(
-              value: TimerMode.countdown,
-              label: Text('倒计时', style: TextStyle(fontSize: 12))),
-          ButtonSegment(
-              value: TimerMode.countUp,
-              label: Text('正计时', style: TextStyle(fontSize: 12))),
-        ],
-        selected: {_settings.mode},
-        showSelectedIcon: false,
-        style: SegmentedButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: EdgeInsets.zero,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: SegmentedButton<TimerMode>(
+          segments: const [
+            ButtonSegment(
+                value: TimerMode.countdown,
+                label: Text('倒计时', style: TextStyle(fontSize: 12))),
+            ButtonSegment(
+                value: TimerMode.countUp,
+                label: Text('正计时', style: TextStyle(fontSize: 12))),
+          ],
+          selected: {_settings.mode},
+          showSelectedIcon: false,
+          style: SegmentedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+          ),
+          onSelectionChanged: (s) async {
+            setState(() {
+              _settings.mode = s.first;
+              _remainingSeconds = _settings.mode == TimerMode.countUp
+                  ? 0
+                  : _settings.focusMinutes * 60;
+            });
+            await PomodoroService.saveSettings(_settings);
+          },
         ),
-        onSelectionChanged: (s) async {
-          setState(() {
-            _settings.mode = s.first;
-            _remainingSeconds = _settings.mode == TimerMode.countUp
-                ? 0
-                : _settings.focusMinutes * 60;
-          });
-          await PomodoroService.saveSettings(_settings);
-        },
       ),
     );
   }

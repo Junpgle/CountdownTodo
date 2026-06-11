@@ -674,6 +674,27 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
         child: const Icon(Icons.delete_outline_rounded,
             color: Colors.white, size: 22),
       ),
+      confirmDismiss: (_) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('确认删除'),
+            content: Text('确定要删除「${todo.title}」吗？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(
+                    foregroundColor: Colors.redAccent),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+      },
       onDismissed: (_) => widget.onTodoDelete(todo),
       child: LongPressDraggable<String>(
         data: todo.id,
