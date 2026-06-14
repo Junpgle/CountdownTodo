@@ -1,7 +1,7 @@
 # CountDownTodo / Uni-Sync 隐私政策
 
-**版本日期：2026年5月1日**
-**生效日期：2026年5月1日**
+**版本日期：2026年6月14日**
+**生效日期：2026年6月14日**
 
 CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpgle]（以下简称"我们"）开发并运营。我们深知个人信息对您的重要性，并会尽全力保护您的个人信息安全。本隐私政策旨在帮助您了解我们如何收集、使用、存储、传输、共享和保护您的个人信息。
 
@@ -13,7 +13,9 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 
 ### 1.1 账号注册与登录
 
-当您注册本应用账号时，我们会收集您的**手机号码或电子邮箱**用于创建账号和身份验证。我们采用自建JWT Token认证机制，您的密码将以加密形式存储在我们的服务器上。
+当您注册本应用账号时，我们会收集您的**电子邮箱**用于创建账号和身份验证。注册和登录流程会使用 **Cloudflare Turnstile** 进行人机验证（仅收集匿名验证 token，不涉及个人身份识别）。我们采用自建JWT Token认证机制，您的密码将以加密形式存储在我们的服务器上。
+
+注册采用两步验证流程：填写信息并完成人机验证后，我们会向您的邮箱发送**6位验证码**，验证通过后完成注册。找回密码流程同样需要邮箱验证码验证身份。
 
 ### 1.2 核心业务数据
 
@@ -52,12 +54,13 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 
 本应用支持以下平台，功能可能因平台而异：
 
-| 平台                  | 支持情况  | 特有功能                        |
-|---------------------|-------|-----------------------------|
-| **Android 手机端**     | 完整支持  | 桌面小部件、小米手环通信、屏幕时间统计、实时活动    |
-| **Windows 电脑端**     | 完整支持  | 灵动岛/悬浮窗、多窗口、团队协作、全量分析       |
-| **Windows Lite电脑端** | 基础支持  | 悬浮窗                         |
-| **vela Band 手环端**   | 基础支持  | 与手机通信                       |
+| 平台                  | 支持情况  | 特有功能                             |
+|---------------------|-------|----------------------------------|
+| **Android 手机端**     | 完整支持  | 桌面小部件、小米手环通信、屏幕时间统计、实时活动         |
+| **Windows 电脑端**     | 完整支持  | 灵动岛/悬浮窗、多窗口、团队协作、全量分析            |
+| **macOS 电脑端**       | 较完整支持 | 系统菜单栏、桌面小组件（5种）、菜单栏专注计时          |
+| **Windows Lite电脑端** | 基础支持  | 悬浮窗                              |
+| **vela Band 手环端**   | 基础支持  | 与手机通信                            |
 | **网页端**             | 较完整支持 | 通过 Cloudflare Zero Trust 访问，支持团队管理 |
 
 ### 1.7 权限调用说明
@@ -106,8 +109,9 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 
 | 服务器 | 提供商 | 用途 | 传输协议 |
 |--------|--------|------|----------|
-| **阿里云服务器** | 阿里云（中国） | 核心同步、团队协作、审计日志、排行榜、WebSocket 实时同步 | **HTTP / WebSocket（未加密）** |
-| **Cloudflare 服务器** | Cloudflare | 网页端访问、静态配置、版本更新、HTTPS 穿透 | HTTPS（加密） |
+| **阿里云服务器** | 阿里云（中国） | 核心同步、团队协作、审计日志、排行榜、WebSocket 实时同步、人机验证（Turnstile）后端校验 | **HTTP / WebSocket（未加密）** |
+| **Cloudflare Turnstile API** | Cloudflare | 人机验证 token 校验 | HTTPS（加密） |
+| **Cloudflare 服务器** | Cloudflare | **已于 2026年6月1日 停用**。此前用于网页端访问、HTTPS 代理、Zero Trust 访问 | HTTPS（加密） |
 | **GitHub Raw** | GitHub | 静态资源配置 | HTTPS（加密） |
 
 **特别安全风险告知：**
@@ -116,8 +120,8 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 ### 2.3 存储地点
 
 - 本地数据：存储在您的设备中
-- 云端数据：存储于阿里云服务器（中国大陆）和 Cloudflare 相关服务
-- 静态资源：部分配置信息存储于GitHub Raw
+- 云端数据：存储于阿里云服务器（中国大陆）
+- 静态资源：部分配置信息存储于 GitHub Raw
 
 ### 2.4 存储期限
 
@@ -138,7 +142,9 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 - **智谱AI**：仅当您使用AI功能时，将您输入的文本或图片发送至智谱AI API进行处理
 - **您自定义的 AI 服务商**：当您配置自定义 OpenAI 兼容接口时，将 AI 请求内容发送至您填写的 API 地址
 - **小米穿戴SDK**：仅当您使用小米手环功能时，将待办、课表等同步数据发送至小米穿戴设备
-- **Cloudflare**：用于网页端访问、HTTPS 代理、Zero Trust 访问和部分静态配置
+- **Cloudflare Turnstile**：用于登录/注册时的人机验证，仅传递匿名验证 token
+- **Cloudflare ZeroTrust**：用于网页端 HTTPS 代理
+- **Cloudflare**：此前用于网页端，已于 2026年6月1日 停用
 - **GitHub / Bing 壁纸接口**：用于获取静态配置、隐私政策、版本信息或壁纸资源
 - **法律法规要求**：根据法律法规、诉讼争议解决需要，或按行政、司法机关依法提出的要求
 
@@ -279,14 +285,14 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 
 本应用集成了以下第三方服务，其隐私政策如下：
 
-| 第三方服务 | 用途 | 隐私政策链接 |
-|-----------|------|-------------|
-| 智谱AI (BigModel) | AI文本/图片识别 | https://open.bigmodel.cn/privacy |
-| 自定义 OpenAI 兼容服务商 | 用户自行配置的 AI 对话、解析和识别 | 以您配置的服务商政策为准 |
-| 小米穿戴SDK | 手环设备通信 | https://www.mi.com/global/about/privacy |
-| Cloudflare | 网页端访问、HTTPS 代理、Zero Trust、静态服务 | https://www.cloudflare.com/privacypolicy/ |
-| GitHub Raw | 静态资源配置 | https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement |
-| Bing 壁纸接口 | 获取必应每日一图 | https://bing.biturl.top |
+| 第三方服务 | 用途                                    | 隐私政策链接 |
+|-----------|---------------------------------------|-------------|
+| 智谱AI (BigModel) | AI文本/图片识别                             | https://open.bigmodel.cn/privacy |
+| 自定义 OpenAI 兼容服务商 | 用户自行配置的 AI 对话、解析和识别                   | 以您配置的服务商政策为准 |
+| 小米穿戴SDK | 手环设备通信                                | https://www.mi.com/global/about/privacy |
+| Cloudflare | Zero Trust、静态服务、Turnstile 人机验证（登录/注册） | https://www.cloudflare.com/privacypolicy/ |
+| GitHub Raw | 静态资源配置                                | https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement |
+| Bing 壁纸接口 | 获取必应每日一图                              | https://bing.biturl.top |
 
 ---
 
@@ -318,14 +324,15 @@ CountDownTodo（及 Uni-Sync 协同套件，以下简称"本应用"）由 [Junpg
 本应用在不同平台上的功能可能存在差异：
 
 - **灵动岛/悬浮窗功能**：仅 Windows 电脑端可用
+- **Mac 系统菜单栏与桌面小组件**：macOS 端独有功能，菜单栏显示番茄钟专注状态，桌面小组件支持 5 种类型
 - **番茄钟跨端感知功能**：依赖阿里云服务器和 WebSocket 实时通信，手机端和电脑端均可使用
-- **网页端**：支持通过 Cloudflare 服务器、阿里云服务器访问，功能可能受限
+- **网页端**：支持通过阿里云服务器访问，功能可能受限
 - **AI 待办助手**：依赖您配置的 AI 服务商接口，部分上下文会随请求发送给该服务商
 
 ### 11.3 服务器访问
 
-- 手机端和电脑端可访问阿里云服务器和 Cloudflare 服务器
-- 网页端通过 Cloudflare Zero Trust / HTTPS 入口访问后端能力
+- 所有平台现均接入阿里云服务器
+- Cloudflare Worker 后端已于 2026年6月1日 停用，不再接受新连接
 
 ---
 
