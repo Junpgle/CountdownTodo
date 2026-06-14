@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
+import { WsService } from '../services/websocket';
 import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
 
 import {
@@ -138,13 +139,27 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     handleSync();
     fetchUserTeams();
     fetchPriorityAnns();
-    
+
+    const ws = WsService.getInstance();
+    ws.connect(user.id);
+
+    const unsubSyncData = ws.on('SYNC_DATA', () => {
+      handleSync();
+    });
+    const unsubTeamUpdate = ws.on('TEAM_UPDATE', () => {
+      handleSync();
+      fetchUserTeams();
+      fetchPriorityAnns();
+    });
+    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => {
+      fetchPriorityAnns();
+    });
+
     const timer = setInterval(() => {
       setNowMs(Date.now());
-      fetchPriorityAnns(); // Periodically check for important announcements
+      fetchPriorityAnns();
     }, 60000);
 
-    // 检查网页版更新
     const checkWebUpdate = async () => {
       try {
         const res = await fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json');
@@ -164,6 +179,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
     return () => {
       clearInterval(timer);
+      unsubSyncData();
+      unsubTeamUpdate();
+      unsubNewAnnouncement();
+      ws.disconnect();
     };
   }, []);
 
@@ -171,7 +190,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams');
       if (res.success && Array.isArray(res.teams)) {
-        setUserTeams(res.teams as Team[]);
+        const teams = res.teams as Team[];
+        setUserTeams(teams);
+        const uuids = teams.map(t => t.uuid);
+        WsService.getInstance().subscribeToTeams(uuids);
       }
     } catch (e) {}
   };
@@ -1070,24 +1092,26 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           </div>
         )}
 
-        <div className="mb-6 bg-white border border-indigo-100 rounded-3xl shadow-sm px-5 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <HistoryIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900">个人时间轴报告</h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">查看你的个人专注报告</p>
-            </div>
+        {/* 个人时间轴报告 - 右上角悬浮通知 */}
+        <button
+          onClick={() => setShowReportLauncher(true)}
+          className="fixed right-4 top-20 z-50 flex items-center gap-2.5 bg-white border border-indigo-100 shadow-lg shadow-indigo-500/15 rounded-2xl pl-3.5 pr-4 py-3 hover:shadow-xl hover:border-indigo-300 hover:scale-105 transition-all group active:scale-95 animate-[slideInRight_0.5s_ease-out]"
+        >
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-pulse">
+            <HistoryIcon className="w-4.5 h-4.5" />
           </div>
-          <button
-            onClick={() => setShowReportLauncher(true)}
-            className="shrink-0 inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl text-sm font-black transition shadow-lg shadow-indigo-500/20 active:scale-95"
-          >
-            前往App查看报告
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        </div>
+          <div className="text-left">
+            <p className="text-xs font-black text-slate-800 group-hover:text-indigo-600 transition-colors whitespace-nowrap">个人报告</p>
+            <p className="text-[10px] text-slate-400">点击查看</p>
+          </div>
+        </button>
+
+        <style>{`
+          @keyframes slideInRight {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `}</style>
 
         <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0">
         {/* 左半部分：自适应周视图 */}
@@ -1128,7 +1152,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                     const days = getDaysLeft(c.target_time);
                     const isPast = days < 0;
                     return (
-                        <div key={c.uuid} className={`shrink-0 w-64 snap-start p-4 rounded-2xl border flex items-center justify-between group relative overflow-hidden ${isPast ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
+                        <div key={c.uuid} className={`shrink-0 w-48 snap-start p-3.5 rounded-2xl border flex items-center justify-between group relative overflow-hidden ${isPast ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                           <div className={`absolute top-0 left-0 w-1 h-full rounded-l-full ${isPast ? 'bg-slate-300' : 'bg-indigo-500'}`}></div>
                           <div className="pl-2 min-w-0 pr-2">
                             <p className={`font-bold text-sm truncate ${isPast ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{c.title}</p>

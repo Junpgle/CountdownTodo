@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
+import { WsService } from '../services/websocket';
 import { readDayCache, writeDayCache } from './webapp-utils';
 import { ZoomIn, ZoomOut, X, Clock, Calendar, User as UserIcon, CheckCircle2, RefreshCcw, Tag, Layers, ArrowLeft } from 'lucide-react';
 
@@ -563,13 +564,20 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   }, [selectedTeam, user, fetchTeamData]);
 
   useEffect(() => {
-    if (!user || !selectedTeam) return;
-    const ws = new WebSocket(`${ApiService.getBackendUrl().replace('http', 'ws')}/ws?token=${ApiService.getToken()}&deviceId=display_board&platform=web&version=4.0.0`);
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (['SYNC_DATA', 'NEW_ANNOUNCEMENT'].includes(data.action)) fetchTeamData(selectedTeam.uuid);
-    };
-    return () => ws.close();
+    if (!user) return;
+    const ws = WsService.getInstance();
+    if (!selectedTeam) {
+      ws.disconnect();
+      return;
+    }
+    ws.connect(user.id);
+    ws.subscribeToTeams([selectedTeam.uuid]);
+    const unsub = ws.on('*', (data) => {
+      if (['SYNC_DATA', 'NEW_ANNOUNCEMENT'].includes(data.action as string)) {
+        fetchTeamData(selectedTeam.uuid);
+      }
+    });
+    return () => { unsub(); };
   }, [user, selectedTeam, fetchTeamData]);
 
   if (!user) return null;
