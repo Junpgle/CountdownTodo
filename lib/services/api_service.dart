@@ -106,7 +106,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> register(
       String username, String email, String password,
-      {String? code}) async {
+      {String? code, String? turnstileToken}) async {
     try {
       final Map<String, dynamic> bodyMap = {
         'username': username,
@@ -115,6 +115,9 @@ class ApiService {
       };
 
       if (code != null && code.isNotEmpty) bodyMap['code'] = code;
+      if (turnstileToken != null && turnstileToken.isNotEmpty) {
+        bodyMap['turnstile_token'] = turnstileToken;
+      }
 
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/auth/register'),
@@ -139,15 +142,22 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> login(
-      String email, String password) async {
+      String email, String password,
+      {String? turnstileToken}) async {
     try {
+      final Map<String, dynamic> bodyMap = {
+        'email': email,
+        'password': password,
+      };
+
+      if (turnstileToken != null && turnstileToken.isNotEmpty) {
+        bodyMap['turnstile_token'] = turnstileToken;
+      }
+
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/auth/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode(bodyMap),
       );
 
       final data = jsonDecode(response.body);

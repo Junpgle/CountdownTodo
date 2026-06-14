@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
 import '../storage_service.dart';
 import '../widgets/privacy_policy_dialog.dart';
+import '../widgets/turnstile_verification_widget.dart';
 import 'home_dashboard.dart';
 import '../utils/page_transitions.dart';
 
@@ -671,6 +672,10 @@ class _LoginScreenState extends State<LoginScreen>
   int _resetCodeCooldown = 0;
   Timer? _cooldownTimer;
 
+  // 🔐 Turnstile 人机验证相关状态
+  String? _turnstileToken;
+  GlobalKey<State> _turnstileKey = GlobalKey();
+
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
   late final AnimationController _slideCtrl;
@@ -859,9 +864,14 @@ class _LoginScreenState extends State<LoginScreen>
       _snack('请先阅读并同意隐私政策');
       return;
     }
+    if (_turnstileToken == null || _turnstileToken!.isEmpty) {
+      _snack('请先完成人机验证');
+      return;
+    }
 
     setState(() => _isLoading = true);
-    final result = await ApiService.login(email, pass);
+    final result = await ApiService.login(email, pass,
+        turnstileToken: _turnstileToken);
     if (!mounted) return;
 
     if (result['success'] == true) {
@@ -883,6 +893,8 @@ class _LoginScreenState extends State<LoginScreen>
       _finalizeLoginAndNavigate(user['username'] as String);
     } else {
       setState(() => _isLoading = false);
+      // 🔐 登录失败时重置 Turnstile，因为 token 只能用一次
+      _resetTurnstile();
       _snack('登录失败：${result['message']}');
     }
   }
@@ -893,6 +905,11 @@ class _LoginScreenState extends State<LoginScreen>
           _emailCtrl.text.trim().isEmpty ||
           _passCtrl.text.trim().isEmpty) {
         _snack('请填写完整注册信息');
+        return;
+      }
+      // 🔐 首次注册（获取验证码）时需要 Turnstile 验证
+      if (_turnstileToken == null || _turnstileToken!.isEmpty) {
+        _snack('请先完成人机验证');
         return;
       }
     } else {
@@ -912,6 +929,7 @@ class _LoginScreenState extends State<LoginScreen>
       _emailCtrl.text.trim(),
       _passCtrl.text.trim(),
       code: _awaitingVerification ? _codeCtrl.text.trim() : null,
+      turnstileToken: _turnstileToken,
     );
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -928,6 +946,8 @@ class _LoginScreenState extends State<LoginScreen>
         );
       }
     } else {
+      // 🔐 注册失败时重置 Turnstile
+      _resetTurnstile();
       _snack(regResult['message'] ?? '操作失败');
     }
   }
@@ -986,6 +1006,18 @@ class _LoginScreenState extends State<LoginScreen>
       _isRegisterMode = !_isRegisterMode;
       _awaitingVerification = false;
       _codeCtrl.clear();
+      _turnstileToken = null;
+    });
+    // 切换模式时重置 Turnstile
+    _resetTurnstile();
+  }
+
+  /// 🔐 重置 Turnstile 验证状态
+  void _resetTurnstile() {
+    setState(() {
+      _turnstileToken = null;
+      // 通过更换 key 强制重建 widget 来实现重置
+      _turnstileKey = GlobalKey();
     });
   }
 
@@ -1133,20 +1165,22 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildNarrowLayout() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-      child: SlideTransition(
-        position: _slideAnim,
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              const _BrandLogo(),
-              const SizedBox(height: 28),
-              _buildFormContent(),
-            ],
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, 16, 24, 32 + bottomInset),
+        child: SlideTransition(
+          position: _slideAnim,
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _BrandLogo(size: 44),
+                const SizedBox(height: 20),
+                _buildFormContent(),
+              ],
+            ),
           ),
         ),
       ),
@@ -1168,20 +1202,20 @@ class _LoginScreenState extends State<LoginScreen>
         Text(
           _isRegisterMode ? '账号升级' : '欢迎回来',
           style: TextStyle(
-              fontSize: 26, fontWeight: FontWeight.w700, color: t.textPri),
+              fontSize: 24, fontWeight: FontWeight.w700, color: t.textPri),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           _isRegisterMode ? '注册云账号，解锁多端同步' : '登录以同步你的全部数据',
-          style: TextStyle(fontSize: 14, color: t.textSec),
+          style: TextStyle(fontSize: 13, color: t.textSec),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
         if (_legacyLocalUser != null && _isRegisterMode) ...[
           _LegacyBanner(username: _legacyLocalUser!),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
         ],
         _TabSwitcher(isRegister: _isRegisterMode, onToggle: _toggleMode),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         if (_isRegisterMode) ...[
           _Field(
             controller: _userCtrl,
@@ -1226,7 +1260,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ),
           ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
         Row(
           children: [
             Checkbox(
@@ -1271,6 +1305,9 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        // 🔐 Cloudflare Turnstile 人机验证
+        _buildTurnstileSection(),
         const SizedBox(height: 12),
         if (_isLoading)
           const _Spinner()
@@ -1461,6 +1498,52 @@ class _LoginScreenState extends State<LoginScreen>
                   fontWeight: FontWeight.w500),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  // ── Turnstile 验证区域 ────────────────────
+
+  Widget _buildTurnstileSection() {
+    final t = _T(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '人机验证'.toUpperCase(),
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.9,
+            color: t.textHint,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TurnstileVerificationWidget(
+          key: _turnstileKey,
+          isDarkMode: t._dark,
+          disabled: _isLoading,
+          // 登录页 130，注册页 150
+          height: _isRegisterMode ? 150 : 130,
+          // 🔐 登录/注册使用不同 action，后端会校验
+          action: _isRegisterMode ? 'register' : 'login',
+          onVerified: (token) {
+            setState(() {
+              _turnstileToken = token;
+            });
+          },
+          onExpired: () {
+            setState(() {
+              _turnstileToken = null;
+            });
+            _snack('验证已过期，请重新验证');
+          },
+          onError: (message) {
+            setState(() {
+              _turnstileToken = null;
+            });
+          },
         ),
       ],
     );

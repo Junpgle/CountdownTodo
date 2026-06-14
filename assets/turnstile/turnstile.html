@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>人机验证</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            transition: background-color 0.3s ease;
+        }
+        /* 浅色模式 */
+        body.light {
+            background-color: #F8F8FF;
+            color: #1A1A2E;
+        }
+        /* 深色模式 */
+        body.dark {
+            background-color: #13131F;
+            color: #FFFFFF;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+            width: 100%;
+            max-width: 350px;
+        }
+        .cf-turnstile {
+            display: inline-block;
+            margin: 10px auto;
+        }
+        .status {
+            margin-top: 12px;
+            font-size: 13px;
+            min-height: 20px;
+            transition: color 0.3s ease;
+        }
+        .status.success {
+            color: #4CAF50;
+        }
+        .status.error {
+            color: #E53E3E;
+        }
+        .status.loading {
+            color: #6C63FF;
+        }
+        /* 深色模式下调整文字颜色 */
+        body.dark .status.success { color: #66BB6A; }
+        body.dark .status.error { color: #EF5350; }
+        body.dark .status.loading { color: #9C97FF; }
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(108, 99, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #6C63FF;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .error-retry {
+            margin-top: 10px;
+            padding: 8px 20px;
+            background: #6C63FF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .error-retry:hover {
+            opacity: 0.9;
+        }
+        .error-retry:active {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body class="light">
+    <div class="container">
+        <div class="loading-spinner" id="spinner"></div>
+        <div id="turnstile-container">
+            <div class="cf-turnstile" 
+                 id="turnstile-widget"
+                 data-sitekey="" 
+                 data-callback="onTurnstileSuccess"
+                 data-expired-callback="onTurnstileExpired"
+                 data-error-callback="onTurnstileError"
+                 data-theme="light"
+                 data-size="normal">
+            </div>
+        </div>
+        <div class="status" id="status">正在加载验证...</div>
+        <button class="error-retry" id="retryBtn" style="display:none" onclick="retryTurnstile()">重新验证</button>
+    </div>
+
+    <!-- 不使用 render=explicit，Turnstile 会自动渲染所有 .cf-turnstile 元素 -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script>
+        // 配置 - 由 Flutter 通过 URL 参数注入
+        const urlParams = new URLSearchParams(window.location.search);
+        const siteKey = urlParams.get('sitekey') || '';
+        const theme = urlParams.get('theme') || 'light';
+        
+        // 应用主题
+        document.body.className = theme;
+        
+        // 更新 sitekey
+        const widget = document.getElementById('turnstile-widget');
+        if (siteKey) {
+            widget.setAttribute('data-sitekey', siteKey);
+            widget.setAttribute('data-theme', theme);
+        }
+        
+        const statusEl = document.getElementById('status');
+        const spinnerEl = document.getElementById('spinner');
+        const retryBtnEl = document.getElementById('retryBtn');
+        
+        // 向 Flutter 发送消息的函数
+        function postToFlutter(data) {
+            // 方式1: 通过 JavaScript Channel (Android/iOS/macOS)
+            if (window.TurnstileChannel) {
+                window.TurnstileChannel.postMessage(JSON.stringify(data));
+            }
+            // 方式2: 通过 URL scheme (备用)
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.TurnstileChannel) {
+                window.webkit.messageHandlers.TurnstileChannel.postMessage(JSON.stringify(data));
+            }
+            // 方式3: 通过 console.log 前缀标识 (调试用)
+            console.log('TURNSTILE_EVENT:' + JSON.stringify(data));
+        }
+        
+        // Turnstile 回调函数
+        function onTurnstileSuccess(token) {
+            spinnerEl.style.display = 'none';
+            statusEl.className = 'status success';
+            statusEl.textContent = '验证已通过';
+            retryBtnEl.style.display = 'none';
+            
+            postToFlutter({
+                type: 'success',
+                token: token
+            });
+        }
+        
+        function onTurnstileExpired() {
+            statusEl.className = 'status error';
+            statusEl.textContent = '验证已过期，请重新验证';
+            retryBtnEl.style.display = 'inline-block';
+            
+            postToFlutter({
+                type: 'expired',
+                message: '验证已过期'
+            });
+        }
+        
+        function onTurnstileError(e) {
+            spinnerEl.style.display = 'none';
+            statusEl.className = 'status error';
+            statusEl.textContent = '验证加载失败，请检查网络后重试';
+            retryBtnEl.style.display = 'inline-block';
+            
+            postToFlutter({
+                type: 'error',
+                message: '验证加载失败: ' + (e || '网络错误')
+            });
+        }
+        
+        function retryTurnstile() {
+            statusEl.className = 'status loading';
+            statusEl.textContent = '正在重新加载...';
+            retryBtnEl.style.display = 'none';
+            spinnerEl.style.display = 'inline-block';
+            
+            // 重置 Turnstile
+            if (window.turnstile) {
+                turnstile.reset('#turnstile-widget');
+            } else {
+                // 如果 turnstile 对象不可用，重新加载页面
+                location.reload();
+            }
+        }
+        
+        // 页面加载完成后检查 Turnstile 是否可用
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                if (!window.turnstile) {
+                    onTurnstileError('无法加载验证服务');
+                }
+            }, 10000); // 10秒超时
+        });
+    </script>
+</body>
+</html>

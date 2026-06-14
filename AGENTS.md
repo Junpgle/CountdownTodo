@@ -8,7 +8,8 @@
 * Assets are declared in `pubspec.yaml` and stored in `assets/`, `splash/`, and `wallpaper/`.
 * Flutter tests belong in `test/`.
 * Cloudflare Worker backend: `math-quiz-backend/`.
-* Alibaba Cloud backend: `aliyun_debug/`, `aliyun_release/`.
+* Alibaba Cloud backend: `aliyun_debug/`, `aliyun_release/`. 
+* * Mac端位于 /Users/junpgle/WebstormProjects/CDT-server
 * Xiaomi band companion app: `CountDownTodo-band/`.
 
 ## Backend & Network Rules
