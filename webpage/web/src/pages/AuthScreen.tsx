@@ -534,10 +534,10 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
                      阿里云
                    </button>
                    <button 
-                     onClick={() => { ApiService.setBackend('cloudflare'); window.location.reload(); }}
-                     className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${ApiService.getBackendKey() === 'cloudflare' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+                     disabled
+                     className="px-3 py-1.5 rounded-lg text-xs font-bold border bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed line-through"
                    >
-                     Cloudflare
+                     Cloudflare（已停用）
                    </button>
                 </div>
              </div>
