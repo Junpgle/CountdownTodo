@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, Mail, Lock, User as UserIcon, ShieldCheck, MessageSquare, Loader2, KeyRound, Globe } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { TurnstileWidget } from '../components/TurnstileWidget';
+import type { TurnstileWidgetRef } from '../components/TurnstileWidget';
 
 export interface User {
   id: number;
@@ -27,6 +29,10 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 🔐 Turnstile 人机验证
+  const turnstileRef = useRef<TurnstileWidgetRef>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+
   const [forgotMode, setForgotMode] = useState<ForgotMode>('none');
   const [resetEmail, setResetEmail] = useState('');
   const [resetCode, setResetCode] = useState('');
@@ -51,10 +57,11 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
   const handleLogin = async () => {
     try {
       if (isLogin) {
-        const res = await ApiService.request('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password })
-        });
+        if (!turnstileToken) {
+          setError('请先完成人机验证');
+          return;
+        }
+        const res = await ApiService.login(email, password, turnstileToken);
         ApiService.setToken(res.token as string);
         localStorage.setItem('cdt_user', JSON.stringify(res.user));
 
@@ -67,16 +74,26 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError('登录失败，请重试');
+      // 🔐 登录失败时重置 Turnstile
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
     }
   };
 
   const handleRegister = async () => {
     try {
+      // 🔐 首次注册（获取验证码）时需要 Turnstile 验证
+      if (!awaitingVerification && !turnstileToken) {
+        setError('请先完成人机验证');
+        return;
+      }
+
       const payload = {
         username,
         email,
         password,
-        code: awaitingVerification ? verificationCode : null
+        code: awaitingVerification ? verificationCode : null,
+        turnstile_token: !awaitingVerification ? (turnstileToken ?? undefined) : undefined,
       };
 
       const res = await ApiService.register(payload);
@@ -92,6 +109,9 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError('注册过程中发生未知错误');
+      // 🔐 注册失败时重置 Turnstile
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
     }
   };
 
@@ -112,6 +132,9 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
     setAwaitingVerification(false);
     setError('');
     setVerificationCode('');
+    // 🔐 切换模式时重置 Turnstile
+    setTurnstileToken(null);
+    turnstileRef.current?.reset();
   };
 
   const openForgotPassword = useCallback(() => {
@@ -462,6 +485,24 @@ export const AuthScreen = ({ onBack, onLoginSuccess }: AuthScreenProps) => {
                   )}
                 </div>
               </>
+            )}
+
+            {/* 🔐 Cloudflare Turnstile 人机验证（登录和首次注册时显示） */}
+            {!awaitingVerification && (
+              <div className="mt-2">
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-2">人机验证</p>
+                <TurnstileWidget
+                  ref={turnstileRef}
+                  action={isLogin ? 'login' : 'register'}
+                  onVerified={(token) => setTurnstileToken(token)}
+                  onExpired={() => {
+                    setTurnstileToken(null);
+                  }}
+                  onError={() => {
+                    setTurnstileToken(null);
+                  }}
+                />
+              </div>
             )}
 
             <button
