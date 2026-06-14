@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
@@ -105,6 +105,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [newDueDate, setNewDueDate] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const syncLockRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+  const SYNC_DEBOUNCE_MS = 5000;
   const [syncCountToday, setSyncCountToday] = useState(0);
 
   const [nowMs, setNowMs] = useState(Date.now());
@@ -143,15 +146,20 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     const ws = WsService.getInstance();
     ws.connect(user.id);
 
-    const unsubSyncData = ws.on('SYNC_DATA', () => {
-      handleSync();
-    });
+    const unsubSyncData = ws.on('SYNC_DATA', () => { handleSync(); });
     const unsubTeamUpdate = ws.on('TEAM_UPDATE', () => {
       handleSync();
       fetchUserTeams();
       fetchPriorityAnns();
     });
-    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => {
+    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => { fetchPriorityAnns(); });
+    const unsubNewJoinRequest = ws.on('NEW_JOIN_REQUEST', () => { fetchUserTeams(); });
+    const unsubMemberLeft = ws.on('TEAM_MEMBER_LEFT', () => {
+      fetchUserTeams();
+      fetchPriorityAnns();
+    });
+    const unsubTeamRemoved = ws.on('TEAM_REMOVED', () => {
+      fetchUserTeams();
       fetchPriorityAnns();
     });
 
@@ -182,6 +190,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       unsubSyncData();
       unsubTeamUpdate();
       unsubNewAnnouncement();
+      unsubNewJoinRequest();
+      unsubMemberLeft();
+      unsubTeamRemoved();
       ws.disconnect();
     };
   }, []);
@@ -248,15 +259,26 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   };
 
   const handleSync = async () => {
-    if (isSyncing) return;
+    const now = Date.now();
+    if (syncLockRef.current) {
+      console.debug('[Sync] skipped: lock held');
+      return;
+    }
+    if (now - lastSyncTimeRef.current < SYNC_DEBOUNCE_MS) {
+      console.debug('[Sync] skipped: debounce');
+      return;
+    }
+    syncLockRef.current = true;
     setIsSyncing(true);
     try {
       await SyncEngine.syncData(user.id);
       loadLocalData();
       await fetchSyncStats();
+      lastSyncTimeRef.current = Date.now();
     } catch (e) {
       console.error("同步失败", e);
     } finally {
+      syncLockRef.current = false;
       setIsSyncing(false);
     }
   };

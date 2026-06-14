@@ -564,13 +564,8 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   }, [selectedTeam, user, fetchTeamData]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !selectedTeam) return;
     const ws = WsService.getInstance();
-    if (!selectedTeam) {
-      ws.disconnect();
-      return;
-    }
-    ws.connect(user.id);
     ws.subscribeToTeams([selectedTeam.uuid]);
     const unsub = ws.on('*', (data) => {
       if (['SYNC_DATA', 'NEW_ANNOUNCEMENT'].includes(data.action as string)) {
