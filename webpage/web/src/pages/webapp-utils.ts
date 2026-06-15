@@ -78,7 +78,7 @@ export interface CourseItem {
   week_index: number;
 }
 
-export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'multi';
+export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'pomodoro' | 'multi';
 
 export interface CalendarEntry {
   type: 'todo' | 'countdown';
@@ -87,7 +87,7 @@ export interface CalendarEntry {
 
 export interface DetailItem {
   type: CalendarItemType;
-  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | CalendarEntry[];
+  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | import('../types').PomodoroRecord | CalendarEntry[];
 }
 
 // --------------------------------------------------------
