@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
@@ -8,6 +8,7 @@ import {
 import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
 import { WsService } from '../services/websocket';
+import { CacheService } from '../services/cache';
 import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
 
 interface RemotePomData {
@@ -32,7 +33,6 @@ import {
 
 import { ScreenTimeView } from './ScreenTimeView';
 import { CourseView } from './CourseView';
-import { PomodoroStatsView } from './PomodoroStatsView';
 import { PomodoroFocusView } from './PomodoroFocusView';
 import { TeamManagementView } from './TeamManagementView';
 
@@ -98,7 +98,7 @@ const downloadNativeApp = async () => {
 // 主应用组件 (WebApp)
 // --------------------------------------------------------
 export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: () => void, user: User, onLogout: () => void, onOpenDashboard?: () => void }) => {
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'pomodoro' | 'focus' | 'teams'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'focus' | 'teams'>('dashboard');
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
@@ -124,6 +124,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const SYNC_DEBOUNCE_MS = 5000;
   const SYNC_DATA_COOLDOWN_MS = 30000;
   const [syncCountToday, setSyncCountToday] = useState(0);
+  const [effectiveTier, setEffectiveTier] = useState<string>(user.tier || 'free');
+  const [effectiveSyncLimit, setEffectiveSyncLimit] = useState<number>(
+    user.tier === 'ProMax' ? 5000 : user.tier === 'Pro' ? 2000 : user.tier === 'admin' ? 99999 : 500
+  );
 
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileTab, setMobileTab] = useState<'home' | 'settings'>('home');
@@ -235,6 +239,21 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     });
     const unsubStop = ws.on('STOP', () => { console.log('[POM] STOP'); clearRemotePom(); });
     const unsubClear = ws.on('CLEAR_FOCUS', () => { console.log('[POM] CLEAR_FOCUS'); clearRemotePom(); });
+    const unsubUpdateNote = ws.on('UPDATE_NOTE', (data) => {
+      const note = (data.note as string) || '';
+      console.log('[POM] UPDATE_NOTE', note);
+      const updated = { ...remotePomRef.current, note };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
+    const unsubUpdateTags = ws.on('UPDATE_TAGS', (data) => {
+      const rawTags = data.tags;
+      const tags = Array.isArray(rawTags) ? rawTags.filter(Boolean).map(String) : [];
+      console.log('[POM] UPDATE_TAGS', tags);
+      const updated = { ...remotePomRef.current, tags };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
 
     const unsubSyncData = ws.on('SYNC_DATA', () => {
       const now = Date.now();
@@ -290,6 +309,8 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       unsubStart();
       unsubStop();
       unsubClear();
+      unsubUpdateNote();
+      unsubUpdateTags();
       unsubSyncData();
       unsubTeamUpdate();
       unsubNewAnnouncement();
@@ -332,20 +353,63 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     }
   };
 
-  const loadLocalData = () => {
-    // 🚀 应用独立完成状态 (collabType=1 的待办 is_completed 来自 independent_completions)
+  // 🚀 加载本地数据（带缓存优化）
+  const loadLocalData = useCallback(async () => {
+    // 先尝试从 IndexedDB 缓存加载
+    const [cachedTodos, cachedGroups, cachedCountdowns] = await Promise.all([
+      CacheService.getCachedTodos(user.id),
+      CacheService.getCachedGroups(user.id),
+      CacheService.getCachedCountdowns(user.id),
+    ]);
+
+    // 如果有缓存数据，先显示缓存
+    if (cachedTodos) {
+      setTodos(cachedTodos);
+    }
+    if (cachedGroups) {
+      setTodoGroups(cachedGroups);
+    }
+    if (cachedCountdowns) {
+      setCountdowns(cachedCountdowns);
+    }
+
+    // 从 localStorage 读取最新数据
     const rawTodos = SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted);
     const todosWithCompletions = SyncEngine.applyIndependentCompletions(user.id, rawTodos);
-    setTodos(todosWithCompletions);
-    setTodoGroups(SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted));
-    setCountdowns(SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted));
-  };
+    const rawGroups = SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted);
+    const rawCountdowns = SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted);
+
+    // 检查数据是否有变化
+    const todosChanged = !cachedTodos || CacheService.hasDataChanged(cachedTodos, todosWithCompletions);
+    const groupsChanged = !cachedGroups || CacheService.hasDataChanged(cachedGroups, rawGroups);
+    const countdownsChanged = !cachedCountdowns || CacheService.hasDataChanged(cachedCountdowns, rawCountdowns);
+
+    // 只更新有变化的数据
+    if (todosChanged) {
+      setTodos(todosWithCompletions);
+      CacheService.setCachedTodos(user.id, todosWithCompletions);
+    }
+    if (groupsChanged) {
+      setTodoGroups(rawGroups);
+      CacheService.setCachedGroups(user.id, rawGroups);
+    }
+    if (countdownsChanged) {
+      setCountdowns(rawCountdowns);
+      CacheService.setCachedCountdowns(user.id, rawCountdowns);
+    }
+  }, [user.id]);
 
   const fetchSyncStats = async () => {
     try {
       const res = await ApiService.request(`/api/user/status?user_id=${user.id}`, { method: 'GET' });
       if (res && typeof res.sync_count !== 'undefined') {
         setSyncCountToday(Number(res.sync_count));
+      }
+      if (res && res.tier) {
+        setEffectiveTier(res.tier as string);
+      }
+      if (res && typeof res.sync_limit !== 'undefined') {
+        setEffectiveSyncLimit(Number(res.sync_limit));
       }
     } catch (e) {
       console.warn("拉取同步统计信息失败，采用本地记录兜底", e);
@@ -375,7 +439,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     setIsSyncing(true);
     try {
       await SyncEngine.syncData(user.id);
-      loadLocalData();
+      await loadLocalData();
       await fetchSyncStats();
       lastSyncTimeRef.current = Date.now();
     } catch (e) {
@@ -587,7 +651,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       SyncEngine.resetSync(user.id);
       await SyncEngine.syncData(user.id);
-      loadLocalData();
+      // 清除缓存并重新加载
+      await CacheService.clearUserCache(user.id);
+      await loadLocalData();
       await fetchSyncStats();
       alert("全量数据拉取成功！");
     } catch (e) {
@@ -599,9 +665,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   };
 
   const getSyncLimit = () => {
-    if (user.tier === 'admin') return 99999;
-    if (user.tier === 'pro') return 2000;
-    return 500;
+    return effectiveSyncLimit;
   };
   const syncLimit = getSyncLimit();
 
@@ -1492,11 +1556,11 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                 <p className="text-slate-500 mt-1">{user.email}</p>
               </div>
               <div className={`px-4 py-1.5 rounded-xl text-sm font-bold border ${
-                  user.tier === 'pro' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                      user.tier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                  (effectiveTier === 'Pro' || effectiveTier === 'ProMax') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                      effectiveTier === 'admin'  ? 'bg-purple-50 text-purple-600 border-purple-100' :
                           'bg-slate-50 text-slate-600 border-slate-200'
               }`}>
-                {user.tier === 'pro' ? 'Pro 专业版' : (user.tier === 'admin' ? 'Admin 管理员' : 'Free 免费版')}
+                {effectiveTier === 'Pro' ? 'Pro 专业版' : (effectiveTier === 'admin' ? 'Admin 管理员' : (effectiveTier === 'ProMax' ? 'ProMax 旗舰版' : 'Free 免费版'))}
               </div>
             </div>
 
@@ -1582,13 +1646,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                     onClick={() => {setCurrentTab('focus'); setMobileTab('home');}}
                     className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'focus' && mobileTab === 'home' ? 'bg-red-50 text-red-600' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
-                  <span>🍅</span> 专注工作台
-                </button>
-                <button
-                    onClick={() => {setCurrentTab('pomodoro'); setMobileTab('home');}}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'pomodoro' && mobileTab === 'home' ? 'bg-amber-50 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                  <Clock className="w-4 h-4" /> 专注统计
+                  <span>🍅</span> 番茄钟
                 </button>
                 <button
                     onClick={() => {setCurrentTab('teams'); setMobileTab('home');}}
@@ -1632,11 +1690,11 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
               <div className="hidden md:flex flex-col items-end justify-center mr-2 border-r border-slate-200 pr-6">
                 <div className="flex items-center gap-2 mb-1.5">
                 <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
-                    user.tier === 'pro' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                        user.tier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                    effectiveTier === 'Pro' || effectiveTier === 'ProMax' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                        effectiveTier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
                             'bg-slate-50 text-slate-500 border-slate-200'
                 }`}>
-                  {user.tier === 'pro' ? 'PRO' : user.tier === 'admin' ? 'ADMIN' : 'FREE'}
+                  {effectiveTier === 'Pro' ? 'PRO' : effectiveTier === 'ProMax' ? 'PROMAX' : effectiveTier === 'admin' ? 'ADMIN' : 'FREE'}
                 </span>
                   <span className="text-[11px] font-bold text-slate-500">
                   API 同步: {syncCountToday} / {syncLimit}
@@ -1696,10 +1754,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
             <span className="text-xl leading-none">🍅</span>
             <span className="text-[9px] font-bold">专注</span>
           </button>
-          <button onClick={() => {setCurrentTab('pomodoro'); setMobileTab('home');}} className={`flex flex-col items-center gap-0.5 p-2 ${currentTab === 'pomodoro' && mobileTab === 'home' ? 'text-amber-600' : 'text-slate-400'}`}>
-            <Clock className="w-5 h-5" />
-            <span className="text-[9px] font-bold">统计</span>
-          </button>
+
           <button onClick={() => {setCurrentTab('teams'); setMobileTab('home');}} className={`flex flex-col items-center gap-0.5 p-2 ${currentTab === 'teams' && mobileTab === 'home' ? 'text-indigo-500' : 'text-slate-400'}`}>
             <UsersIcon className="w-5 h-5" />
             <span className="text-[9px] font-bold">团队</span>
@@ -1726,7 +1781,6 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           {mobileTab === 'settings' && renderSettings()}
           {currentTab === 'screentime' && mobileTab === 'home' && <ScreenTimeView userId={user.id} />}
           {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} remotePomActive={remotePomActive} remotePomDisplay={remotePomDisplay} remotePomData={remotePomData} />}
-          {currentTab === 'pomodoro' && mobileTab === 'home' && <PomodoroStatsView userId={user.id} todos={todos} />}
           {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>
 

@@ -5,19 +5,17 @@ import {
   User as UserIcon, MapPin, Hash, Sparkles, CalendarDays, ArrowLeftCircle
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { CacheService } from '../services/cache';
 import type { TodoItem, CountdownItem } from '../types';
 import type { CourseItem, CalendarEntry, DetailItem } from './webapp-utils';
-import { readDayCache, writeDayCache, formatDt, formatTimeNum } from './webapp-utils';
+import { formatDt, formatTimeNum } from './webapp-utils';
 
 // --------------------------------------------------------
 // 课表/周视图组件 (内嵌到首页左侧使用)
 // --------------------------------------------------------
 export const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: TodoItem[], countdowns: CountdownItem[] }) => {
-  const courseCacheKey = `u${userId}_courses`;
-  const cachedCourses = readDayCache<CourseItem[]>(courseCacheKey);
-
-  const [courses, setCourses] = useState<CourseItem[]>(cachedCourses ?? []);
-  const [loading, setLoading] = useState(!cachedCourses);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [semesterMonday, setSemesterMonday] = useState(new Date());
 
@@ -73,35 +71,60 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
 
   useEffect(() => {
     const init = async () => {
-      // 1. 课程数据（优先缓存）
-      let courseData = cachedCourses;
-      if (!courseData) {
-        setLoading(true);
-        try {
-          const data = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
-          courseData = (Array.isArray(data) ? data : []) as CourseItem[];
-          setCourses(courseData);
-          writeDayCache(courseCacheKey, courseData);
-        } catch (e) {
-          console.error("获取课表失败", e);
-          courseData = [];
-        }
-      }
+      // 1. 先从 IndexedDB 缓存加载，实现秒开
+      const [cachedCourses, cachedSemester] = await Promise.all([
+        CacheService.getCachedCourses(userId),
+        CacheService.getCachedSemesterStart(userId),
+      ]);
 
-      // 2. 拉取开学时间（不缓存，保证用最新配置）
-      let semesterStartMs: number | null = null;
+      const hasCache = cachedCourses && cachedCourses.length > 0;
+      let courseData = cachedCourses ?? [];
+      let semesterStartMs: number | null = cachedSemester;
+
+      if (hasCache) {
+        setCourses(cachedCourses);
+        // 应用缓存的学期信息，立即计算周数
+        applySemesterStart(semesterStartMs, courseData);
+        setLoading(false);
+        // 有缓存时后台静默刷新
+        refreshFromServer(courseData, semesterStartMs);
+      } else {
+        // 无缓存时显示 loading 并等待服务器数据
+        await refreshFromServer([], null);
+      }
+    };
+
+    const refreshFromServer = async (localCourseData: CourseItem[], localSemester: number | null) => {
+      let courseData = localCourseData;
+      let semesterStartMs = localSemester;
+
       try {
-        const settings = await ApiService.request('/api/settings', { method: 'GET' });
+        const [serverCourses, settings] = await Promise.all([
+          ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' }),
+          ApiService.request('/api/settings', { method: 'GET' }),
+        ]);
+
+        // 更新课程数据
+        if (Array.isArray(serverCourses)) {
+          courseData = serverCourses as CourseItem[];
+          setCourses(courseData);
+          CacheService.setCachedCourses(userId, courseData);
+        }
+
+        // 更新学期信息
         if (settings && settings.semester_start) {
           const parsed = Number(settings.semester_start);
-          if (!isNaN(parsed) && parsed > 0) semesterStartMs = parsed;
+          if (!isNaN(parsed) && parsed > 0) {
+            semesterStartMs = parsed;
+            CacheService.setCachedSemesterStart(userId, semesterStartMs);
+          }
         }
       } catch (e) {
-        console.error("获取开学时间失败，使用课表反推", e);
+        console.error("刷新课表数据失败，使用缓存", e);
       }
 
-      // 3. 应用开学时间，计算当前周
-      applySemesterStart(semesterStartMs, courseData ?? []);
+      // 应用开学时间，计算当前周
+      applySemesterStart(semesterStartMs, courseData);
       setLoading(false);
     };
 

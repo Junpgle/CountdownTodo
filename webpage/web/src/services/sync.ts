@@ -119,27 +119,18 @@ export const SyncEngine = {
         }
 
         // --- 合并 Todos ---
+        // 🚀 服务端返回的 server_todos 中 is_completed 已经从 todo_completions 获取了正确值
+        //    所以对于 collabType=1 的待办，直接使用服务端返回的值即可
         const serverTodos = (Array.isArray(response.server_todos) ? response.server_todos : []) as TodoItem[];
         const todoMap = new Map(allLocalTodos.map(t => [t.uuid, t]));
 
         for (const sTodo of serverTodos) {
           const lTodo = todoMap.get(sTodo.uuid);
           if (!lTodo || sTodo.version > lTodo.version || (sTodo.version === lTodo.version && (sTodo.updated_at || 0) >= (lTodo.updated_at || 0))) {
-            // 🚀 collabType=1 时，使用本地独立完成状态覆盖 is_completed
-            if (sTodo.collab_type === 1) {
-              const completion = localCompletions[sTodo.uuid];
-              if (completion) {
-                sTodo.is_completed = completion.is_completed;
-              }
-            }
+            // 服务端数据更新，直接使用（is_completed 已经是正确值）
             todoMap.set(sTodo.uuid, sTodo);
-          } else if (lTodo && lTodo.collab_type === 1) {
-            // 🚀 本地版本更新，但也要确保使用本地独立完成状态
-            const completion = localCompletions[lTodo.uuid];
-            if (completion) {
-              lTodo.is_completed = completion.is_completed;
-            }
           }
+          // 本地版本更新时保留本地数据
         }
         this.setLocalTodos(userId, Array.from(todoMap.values()));
 

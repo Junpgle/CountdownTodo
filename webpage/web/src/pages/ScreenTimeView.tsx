@@ -4,40 +4,49 @@ import {
   PieChart as PieChartIcon
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { CacheService } from '../services/cache';
 import type { ScreenTimeStat, AppGroup } from './webapp-utils';
-import { readDayCache, writeDayCache, formatHM, simplifyDeviceName } from './webapp-utils';
+import { formatHM, simplifyDeviceName } from './webapp-utils';
 
 // --------------------------------------------------------
 // 屏幕时间组件
 // --------------------------------------------------------
 export const ScreenTimeView = ({ userId }: { userId: number }) => {
-  const cacheKey = `u${userId}_screen_time_${new Date().toDateString()}`;
-  const cached = readDayCache<ScreenTimeStat[]>(cacheKey);
-
-  const [stats, setStats] = useState<ScreenTimeStat[]>(cached ?? []);
-  const [loading, setLoading] = useState(!cached); // 有缓存则不显示 loading
+  const [stats, setStats] = useState<ScreenTimeStat[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pc' | 'mobile'>('all');
   const [selectedDate] = useState(new Date());
 
   useEffect(() => {
-    // 有缓存直接用，不再请求 API
-    if (cached) return;
-    fetchStats();
+    const init = async () => {
+      // 1. 先从 IndexedDB 缓存加载
+      const cached = await CacheService.getCachedScreenTime(userId);
+      if (cached && cached.length > 0) {
+        setStats(cached);
+        setLoading(false);
+        // 有缓存时后台静默刷新
+        fetchStats(false);
+      } else {
+        // 无缓存时显示 loading
+        fetchStats(true);
+      }
+    };
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchStats = async () => {
-    setLoading(true);
+  const fetchStats = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
       const data = await ApiService.request(`/api/screen_time?user_id=${userId}&date=${dateStr}`, { method: 'GET' });
       const result = (Array.isArray(data) ? data : []) as ScreenTimeStat[];
       setStats(result);
-      writeDayCache(cacheKey, result);
+      CacheService.setCachedScreenTime(userId, result);
     } catch (e) {
       console.error("获取屏幕时间失败", e);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -83,7 +92,7 @@ export const ScreenTimeView = ({ userId }: { userId: number }) => {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-                onClick={fetchStats}
+                onClick={() => fetchStats()}
                 disabled={loading}
                 className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition disabled:opacity-50"
                 title="刷新数据"

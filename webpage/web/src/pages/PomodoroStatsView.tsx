@@ -3,6 +3,7 @@ import {
   RefreshCw, Clock, CheckCircle2
 } from 'lucide-react';
 import { ApiService } from '../services/api';
+import { CacheService } from '../services/cache';
 import { SyncEngine } from '../services/sync';
 import type { TodoItem } from '../types';
 import type { PomodoroTag, PomodoroRecord } from './webapp-utils';
@@ -15,11 +16,9 @@ import {
 // 番茄专注统计组件
 // --------------------------------------------------------
 export const PomodoroStatsView = ({ userId, todos }: { userId: number, todos: TodoItem[] }) => {
-  const [records, setRecords] = useState<PomodoroRecord[]>(() =>
-    getLocalPomRecords(userId).filter(r => !r.is_deleted)
-  );
+  const [records, setRecords] = useState<PomodoroRecord[]>([]);
   const [tags, setTags] = useState<PomodoroTag[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // 筛选状态
   const [filterYear, setFilterYear] = useState<number | 'all'>(new Date().getFullYear());
@@ -28,24 +27,47 @@ export const PomodoroStatsView = ({ userId, todos }: { userId: number, todos: To
   const [filterTag, setFilterTag] = useState<string | 'all'>('all');
 
   useEffect(() => {
-    fetchData();
+    const init = async () => {
+      // 1. 先从 IndexedDB 缓存加载
+      const [cachedRecords, cachedTags] = await Promise.all([
+        CacheService.getCachedPomRecords(userId),
+        CacheService.getCachedPomTags(userId),
+      ]);
+
+      const hasCache = cachedRecords && cachedRecords.length > 0;
+      if (hasCache) {
+        setRecords(cachedRecords.filter(r => !r.is_deleted));
+        setLoading(false);
+      }
+      if (cachedTags) {
+        setTags(cachedTags);
+      }
+
+      // 2. 从服务器刷新（有缓存时后台静默刷新）
+      await fetchData(!hasCache);
+    };
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       // 使用统一的增量同步引擎，同步番茄钟记录、文件夹等所有数据
       await SyncEngine.syncData(userId);
-      setRecords(getLocalPomRecords(userId).filter(r => !r.is_deleted));
+      const localRecords = getLocalPomRecords(userId).filter(r => !r.is_deleted);
+      setRecords(localRecords);
+      CacheService.setCachedPomRecords(userId, localRecords);
 
       // 标签较小，保持单独获取，后续也可并入 SyncEngine
       const tagsData = await ApiService.request('/api/pomodoro/tags', { method: 'GET' });
-      setTags((Array.isArray(tagsData) ? tagsData : []) as PomodoroTag[]);
+      const tagsList = (Array.isArray(tagsData) ? tagsData : []) as PomodoroTag[];
+      setTags(tagsList);
+      CacheService.setCachedPomTags(userId, tagsList);
     } catch (e) {
       console.error("获取专注数据失败", e);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -123,7 +145,7 @@ export const PomodoroStatsView = ({ userId, todos }: { userId: number, todos: To
               {tags.map(tag => <option key={tag.uuid} value={tag.uuid}>{tag.name}</option>)}
             </select>
 
-            <button onClick={fetchData} className="p-2 bg-white rounded-xl border border-slate-200 text-slate-500 hover:text-indigo-600 transition ml-1" title="刷新数据">
+            <button onClick={() => fetchData()} className="p-2 bg-white rounded-xl border border-slate-200 text-slate-500 hover:text-indigo-600 transition ml-1" title="刷新数据">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>

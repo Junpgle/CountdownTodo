@@ -97,6 +97,10 @@ export interface PomodoroTag {
   uuid: string;
   name: string;
   color: string;
+  is_deleted: number | boolean;
+  version: number;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface PomodoroRecord {
@@ -114,7 +118,7 @@ export interface PomodoroRecord {
   version: number;
   created_at: number;
   updated_at: number;
-  is_deleted: number;
+  is_deleted: number | boolean;
 }
 
 // ── 番茄钟记录本地存储 ──

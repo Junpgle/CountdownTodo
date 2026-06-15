@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Plus, Trash2, CheckCircle2, Check, X, ArrowLeft,
-  PlayCircle, StopCircle, Hash
+  Plus, Trash2, CheckCircle2, X, ArrowLeft,
+  PlayCircle, StopCircle, Hash, RefreshCw, Clock
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
+import { CacheService } from '../services/cache';
 import { WsService } from '../services/websocket';
 import type { TodoItem } from '../types';
 import type { PomodoroTag, PomodoroRecord, PomodoroSettings, PomodoroState } from './webapp-utils';
 import {
-  generateUUID,
+  generateUUID, formatDt, formatHM,
   loadPomodoroSettings, savePomodoroSettings,
   loadPomodoroState, savePomodoroState,
-  upsertLocalPomRecord, setPomLastSyncTime
+  upsertLocalPomRecord, setPomLastSyncTime,
+  getLocalPomRecords,
 } from './webapp-utils';
 
 // --------------------------------------------------------
@@ -63,12 +65,64 @@ export const PomodoroFocusView = ({
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [switchTargetUuid, setSwitchTargetUuid] = useState<string | null>(null);
 
-  // Load tags on mount
+  // ---- Stats state ----
+  const [records, setRecords] = useState<PomodoroRecord[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [filterYear, setFilterYear] = useState<number | 'all'>(new Date().getFullYear());
+  const [filterMonth, setFilterMonth] = useState<number | 'all'>(new Date().getMonth() + 1);
+  const [filterDay, setFilterDay] = useState<number | 'all'>('all');
+  const [filterTag, setFilterTag] = useState<string | 'all'>('all');
+
+  // Load tags + stats on mount
   useEffect(() => {
     SyncEngine.syncData(userId).catch(console.error);
     fetchTags();
+    initStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  const initStats = async () => {
+    const cachedRecords = await CacheService.getCachedPomRecords(userId);
+    const hasCache = cachedRecords && cachedRecords.length > 0;
+    if (hasCache) {
+      setRecords(cachedRecords.filter(r => !r.is_deleted) as unknown as PomodoroRecord[]);
+      setStatsLoading(false);
+      // 有缓存时后台静默刷新
+      fetchStats(false);
+    } else {
+      // 无缓存时显示 loading
+      fetchStats(true);
+    }
+  };
+
+  const fetchStats = async (showLoading = true) => {
+    if (showLoading) setStatsLoading(true);
+    try {
+      const localRecords = getLocalPomRecords(userId).filter(r => !r.is_deleted);
+      setRecords(localRecords);
+      CacheService.setCachedPomRecords(userId, localRecords);
+    } catch (e) {
+      console.error("获取专注统计失败", e);
+    } finally {
+      if (showLoading) setStatsLoading(false);
+    }
+  };
+
+  const filteredRecords = useMemo(() => {
+    return records
+      .filter(record => {
+        const d = new Date(record.start_time);
+        const matchYear = filterYear === 'all' || d.getFullYear() === filterYear;
+        const matchMonth = filterMonth === 'all' || (d.getMonth() + 1) === filterMonth;
+        const matchDay = filterDay === 'all' || d.getDate() === filterDay;
+        const matchTag = filterTag === 'all' || (record.tag_uuids && record.tag_uuids.includes(filterTag));
+        return matchYear && matchMonth && matchDay && matchTag;
+      })
+      .sort((a, b) => b.start_time - a.start_time);
+  }, [records, filterYear, filterMonth, filterDay, filterTag]);
+
+  const totalFocusSeconds = filteredRecords.reduce((sum, r) => sum + (r.actual_duration || r.planned_duration || 0), 0);
+  const completedCount = filteredRecords.filter(r => r.status === 'completed').length;
 
   const fetchTags = async () => {
     setLoadingTags(true);
@@ -293,18 +347,21 @@ export const PomodoroFocusView = ({
 
   const handleAddTag = async () => {
     if (!newTagName.trim()) return;
-    const tag: PomodoroTag = {
+    const fullTag: PomodoroTag = {
       uuid: generateUUID(),
       name: newTagName.trim(),
       color: newTagColor,
+      is_deleted: 0,
+      version: 1,
+      created_at: Date.now(),
+      updated_at: Date.now(),
     };
     try {
-      const fullTag = { ...tag, is_deleted: 0, version: 1, created_at: Date.now(), updated_at: Date.now() };
       await ApiService.request('/api/pomodoro/tags', {
         method: 'POST',
         body: JSON.stringify({ tags: [fullTag] }),
       });
-      setTags(prev => [...prev, tag]);
+      setTags(prev => [...prev, fullTag]);
       setNewTagName('');
       setNewTagColor('#6366f1');
     } catch (e) {
@@ -361,6 +418,23 @@ export const PomodoroFocusView = ({
 
   const TAG_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
+  let remoteMins = 0;
+  let remoteSecs = 0;
+  if (remotePomActive && remotePomDisplay) {
+    const parts = remotePomDisplay.split(':').map(Number).filter(n => !isNaN(n));
+    if (parts.length === 2) {
+      remoteMins = parts[0];
+      remoteSecs = parts[1];
+    } else if (parts.length === 3) {
+      remoteMins = parts[0] * 60 + parts[1];
+      remoteSecs = parts[2];
+    } else if (parts.length === 1) {
+      remoteSecs = parts[0];
+    }
+  }
+  const minProgress = Math.min(1, Math.max(0, (remoteMins % 60) / 60));
+  const secProgress = Math.min(1, Math.max(0, remoteSecs / 60));
+
   return (
     <div className="flex flex-col gap-4 sm:gap-6 animate-in fade-in duration-300 h-full flex-1 min-h-0">
       {/* Header */}
@@ -390,40 +464,19 @@ export const PomodoroFocusView = ({
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 flex-1 min-h-0">
-        {/* 远程设备专注状态自动同步显示 */}
-        {remotePomActive && !pomState && (
-          <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-5 py-4">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl shrink-0">🍅</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-red-700 text-sm">设备专注同步中</p>
-                <p className="text-red-500 text-lg font-black tabular-nums mt-1">
-                  {remotePomDisplay}
-                </p>
-                {remotePomData.todoTitle && (
-                  <p className="text-red-400 text-xs font-bold mt-0.5 truncate">{remotePomData.todoTitle}</p>
-                )}
-              </div>
-            </div>
-            {remotePomData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-red-100">
-                {remotePomData.tags.map((tag, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold text-red-500 bg-red-100/50">{tag}</span>
-                ))}
-              </div>
-            )}
-            {remotePomData.note && (
-              <p className="text-red-400 text-[10px] mt-2 pt-2 border-t border-red-100 truncate">📝 {remotePomData.note}</p>
-            )}
-          </div>
-        )}
 
         {/* Left: Timer */}
-        <div className="lg:w-[400px] xl:w-[460px] shrink-0 flex flex-col gap-4">
+        <div className={`${remotePomActive && !pomState ? 'flex-1 max-w-2xl mx-auto' : 'lg:w-[400px] xl:w-[460px] shrink-0'} flex flex-col gap-4 w-full transition-all duration-500 overflow-y-auto min-h-0 pb-4`}>
           {/* Timer Card */}
-          <div className={`relative bg-white rounded-3xl shadow-sm border flex flex-col items-center justify-center p-8 sm:p-10 gap-6 ${
-            pomState?.phase === 'rest' ? 'border-emerald-200' : (isRunning ? 'border-red-200' : 'border-slate-100')
+          <div className={`relative shrink-0 rounded-3xl shadow-sm border flex flex-col items-center justify-center p-8 sm:p-10 gap-6 transition-all ${
+            remotePomActive && !pomState
+              ? 'bg-gradient-to-br from-purple-50/40 to-indigo-50/40 border-purple-200/60'
+              : pomState?.phase === 'rest' ? 'bg-white border-emerald-200' : (isRunning ? 'bg-white border-red-200' : 'bg-white border-slate-100')
           }`}>
+            {remotePomActive && !pomState && (
+               <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-purple-500/5 via-indigo-500/5 to-fuchsia-500/5 pointer-events-none" />
+            )}
+
             {pomState && (
               <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase ${
                 pomState.phase === 'rest' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-500 border border-red-100'
@@ -432,53 +485,109 @@ export const PomodoroFocusView = ({
               </div>
             )}
 
-            {/* Circular progress */}
-            <div className="relative w-52 h-52 sm:w-60 sm:h-60">
-              <svg className="absolute inset-0 -rotate-90" viewBox="0 0 200 200">
-                <circle cx="100" cy="100" r="88" fill="none" stroke="#f1f5f9" strokeWidth="12" />
-                <circle
-                  cx="100" cy="100" r="88" fill="none"
-                  stroke={pomState?.phase === 'rest' ? '#10b981' : (isRunning ? '#ef4444' : '#6366f1')}
-                  strokeWidth="12"
-                  strokeLinecap="round"
-                  strokeDasharray={`${2 * Math.PI * 88}`}
-                  strokeDashoffset={`${2 * Math.PI * 88 * (1 - progressPct / 100)}`}
-                  className="transition-all duration-500"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-5xl sm:text-6xl font-black tabular-nums text-slate-800 tracking-tight">
-                  {pomState ? formatTimer(remainMs) : formatTimer(settings.focusDuration * 1000)}
-                </span>
-                <span className="text-sm font-bold text-slate-400 mt-1">
-                  {pomState ? (pomState.phase === 'focus' ? '专注剩余' : '休息剩余') : '准备开始'}
-                </span>
+            {/* Visual Display */}
+            {remotePomActive && !pomState ? (
+              <div className="relative w-56 h-56 sm:w-[280px] sm:h-[280px] flex items-center justify-center shrink-0 z-10 my-0 sm:my-4">
+                <svg className="absolute inset-0 -rotate-90 w-full h-full overflow-visible" viewBox="0 0 280 280">
+                  {/* Outer Ring */}
+                  <circle cx="140" cy="140" r="126" fill="none" stroke="#f1f5f9" strokeWidth="16" />
+                  <circle cx="140" cy="140" r="126" fill="none" stroke="#8b5cf6" strokeWidth="16" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 126}`} strokeDashoffset={`${2 * Math.PI * 126 * (1 - minProgress)}`} className="transition-all duration-1000 ease-in-out" />
+                  {/* Inner Ring */}
+                  <circle cx="140" cy="140" r="98" fill="none" stroke="#f1f5f9" strokeWidth="12" opacity="0.6" />
+                  <circle cx="140" cy="140" r="98" fill="none" stroke="#a855f7" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 98}`} strokeDashoffset={`${2 * Math.PI * 98 * (1 - secProgress)}`} className="transition-all duration-1000 ease-linear" />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center text-center">
+                  <span className="flex h-3 w-3 relative mb-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                  </span>
+                  <span className="text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-slate-800">
+                    {remotePomDisplay}
+                  </span>
+                  <span className="text-sm font-bold text-purple-500 uppercase tracking-widest mt-1">远程专注中</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative w-52 h-52 sm:w-60 sm:h-60 z-10">
+                <svg className="absolute inset-0 -rotate-90" viewBox="0 0 200 200">
+                  <circle cx="100" cy="100" r="88" fill="none" stroke="#f1f5f9" strokeWidth="12" />
+                  <circle
+                    cx="100" cy="100" r="88" fill="none"
+                    stroke={pomState?.phase === 'rest' ? '#10b981' : (isRunning ? '#ef4444' : '#6366f1')}
+                    strokeWidth="12"
+                    strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 88}`}
+                    strokeDashoffset={`${2 * Math.PI * 88 * (1 - progressPct / 100)}`}
+                    className="transition-all duration-500"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-5xl sm:text-6xl font-black tabular-nums text-slate-800 tracking-tight">
+                    {pomState ? formatTimer(remainMs) : formatTimer(settings.focusDuration * 1000)}
+                  </span>
+                  <span className="text-sm font-bold text-slate-400 mt-1">
+                    {pomState ? (pomState.phase === 'focus' ? '专注剩余' : '休息剩余') : '准备开始'}
+                  </span>
+                </div>
+              </div>
+            )}
 
-            {/* Current task */}
-            {pomState && currentTodo && (
-              <div className="w-full bg-slate-50 rounded-2xl px-5 py-3 flex items-center gap-3 border border-slate-100">
-                <CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" />
-                <p className="font-bold text-slate-700 text-sm truncate flex-1">{currentTodo.content}</p>
-                {pomState.phase === 'focus' && (
-                  <button onClick={() => setShowSwitchDialog(true)} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 shrink-0">切换</button>
+            {/* Task Info */}
+            {remotePomActive && !pomState ? (
+              <div className="flex flex-col items-center w-full relative z-10">
+                {remotePomData.todoTitle ? (
+                  <div className="w-full bg-white/80 rounded-2xl px-4 py-3 flex items-center justify-center gap-2 border border-purple-100 mb-3 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4 text-purple-500 shrink-0" />
+                    <p className="font-bold text-purple-800 text-sm truncate">{remotePomData.todoTitle}</p>
+                  </div>
+                ) : (
+                  <div className="w-full bg-white/80 rounded-2xl px-4 py-3 text-sm font-medium text-purple-400 border border-purple-100 text-center mb-3 shadow-sm">自由专注</div>
+                )}
+                
+                {((remotePomData.tags && remotePomData.tags.length > 0) || remotePomData.note) && (
+                  <div className="flex flex-col items-center gap-2 w-full">
+                    {remotePomData.tags && remotePomData.tags.length > 0 && (
+                      <div className="flex flex-wrap justify-center gap-1.5">
+                        {remotePomData.tags.map((tag, i) => (
+                          <span key={i} className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {remotePomData.note && (
+                      <p className="text-slate-500 text-xs text-center line-clamp-2 max-w-[90%]">📝 {remotePomData.note}</p>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-            {pomState && !currentTodo && (
-              <div className="w-full bg-slate-50 rounded-2xl px-5 py-3 text-sm font-medium text-slate-400 border border-slate-100 text-center">未绑定任务</div>
-            )}
+            ) : (
+              <>
+                {/* Current task */}
+                {pomState && currentTodo && (
+                  <div className="w-full bg-slate-50 rounded-2xl px-5 py-3 flex items-center gap-3 border border-slate-100 relative z-10">
+                    <CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0" />
+                    <p className="font-bold text-slate-700 text-sm truncate flex-1">{currentTodo.content}</p>
+                    {pomState.phase === 'focus' && (
+                      <button onClick={() => setShowSwitchDialog(true)} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 shrink-0">切换</button>
+                    )}
+                  </div>
+                )}
+                {pomState && !currentTodo && (
+                  <div className="w-full bg-slate-50 rounded-2xl px-5 py-3 text-sm font-medium text-slate-400 border border-slate-100 text-center relative z-10">未绑定任务</div>
+                )}
 
-            {/* Tags display */}
-            {pomState && pomState.tagUuids.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center">
-                {pomState.tagUuids.map(uuid => {
-                  const tag = tags.find(t => t.uuid === uuid);
-                  if (!tag) return null;
-                  return <span key={uuid} className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>;
-                })}
-              </div>
+                {/* Tags display */}
+                {pomState && pomState.tagUuids.length > 0 && (
+                  <div className="flex flex-wrap gap-2 justify-center relative z-10">
+                    {pomState.tagUuids.map(uuid => {
+                      const tag = tags.find(t => t.uuid === uuid);
+                      if (!tag) return null;
+                      return <span key={uuid} className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>;
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
             {/* Controls */}
@@ -555,45 +664,90 @@ export const PomodoroFocusView = ({
           </div>
         </div>
 
-        {/* Right: Active todos */}
-        <div className="flex-1 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden min-h-[300px] lg:min-h-0">
-          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> 活跃待办列表
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">点击任务快速绑定为专注目标</p>
+        {/* Right: 专注统计 */}
+        <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-hidden">
+          {/* 筛选器 */}
+          <div className="flex items-center gap-2 bg-white rounded-2xl border border-slate-100 p-3 shrink-0 flex-wrap">
+            <select value={filterYear} onChange={e => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600 rounded-xl px-2.5 py-1.5 focus:outline-none">
+              <option value="all">全年</option>
+              {[...Array(3)].map((_, i) => { const y = new Date().getFullYear() - i; return <option key={y} value={y}>{y}年</option>; })}
+            </select>
+            <select value={filterMonth} onChange={e => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600 rounded-xl px-2.5 py-1.5 focus:outline-none">
+              <option value="all">全月</option>
+              {[...Array(12)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}月</option>)}
+            </select>
+            <select value={filterDay} onChange={e => setFilterDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600 rounded-xl px-2.5 py-1.5 focus:outline-none">
+              <option value="all">全天</option>
+              {[...Array(31)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}日</option>)}
+            </select>
+            <select value={filterTag} onChange={e => setFilterTag(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-600 rounded-xl px-2.5 py-1.5 focus:outline-none">
+              <option value="all">所有标签</option>
+              {tags.map(tag => <option key={tag.uuid} value={tag.uuid}>{tag.name}</option>)}
+            </select>
+            <button onClick={() => fetchStats()} className="ml-auto p-1.5 bg-slate-50 rounded-xl border border-slate-200 text-slate-500 hover:text-indigo-600 transition" title="刷新">
+              <RefreshCw className={`w-3.5 h-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
-            {activeTodosForPom.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16">
-                <CheckCircle2 className="w-10 h-10 mb-3 opacity-20" />
-                <p className="text-sm">暂无活跃待办</p>
+
+          {/* 汇总卡片 */}
+          <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-sm relative overflow-hidden shrink-0">
+            <div className="relative z-10">
+              <p className="text-amber-100 font-bold text-xs mb-1">累计专注时长</p>
+              <div className="text-3xl font-black tracking-tight">
+                {formatHM(totalFocusSeconds).replace('小时', 'h').replace('分钟', 'm')}
               </div>
-            ) : (
-              activeTodosForPom.map(todo => {
-                const isSelected = selectedTodoUuid === todo.uuid;
-                const isCurrent = pomState?.todoUuid === todo.uuid;
-                return (
-                  <button
-                    key={todo.uuid}
-                    onClick={() => !isRunning && setSelectedTodoUuid(isSelected ? null : todo.uuid)}
-                    disabled={isRunning}
-                    className={`w-full text-left p-3 sm:p-4 rounded-2xl border-2 transition flex items-start gap-3 ${
-                      isCurrent ? 'bg-red-50 border-red-200' : isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30'
-                    } ${isRunning ? 'opacity-60 cursor-default' : 'cursor-pointer'}`}
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 ${isCurrent ? 'border-red-400 bg-red-400' : (isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-slate-200')}`}>
-                      {(isSelected || isCurrent) && <Check className="w-3 h-3 text-white" />}
+              <div className="flex items-center gap-2 mt-2 text-xs font-bold bg-black/10 inline-flex px-3 py-1.5 rounded-xl">
+                <CheckCircle2 className="w-3.5 h-3.5" /> 完成 {completedCount} 个
+              </div>
+            </div>
+          </div>
+
+          {/* 专注明细 */}
+          <div className="flex-1 bg-white rounded-2xl border border-slate-100 overflow-hidden flex flex-col min-h-0">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 shrink-0 flex justify-between items-center">
+              <h3 className="font-bold text-sm text-slate-800">记录</h3>
+              <span className="text-[11px] font-bold text-slate-400">{filteredRecords.length} 条</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+              {filteredRecords.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center py-12 text-slate-400">
+                  <Clock className="w-8 h-8 mb-2 opacity-20" />
+                  <p className="text-xs">暂无记录</p>
+                </div>
+              ) : (
+                filteredRecords.map(record => {
+                  const todo = todos.find(t => t.uuid === record.todo_uuid);
+                  const isCompleted = record.status === 'completed';
+                  return (
+                    <div key={record.uuid} className="flex items-center justify-between p-3 border border-slate-100 rounded-xl hover:border-amber-200 transition group">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isCompleted ? 'bg-amber-50 text-amber-500' : 'bg-slate-50 text-slate-400'}`}>
+                          {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800 text-xs truncate">{todo ? todo.content : '未关联任务'}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-slate-500">{formatDt(new Date(record.start_time))}</span>
+                            <span className={`text-[8px] px-1.5 py-0.5 rounded border ${isCompleted ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                              {record.status === 'completed' ? '完成' : record.status === 'switched' ? '切换' : '中断'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-base text-slate-700">
+                          {Math.floor((record.actual_duration || record.planned_duration || 0) / 60)}<span className="text-[10px] font-bold text-slate-400">min</span>
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm text-slate-800 truncate">{todo.content}</p>
-                      {todo.due_date && <p className="text-xs text-slate-400 mt-0.5">截止 {new Date(todo.due_date).toLocaleDateString()}</p>}
-                    </div>
-                    {isCurrent && <span className="shrink-0 text-[10px] font-black text-red-500 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">专注中</span>}
-                  </button>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </div>
