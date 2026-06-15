@@ -1,8 +1,8 @@
-import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag } from '../types';
+import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag, Team, TeamAnnouncement } from '../types';
 import type { CourseItem, ScreenTimeStat } from '../pages/webapp-utils';
 
 const DB_NAME = 'cdt_cache';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_TODOS = 'todos';
 const STORE_GROUPS = 'groups';
 const STORE_COUNTDOWNS = 'countdowns';
@@ -11,6 +11,8 @@ const STORE_SETTINGS = 'settings';
 const STORE_SCREEN_TIME = 'screen_time';
 const STORE_POMODORO_RECORDS = 'pom_records';
 const STORE_POMODORO_TAGS = 'pom_tags';
+const STORE_TEAMS = 'teams';
+const STORE_ANNOUNCEMENTS = 'announcements';
 
 interface CacheItem {
   _key: string;
@@ -62,6 +64,12 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_POMODORO_TAGS)) {
         db.createObjectStore(STORE_POMODORO_TAGS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TEAMS)) {
+        db.createObjectStore(STORE_TEAMS, { keyPath: '_key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_ANNOUNCEMENTS)) {
+        db.createObjectStore(STORE_ANNOUNCEMENTS, { keyPath: '_key' });
       }
     };
   });
@@ -327,6 +335,70 @@ export const CacheService = {
     }
   },
 
+  // Teams
+  async getCachedTeams(userId: number): Promise<Team[] | null> {
+    try {
+      const key = `u${userId}_teams`;
+      const cached = await getOne<Team[]>(STORE_TEAMS, key);
+      return cached ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedTeams(userId: number, teams: Team[]): Promise<void> {
+    try {
+      const key = `u${userId}_teams`;
+      await putOne(STORE_TEAMS, { _key: key, data: teams, cached_at: Date.now() });
+    } catch (e) {
+      console.warn('CacheService: Failed to cache teams', e);
+    }
+  },
+
+  // Announcements
+  async getCachedAnnouncements(userId: number): Promise<TeamAnnouncement[] | null> {
+    try {
+      const key = `u${userId}_announcements`;
+      const cached = await getOne<{ _key: string; data: TeamAnnouncement[]; cached_at: number }>(STORE_ANNOUNCEMENTS, key);
+      if (!cached) return null;
+      // TTL: 5 minutes
+      if (Date.now() - cached.cached_at > 300000) return null;
+      return cached.data;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedAnnouncements(userId: number, announcements: TeamAnnouncement[]): Promise<void> {
+    try {
+      const key = `u${userId}_announcements`;
+      await putOne(STORE_ANNOUNCEMENTS, { _key: key, data: announcements, cached_at: Date.now() });
+    } catch (e) {
+      console.warn('CacheService: Failed to cache announcements', e);
+    }
+  },
+
+  // Sync Stats
+  async getCachedSyncStats(userId: number): Promise<{ sync_count: number; tier: string; sync_limit: number } | null> {
+    try {
+      const key = `u${userId}_sync_stats`;
+      const cached = await getOne<{ _key: string; data: { sync_count: number; tier: string; sync_limit: number }; cached_at: number }>(STORE_SETTINGS, key);
+      if (!cached) return null;
+      return cached.data;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedSyncStats(userId: number, stats: { sync_count: number; tier: string; sync_limit: number }): Promise<void> {
+    try {
+      const key = `u${userId}_sync_stats`;
+      await putOne(STORE_SETTINGS, { _key: key, data: stats, cached_at: Date.now() });
+    } catch (e) {
+      console.warn('CacheService: Failed to cache sync stats', e);
+    }
+  },
+
   // 清除用户缓存
   async clearUserCache(userId: number): Promise<void> {
     try {
@@ -334,6 +406,7 @@ export const CacheService = {
         STORE_TODOS, STORE_GROUPS, STORE_COUNTDOWNS,
         STORE_COURSES, STORE_SETTINGS, STORE_SCREEN_TIME,
         STORE_POMODORO_RECORDS, STORE_POMODORO_TAGS,
+        STORE_TEAMS, STORE_ANNOUNCEMENTS,
       ];
 
       for (const storeName of stores) {

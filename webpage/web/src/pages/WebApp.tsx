@@ -338,8 +338,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
     const timer = setInterval(() => {
       setNowMs(Date.now());
-      fetchPriorityAnns();
     }, 60000);
+    const annPollTimer = setInterval(() => {
+      fetchPriorityAnns();
+    }, 300000);
 
     const checkWebUpdate = async () => {
       try {
@@ -360,6 +362,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
     return () => {
       clearInterval(timer);
+      clearInterval(annPollTimer);
       unsubSyncFocus();
       unsubReconnect();
       unsubStart();
@@ -381,7 +384,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams');
       if (res.success && Array.isArray(res.teams)) {
-        setUserTeams(res.teams as Team[]);
+        const teams = res.teams as Team[];
+        setUserTeams(teams);
+        CacheService.setCachedTeams(user.id, teams);
       }
     } catch (e) {}
   };
@@ -390,7 +395,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams/announcements/unread_priority');
       if (res.success) {
-        setPriorityAnns((res.announcements ?? []) as TeamAnnouncement[]);
+        const announcements = (res.announcements ?? []) as TeamAnnouncement[];
+        setPriorityAnns(announcements);
+        CacheService.setCachedAnnouncements(user.id, announcements);
       }
     } catch (e) {
       console.error('获取重要公告失败', e);
@@ -412,10 +419,13 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   // 🚀 加载本地数据（带缓存优化）
   const loadLocalData = useCallback(async () => {
     // 先尝试从 IndexedDB 缓存加载
-    const [cachedTodos, cachedGroups, cachedCountdowns] = await Promise.all([
+    const [cachedTodos, cachedGroups, cachedCountdowns, cachedTeams, cachedAnns, cachedStats] = await Promise.all([
       CacheService.getCachedTodos(user.id),
       CacheService.getCachedGroups(user.id),
       CacheService.getCachedCountdowns(user.id),
+      CacheService.getCachedTeams(user.id),
+      CacheService.getCachedAnnouncements(user.id),
+      CacheService.getCachedSyncStats(user.id),
     ]);
 
     // 如果有缓存数据，先显示缓存
@@ -427,6 +437,17 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     }
     if (cachedCountdowns) {
       setCountdowns(cachedCountdowns);
+    }
+    if (cachedTeams) {
+      setUserTeams(cachedTeams);
+    }
+    if (cachedAnns) {
+      setPriorityAnns(cachedAnns);
+    }
+    if (cachedStats) {
+      setSyncCountToday(cachedStats.sync_count);
+      setEffectiveTier(cachedStats.tier);
+      setEffectiveSyncLimit(cachedStats.sync_limit);
     }
 
     // 从 localStorage 读取最新数据
@@ -467,6 +488,13 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       if (res && typeof res.sync_limit !== 'undefined') {
         setEffectiveSyncLimit(Number(res.sync_limit));
       }
+      if (res) {
+        CacheService.setCachedSyncStats(user.id, {
+          sync_count: Number(res.sync_count ?? 0),
+          tier: (res.tier as string) || user.tier || 'free',
+          sync_limit: Number(res.sync_limit ?? 500),
+        });
+      }
     } catch (e) {
       console.warn("拉取同步统计信息失败，采用本地记录兜底", e);
       const savedStats = localStorage.getItem('cdt_sync_stats');
@@ -497,6 +525,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       await SyncEngine.syncData(user.id);
       await loadLocalData();
       await fetchSyncStats();
+      await Promise.all([fetchUserTeams(), fetchPriorityAnns()]);
       lastSyncTimeRef.current = Date.now();
     } catch (e) {
       console.error("同步失败", e);
