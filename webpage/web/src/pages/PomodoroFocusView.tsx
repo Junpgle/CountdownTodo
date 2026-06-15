@@ -438,27 +438,29 @@ export const PomodoroFocusView = ({
   return (
     <div className="flex flex-col gap-4 sm:gap-6 animate-in fade-in duration-300 h-full flex-1 min-h-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-100 shrink-0">
+      <div className="flex justify-between items-center bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-100 shrink-0">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
-            <span className="text-2xl">🍅</span> 番茄专注工作台
+          <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-1.5 sm:gap-2">
+            <span className="text-xl sm:text-2xl">🍅</span> 番茄专注工作台
           </h2>
-          <p className="text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务。网页端现已支持与手机/电脑端的实时同步与接管。</p>
+          <p className="hidden sm:block text-slate-500 text-sm mt-0.5">深度专注，高效完成每一项任务。网页端现已支持与手机/电脑端的实时同步与接管。</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => { setSettingsDraft(settings); setShowSettings(true); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition"
+            className="flex items-center justify-center p-2 sm:px-3 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition"
+            title="设置"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            设置
+            <span className="hidden sm:inline sm:ml-1.5">设置</span>
           </button>
           <button
             onClick={() => { fetchTags(); setShowTagManager(true); }}
             disabled={loadingTags}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition"
+            className="flex items-center justify-center p-2 sm:px-3 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition"
+            title="管理标签"
           >
-            <Hash className="w-4 h-4" /> 管理标签
+            <Hash className="w-4 h-4" /> <span className="hidden sm:inline sm:ml-1.5">管理标签</span>
           </button>
         </div>
       </div>
