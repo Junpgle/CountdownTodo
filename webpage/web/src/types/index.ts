@@ -89,7 +89,7 @@ export interface PomodoroTag {
   uuid: string;
   name: string;
   color: string;
-  is_deleted: boolean;
+  is_deleted: number | boolean;
   version: number;
   created_at: number;
   updated_at: number;

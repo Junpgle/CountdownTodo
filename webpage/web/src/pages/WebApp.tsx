@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, Trash2, Clock, CheckCircle2, Check, X, RefreshCw, LogOut,
   ChevronDown, ChevronRight, LayoutDashboard, PieChart as PieChartIcon,
@@ -7,7 +7,22 @@ import {
 } from 'lucide-react';
 import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
+import { WsService } from '../services/websocket';
+import { CacheService } from '../services/cache';
 import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
+
+interface RemotePomData {
+  active: boolean;
+  timestamp: number;
+  targetEnd: number;
+  mode: number;
+  todoTitle: string;
+  todoUuid: string | null;
+  sessionUuid: string | null;
+  tags: string[];
+  note: string;
+  duration: number;
+}
 
 import {
   CURRENT_WEB_VERSION,
@@ -18,7 +33,6 @@ import {
 
 import { ScreenTimeView } from './ScreenTimeView';
 import { CourseView } from './CourseView';
-import { PomodoroStatsView } from './PomodoroStatsView';
 import { PomodoroFocusView } from './PomodoroFocusView';
 import { TeamManagementView } from './TeamManagementView';
 
@@ -84,7 +98,7 @@ const downloadNativeApp = async () => {
 // 主应用组件 (WebApp)
 // --------------------------------------------------------
 export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: () => void, user: User, onLogout: () => void, onOpenDashboard?: () => void }) => {
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'pomodoro' | 'focus' | 'teams'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'screentime' | 'focus' | 'teams'>('dashboard');
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
@@ -104,7 +118,16 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [newDueDate, setNewDueDate] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const syncLockRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+  const lastSyncDataTimeRef = useRef(0);
+  const SYNC_DEBOUNCE_MS = 5000;
+  const SYNC_DATA_COOLDOWN_MS = 30000;
   const [syncCountToday, setSyncCountToday] = useState(0);
+  const [effectiveTier, setEffectiveTier] = useState<string>(user.tier || 'free');
+  const [effectiveSyncLimit, setEffectiveSyncLimit] = useState<number>(
+    user.tier === 'ProMax' ? 5000 : user.tier === 'Pro' ? 2000 : user.tier === 'admin' ? 99999 : 500
+  );
 
   const [nowMs, setNowMs] = useState(Date.now());
   const [mobileTab, setMobileTab] = useState<'home' | 'settings'>('home');
@@ -132,19 +155,194 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [historyTab, setHistoryTab] = useState<'local' | 'cloud'>('cloud');
   const [historyTarget, setHistoryTarget] = useState<{ uuid: string; table: string; title: string } | null>(null);
   const [showReportLauncher, setShowReportLauncher] = useState(false);
+  const [reportPos, setReportPos] = useState({ x: 0, y: 0 });
+  const [isDraggingReport, setIsDraggingReport] = useState(false);
+  const [dismissReport, setDismissReport] = useState(() => {
+    try {
+      return localStorage.getItem('hide_report_launcher') === 'true';
+    } catch { return false; }
+  });
+  const dragStartOffset = useRef({ x: 0, y: 0 });
+  const dragStartMousePos = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDraggingReport) return;
+      e.preventDefault();
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      setReportPos({
+        x: clientX - dragStartOffset.current.x,
+        y: clientY - dragStartOffset.current.y
+      });
+    };
+    const handleUp = () => setIsDraggingReport(false);
+
+    if (isDraggingReport) {
+      window.addEventListener('mousemove', handleMove, { passive: false });
+      window.addEventListener('touchmove', handleMove, { passive: false });
+      window.addEventListener('mouseup', handleUp);
+      window.addEventListener('touchend', handleUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('mouseup', handleUp);
+        window.removeEventListener('touchend', handleUp);
+      };
+    }
+  }, [isDraggingReport]);
+
+  const onReportDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.close-btn')) return;
+    setIsDraggingReport(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragStartOffset.current = { x: clientX - reportPos.x, y: clientY - reportPos.y };
+    dragStartMousePos.current = { x: clientX, y: clientY };
+  };
+
+  const onReportClick = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.close-btn')) return;
+    const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
+    const dx = clientX - dragStartMousePos.current.x;
+    const dy = clientY - dragStartMousePos.current.y;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+      setShowReportLauncher(true);
+    }
+  };
+
+  // 全局远程番茄钟状态
+  const [remotePomActive, setRemotePomActive] = useState(false);
+  const [remotePomData, setRemotePomData] = useState<RemotePomData>({
+    active: false, timestamp: 0, targetEnd: 0, mode: 0,
+    todoTitle: '', todoUuid: null, sessionUuid: null, tags: [], note: '', duration: 0,
+  });
+  const remotePomRef = useRef<RemotePomData>(remotePomData);
+  const [remotePomDisplay, setRemotePomDisplay] = useState('');
+
+  // 远程番茄钟 1s 更新
+  useEffect(() => {
+    const tick = () => {
+      const p = remotePomRef.current;
+      if (!p.active || !p.timestamp) { setRemotePomDisplay(''); return; }
+      const now = Date.now();
+      const elapsed = Math.floor((now - p.timestamp) / 1000);
+      let display: number;
+      if (p.mode === 1) {
+        display = elapsed;
+      } else {
+        const planned = Math.floor((p.targetEnd - p.timestamp) / 1000);
+        display = Math.max(0, planned - elapsed);
+      }
+      const min = Math.floor(display / 60);
+      const sec = display % 60;
+      setRemotePomDisplay(`${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
+    };
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     loadLocalData();
     handleSync();
     fetchUserTeams();
     fetchPriorityAnns();
-    
+
+    const ws = WsService.getInstance();
+    ws.connect(user.id);
+
+    const clearRemotePom = () => {
+      const empty: RemotePomData = {
+        active: false, timestamp: 0, targetEnd: 0, mode: 0,
+        todoTitle: '', todoUuid: null, sessionUuid: null, tags: [], note: '', duration: 0,
+      };
+      remotePomRef.current = empty;
+      setRemotePomData(empty);
+      setRemotePomActive(false);
+    };
+
+    const handleFocusStart = (data: Record<string, unknown>, label: string) => {
+      const ts = (data.timestamp as number) || Date.now();
+      const targetEnd = (data.target_end_ms as number) || (data.targetEndMs as number) || (data.duration as number) * 1000 + Date.now();
+      const mode = (data.mode as number) || 0;
+      const todoTitle = (data.todo_title as string) || (data.todoTitle as string) || '';
+      const todoUuid = (data.todo_uuid as string) || (data.todoUuid as string) || null;
+      const sessionUuid = (data.session_uuid as string) || null;
+      const rawTags = data.tags;
+      const tags = Array.isArray(rawTags) ? rawTags.filter(Boolean).map(String) : [];
+      const note = (data.note as string) || '';
+      const duration = (data.duration as number) || 0;
+      console.log(`[POM] ${label} ts=${ts} targetEnd=${targetEnd} mode=${mode} title=${todoTitle} tags=${JSON.stringify(tags)}`);
+      const pomData: RemotePomData = {
+        active: true, timestamp: ts, targetEnd, mode, todoTitle,
+        todoUuid, sessionUuid, tags, note, duration,
+      };
+      remotePomRef.current = pomData;
+      setRemotePomData(pomData);
+      setRemotePomActive(true);
+    };
+
+    const unsubSyncFocus = ws.on('SYNC_FOCUS', (data) => {
+      handleFocusStart(data, 'SYNC_FOCUS');
+    });
+    const unsubReconnect = ws.on('RECONNECT_SYNC', (data) => {
+      handleFocusStart(data, 'RECONNECT_SYNC');
+    });
+    const unsubStart = ws.on('START', (data) => {
+      if (data.sourceDevice === ApiService.getDeviceId()) return;
+      handleFocusStart(data, 'START');
+    });
+    const unsubStop = ws.on('STOP', () => { console.log('[POM] STOP'); clearRemotePom(); });
+    const unsubClear = ws.on('CLEAR_FOCUS', () => { console.log('[POM] CLEAR_FOCUS'); clearRemotePom(); });
+    const unsubUpdateNote = ws.on('UPDATE_NOTE', (data) => {
+      const note = (data.note as string) || '';
+      console.log('[POM] UPDATE_NOTE', note);
+      const updated = { ...remotePomRef.current, note };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
+    const unsubUpdateTags = ws.on('UPDATE_TAGS', (data) => {
+      const rawTags = data.tags;
+      const tags = Array.isArray(rawTags) ? rawTags.filter(Boolean).map(String) : [];
+      console.log('[POM] UPDATE_TAGS', tags);
+      const updated = { ...remotePomRef.current, tags };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
+
+    const unsubSyncData = ws.on('SYNC_DATA', () => {
+      const now = Date.now();
+      if (now - lastSyncDataTimeRef.current < SYNC_DATA_COOLDOWN_MS) return;
+      lastSyncDataTimeRef.current = now;
+      handleSync();
+    });
+    const unsubTeamUpdate = ws.on('TEAM_UPDATE', () => {
+      handleSync();
+      fetchUserTeams();
+      fetchPriorityAnns();
+    });
+    const unsubNewAnnouncement = ws.on('NEW_ANNOUNCEMENT', () => { fetchPriorityAnns(); });
+    const unsubNewJoinRequest = ws.on('NEW_JOIN_REQUEST', () => { fetchUserTeams(); });
+    const unsubMemberLeft = ws.on('TEAM_MEMBER_LEFT', () => {
+      fetchUserTeams();
+      fetchPriorityAnns();
+    });
+    const unsubTeamRemoved = ws.on('TEAM_REMOVED', () => {
+      fetchUserTeams();
+      fetchPriorityAnns();
+    });
+
+    // 新设备上线告知服务端当前空闲
+    ws.send({ action: 'IDLE_REPORT' });
+
     const timer = setInterval(() => {
       setNowMs(Date.now());
-      fetchPriorityAnns(); // Periodically check for important announcements
     }, 60000);
+    const annPollTimer = setInterval(() => {
+      fetchPriorityAnns();
+    }, 300000);
 
-    // 检查网页版更新
     const checkWebUpdate = async () => {
       try {
         const res = await fetch('https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/webpage/web/update_manifest.json');
@@ -164,6 +362,21 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
     return () => {
       clearInterval(timer);
+      clearInterval(annPollTimer);
+      unsubSyncFocus();
+      unsubReconnect();
+      unsubStart();
+      unsubStop();
+      unsubClear();
+      unsubUpdateNote();
+      unsubUpdateTags();
+      unsubSyncData();
+      unsubTeamUpdate();
+      unsubNewAnnouncement();
+      unsubNewJoinRequest();
+      unsubMemberLeft();
+      unsubTeamRemoved();
+      ws.disconnect();
     };
   }, []);
 
@@ -171,7 +384,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams');
       if (res.success && Array.isArray(res.teams)) {
-        setUserTeams(res.teams as Team[]);
+        const teams = res.teams as Team[];
+        setUserTeams(teams);
+        CacheService.setCachedTeams(user.id, teams);
       }
     } catch (e) {}
   };
@@ -180,7 +395,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams/announcements/unread_priority');
       if (res.success) {
-        setPriorityAnns((res.announcements ?? []) as TeamAnnouncement[]);
+        const announcements = (res.announcements ?? []) as TeamAnnouncement[];
+        setPriorityAnns(announcements);
+        CacheService.setCachedAnnouncements(user.id, announcements);
       }
     } catch (e) {
       console.error('获取重要公告失败', e);
@@ -199,17 +416,84 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     }
   };
 
-  const loadLocalData = () => {
-    setTodos(SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted));
-    setTodoGroups(SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted));
-    setCountdowns(SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted));
-  };
+  // 🚀 加载本地数据（带缓存优化）
+  const loadLocalData = useCallback(async () => {
+    // 先尝试从 IndexedDB 缓存加载
+    const [cachedTodos, cachedGroups, cachedCountdowns, cachedTeams, cachedAnns, cachedStats] = await Promise.all([
+      CacheService.getCachedTodos(user.id),
+      CacheService.getCachedGroups(user.id),
+      CacheService.getCachedCountdowns(user.id),
+      CacheService.getCachedTeams(user.id),
+      CacheService.getCachedAnnouncements(user.id),
+      CacheService.getCachedSyncStats(user.id),
+    ]);
+
+    // 如果有缓存数据，先显示缓存
+    if (cachedTodos) {
+      setTodos(cachedTodos);
+    }
+    if (cachedGroups) {
+      setTodoGroups(cachedGroups);
+    }
+    if (cachedCountdowns) {
+      setCountdowns(cachedCountdowns);
+    }
+    if (cachedTeams) {
+      setUserTeams(cachedTeams);
+    }
+    if (cachedAnns) {
+      setPriorityAnns(cachedAnns);
+    }
+    if (cachedStats) {
+      setSyncCountToday(cachedStats.sync_count);
+      setEffectiveTier(cachedStats.tier);
+      setEffectiveSyncLimit(cachedStats.sync_limit);
+    }
+
+    // 从 localStorage 读取最新数据
+    const rawTodos = SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted);
+    const todosWithCompletions = SyncEngine.applyIndependentCompletions(user.id, rawTodos);
+    const rawGroups = SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted);
+    const rawCountdowns = SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted);
+
+    // 检查数据是否有变化
+    const todosChanged = !cachedTodos || CacheService.hasDataChanged(cachedTodos, todosWithCompletions);
+    const groupsChanged = !cachedGroups || CacheService.hasDataChanged(cachedGroups, rawGroups);
+    const countdownsChanged = !cachedCountdowns || CacheService.hasDataChanged(cachedCountdowns, rawCountdowns);
+
+    // 只更新有变化的数据
+    if (todosChanged) {
+      setTodos(todosWithCompletions);
+      CacheService.setCachedTodos(user.id, todosWithCompletions);
+    }
+    if (groupsChanged) {
+      setTodoGroups(rawGroups);
+      CacheService.setCachedGroups(user.id, rawGroups);
+    }
+    if (countdownsChanged) {
+      setCountdowns(rawCountdowns);
+      CacheService.setCachedCountdowns(user.id, rawCountdowns);
+    }
+  }, [user.id]);
 
   const fetchSyncStats = async () => {
     try {
       const res = await ApiService.request(`/api/user/status?user_id=${user.id}`, { method: 'GET' });
       if (res && typeof res.sync_count !== 'undefined') {
         setSyncCountToday(Number(res.sync_count));
+      }
+      if (res && res.tier) {
+        setEffectiveTier(res.tier as string);
+      }
+      if (res && typeof res.sync_limit !== 'undefined') {
+        setEffectiveSyncLimit(Number(res.sync_limit));
+      }
+      if (res) {
+        CacheService.setCachedSyncStats(user.id, {
+          sync_count: Number(res.sync_count ?? 0),
+          tier: (res.tier as string) || user.tier || 'free',
+          sync_limit: Number(res.sync_limit ?? 500),
+        });
       }
     } catch (e) {
       console.warn("拉取同步统计信息失败，采用本地记录兜底", e);
@@ -226,15 +510,27 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   };
 
   const handleSync = async () => {
-    if (isSyncing) return;
+    const now = Date.now();
+    if (syncLockRef.current) {
+      console.debug('[Sync] skipped: lock held');
+      return;
+    }
+    if (now - lastSyncTimeRef.current < SYNC_DEBOUNCE_MS) {
+      console.debug('[Sync] skipped: debounce');
+      return;
+    }
+    syncLockRef.current = true;
     setIsSyncing(true);
     try {
       await SyncEngine.syncData(user.id);
-      loadLocalData();
+      await loadLocalData();
       await fetchSyncStats();
+      await Promise.all([fetchUserTeams(), fetchPriorityAnns()]);
+      lastSyncTimeRef.current = Date.now();
     } catch (e) {
       console.error("同步失败", e);
     } finally {
+      syncLockRef.current = false;
       setIsSyncing(false);
     }
   };
@@ -440,7 +736,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       SyncEngine.resetSync(user.id);
       await SyncEngine.syncData(user.id);
-      loadLocalData();
+      // 清除缓存并重新加载
+      await CacheService.clearUserCache(user.id);
+      await loadLocalData();
       await fetchSyncStats();
       alert("全量数据拉取成功！");
     } catch (e) {
@@ -452,9 +750,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   };
 
   const getSyncLimit = () => {
-    if (user.tier === 'admin') return 99999;
-    if (user.tier === 'pro') return 2000;
-    return 500;
+    return effectiveSyncLimit;
   };
   const syncLimit = getSyncLimit();
 
@@ -532,6 +828,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       target.is_completed = true;
       target.version++;
       target.updated_at = Date.now();
+      // 🚀 collabType=1 时，更新独立完成状态
+      if (target.collab_type === 1) {
+        SyncEngine.updateIndependentCompletion(user.id, uuid, true);
+      }
       SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
@@ -680,6 +980,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       target.is_completed = !target.is_completed;
       target.version++;
       target.updated_at = Date.now();
+      // 🚀 collabType=1 时，更新独立完成状态
+      if (target.collab_type === 1) {
+        SyncEngine.updateIndependentCompletion(user.id, uuid, target.is_completed);
+      }
       SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
@@ -1070,24 +1374,49 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           </div>
         )}
 
-        <div className="mb-6 bg-white border border-indigo-100 rounded-3xl shadow-sm px-5 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <HistoryIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900">个人时间轴报告</h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">查看你的个人专注报告</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowReportLauncher(true)}
-            className="shrink-0 inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl text-sm font-black transition shadow-lg shadow-indigo-500/20 active:scale-95"
+        {/* 个人时间轴报告 - 右上角悬浮通知 */}
+        {!dismissReport && (
+          <div
+            onMouseDown={onReportDragStart}
+            onTouchStart={onReportDragStart}
+            onMouseUp={onReportClick}
+            onTouchEnd={onReportClick}
+            style={{ 
+              transform: `translate(${reportPos.x}px, ${reportPos.y}px)`,
+              cursor: isDraggingReport ? 'grabbing' : 'grab',
+              touchAction: 'none'
+            }}
+            className={`fixed right-4 top-20 z-50 flex items-center gap-3 bg-white/90 backdrop-blur-xl border border-indigo-100/50 shadow-xl shadow-indigo-500/10 rounded-[1.25rem] p-3 pr-4 animate-[slideInRight_0.5s_ease-out] select-none ${isDraggingReport ? 'scale-105 shadow-2xl transition-none' : 'hover:scale-105 hover:shadow-2xl transition-all duration-300 group'}`}
           >
-            前往App查看报告
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-inner">
+                <HistoryIcon className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="text-left mr-2">
+                <p className="text-sm font-black text-slate-800 group-hover:text-indigo-600 transition-colors tracking-tight whitespace-nowrap">个人报告已可查看</p>
+                <p className="text-[11px] text-slate-500 font-bold mt-0.5 whitespace-nowrap">前往 App 查看使用详情</p>
+              </div>
+            </div>
+            <button
+              className="close-btn p-1.5 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissReport(true);
+                try { localStorage.setItem('hide_report_launcher', 'true'); } catch {}
+              }}
+              title="不再提示"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <style>{`
+          @keyframes slideInRight {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+          }
+        `}</style>
 
         <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0">
         {/* 左半部分：自适应周视图 */}
@@ -1128,7 +1457,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                     const days = getDaysLeft(c.target_time);
                     const isPast = days < 0;
                     return (
-                        <div key={c.uuid} className={`shrink-0 w-64 snap-start p-4 rounded-2xl border flex items-center justify-between group relative overflow-hidden ${isPast ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
+                        <div key={c.uuid} className={`shrink-0 w-48 snap-start p-3.5 rounded-2xl border flex items-center justify-between group relative overflow-hidden ${isPast ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}>
                           <div className={`absolute top-0 left-0 w-1 h-full rounded-l-full ${isPast ? 'bg-slate-300' : 'bg-indigo-500'}`}></div>
                           <div className="pl-2 min-w-0 pr-2">
                             <p className={`font-bold text-sm truncate ${isPast ? 'text-slate-500 line-through' : 'text-slate-800'}`}>{c.title}</p>
@@ -1335,11 +1664,11 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                 <p className="text-slate-500 mt-1">{user.email}</p>
               </div>
               <div className={`px-4 py-1.5 rounded-xl text-sm font-bold border ${
-                  user.tier === 'pro' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                      user.tier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                  (effectiveTier === 'Pro' || effectiveTier === 'ProMax') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                      effectiveTier === 'admin'  ? 'bg-purple-50 text-purple-600 border-purple-100' :
                           'bg-slate-50 text-slate-600 border-slate-200'
               }`}>
-                {user.tier === 'pro' ? 'Pro 专业版' : (user.tier === 'admin' ? 'Admin 管理员' : 'Free 免费版')}
+                {effectiveTier === 'Pro' ? 'Pro 专业版' : (effectiveTier === 'admin' ? 'Admin 管理员' : (effectiveTier === 'ProMax' ? 'ProMax 旗舰版' : 'Free 免费版'))}
               </div>
             </div>
 
@@ -1425,13 +1754,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                     onClick={() => {setCurrentTab('focus'); setMobileTab('home');}}
                     className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'focus' && mobileTab === 'home' ? 'bg-red-50 text-red-600' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
-                  <span>🍅</span> 专注工作台
-                </button>
-                <button
-                    onClick={() => {setCurrentTab('pomodoro'); setMobileTab('home');}}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${currentTab === 'pomodoro' && mobileTab === 'home' ? 'bg-amber-50 text-amber-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                  <Clock className="w-4 h-4" /> 专注统计
+                  <span>🍅</span> 番茄钟
                 </button>
                 <button
                     onClick={() => {setCurrentTab('teams'); setMobileTab('home');}}
@@ -1453,15 +1776,33 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
             <div className="flex items-center gap-3 sm:gap-6">
 
+              {/* 远程番茄钟实时显示 */}
+              {remotePomActive && (
+                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-red-500 font-black text-sm tabular-nums mr-2">
+                  <span>🍅</span>
+                  <span>{remotePomDisplay}</span>
+                  {remotePomData.todoTitle && (
+                    <span className="text-red-400 font-bold text-[10px] max-w-[100px] truncate ml-1">{remotePomData.todoTitle}</span>
+                  )}
+                  {remotePomData.tags.length > 0 && (
+                    <span className="flex gap-0.5 ml-0.5">
+                      {remotePomData.tags.slice(0, 3).map((t, i) => (
+                        <span key={i} className="w-2 h-2 rounded-full bg-red-300" title={t} />
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* API 限制置顶进度条 */}
               <div className="hidden md:flex flex-col items-end justify-center mr-2 border-r border-slate-200 pr-6">
                 <div className="flex items-center gap-2 mb-1.5">
                 <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
-                    user.tier === 'pro' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
-                        user.tier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                    effectiveTier === 'Pro' || effectiveTier === 'ProMax' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' :
+                        effectiveTier === 'admin' ? 'bg-purple-50 text-purple-600 border-purple-100' :
                             'bg-slate-50 text-slate-500 border-slate-200'
                 }`}>
-                  {user.tier === 'pro' ? 'PRO' : user.tier === 'admin' ? 'ADMIN' : 'FREE'}
+                  {effectiveTier === 'Pro' ? 'PRO' : effectiveTier === 'ProMax' ? 'PROMAX' : effectiveTier === 'admin' ? 'ADMIN' : 'FREE'}
                 </span>
                   <span className="text-[11px] font-bold text-slate-500">
                   API 同步: {syncCountToday} / {syncLimit}
@@ -1521,10 +1862,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
             <span className="text-xl leading-none">🍅</span>
             <span className="text-[9px] font-bold">专注</span>
           </button>
-          <button onClick={() => {setCurrentTab('pomodoro'); setMobileTab('home');}} className={`flex flex-col items-center gap-0.5 p-2 ${currentTab === 'pomodoro' && mobileTab === 'home' ? 'text-amber-600' : 'text-slate-400'}`}>
-            <Clock className="w-5 h-5" />
-            <span className="text-[9px] font-bold">统计</span>
-          </button>
+
           <button onClick={() => {setCurrentTab('teams'); setMobileTab('home');}} className={`flex flex-col items-center gap-0.5 p-2 ${currentTab === 'teams' && mobileTab === 'home' ? 'text-indigo-500' : 'text-slate-400'}`}>
             <UsersIcon className="w-5 h-5" />
             <span className="text-[9px] font-bold">团队</span>
@@ -1550,8 +1888,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           {currentTab === 'dashboard' && mobileTab === 'home' && renderDashboard()}
           {mobileTab === 'settings' && renderSettings()}
           {currentTab === 'screentime' && mobileTab === 'home' && <ScreenTimeView userId={user.id} />}
-          {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} />}
-          {currentTab === 'pomodoro' && mobileTab === 'home' && <PomodoroStatsView userId={user.id} todos={todos} />}
+          {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} remotePomActive={remotePomActive} remotePomDisplay={remotePomDisplay} remotePomData={remotePomData} />}
           {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>
 

@@ -1,6 +1,6 @@
 # 项目文档目录
 
-最后更新：`2026-05-24`
+最后更新：`2026-06-14`
 
 本目录收纳项目说明、功能设计、同步规则、排障报告和设计稿。仓库根目录只保留构建配置、入口说明和少量策略文件，避免再次堆积零散文档。
 
@@ -18,6 +18,8 @@
 
 - `PROJECT_ARCHITECTURE.md`：当前应用结构、存储、同步、后端约束。
 - `features/plan-blocks.md`：规划块当前实现、交互规则、番茄钟联动和剩余工作。
+- `features/captcha-verification.md`：Cloudflare Turnstile 人机验证集成说明。
+- `features/mac-support.md`：Mac 平台功能（菜单栏、桌面小组件、开机自启、检查更新）。
 - `ai/todo-agent.md`：AI action 协议、上下文构建和入口说明。
 - `sync/conflict-logic.md`：冲突中心规则、后端差异、番茄钟同步边界。
 - `features/medal-recommendation.md`：勋章推荐实现和算法说明。

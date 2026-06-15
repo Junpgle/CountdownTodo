@@ -30,6 +30,7 @@ interface RegisterPayload {
   email: string;
   password?: string;
   code?: string | null;
+  turnstile_token?: string;
 }
 
 /**
@@ -138,10 +139,12 @@ export const ApiService = {
     });
   },
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, turnstileToken?: string) {
+    const body: Record<string, unknown> = { email, password };
+    if (turnstileToken) body.turnstile_token = turnstileToken;
     return this.request('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify(body)
     });
   },
 

@@ -13,16 +13,21 @@
 - Windows 桌面灵动岛 (Dynamic Island)
 - 手环同步 (Band Sync)
 - 时间日志 (Time Log)
+- Mac 平台支持 — 菜单栏、桌面小组件、开机自启、检查更新
+- 人机验证 (Turnstile) — 登录/注册 Cloudflare Turnstile 防护
 
-## 2026-05-24 当前实现快照
+## 2026-06-14 当前实现快照
 
-- 当前应用版本：`4.12.19`。
+- 当前应用版本：`4.15.7`。
 - 主 Flutter 代码位于 `lib/`，当前包含 `screens/`、`services/`、`widgets/`、`course_import/`、`windows_island/` 等模块。
 - 高容量业务数据已以 SQLite 为主存储，`SharedPreferences` 主要保留设置、登录态、水位线、兼容迁移和少量轻量缓存。
 - 同步主入口仍是 `StorageService.syncData()`，番茄钟标签/记录由 `PomodoroService` 走独立同步链路。
-- 新后端能力应优先落到 `aliyun_debug/`；`math-quiz-backend/` 的 Cloudflare Worker 保留兼容路径。
+- 新后端能力应优先落在后端 Express 服务器（位于 `/Users/junpgle/WebstormProjects/CDT-server`）；`math-quiz-backend/` 的 Cloudflare Worker 已于 2026-06-01 停用。
 - Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
 - Windows island / floating-window 逻辑是 Windows-only，Android 不应导入或初始化相关模块。
+- 登录/注册已集成 Cloudflare Turnstile 人机验证；新增邮箱验证码注册和找回密码流程。
+- Mac 平台支持菜单栏计时显示、桌面小组件、开机自启、自动检查更新。
+- 环境自动探测：`.debug` 后缀包名自动锁定测试服务器和测试数据库。
 
 ---
 
@@ -36,10 +41,12 @@
 | **状态管理** | ValueListenable + setState + Stream | 无第三方状态管理库 |
 | **本地存储** | SQLite + SharedPreferences | SQLite 承载高容量业务数据；SharedPreferences 保留设置、登录态、水位线和兼容迁移 |
 | **网络请求** | http 包 | 封装在 `ApiService` |
-| **后端** | Alibaba Cloud + Cloudflare Worker | 新功能优先 Alibaba Cloud；Cloudflare Worker 保留兼容 |
+| **后端** | Alibaba Cloud (Express) | Cloudflare Worker 已停用（2026-06-01）；新功能全部走 Alibaba Cloud |
 | **同步协议** | Delta Sync + Oplog | LWW、版本冲突、客户端本地日程冲突、规划块同步 |
 | **实时通信** | WebSocket | 番茄钟跨端感知和协同同步信号 |
 | **桌面窗口** | desktop_multi_window + window_manager | 灵动岛独立进程 |
+| **人机验证** | Cloudflare Turnstile | 登录/注册必选；通过 WebView/JS 集成 |
+| **环境管理** | EnvironmentService | 自动探测 debug/release，锁定对应后端和数据库 |
 
 ### 关键依赖项
 ```yaml
@@ -92,23 +99,27 @@ lib/
 ├── models/                   # AI action、聊天消息、勋章 ML 模型等扩展模型
 ├── screens/                  # 全屏页面和功能页
 │   ├── pomodoro/             # 番茄钟工作台、统计页和专用组件
-│   └── settings/             # 设置页、设置区块、弹窗和处理器
+│   ├── settings/             # 设置页、设置区块、弹窗和处理器
+│   └── login_screen.dart     # 登录/注册（集成 Turnstile 人机验证 + 邮箱验证码）
 ├── services/                 # API、数据库、同步、番茄钟、AI、课程、通知、平台服务
+│   └── environment_service.dart  # 环境管理（debug/prod 自动切换、Turnstile 配置）
 ├── utils/                    # 导航、时区、动效和页面转场工具
 ├── widgets/                  # 首页区块和可复用 UI 组件
+│   └── turnstile_verification_widget.dart  # Turnstile 人机验证 WebView 组件
 └── windows_island/           # Windows-only 灵动岛/悬浮窗模块
 ```
 
 仓库级目录：
 
 ```text
-aliyun_debug/                 # Alibaba Cloud 调试后端，新后端能力优先修改这里
-math-quiz-backend/            # Cloudflare Worker 后端，保留兼容行为
+CDT-server/                   # Alibaba Cloud Express 后端（位于 /Users/junpgle/WebstormProjects/CDT-server）
+math-quiz-backend/            # Cloudflare Worker 后端（已停用，保留代码）
 CountDownTodo-band/           # 小米手环伴侣应用
 android/ windows/ macos/ ios/ linux/ web/  # 平台壳
 assets/ splash/ wallpaper/    # 资源目录
 scripts/                      # 构建和运行脚本
 docs/                         # 文档归档和索引
+webpage/                      # 网页版（React + TypeScript）
 ```
 ---
 
@@ -221,6 +232,20 @@ final items = await StorageService.getTodos(username);
 - 每次请求通过 `_getHeaders()` 自动添加 `Authorization: Bearer {token}`
 - Token 失效时弹出重新登录对话框
 
+### 人机验证 (Cloudflare Turnstile)
+
+- 登录和注册流程强制要求 Turnstile 人机验证
+- Flutter 端使用 `turnstile_verification_widget.dart`（WebView 加载后端 `/turnstile` 页面）
+- Web 端使用 `TurnstileWidget.tsx`（React 组件，直接加载 Turnstile JS）
+- 验证 token 随登录/注册请求发送到后端，后端通过 Cloudflare API 校验
+- 环境自动选择 key：debug 包使用测试 key（`1x0000...`），release 包使用生产 key
+- 详细设计见 `docs/features/captcha-verification.md`
+
+### 邮箱验证码注册/找回密码
+
+- 注册为两步流程：填写表单 + Turnstile 验证 -> 输入 6 位邮箱验证码
+- 找回密码为三步流程：输入邮箱 + Turnstile -> 输入 6 位验证码 -> 设置新密码
+
 ---
 
 ## ⚠️ 技术债务与注意事项
@@ -266,7 +291,7 @@ flutter build apk        # 构建 Android APK
 
 ---
 
-*最后更新：2026-05-24*
-*文档版本：v2.2*
-*项目版本：v4.12.19*
+*最后更新：2026-06-14*
+*文档版本：v2.3*
+*项目版本：v4.15.7*
 

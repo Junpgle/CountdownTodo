@@ -2,27 +2,29 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   RefreshCw, Clock, CheckCircle2, X, ChevronDown, ChevronRight,
   Calendar, Filter, BookOpen, Flag, PlayCircle, StopCircle,
-  User as UserIcon, MapPin, Hash, Sparkles, CalendarDays, ArrowLeftCircle
+  User as UserIcon, MapPin, Hash, Sparkles, CalendarDays, ArrowLeftCircle,
+  Flame
 } from 'lucide-react';
 import { ApiService } from '../services/api';
-import type { TodoItem, CountdownItem } from '../types';
+import { CacheService } from '../services/cache';
+import type { TodoItem, CountdownItem, PomodoroRecord, PomodoroTag } from '../types';
 import type { CourseItem, CalendarEntry, DetailItem } from './webapp-utils';
-import { readDayCache, writeDayCache, formatDt, formatTimeNum } from './webapp-utils';
+import { formatDt, formatTimeNum, getLocalPomRecords } from './webapp-utils';
+
+type ViewFilter = 'all' | 'courses' | 'todos' | 'pomodoros';
 
 // --------------------------------------------------------
 // 课表/周视图组件 (内嵌到首页左侧使用)
 // --------------------------------------------------------
 export const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: TodoItem[], countdowns: CountdownItem[] }) => {
-  const courseCacheKey = `u${userId}_courses`;
-  const cachedCourses = readDayCache<CourseItem[]>(courseCacheKey);
-
-  const [courses, setCourses] = useState<CourseItem[]>(cachedCourses ?? []);
-  const [loading, setLoading] = useState(!cachedCourses);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [semesterMonday, setSemesterMonday] = useState(new Date());
+  const [pomRecords, setPomRecords] = useState<PomodoroRecord[]>([]);
+  const [pomTags, setPomTags] = useState<PomodoroTag[]>([]);
 
-  // 0: 混合查看, 1: 只看课表, 2: 只看待办
-  const [viewMode, setViewMode] = useState<0 | 1 | 2>(0);
+  const [viewMode, setViewMode] = useState<ViewFilter>('all');
   const [showViewMenu, setShowViewMenu] = useState(false);
 
   // 详情弹窗状态
@@ -33,15 +35,10 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
   const endHour = 22;
   const totalMins = (endHour - startHour) * 60;
 
-  /**
-   * 根据开学时间（毫秒时间戳）计算学期第一周周一和当前周数。
-   * 若 semesterStartMs 无效则回退到用 week_index 反推的旧逻辑。
-   */
   const applySemesterStart = (semesterStartMs: number | null, data: CourseItem[]) => {
     if (semesterStartMs && semesterStartMs > 0) {
-      // 新逻辑：直接用 semester_start 锚定
       const startDate = new Date(semesterStartMs);
-      const startDayOfWeek = startDate.getDay() || 7; // 1=周一 … 7=周日
+      const startDayOfWeek = startDate.getDay() || 7;
       const firstMonday = new Date(startDate);
       firstMonday.setDate(startDate.getDate() - startDayOfWeek + 1);
       firstMonday.setHours(0, 0, 0, 0);
@@ -54,7 +51,6 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
       setSemesterMonday(firstMonday);
       setCurrentWeek(week);
     } else {
-      // 旧逻辑回退：用课程 week_index 反推
       let activeWeek = 1;
       if (data.length > 0) {
         const minWeek = Math.min(...data.map((c: CourseItem) => c.week_index));
@@ -73,35 +69,61 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
 
   useEffect(() => {
     const init = async () => {
-      // 1. 课程数据（优先缓存）
-      let courseData = cachedCourses;
-      if (!courseData) {
-        setLoading(true);
-        try {
-          const data = await ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' });
-          courseData = (Array.isArray(data) ? data : []) as CourseItem[];
-          setCourses(courseData);
-          writeDayCache(courseCacheKey, courseData);
-        } catch (e) {
-          console.error("获取课表失败", e);
-          courseData = [];
-        }
+      // 1. 先从 IndexedDB 缓存加载
+      const [cachedCourses, cachedSemester, cachedPomRecords, cachedPomTags] = await Promise.all([
+        CacheService.getCachedCourses(userId),
+        CacheService.getCachedSemesterStart(userId),
+        CacheService.getCachedPomRecords(userId),
+        CacheService.getCachedPomTags(userId),
+      ]);
+
+      const hasCache = cachedCourses && cachedCourses.length > 0;
+      let courseData = cachedCourses ?? [];
+      let semesterStartMs: number | null = cachedSemester;
+
+      if (hasCache) {
+        setCourses(cachedCourses);
+        applySemesterStart(semesterStartMs, courseData);
+        setLoading(false);
+        refreshFromServer(courseData, semesterStartMs);
+      } else {
+        await refreshFromServer([], null);
       }
 
-      // 2. 拉取开学时间（不缓存，保证用最新配置）
-      let semesterStartMs: number | null = null;
+      // 加载番茄钟数据（优先缓存）
+      const localRecords = getLocalPomRecords(userId).filter(r => !r.is_deleted);
+      setPomRecords(cachedPomRecords ?? localRecords);
+      if (cachedPomTags) setPomTags(cachedPomTags);
+    };
+
+    const refreshFromServer = async (localCourseData: CourseItem[], localSemester: number | null) => {
+      let courseData = localCourseData;
+      let semesterStartMs = localSemester;
+
       try {
-        const settings = await ApiService.request('/api/settings', { method: 'GET' });
+        const [serverCourses, settings] = await Promise.all([
+          ApiService.request(`/api/courses?user_id=${userId}`, { method: 'GET' }),
+          ApiService.request('/api/settings', { method: 'GET' }),
+        ]);
+
+        if (Array.isArray(serverCourses)) {
+          courseData = serverCourses as CourseItem[];
+          setCourses(courseData);
+          CacheService.setCachedCourses(userId, courseData);
+        }
+
         if (settings && settings.semester_start) {
           const parsed = Number(settings.semester_start);
-          if (!isNaN(parsed) && parsed > 0) semesterStartMs = parsed;
+          if (!isNaN(parsed) && parsed > 0) {
+            semesterStartMs = parsed;
+            CacheService.setCachedSemesterStart(userId, semesterStartMs);
+          }
         }
       } catch (e) {
-        console.error("获取开学时间失败，使用课表反推", e);
+        console.error("刷新课表数据失败，使用缓存", e);
       }
 
-      // 3. 应用开学时间，计算当前周
-      applySemesterStart(semesterStartMs, courseData ?? []);
+      applySemesterStart(semesterStartMs, courseData);
       setLoading(false);
     };
 
@@ -116,6 +138,32 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
       return d;
     });
   }, [semesterMonday, currentWeek]);
+
+  // 番茄钟按天分组
+  const pomodorosPerDay = useMemo(() => {
+    const result: Record<number, PomodoroRecord[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+    
+    pomRecords.forEach(record => {
+      if (record.is_deleted || record.start_time <= 0) return;
+      
+      const start = new Date(record.start_time);
+      const endMs = record.end_time ?? (record.start_time + (record.actual_duration || record.planned_duration) * 1000);
+      const end = new Date(endMs);
+
+      for (let i = 0; i < 7; i++) {
+        const dayStart = new Date(weekDates[i]);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(weekDates[i]);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        if (start <= dayEnd && end >= dayStart) {
+          result[i + 1].push(record);
+        }
+      }
+    });
+
+    return result;
+  }, [pomRecords, weekDates]);
 
   const { allDayItems, intraDayItems } = useMemo(() => {
     const all = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, CalendarEntry[]>;
@@ -174,6 +222,28 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
     return colors[Math.abs(hash) % colors.length];
   };
 
+  const getPomodoroColor = (record: PomodoroRecord) => {
+    if (record.tag_uuids && record.tag_uuids.length > 0) {
+      const tag = pomTags.find(t => record.tag_uuids.includes(t.uuid));
+      if (tag) return tag.color;
+    }
+    return '#ef4444'; // 默认红色
+  };
+
+  const getPomodoroTitle = (record: PomodoroRecord) => {
+    // 优先显示关联的待办名称
+    if (record.todo_uuid) {
+      const todo = todos.find(t => t.uuid === record.todo_uuid);
+      if (todo) return todo.content;
+    }
+    // 其次显示标签名
+    if (record.tag_uuids && record.tag_uuids.length > 0) {
+      const tag = pomTags.find(t => record.tag_uuids.includes(t.uuid));
+      if (tag) return tag.name;
+    }
+    return '专注';
+  };
+
   const getDaysLeftLocal = (targetTime: number) => {
     const d = new Date(targetTime);
     d.setHours(0,0,0,0);
@@ -199,12 +269,12 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                       <ArrowLeftCircle className="w-5 h-5" />
                     </button>
                 )}
-                <div className={`p-2.5 rounded-2xl ${type === 'course' ? 'bg-blue-100 text-blue-600' : type === 'todo' ? 'bg-emerald-100 text-emerald-600' : type === 'multi' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'}`}>
-                  {type === 'course' ? <BookOpen className="w-6 h-6" /> : type === 'todo' ? <CheckCircle2 className="w-6 h-6" /> : type === 'multi' ? <CalendarDays className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                <div className={`p-2.5 rounded-2xl ${type === 'course' ? 'bg-blue-100 text-blue-600' : type === 'todo' ? 'bg-emerald-100 text-emerald-600' : type === 'multi' ? 'bg-indigo-100 text-indigo-600' : type === 'pomodoro' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                  {type === 'course' ? <BookOpen className="w-6 h-6" /> : type === 'todo' ? <CheckCircle2 className="w-6 h-6" /> : type === 'multi' ? <CalendarDays className="w-6 h-6" /> : type === 'pomodoro' ? <Flame className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
                 </div>
                 <div>
                   <h4 className="font-black text-xl text-slate-800 tracking-tight">
-                    {type === 'course' ? '课程详情' : type === 'todo' ? '待办详情' : type === 'multi' ? '全天事项聚合' : '重要倒计时'}
+                    {type === 'course' ? '课程详情' : type === 'todo' ? '待办详情' : type === 'multi' ? '全天事项聚合' : type === 'pomodoro' ? '专注详情' : '重要倒计时'}
                   </h4>
                 </div>
               </div>
@@ -261,14 +331,55 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                           <StopCircle className="w-5 h-5 text-emerald-500" />
                           <span className="font-bold text-sm">截止: {todo.due_date ? formatDt(new Date(todo.due_date)) : '无限制'}</span>
                         </div>
-                        <div className="flex items-center gap-3 text-slate-600">
-                          <RefreshCw className="w-5 h-5 text-emerald-500" />
-                          <span className="font-bold text-sm">最近同步: {formatDt(new Date(todo.updated_at))}</span>
-                        </div>
                         {todo.remark && (
                             <div className="flex items-start gap-3 text-slate-600 pt-1 border-t border-slate-200 mt-1">
                               <BookOpen className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                               <span className="text-sm font-medium text-slate-500 italic leading-relaxed">{todo.remark}</span>
+                            </div>
+                        )}
+                      </div>
+                    </>
+                );
+              })()}
+
+              {type === 'pomodoro' && (() => {
+                const record = data as PomodoroRecord;
+                const duration = record.actual_duration || record.planned_duration;
+                const startTime = new Date(record.start_time);
+                const endTime = record.end_time ? new Date(record.end_time) : null;
+                const pomColor = getPomodoroColor(record);
+                const title = getPomodoroTitle(record);
+                return (
+                    <>
+                      <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{title}</h3>
+                      <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <Flame className="w-5 h-5" style={{ color: pomColor }} />
+                          <span className="font-bold">{Math.floor(duration / 60)} 分钟</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <PlayCircle className="w-5 h-5" style={{ color: pomColor }} />
+                          <span className="font-bold text-sm">开始: {formatDt(startTime)}</span>
+                        </div>
+                        {endTime && (
+                            <div className="flex items-center gap-3 text-slate-600">
+                              <StopCircle className="w-5 h-5" style={{ color: pomColor }} />
+                              <span className="font-bold text-sm">结束: {formatDt(endTime)}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <CheckCircle2 className="w-5 h-5" style={{ color: pomColor }} />
+                          <span className="font-bold text-sm">
+                            状态: {record.status === 'completed' ? '已完成' : record.status === 'switched' ? '中途切换' : '被打断'}
+                          </span>
+                        </div>
+                        {pomTags.filter(t => record.tag_uuids?.includes(t.uuid)).length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                              {pomTags.filter(t => record.tag_uuids?.includes(t.uuid)).map(tag => (
+                                  <span key={tag.uuid} className="px-2 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: tag.color }}>
+                            {tag.name}
+                          </span>
+                              ))}
                             </div>
                         )}
                       </div>
@@ -347,14 +458,21 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
             <div className="relative">
               <button onClick={() => setShowViewMenu(!showViewMenu)} className="flex items-center gap-1 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl hover:bg-slate-50 transition">
                 <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
-                <span className="hidden sm:inline">{viewMode === 0 ? '混合查看' : (viewMode === 1 ? '只看课表' : '只看待办')}</span>
+                <span className="hidden sm:inline">
+                  {viewMode === 'all' ? '全部' : viewMode === 'courses' ? '只看课表' : viewMode === 'todos' ? '只看待办' : '只看专注'}
+                </span>
                 <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
               {showViewMenu && (
-                  <div className="absolute top-full right-0 mt-2 w-32 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 overflow-hidden">
-                    {[0,1,2].map((v) => (
-                        <button key={v} onClick={() => { setViewMode(v as 0 | 1 | 2); setShowViewMenu(false); }} className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-slate-50 transition ${viewMode === v ? 'text-blue-600' : 'text-slate-600'}`}>
-                          {v === 0 ? '混合查看' : (v === 1 ? '只看课表' : '只看待办')}
+                  <div className="absolute top-full right-0 mt-2 w-36 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 overflow-hidden">
+                    {([
+                      { key: 'all', label: '全部' },
+                      { key: 'courses', label: '只看课表' },
+                      { key: 'todos', label: '只看待办' },
+                      { key: 'pomodoros', label: '只看专注' },
+                    ] as const).map(({ key, label }) => (
+                        <button key={key} onClick={() => { setViewMode(key); setShowViewMenu(false); }} className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-slate-50 transition ${viewMode === key ? 'text-blue-600' : 'text-slate-600'}`}>
+                          {label}
                         </button>
                     ))}
                   </div>
@@ -372,11 +490,9 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
             <div className="flex-1 flex items-center justify-center min-h-0"><RefreshCw className="w-8 h-8 text-blue-300 animate-spin" /></div>
         ) : (
             <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-              {/* 星期与日期头 — 左侧留出与时间轴等宽的空白 */}
+              {/* 星期与日期头 */}
               <div className="flex shrink-0 border-b border-slate-50 bg-white z-10">
-                {/* 与时间轴等宽的占位 */}
                 <div className="w-10 sm:w-12 shrink-0" />
-                {/* 7列星期头，flex-1 均分，与下方网格列对齐 */}
                 <div className="flex flex-1 min-w-0 py-1.5 sm:py-2 pr-2">
                   {weekdays.map((day, i) => {
                     const d = weekDates[i];
@@ -392,7 +508,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
               </div>
 
               {/* 全天事件吸顶区 */}
-              {hasAnyAllDay && viewMode !== 1 && (
+              {hasAnyAllDay && viewMode !== 'courses' && viewMode !== 'pomodoros' && (
                   <div className="flex shrink-0 border-b border-slate-50 bg-white z-10">
                     <div className="w-10 sm:w-12 shrink-0" />
                     <div className="flex flex-1 min-w-0 pt-1 pb-1.5 pr-2">
@@ -438,7 +554,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                   ))}
                 </div>
 
-                {/* 网格主体 — 与星期头的 flex-1 区域完全对齐 */}
+                {/* 网格主体 */}
                 <div className="flex-1 relative bg-slate-50/30 border border-slate-100 rounded-xl overflow-hidden shadow-inner min-h-[400px] lg:min-h-0">
                   {/* 横向时间线 */}
                   {Array.from({ length: endHour - startHour + 1 }).map((_, i) => (
@@ -451,7 +567,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                   ))}
 
                   {/* 渲染课程 */}
-                  {viewMode !== 2 && weekCourses.map(course => {
+                  {viewMode !== 'todos' && viewMode !== 'pomodoros' && weekCourses.map(course => {
                     const sh = Math.floor(course.start_time / 100);
                     const sm = course.start_time % 100;
                     const eh = Math.floor(course.end_time / 100);
@@ -474,7 +590,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                   })}
 
                   {/* 渲染日内待办 */}
-                  {viewMode !== 1 && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
+                  {viewMode !== 'courses' && viewMode !== 'pomodoros' && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
                     const weekday = parseInt(dayStr);
                     const collisionMap: Record<number, number> = {};
                     return items.map(item => {
@@ -497,6 +613,48 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                                 <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-px" />
                                 <span className={`text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all ${t.is_completed ? 'line-through opacity-80' : ''}`}>{t.content}</span>
                               </div>
+                            </button>
+                          </div>
+                      );
+                    });
+                  })}
+
+                  {/* 渲染番茄钟记录 */}
+                  {viewMode !== 'courses' && viewMode !== 'todos' && Object.entries(pomodorosPerDay).flatMap(([dayStr, records]) => {
+                    const weekday = parseInt(dayStr);
+                    const collisionMap: Record<number, number> = {};
+                    return records.map(record => {
+                      const start = new Date(record.start_time);
+                      const endMs = record.end_time ?? (record.start_time + (record.actual_duration || record.planned_duration) * 1000);
+                      const end = new Date(endMs);
+                      
+                      const top = getTopPercent(start.getHours(), start.getMinutes());
+                      const height = getHeightPercent(start.getHours(), start.getMinutes(), end.getHours(), end.getMinutes());
+                      const bucket = Math.floor(top / 5);
+                      const stackIndex = collisionMap[bucket] || 0;
+                      collisionMap[bucket] = stackIndex + 1;
+                      
+                      const baseLeft = (weekday - 1) * (100 / 7);
+                      const pomColor = getPomodoroColor(record);
+                      const title = getPomodoroTitle(record);
+                      const duration = record.actual_duration || record.planned_duration;
+
+                      return (
+                          <div key={`p-${record.uuid}`} className="absolute z-10" style={{ top: `${top}%`, height: `${height}%`, left: `calc(${baseLeft}% + ${stackIndex * 3}px)`, width: `calc(${100/7}% - ${stackIndex * 3}px)`, padding: '1px' }}>
+                            <button
+                                onClick={() => setDetailItem({ type: 'pomodoro', data: record })}
+                                className="w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.05] hover:z-30 hover:shadow-md"
+                                style={{ backgroundColor: `${pomColor}cc` }}
+                            >
+                              <div className="flex items-start gap-0.5">
+                                <Flame className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-px" />
+                                <span className="text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all line-clamp-2">{title}</span>
+                              </div>
+                              {height > 4 && (
+                                  <span className="text-[6px] sm:text-[8px] text-white/80 mt-auto">
+                                    {Math.floor(duration / 60)}min
+                                  </span>
+                              )}
                             </button>
                           </div>
                       );

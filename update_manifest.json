@@ -22,6 +22,14 @@
       "content": "主播最近忙的快die了，缓慢更新",
       "remind_mode": "once",
       "target_versions": []
+    },
+    {
+      "show": true,
+      "id": "ann_20260614_001",
+      "title": "注册、登录提醒",
+      "content": "20260614已更新注册登录逻辑，加入人机验证，旧版本的用户退出账号后可能无法正常登录，请更新到最新版本！",
+      "remind_mode": "once",
+      "target_versions": []
     }
   ],
   "wallpaper": {
