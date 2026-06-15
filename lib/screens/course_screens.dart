@@ -881,8 +881,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             (item.teamUuid != null ? '${item.teamName ?? '团队'} · ' : '') +
                 (item.dueDate != null
                     ? '截止: ${DateFormat('HH:mm').format(item.dueDate!)}'
-                    : '无截止时间'),
-            style: const TextStyle(fontSize: 12)),
+                    : '无截止时间') +
+                (item.remark != null && item.remark!.isNotEmpty
+                    ? ' · ${item.remark}'
+                    : ''),
+            style: const TextStyle(fontSize: 12),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis),
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
       );
@@ -1892,6 +1897,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   ),
                                 ],
                               ),
+                              if (todo.remark != null &&
+                                  todo.remark!.isNotEmpty &&
+                                  height > 32)
+                                Flexible(
+                                  child: Text(
+                                    todo.remark!,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.75),
+                                      fontSize: 8,
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
