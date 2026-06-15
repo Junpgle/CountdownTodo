@@ -1,6 +1,11 @@
 import { ApiService } from './api';
 import type { TodoItem, CountdownItem, TodoGroup, PomodoroRecord, PomodoroTag } from '../types';
 
+interface IndependentCompletion {
+  is_completed: boolean;
+  updated_at: number;
+}
+
 export const SyncEngine = {
   // --- 带用户 ID 隔离的存储键 ---
 
@@ -11,6 +16,12 @@ export const SyncEngine = {
   getLocalPomodoroTags: (userId: number): PomodoroTag[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'pom_tags')) || '[]'),
   getLastSyncTime: (userId: number) => parseInt(localStorage.getItem(ApiService.getUserKey(userId, 'last_sync_time')) || '0', 10),
 
+  // 🚀 独立完成状态存储 (collabType=1)
+  getLocalIndependentCompletions: (userId: number): Record<string, IndependentCompletion> =>
+    JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'independent_completions')) || '{}'),
+  setLocalIndependentCompletions: (userId: number, completions: Record<string, IndependentCompletion>) =>
+    localStorage.setItem(ApiService.getUserKey(userId, 'independent_completions'), JSON.stringify(completions)),
+
   setLocalTodos: (userId: number, todos: TodoItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_todos'), JSON.stringify(todos)),
   setLocalCountdowns: (userId: number, cds: CountdownItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_countdowns'), JSON.stringify(cds)),
   setLocalTodoGroups: (userId: number, groups: TodoGroup[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_todo_groups'), JSON.stringify(groups)),
@@ -18,6 +29,32 @@ export const SyncEngine = {
   setLocalPomodoroTags: (userId: number, tags: PomodoroTag[]) => localStorage.setItem(ApiService.getUserKey(userId, 'pom_tags'), JSON.stringify(tags)),
   setLastSyncTime: (userId: number, time: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), time.toString()),
   resetSync: (userId: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), '0'),
+
+  // 🚀 更新独立完成状态 (用户勾选/取消勾选时调用)
+  updateIndependentCompletion: (userId: number, todoUuid: string, isCompleted: boolean) => {
+    const completions = SyncEngine.getLocalIndependentCompletions(userId);
+    completions[todoUuid] = {
+      is_completed: isCompleted,
+      updated_at: Date.now()
+    };
+    SyncEngine.setLocalIndependentCompletions(userId, completions);
+  },
+
+  // 🚀 应用独立完成状态到待办列表 (加载数据时调用，模拟 Flutter 端的 SQL JOIN 逻辑)
+  applyIndependentCompletions: (userId: number, todos: TodoItem[]): TodoItem[] => {
+    const completions = SyncEngine.getLocalIndependentCompletions(userId);
+    if (Object.keys(completions).length === 0) return todos;
+
+    return todos.map(todo => {
+      if (todo.collab_type === 1 && completions[todo.uuid]) {
+        return {
+          ...todo,
+          is_completed: completions[todo.uuid].is_completed
+        };
+      }
+      return todo;
+    });
+  },
 
   async syncData(userId: number) {
     const lastSyncTime = this.getLastSyncTime(userId);
@@ -55,13 +92,53 @@ export const SyncEngine = {
       });
 
       if (response.success) {
+        // --- 处理独立完成状态 (independent_completions) ---
+        const independentCompletions = response.independent_completions as Array<{
+          todo_uuid: string;
+          is_completed: boolean | number;
+          updated_at: number;
+        }> | undefined;
+        const localCompletions = this.getLocalIndependentCompletions(userId);
+
+        if (Array.isArray(independentCompletions)) {
+          for (const ic of independentCompletions) {
+            if (!ic.todo_uuid) continue;
+            const serverCompleted = ic.is_completed === true || ic.is_completed === 1;
+            const serverUpdatedAt = ic.updated_at || 0;
+            const local = localCompletions[ic.todo_uuid];
+
+            // 仅当服务端更新时间大于本地更新时间时才覆盖
+            if (!local || serverUpdatedAt > local.updated_at) {
+              localCompletions[ic.todo_uuid] = {
+                is_completed: serverCompleted,
+                updated_at: serverUpdatedAt
+              };
+            }
+          }
+          this.setLocalIndependentCompletions(userId, localCompletions);
+        }
+
         // --- 合并 Todos ---
         const serverTodos = (Array.isArray(response.server_todos) ? response.server_todos : []) as TodoItem[];
         const todoMap = new Map(allLocalTodos.map(t => [t.uuid, t]));
+
         for (const sTodo of serverTodos) {
           const lTodo = todoMap.get(sTodo.uuid);
           if (!lTodo || sTodo.version > lTodo.version || (sTodo.version === lTodo.version && (sTodo.updated_at || 0) >= (lTodo.updated_at || 0))) {
+            // 🚀 collabType=1 时，使用本地独立完成状态覆盖 is_completed
+            if (sTodo.collab_type === 1) {
+              const completion = localCompletions[sTodo.uuid];
+              if (completion) {
+                sTodo.is_completed = completion.is_completed;
+              }
+            }
             todoMap.set(sTodo.uuid, sTodo);
+          } else if (lTodo && lTodo.collab_type === 1) {
+            // 🚀 本地版本更新，但也要确保使用本地独立完成状态
+            const completion = localCompletions[lTodo.uuid];
+            if (completion) {
+              lTodo.is_completed = completion.is_completed;
+            }
           }
         }
         this.setLocalTodos(userId, Array.from(todoMap.values()));

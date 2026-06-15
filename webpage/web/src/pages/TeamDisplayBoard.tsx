@@ -5,6 +5,8 @@ import { WsService } from '../services/websocket';
 import { readDayCache, writeDayCache } from './webapp-utils';
 import { ZoomIn, ZoomOut, X, Clock, Calendar, User as UserIcon, CheckCircle2, RefreshCcw, Tag, Layers, ArrowLeft } from 'lucide-react';
 
+const TOMATO_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21C16.9706 21 21 17.4183 21 13C21 8.58172 16.9706 5 12 5C7.02944 5 3 8.58172 3 13C3 17.4183 7.02944 21 12 21Z" fill="url(#tomatoGrad)"/><path d="M7.5 10C6.5 11 6 12.5 6 13.5C6 14 6.2 14.2 6.5 14C7 13.5 8 11.5 8 10.5C8 10.1 7.8 9.7 7.5 10Z" fill="white" fill-opacity="0.5"/><path d="M12 5V2.5C12 2.22386 12.2239 2 12.5 2C12.7761 2 13 2.22386 13 2.5V5H12Z" fill="#2ECC71"/><path d="M12 5.5C10 4.5 7.5 4.5 6.5 5C8 6 10.5 6 12 5.5Z" fill="#27AE60"/><path d="M12 5.5C14 4.5 16.5 4.5 17.5 5C16 6 13.5 6 12 5.5Z" fill="#27AE60"/><path d="M12 5.5C12 3.5 11 1.5 9.5 1C10.5 2.5 11.5 4 12 5.5Z" fill="#219A52"/><path d="M12 5.5C12 3.5 13 1.5 14.5 1C13.5 2.5 12.5 4 12 5.5Z" fill="#219A52"/><defs><radialGradient id="tomatoGrad" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(10 10) rotate(45) scale(12 12)"><stop offset="0%" stop-color="#FF6B6B"/><stop offset="60%" stop-color="#FF4757"/><stop offset="100%" stop-color="#D63031"/></radialGradient></defs></svg>`;
+
 interface User {
   id: number;
   username: string;
@@ -434,6 +436,12 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   const [mobileTab, setMobileTab] = useState<'stream' | 'roadmap' | 'mission'>('stream');
   const [missionControlTab, setMissionControlTab] = useState<'active' | 'completed'>('active');
   const [allUniqueTodos, setAllUniqueTodos] = useState<Todo[]>([]);
+
+  // Pomodoro live display (from WebSocket)
+  const [pomActive, setPomActive] = useState(false);
+  const [pomTodoTitle, setPomTodoTitle] = useState('');
+  const pomRef = useRef({ active: false, timestamp: 0, targetEnd: 0, mode: 0, todoTitle: '' });
+  const [pomDisplay, setPomDisplay] = useState('');
   
   // 倒数日拖拽滚动逻辑
   const cdScrollRef = useRef<HTMLDivElement>(null);
@@ -464,10 +472,12 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   const loadLocalData = useCallback(() => {
     if (!user) return;
     try {
-      // 1. 加载并去重 Todos
+      // 1. 加载并去重 Todos，应用独立完成状态
       const rawTodos = SyncEngine.getLocalTodos(user.id);
       const all = (Array.isArray(rawTodos) ? rawTodos : []).filter(t => t && !t.is_deleted);
-      const uniqueTodos = Array.from(new Map(all.map(t => [t.uuid, t])).values());
+      // 🚀 应用独立完成状态 (collabType=1 的待办 is_completed 来自 independent_completions)
+      const allWithCompletions = SyncEngine.applyIndependentCompletions(user.id, all);
+      const uniqueTodos = Array.from(new Map(allWithCompletions.map(t => [t.uuid, t])).values());
       setAllUniqueTodos(uniqueTodos);
       
       setTeamTodos(uniqueTodos.filter(t => t.team_uuid === selectedTeam?.uuid));
@@ -558,7 +568,101 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
     return () => clearInterval(t);
   }, [user, loadLocalData]);
 
-  // 2. 详细数据与同步逻辑
+  // 2. Pomodoro 1s tick
+  useEffect(() => {
+    const tick = () => {
+      const p = pomRef.current;
+      if (!p.active || !p.timestamp) return;
+      const now = Date.now();
+      const elapsed = Math.floor((now - p.timestamp) / 1000);
+      let display: number;
+      if (p.mode === 1) {
+        display = elapsed;
+      } else {
+        const planned = Math.floor((p.targetEnd - p.timestamp) / 1000);
+        display = Math.max(0, planned - elapsed);
+      }
+      const min = Math.floor(display / 60);
+      const sec = display % 60;
+      setPomDisplay(`${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 3. REST fallback on mount (for initial pomodoro state)
+  const checkInitialPomState = useCallback(async () => {
+    try {
+      const deviceId = ApiService.getDeviceId();
+      const res = await ApiService.request(
+        `/api/pomodoro/active?device_id=${encodeURIComponent(deviceId)}`,
+        { method: 'GET' }
+      );
+      if (res.active && (res.record as Record<string, unknown>)?.start_time) {
+        const r = res.record as Record<string, unknown>;
+        const now = Date.now();
+        const startTime = (r.start_time as number) || now;
+        const plannedDur = (r.planned_duration as number) || 1500;
+        const isCountUp = (r.is_count_up as boolean) || false;
+        const p = {
+          active: true,
+          timestamp: startTime,
+          targetEnd: isCountUp ? now : startTime + plannedDur * 1000,
+          mode: isCountUp ? 1 : 0,
+          todoTitle: (r.todo_title as string) || '',
+        };
+        pomRef.current = p;
+        setPomActive(true);
+        setPomTodoTitle(p.todoTitle);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // 4. WebSocket pomodoro handlers
+  useEffect(() => {
+    if (!user) return;
+    const ws = WsService.getInstance();
+    ws.connect(user.id);
+    checkInitialPomState();
+    const unsubSyncFocus = ws.on('SYNC_FOCUS', (data) => {
+      const p = {
+        active: true,
+        timestamp: (data.timestamp as number) || Date.now(),
+        targetEnd: (data.target_end_ms as number) || (data.duration as number) * 1000 + Date.now(),
+        mode: (data.mode as number) || 0,
+        todoTitle: (data.todo_title as string) || (data.todoTitle as string) || '',
+      };
+      pomRef.current = p;
+      setPomActive(true);
+      setPomTodoTitle(p.todoTitle);
+    });
+    const unsubStart = ws.on('START', (data) => {
+      if (data.sourceDevice === ApiService.getDeviceId()) return;
+      const p = {
+        active: true,
+        timestamp: (data.timestamp as number) || Date.now(),
+        targetEnd: (data.target_end_ms as number) || (data.duration as number) * 1000 + Date.now(),
+        mode: (data.mode as number) || 0,
+        todoTitle: (data.todo_title as string) || '',
+      };
+      pomRef.current = p;
+      setPomActive(true);
+      setPomTodoTitle(p.todoTitle);
+    });
+    const stopPom = () => {
+      pomRef.current = { active: false, timestamp: 0, targetEnd: 0, mode: 0, todoTitle: '' };
+      setPomActive(false);
+      setPomTodoTitle('');
+    };
+    const unsubStop = ws.on('STOP', stopPom);
+    const unsubClear = ws.on('CLEAR_FOCUS', stopPom);
+    return () => {
+      unsubSyncFocus(); unsubStart(); unsubStop(); unsubClear();
+    };
+  }, [user]);
+
+  // 5. 详细数据与同步逻辑
   useEffect(() => { 
     if (user) fetchTeamData(selectedTeam?.uuid || ''); 
   }, [selectedTeam, user, fetchTeamData]);
@@ -566,7 +670,6 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
   useEffect(() => {
     if (!user || !selectedTeam) return;
     const ws = WsService.getInstance();
-    ws.subscribeToTeams([selectedTeam.uuid]);
     const unsub = ws.on('*', (data) => {
       if (['SYNC_DATA', 'NEW_ANNOUNCEMENT'].includes(data.action as string)) {
         fetchTeamData(selectedTeam.uuid);
@@ -645,9 +748,17 @@ const TeamDisplayBoard: React.FC<{ user: User; onBack?: () => void }> = ({ user,
           </div>
         </div>
 
-        {/* 右侧：时钟 */}
-        <div className="hidden sm:block text-2xl lg:text-5xl font-black tabular-nums tracking-tighter opacity-80 shrink-0">
-          {time.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })}
+        {/* 右侧：时钟 / 番茄钟 */}
+        <div className={`hidden sm:flex items-center gap-2 font-black tabular-nums tracking-tighter shrink-0 transition-all duration-800 ${pomActive ? 'text-red-400 scale-110' : 'text-white/80'}`}>
+          {pomActive ? (
+            <span dangerouslySetInnerHTML={{ __html: TOMATO_SVG }} />
+          ) : null}
+          <span className="text-2xl lg:text-5xl">
+            {pomActive ? pomDisplay : time.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {pomTodoTitle ? (
+            <span className="hidden lg:block text-sm font-bold text-white/60 max-w-[120px] truncate">{pomTodoTitle}</span>
+          ) : null}
         </div>
       </header>
       <main className="flex-1 min-h-0 p-4 lg:p-6 w-full max-w-[2560px] mx-auto overflow-hidden relative">

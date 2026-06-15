@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
+import { WsService } from '../services/websocket';
 import type { TodoItem } from '../types';
 import type { PomodoroTag, PomodoroRecord, PomodoroSettings, PomodoroState } from './webapp-utils';
 import {
@@ -21,10 +22,16 @@ export const PomodoroFocusView = ({
   userId,
   todos,
   onTodoCompleted,
+  remotePomActive,
+  remotePomDisplay,
+  remotePomData,
 }: {
   userId: number;
   todos: TodoItem[];
   onTodoCompleted: (uuid: string) => void;
+  remotePomActive: boolean;
+  remotePomDisplay: string;
+  remotePomData: { tags: string[]; todoTitle: string; note: string; mode: number; timestamp: number; targetEnd: number; duration: number };
 }) => {
   const [settings, setSettings] = useState<PomodoroSettings>(() => loadPomodoroSettings(userId));
   const [showSettings, setShowSettings] = useState(false);
@@ -56,28 +63,10 @@ export const PomodoroFocusView = ({
   const [showSwitchDialog, setShowSwitchDialog] = useState(false);
   const [switchTargetUuid, setSwitchTargetUuid] = useState<string | null>(null);
 
-  // Cross-device active session banner
-  const [crossDeviceRecord, setCrossDeviceRecord] = useState<{
-    uuid: string; todo_uuid: string | null; start_time: number;
-    planned_duration: number; device_id: string | null;
-  } | null>(null);
-
-  // Load tags + check cross-device active session on mount
+  // Load tags on mount
   useEffect(() => {
     SyncEngine.syncData(userId).catch(console.error);
     fetchTags();
-    checkCrossDeviceActive();
-
-    // 🚀 Periodic check (every 1 minute) while idle as fallback
-    const id = setInterval(() => {
-      if (!loadPomodoroState(userId)) {
-        checkCrossDeviceActive();
-      }
-    }, 60000);
-
-    return () => {
-      clearInterval(id);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -92,24 +81,6 @@ export const PomodoroFocusView = ({
       console.error('获取标签失败', e);
     } finally {
       setLoadingTags(false);
-    }
-  };
-
-  const checkCrossDeviceActive = async () => {
-    // Only check if we don't already have a local session running
-    if (loadPomodoroState(userId)) return;
-    try {
-      const deviceId = ApiService.getDeviceId();
-      const res = await ApiService.request(
-        `/api/pomodoro/active?device_id=${encodeURIComponent(deviceId)}`,
-        { method: 'GET' }
-      );
-      if (res.active && res.record) {
-        type ActiveRecord = { uuid: string; todo_uuid: string | null; start_time: number; planned_duration: number; device_id: string | null };
-        setCrossDeviceRecord(res.record as ActiveRecord);
-      }
-    } catch (e) {
-      console.error('检查跨设备番茄钟失败', e);
     }
   };
 
@@ -189,6 +160,19 @@ export const PomodoroFocusView = ({
     setPomState(state);
     setIsRunning(true);
     setRemainMs(settings.focusDuration * 1000);
+
+    const todo = todoUuid ? todos.find(t => t.uuid === todoUuid) : null;
+    WsService.getInstance().send({
+      action: 'START',
+      session_uuid: recordUuid,
+      todo_uuid: todoUuid,
+      todo_title: todo?.content || '',
+      duration: settings.focusDuration,
+      target_end_ms: endMs,
+      mode: 0,
+      tags: tagUuids,
+      timestamp: nowMs,
+    });
   };
 
   const startRest = (loopIndex: number, todoUuid: string | null, tagUuids: string[]) => {
@@ -225,6 +209,12 @@ export const PomodoroFocusView = ({
         tag_uuids: pomState.tagUuids,
       });
     }
+    WsService.getInstance().send({
+      action: 'STOP',
+      session_uuid: pomState.recordUuid,
+      todo_uuid: pomState.todoUuid,
+      timestamp: Date.now(),
+    });
     savePomodoroState(userId, null);
     setPomState(null);
     setIsRunning(false);
@@ -242,6 +232,12 @@ export const PomodoroFocusView = ({
       actual_duration: actualSecs,
       status: 'switched',
       tag_uuids: pomState.tagUuids,
+    });
+    WsService.getInstance().send({
+      action: 'SWITCH',
+      session_uuid: pomState.recordUuid,
+      todo_uuid: switchTargetUuid,
+      timestamp: Date.now(),
     });
     setShowSwitchDialog(false);
     startFocus(switchTargetUuid, pomState.tagUuids, pomState.loopIndex);
@@ -394,75 +390,36 @@ export const PomodoroFocusView = ({
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 flex-1 min-h-0">
-        {/* Cross-device active session banner */}
-        {crossDeviceRecord && !pomState && (
-          <div className="lg:hidden w-full bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center gap-4">
-            <span className="text-2xl shrink-0">📱</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-amber-800 text-sm">检测到其他设备正在专注中</p>
-              <p className="text-amber-600 text-xs mt-0.5 truncate">
-                已专注 {Math.round((Date.now() - crossDeviceRecord.start_time) / 60000)} 分钟 · 剩余 {Math.max(0, Math.round((crossDeviceRecord.planned_duration * 1000 - (Date.now() - crossDeviceRecord.start_time)) / 60000))} 分钟
-              </p>
+        {/* 远程设备专注状态自动同步显示 */}
+        {remotePomActive && !pomState && (
+          <div className="w-full bg-red-50 border border-red-200 rounded-2xl px-5 py-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl shrink-0">🍅</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-red-700 text-sm">设备专注同步中</p>
+                <p className="text-red-500 text-lg font-black tabular-nums mt-1">
+                  {remotePomDisplay}
+                </p>
+                {remotePomData.todoTitle && (
+                  <p className="text-red-400 text-xs font-bold mt-0.5 truncate">{remotePomData.todoTitle}</p>
+                )}
+              </div>
             </div>
-            <button
-              onClick={() => {
-                const endMs = crossDeviceRecord.start_time + crossDeviceRecord.planned_duration * 1000;
-                const nowMs = Date.now();
-                if (endMs <= nowMs) { setCrossDeviceRecord(null); return; }
-                const state: PomodoroState = {
-                  phase: 'focus', loopIndex: 0, endTimeMs: endMs,
-                  todoUuid: crossDeviceRecord.todo_uuid, tagUuids: [], startTimeMs: crossDeviceRecord.start_time,
-                  recordUuid: crossDeviceRecord.uuid,
-                };
-                savePomodoroState(userId, state);
-                setPomState(state);
-                setCrossDeviceRecord(null);
-              }}
-              className="shrink-0 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition"
-            >
-              接管计时
-            </button>
-            <button onClick={() => setCrossDeviceRecord(null)} className="shrink-0 p-1 text-amber-400 hover:text-amber-600">
-              <X className="w-4 h-4" />
-            </button>
+            {remotePomData.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-red-100">
+                {remotePomData.tags.map((tag, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold text-red-500 bg-red-100/50">{tag}</span>
+                ))}
+              </div>
+            )}
+            {remotePomData.note && (
+              <p className="text-red-400 text-[10px] mt-2 pt-2 border-t border-red-100 truncate">📝 {remotePomData.note}</p>
+            )}
           </div>
         )}
 
         {/* Left: Timer */}
         <div className="lg:w-[400px] xl:w-[460px] shrink-0 flex flex-col gap-4">
-          {/* Cross-device banner on desktop */}
-          {crossDeviceRecord && !pomState && (
-            <div className="hidden lg:flex bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 items-center gap-4">
-              <span className="text-2xl shrink-0">📱</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-amber-800 text-sm">其他设备专注中</p>
-                <p className="text-amber-600 text-xs mt-0.5">
-                  已专注 {Math.round((Date.now() - crossDeviceRecord.start_time) / 60000)} 分钟 · 剩余 {Math.max(0, Math.round((crossDeviceRecord.planned_duration * 1000 - (Date.now() - crossDeviceRecord.start_time)) / 60000))} 分钟
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  const endMs = crossDeviceRecord.start_time + crossDeviceRecord.planned_duration * 1000;
-                  const nowMs = Date.now();
-                  if (endMs <= nowMs) { setCrossDeviceRecord(null); return; }
-                  const state: PomodoroState = {
-                    phase: 'focus', loopIndex: 0, endTimeMs: endMs,
-                    todoUuid: crossDeviceRecord.todo_uuid, tagUuids: [], startTimeMs: crossDeviceRecord.start_time,
-                    recordUuid: crossDeviceRecord.uuid,
-                  };
-                  savePomodoroState(userId, state);
-                  setPomState(state);
-                  setCrossDeviceRecord(null);
-                }}
-                className="shrink-0 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition"
-              >
-                接管
-              </button>
-              <button onClick={() => setCrossDeviceRecord(null)} className="shrink-0 p-1 text-amber-400 hover:text-amber-600">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
           {/* Timer Card */}
           <div className={`relative bg-white rounded-3xl shadow-sm border flex flex-col items-center justify-center p-8 sm:p-10 gap-6 ${
             pomState?.phase === 'rest' ? 'border-emerald-200' : (isRunning ? 'border-red-200' : 'border-slate-100')

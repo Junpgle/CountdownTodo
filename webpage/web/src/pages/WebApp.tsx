@@ -10,6 +10,19 @@ import { ApiRequestError, ApiService } from '../services/api';
 import { WsService } from '../services/websocket';
 import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
 
+interface RemotePomData {
+  active: boolean;
+  timestamp: number;
+  targetEnd: number;
+  mode: number;
+  todoTitle: string;
+  todoUuid: string | null;
+  sessionUuid: string | null;
+  tags: string[];
+  note: string;
+  duration: number;
+}
+
 import {
   CURRENT_WEB_VERSION,
   generateUUID,
@@ -107,7 +120,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [isSyncing, setIsSyncing] = useState(false);
   const syncLockRef = useRef(false);
   const lastSyncTimeRef = useRef(0);
+  const lastSyncDataTimeRef = useRef(0);
   const SYNC_DEBOUNCE_MS = 5000;
+  const SYNC_DATA_COOLDOWN_MS = 30000;
   const [syncCountToday, setSyncCountToday] = useState(0);
 
   const [nowMs, setNowMs] = useState(Date.now());
@@ -137,6 +152,37 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [historyTarget, setHistoryTarget] = useState<{ uuid: string; table: string; title: string } | null>(null);
   const [showReportLauncher, setShowReportLauncher] = useState(false);
 
+  // 全局远程番茄钟状态
+  const [remotePomActive, setRemotePomActive] = useState(false);
+  const [remotePomData, setRemotePomData] = useState<RemotePomData>({
+    active: false, timestamp: 0, targetEnd: 0, mode: 0,
+    todoTitle: '', todoUuid: null, sessionUuid: null, tags: [], note: '', duration: 0,
+  });
+  const remotePomRef = useRef<RemotePomData>(remotePomData);
+  const [remotePomDisplay, setRemotePomDisplay] = useState('');
+
+  // 远程番茄钟 1s 更新
+  useEffect(() => {
+    const tick = () => {
+      const p = remotePomRef.current;
+      if (!p.active || !p.timestamp) { setRemotePomDisplay(''); return; }
+      const now = Date.now();
+      const elapsed = Math.floor((now - p.timestamp) / 1000);
+      let display: number;
+      if (p.mode === 1) {
+        display = elapsed;
+      } else {
+        const planned = Math.floor((p.targetEnd - p.timestamp) / 1000);
+        display = Math.max(0, planned - elapsed);
+      }
+      const min = Math.floor(display / 60);
+      const sec = display % 60;
+      setRemotePomDisplay(`${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
+    };
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     loadLocalData();
     handleSync();
@@ -146,7 +192,56 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     const ws = WsService.getInstance();
     ws.connect(user.id);
 
-    const unsubSyncData = ws.on('SYNC_DATA', () => { handleSync(); });
+    const clearRemotePom = () => {
+      const empty: RemotePomData = {
+        active: false, timestamp: 0, targetEnd: 0, mode: 0,
+        todoTitle: '', todoUuid: null, sessionUuid: null, tags: [], note: '', duration: 0,
+      };
+      remotePomRef.current = empty;
+      setRemotePomData(empty);
+      setRemotePomActive(false);
+    };
+
+    const handleFocusStart = (data: Record<string, unknown>, label: string) => {
+      const ts = (data.timestamp as number) || Date.now();
+      const targetEnd = (data.target_end_ms as number) || (data.targetEndMs as number) || (data.duration as number) * 1000 + Date.now();
+      const mode = (data.mode as number) || 0;
+      const todoTitle = (data.todo_title as string) || (data.todoTitle as string) || '';
+      const todoUuid = (data.todo_uuid as string) || (data.todoUuid as string) || null;
+      const sessionUuid = (data.session_uuid as string) || null;
+      const rawTags = data.tags;
+      const tags = Array.isArray(rawTags) ? rawTags.filter(Boolean).map(String) : [];
+      const note = (data.note as string) || '';
+      const duration = (data.duration as number) || 0;
+      console.log(`[POM] ${label} ts=${ts} targetEnd=${targetEnd} mode=${mode} title=${todoTitle} tags=${JSON.stringify(tags)}`);
+      const pomData: RemotePomData = {
+        active: true, timestamp: ts, targetEnd, mode, todoTitle,
+        todoUuid, sessionUuid, tags, note, duration,
+      };
+      remotePomRef.current = pomData;
+      setRemotePomData(pomData);
+      setRemotePomActive(true);
+    };
+
+    const unsubSyncFocus = ws.on('SYNC_FOCUS', (data) => {
+      handleFocusStart(data, 'SYNC_FOCUS');
+    });
+    const unsubReconnect = ws.on('RECONNECT_SYNC', (data) => {
+      handleFocusStart(data, 'RECONNECT_SYNC');
+    });
+    const unsubStart = ws.on('START', (data) => {
+      if (data.sourceDevice === ApiService.getDeviceId()) return;
+      handleFocusStart(data, 'START');
+    });
+    const unsubStop = ws.on('STOP', () => { console.log('[POM] STOP'); clearRemotePom(); });
+    const unsubClear = ws.on('CLEAR_FOCUS', () => { console.log('[POM] CLEAR_FOCUS'); clearRemotePom(); });
+
+    const unsubSyncData = ws.on('SYNC_DATA', () => {
+      const now = Date.now();
+      if (now - lastSyncDataTimeRef.current < SYNC_DATA_COOLDOWN_MS) return;
+      lastSyncDataTimeRef.current = now;
+      handleSync();
+    });
     const unsubTeamUpdate = ws.on('TEAM_UPDATE', () => {
       handleSync();
       fetchUserTeams();
@@ -162,6 +257,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       fetchUserTeams();
       fetchPriorityAnns();
     });
+
+    // 新设备上线告知服务端当前空闲
+    ws.send({ action: 'IDLE_REPORT' });
 
     const timer = setInterval(() => {
       setNowMs(Date.now());
@@ -187,6 +285,11 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
     return () => {
       clearInterval(timer);
+      unsubSyncFocus();
+      unsubReconnect();
+      unsubStart();
+      unsubStop();
+      unsubClear();
       unsubSyncData();
       unsubTeamUpdate();
       unsubNewAnnouncement();
@@ -201,10 +304,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     try {
       const res = await ApiService.request('/api/teams');
       if (res.success && Array.isArray(res.teams)) {
-        const teams = res.teams as Team[];
-        setUserTeams(teams);
-        const uuids = teams.map(t => t.uuid);
-        WsService.getInstance().subscribeToTeams(uuids);
+        setUserTeams(res.teams as Team[]);
       }
     } catch (e) {}
   };
@@ -233,7 +333,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   };
 
   const loadLocalData = () => {
-    setTodos(SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted));
+    // 🚀 应用独立完成状态 (collabType=1 的待办 is_completed 来自 independent_completions)
+    const rawTodos = SyncEngine.getLocalTodos(user.id).filter(t => !t.is_deleted);
+    const todosWithCompletions = SyncEngine.applyIndependentCompletions(user.id, rawTodos);
+    setTodos(todosWithCompletions);
     setTodoGroups(SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted));
     setCountdowns(SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted));
   };
@@ -576,6 +679,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       target.is_completed = true;
       target.version++;
       target.updated_at = Date.now();
+      // 🚀 collabType=1 时，更新独立完成状态
+      if (target.collab_type === 1) {
+        SyncEngine.updateIndependentCompletion(user.id, uuid, true);
+      }
       SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
@@ -724,6 +831,10 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       target.is_completed = !target.is_completed;
       target.version++;
       target.updated_at = Date.now();
+      // 🚀 collabType=1 时，更新独立完成状态
+      if (target.collab_type === 1) {
+        SyncEngine.updateIndependentCompletion(user.id, uuid, target.is_completed);
+      }
       SyncEngine.setLocalTodos(user.id, all);
       loadLocalData();
       handleSync();
@@ -1499,6 +1610,24 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
             <div className="flex items-center gap-3 sm:gap-6">
 
+              {/* 远程番茄钟实时显示 */}
+              {remotePomActive && (
+                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-100 text-red-500 font-black text-sm tabular-nums mr-2">
+                  <span>🍅</span>
+                  <span>{remotePomDisplay}</span>
+                  {remotePomData.todoTitle && (
+                    <span className="text-red-400 font-bold text-[10px] max-w-[100px] truncate ml-1">{remotePomData.todoTitle}</span>
+                  )}
+                  {remotePomData.tags.length > 0 && (
+                    <span className="flex gap-0.5 ml-0.5">
+                      {remotePomData.tags.slice(0, 3).map((t, i) => (
+                        <span key={i} className="w-2 h-2 rounded-full bg-red-300" title={t} />
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* API 限制置顶进度条 */}
               <div className="hidden md:flex flex-col items-end justify-center mr-2 border-r border-slate-200 pr-6">
                 <div className="flex items-center gap-2 mb-1.5">
@@ -1596,7 +1725,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
           {currentTab === 'dashboard' && mobileTab === 'home' && renderDashboard()}
           {mobileTab === 'settings' && renderSettings()}
           {currentTab === 'screentime' && mobileTab === 'home' && <ScreenTimeView userId={user.id} />}
-          {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} />}
+          {currentTab === 'focus' && mobileTab === 'home' && <PomodoroFocusView userId={user.id} todos={todos} onTodoCompleted={handleTodoCompleted} remotePomActive={remotePomActive} remotePomDisplay={remotePomDisplay} remotePomData={remotePomData} />}
           {currentTab === 'pomodoro' && mobileTab === 'home' && <PomodoroStatsView userId={user.id} todos={todos} />}
           {currentTab === 'teams' && mobileTab === 'home' && <TeamManagementView user={user} onBack={() => setCurrentTab('dashboard')} />}
         </main>
