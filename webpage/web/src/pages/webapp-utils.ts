@@ -3,7 +3,7 @@ import { ApiService } from '../services/api';
 // --------------------------------------------------------
 // 常量与工具函数
 // --------------------------------------------------------
-export const CURRENT_WEB_VERSION = "4.1.6"; // 当前网页版的硬编码版本号
+export const CURRENT_WEB_VERSION = "5.0.0"; // 当前网页版的硬编码版本号
 
 export const generateUUID = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
 export const formatDt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -78,7 +78,7 @@ export interface CourseItem {
   week_index: number;
 }
 
-export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'multi';
+export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'pomodoro' | 'multi';
 
 export interface CalendarEntry {
   type: 'todo' | 'countdown';
@@ -87,7 +87,7 @@ export interface CalendarEntry {
 
 export interface DetailItem {
   type: CalendarItemType;
-  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | CalendarEntry[];
+  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | import('../types').PomodoroRecord | CalendarEntry[];
 }
 
 // --------------------------------------------------------
