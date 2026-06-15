@@ -155,6 +155,62 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [historyTab, setHistoryTab] = useState<'local' | 'cloud'>('cloud');
   const [historyTarget, setHistoryTarget] = useState<{ uuid: string; table: string; title: string } | null>(null);
   const [showReportLauncher, setShowReportLauncher] = useState(false);
+  const [reportPos, setReportPos] = useState({ x: 0, y: 0 });
+  const [isDraggingReport, setIsDraggingReport] = useState(false);
+  const [dismissReport, setDismissReport] = useState(() => {
+    try {
+      return localStorage.getItem('hide_report_launcher') === 'true';
+    } catch { return false; }
+  });
+  const dragStartOffset = useRef({ x: 0, y: 0 });
+  const dragStartMousePos = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDraggingReport) return;
+      e.preventDefault();
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      setReportPos({
+        x: clientX - dragStartOffset.current.x,
+        y: clientY - dragStartOffset.current.y
+      });
+    };
+    const handleUp = () => setIsDraggingReport(false);
+
+    if (isDraggingReport) {
+      window.addEventListener('mousemove', handleMove, { passive: false });
+      window.addEventListener('touchmove', handleMove, { passive: false });
+      window.addEventListener('mouseup', handleUp);
+      window.addEventListener('touchend', handleUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('touchmove', handleMove);
+        window.removeEventListener('mouseup', handleUp);
+        window.removeEventListener('touchend', handleUp);
+      };
+    }
+  }, [isDraggingReport]);
+
+  const onReportDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.close-btn')) return;
+    setIsDraggingReport(true);
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragStartOffset.current = { x: clientX - reportPos.x, y: clientY - reportPos.y };
+    dragStartMousePos.current = { x: clientX, y: clientY };
+  };
+
+  const onReportClick = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('.close-btn')) return;
+    const clientX = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'changedTouches' in e ? e.changedTouches[0].clientY : (e as React.MouseEvent).clientY;
+    const dx = clientX - dragStartMousePos.current.x;
+    const dy = clientY - dragStartMousePos.current.y;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+      setShowReportLauncher(true);
+    }
+  };
 
   // 全局远程番茄钟状态
   const [remotePomActive, setRemotePomActive] = useState(false);
@@ -1290,18 +1346,41 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
         )}
 
         {/* 个人时间轴报告 - 右上角悬浮通知 */}
-        <button
-          onClick={() => setShowReportLauncher(true)}
-          className="fixed right-4 top-20 z-50 flex items-center gap-2.5 bg-white border border-indigo-100 shadow-lg shadow-indigo-500/15 rounded-2xl pl-3.5 pr-4 py-3 hover:shadow-xl hover:border-indigo-300 hover:scale-105 transition-all group active:scale-95 animate-[slideInRight_0.5s_ease-out]"
-        >
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center animate-pulse">
-            <HistoryIcon className="w-4.5 h-4.5" />
+        {!dismissReport && (
+          <div
+            onMouseDown={onReportDragStart}
+            onTouchStart={onReportDragStart}
+            onMouseUp={onReportClick}
+            onTouchEnd={onReportClick}
+            style={{ 
+              transform: `translate(${reportPos.x}px, ${reportPos.y}px)`,
+              cursor: isDraggingReport ? 'grabbing' : 'grab',
+              touchAction: 'none'
+            }}
+            className={`fixed right-4 top-20 z-50 flex items-center gap-3 bg-white/90 backdrop-blur-xl border border-indigo-100/50 shadow-xl shadow-indigo-500/10 rounded-[1.25rem] p-3 pr-4 animate-[slideInRight_0.5s_ease-out] select-none ${isDraggingReport ? 'scale-105 shadow-2xl transition-none' : 'hover:scale-105 hover:shadow-2xl transition-all duration-300 group'}`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-inner">
+                <HistoryIcon className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="text-left mr-2">
+                <p className="text-sm font-black text-slate-800 group-hover:text-indigo-600 transition-colors tracking-tight whitespace-nowrap">个人报告已可查看</p>
+                <p className="text-[11px] text-slate-500 font-bold mt-0.5 whitespace-nowrap">前往 App 查看使用详情</p>
+              </div>
+            </div>
+            <button
+              className="close-btn p-1.5 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDismissReport(true);
+                try { localStorage.setItem('hide_report_launcher', 'true'); } catch {}
+              }}
+              title="不再提示"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <div className="text-left">
-            <p className="text-xs font-black text-slate-800 group-hover:text-indigo-600 transition-colors whitespace-nowrap">个人报告</p>
-            <p className="text-[10px] text-slate-400">点击查看</p>
-          </div>
-        </button>
+        )}
 
         <style>{`
           @keyframes slideInRight {
