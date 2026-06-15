@@ -1,0 +1,364 @@
+import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag } from '../types';
+import type { CourseItem, ScreenTimeStat } from '../pages/webapp-utils';
+
+const DB_NAME = 'cdt_cache';
+const DB_VERSION = 2;
+const STORE_TODOS = 'todos';
+const STORE_GROUPS = 'groups';
+const STORE_COUNTDOWNS = 'countdowns';
+const STORE_COURSES = 'courses';
+const STORE_SETTINGS = 'settings';
+const STORE_SCREEN_TIME = 'screen_time';
+const STORE_POMODORO_RECORDS = 'pom_records';
+const STORE_POMODORO_TAGS = 'pom_tags';
+
+interface CacheItem {
+  _key: string;
+  [key: string]: unknown;
+}
+
+interface SettingsCacheItem {
+  _key: string;
+  semester_start: number;
+  cached_at: number;
+}
+
+let dbInstance: IDBDatabase | null = null;
+
+function openDB(): Promise<IDBDatabase> {
+  if (dbInstance) return Promise.resolve(dbInstance);
+
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      resolve(dbInstance);
+    };
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_TODOS)) {
+        db.createObjectStore(STORE_TODOS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_GROUPS)) {
+        db.createObjectStore(STORE_GROUPS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_COUNTDOWNS)) {
+        db.createObjectStore(STORE_COUNTDOWNS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_COURSES)) {
+        db.createObjectStore(STORE_COURSES, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
+        db.createObjectStore(STORE_SETTINGS, { keyPath: '_key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_SCREEN_TIME)) {
+        db.createObjectStore(STORE_SCREEN_TIME, { keyPath: '_key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_POMODORO_RECORDS)) {
+        db.createObjectStore(STORE_POMODORO_RECORDS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_POMODORO_TAGS)) {
+        db.createObjectStore(STORE_POMODORO_TAGS, { keyPath: 'uuid' });
+      }
+    };
+  });
+}
+
+async function getAll<T>(storeName: string): Promise<T[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getOne<T>(storeName: string, key: string): Promise<T | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function putOne<T>(storeName: string, item: T): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function putAll<T>(storeName: string, items: T[]): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    for (const item of items) {
+      store.put(item);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function clearStoreByPrefix(storeName: string, prefix: string): Promise<void> {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) {
+        if ((cursor.value as CacheItem)._key === prefix) {
+          cursor.delete();
+        }
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function clearStoreByUser(storeName: string, userId: number): Promise<void> {
+  return clearStoreByPrefix(storeName, `u${userId}`);
+}
+
+export const CacheService = {
+  // Todos
+  async getCachedTodos(userId: number): Promise<TodoItem[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_TODOS);
+      const cached = all.filter(t => t._key === key) as unknown as TodoItem[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedTodos(userId: number, todos: TodoItem[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_TODOS, key);
+      const itemsWithKey = todos.map(t => ({ ...t, _key: key }));
+      await putAll(STORE_TODOS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache todos', e);
+    }
+  },
+
+  // Groups
+  async getCachedGroups(userId: number): Promise<TodoGroup[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_GROUPS);
+      const cached = all.filter(g => g._key === key) as unknown as TodoGroup[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedGroups(userId: number, groups: TodoGroup[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_GROUPS, key);
+      const itemsWithKey = groups.map(g => ({ ...g, _key: key }));
+      await putAll(STORE_GROUPS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache groups', e);
+    }
+  },
+
+  // Countdowns
+  async getCachedCountdowns(userId: number): Promise<CountdownItem[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_COUNTDOWNS);
+      const cached = all.filter(c => c._key === key) as unknown as CountdownItem[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedCountdowns(userId: number, countdowns: CountdownItem[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_COUNTDOWNS, key);
+      const itemsWithKey = countdowns.map(c => ({ ...c, _key: key }));
+      await putAll(STORE_COUNTDOWNS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache countdowns', e);
+    }
+  },
+
+  // Courses
+  async getCachedCourses(userId: number): Promise<CourseItem[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_COURSES);
+      const cached = all.filter(c => c._key === key) as unknown as CourseItem[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedCourses(userId: number, courses: CourseItem[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_COURSES, key);
+      const itemsWithKey = courses.map(c => ({ ...c, _key: key }));
+      await putAll(STORE_COURSES, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache courses', e);
+    }
+  },
+
+  // Semester Start (Settings)
+  async getCachedSemesterStart(userId: number): Promise<number | null> {
+    try {
+      const cacheKey = `u${userId}_semester`;
+      const cached = await getOne<SettingsCacheItem>(STORE_SETTINGS, cacheKey);
+      if (cached && cached.semester_start > 0) {
+        return cached.semester_start;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedSemesterStart(userId: number, semesterStart: number): Promise<void> {
+    try {
+      const cacheKey = `u${userId}_semester`;
+      await putOne(STORE_SETTINGS, {
+        _key: cacheKey,
+        semester_start: semesterStart,
+        cached_at: Date.now(),
+      });
+    } catch (e) {
+      console.warn('CacheService: Failed to cache semester start', e);
+    }
+  },
+
+  // Screen Time
+  async getCachedScreenTime(userId: number): Promise<ScreenTimeStat[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_SCREEN_TIME);
+      const cached = all.filter(c => c._key === key) as unknown as ScreenTimeStat[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedScreenTime(userId: number, stats: ScreenTimeStat[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_SCREEN_TIME, key);
+      const itemsWithKey = stats.map(s => ({ ...s, _key: key }));
+      await putAll(STORE_SCREEN_TIME, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache screen time', e);
+    }
+  },
+
+  // Pomodoro Records
+  async getCachedPomRecords(userId: number): Promise<PomodoroRecord[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_POMODORO_RECORDS);
+      const cached = all.filter(r => r._key === key) as unknown as PomodoroRecord[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedPomRecords(userId: number, records: PomodoroRecord[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_POMODORO_RECORDS, key);
+      const itemsWithKey = records.map(r => ({ ...r, _key: key }));
+      await putAll(STORE_POMODORO_RECORDS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache pom records', e);
+    }
+  },
+
+  // Pomodoro Tags
+  async getCachedPomTags(userId: number): Promise<PomodoroTag[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_POMODORO_TAGS);
+      const cached = all.filter(t => t._key === key) as unknown as PomodoroTag[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedPomTags(userId: number, tags: PomodoroTag[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_POMODORO_TAGS, key);
+      const itemsWithKey = tags.map(t => ({ ...t, _key: key }));
+      await putAll(STORE_POMODORO_TAGS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache pom tags', e);
+    }
+  },
+
+  // 清除用户缓存
+  async clearUserCache(userId: number): Promise<void> {
+    try {
+      const stores = [
+        STORE_TODOS, STORE_GROUPS, STORE_COUNTDOWNS,
+        STORE_COURSES, STORE_SETTINGS, STORE_SCREEN_TIME,
+        STORE_POMODORO_RECORDS, STORE_POMODORO_TAGS,
+      ];
+
+      for (const storeName of stores) {
+        await clearStoreByUser(storeName, userId);
+      }
+    } catch (e) {
+      console.warn('CacheService: Failed to clear cache', e);
+    }
+  },
+
+  // 比较数据是否有变化
+  hasDataChanged<T extends { uuid: string; updated_at?: number; version?: number }>(
+    oldData: T[],
+    newData: T[]
+  ): boolean {
+    if (oldData.length !== newData.length) return true;
+
+    const oldMap = new Map(oldData.map(item => [item.uuid, item]));
+    for (const newItem of newData) {
+      const oldItem = oldMap.get(newItem.uuid);
+      if (!oldItem) return true;
+      if (oldItem.version !== newItem.version) return true;
+      if ((oldItem.updated_at || 0) !== (newItem.updated_at || 0)) return true;
+    }
+
+    return false;
+  }
+};
