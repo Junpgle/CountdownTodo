@@ -378,7 +378,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         if (item is TodoItem) {
           if (item.isDeleted) continue;
           if (!item.hasConflict) continue;
-          if (item.collabType == 1) continue; // 🚀 独立完成待办不参与冲突展示
+          // 独立完成待办的时间冲突同样展示
           if (item.isAllDayTask) continue;
 
           // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过

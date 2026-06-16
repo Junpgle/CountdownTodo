@@ -4285,7 +4285,7 @@ class StorageService {
       final isAllDayRange =
           startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
 
-      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange || todo.collabType == 1) {
+      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
         continue;
       }
 

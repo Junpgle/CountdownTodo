@@ -2931,7 +2931,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       final bool hasTeamConflict = conflictDetectionEnabled &&
           (allTodos.any((t) {
-                if (!t.hasConflict || t.collabType == 1 || (t.teamUuid?.isEmpty ?? true)) {
+                if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) {
                   return false;
                 }
                 if (t.isAllDayTask) return false;
