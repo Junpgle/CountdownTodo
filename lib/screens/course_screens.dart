@@ -2907,7 +2907,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         ? Icons.calendar_month
                         : Icons.calendar_view_week),
                 size: 20),
-            tooltip: '切换试图模式',
+            tooltip: '切换视图模式',
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
           IconButton(
