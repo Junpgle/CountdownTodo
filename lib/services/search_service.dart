@@ -134,6 +134,15 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'smart_import'},
     ),
     SearchResult(
+      id: 'setting_course_adapt',
+      title: '请求课表适配 / 申请适配',
+      subtitle: '如果没有你的学校，点此申请',
+      icon: Icons.auto_awesome,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 课表',
+      extraData: {'route': '/settings', 'target': 'course_adapt'},
+    ),
+    SearchResult(
       id: 'setting_course_sync',
       title: '课表同步 / 从云端获取课表',
       subtitle: '将云端备份的课程同步到本机',
@@ -169,15 +178,6 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 学期',
       extraData: {'route': '/settings', 'target': 'semester_end'},
-    ),
-    SearchResult(
-      id: 'setting_semester_sync',
-      title: '学期同步 / 同步日期',
-      subtitle: '从云端同步开学与放假日期',
-      icon: Icons.sync_problem,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 学期',
-      extraData: {'route': '/settings', 'target': 'semester_sync'},
     ),
     // 🚀 通知相关
     SearchResult(

@@ -76,13 +76,17 @@ class _SettingsPageState extends State<SettingsPage> {
     String paneId;
     Widget Function() paneBuilder;
 
-    final preferenceTargets = ['theme', 'theme_color', 'sync_interval', 'conflict_detection', 'server_choice', 'wallpaper', 'home_text'];
+    final accountTargets = ['sync_interval', 'conflict_detection', 'server_choice'];
+    final preferenceTargets = ['theme', 'theme_color', 'wallpaper', 'home_text'];
     final courseTargets = ['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt', 'course_calendar_adjustment', 'semester_progress', 'semester_start', 'semester_end', 'semester_sync'];
     final interconnectTargets = ['lan_sync', 'band_sync', 'calendar_sync'];
     final advancedTargets = ['llm_config', 'llm_retry', 'migration', 'cache', 'storage', 'update', 'feature_guide'];
     final platformTargets = ['float_window_style', 'force_refresh', 'island_priority', 'tai_db', 'live_updates', 'island_support', 'test_notification'];
 
-    if (preferenceTargets.contains(target)) {
+    if (accountTargets.contains(target)) {
+      paneId = 'account';
+      paneBuilder = _buildAccountAndAnnouncementsPane;
+    } else if (preferenceTargets.contains(target)) {
       paneId = 'preference';
       paneBuilder = () => PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (courseTargets.contains(target)) {
