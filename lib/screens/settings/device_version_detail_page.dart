@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 
 class DeviceVersionDetailPage extends StatefulWidget {
-  const DeviceVersionDetailPage({super.key});
+  final bool isEmbedded;
+
+  const DeviceVersionDetailPage({super.key, this.isEmbedded = false});
 
   @override
   State<DeviceVersionDetailPage> createState() =>
@@ -45,7 +47,7 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('设备版本明细'),
       ),
       body: _loading

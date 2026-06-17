@@ -107,111 +107,99 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+            child: Text('核心特效开关', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.3,
+            children: [
+              _buildToggleCard(
+                title: '启用页面动画',
+                subtitle: '开启/关闭过渡动画',
+                icon: Icons.animation,
+                value: _animationsEnabled,
+                onChanged: (val) {
+                  setState(() => _animationsEnabled = val);
+                  _update(enabled: val);
+                },
+              ),
+              _buildToggleCard(
+                title: '懒加载优化',
+                subtitle: '动画进行中再渲染内容',
+                icon: Icons.hourglass_empty,
+                value: _lazyLoadEnabled,
+                onChanged: (val) {
+                  setState(() => _lazyLoadEnabled = val);
+                  _update(lazyLoad: val);
+                },
+              ),
+              _buildToggleCard(
+                title: '屏幕圆角适配',
+                subtitle: '动画过程中适配屏幕圆角',
+                icon: Icons.rounded_corner,
+                value: _screenRadiusEnabled,
+                onChanged: (val) {
+                  setState(() => _screenRadiusEnabled = val);
+                  _update(screenRadius: val);
+                },
+              ),
+              _buildToggleCard(
+                title: '预测性返回',
+                subtitle: 'Android 14+ 返回手势',
+                icon: Icons.swipe_left,
+                value: _predictiveBackEnabled,
+                onChanged: (val) {
+                  setState(() => _predictiveBackEnabled = val);
+                  _update(predictiveBack: val);
+                },
+              ),
+              _buildToggleCard(
+                title: '运动模糊',
+                subtitle: '滑动动态模糊 (影响性能)',
+                icon: Icons.blur_linear,
+                value: _motionBlurEnabled,
+                onChanged: (val) {
+                  setState(() => _motionBlurEnabled = val);
+                  _update(motionBlur: val);
+                },
+              ),
+              _buildToggleCard(
+                title: '层级模糊',
+                subtitle: '背景页面模糊 (影响性能)',
+                icon: Icons.blur_on,
+                value: _layerBlurEnabled,
+                onChanged: (val) {
+                  setState(() => _layerBlurEnabled = val);
+                  _update(layerBlur: val);
+                },
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
+            child: Text('参数微调', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
           Card(
             elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Column(
               children: [
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('启用页面动画',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('开启/关闭所有页面过渡动画'),
-                  value: _animationsEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _animationsEnabled = val);
-                    _update(enabled: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('懒加载优化',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('动画进行中再渲染页面内容，提升流畅度'),
-                  value: _lazyLoadEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _lazyLoadEnabled = val);
-                    _update(lazyLoad: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('屏幕圆角适配',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('动画过程中适配设备屏幕圆角'),
-                  value: _screenRadiusEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _screenRadiusEnabled = val);
-                    _update(screenRadius: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('预测性返回动画',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('支持 Android 14+ 预测性返回手势动画'),
-                  value: _predictiveBackEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _predictiveBackEnabled = val);
-                    _update(predictiveBack: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('运动模糊',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('页面滑动时添加动态模糊效果（可能影响性能）'),
-                  value: _motionBlurEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _motionBlurEnabled = val);
-                    _update(motionBlur: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  title: const Text('层级模糊',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('前景页面清晰，背景页面模糊（可能影响性能）'),
-                  value: _layerBlurEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() => _layerBlurEnabled = val);
-                    _update(layerBlur: val);
-                  },
-                ),
-                Divider(height: 1, indent: 16, endIndent: 16),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('动画时长',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('${_animationDuration}ms',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
+                          const Text('动画时长', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('${_animationDuration}ms', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -229,43 +217,28 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('快',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('慢',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
+                          Text('快', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('慢', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
                   ),
                 ),
-                Divider(height: 1, indent: 16, endIndent: 16),
+                const Divider(height: 1, indent: 16, endIndent: 16),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('层级深度',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_pageLayerDepth%',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
+                          const Text('层级深度', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_pageLayerDepth%', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '控制背景页缩小、压暗和层级模糊强度',
-                        style: TextStyle(
-                            fontSize: 12, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('控制背景页缩小、压暗和层级模糊强度', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 8),
                       Slider(
                         value: _pageLayerDepth.toDouble(),
@@ -282,43 +255,28 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('轻',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('强',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
+                          Text('轻', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('强', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
                   ),
                 ),
-                Divider(height: 1, indent: 16, endIndent: 16),
+                const Divider(height: 1, indent: 16, endIndent: 16),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('元素展开内容显现',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_containerContentStart%',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
+                          const Text('元素展开内容显现', style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_containerContentStart%', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '控制从卡片、按钮展开页面时内容出现的早晚',
-                        style: TextStyle(
-                            fontSize: 12, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('控制从卡片、按钮展开页面时内容出现的早晚', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 8),
                       Slider(
                         value: _containerContentStart.toDouble(),
@@ -335,14 +293,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('早',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('晚',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
+                          Text('早', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('晚', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
@@ -351,7 +303,93 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
               ],
             ),
           ),
+          const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Widget _buildToggleCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = value;
+    
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? colorScheme.primary.withValues(alpha: 0.1) : (theme.brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  switchInCurve: Curves.easeOutBack,
+                  switchOutCurve: Curves.easeInBack,
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return ScaleTransition(
+                      scale: animation,
+                      child: RotationTransition(
+                        turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Icon(
+                    icon,
+                    key: ValueKey<bool>(isSelected),
+                    color: isSelected ? colorScheme.primary : Colors.grey,
+                    size: 32,
+                  ),
+                ),
+                SizedBox(
+                  height: 24,
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child: Switch(
+                      value: value,
+                      onChanged: onChanged,
+                      activeColor: colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 300),
+              style: TextStyle(
+                fontWeight: FontWeight.bold, 
+                fontSize: 14, 
+                color: isSelected ? colorScheme.primary : theme.textTheme.bodyMedium?.color,
+                fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+              ),
+              maxLines: 1, 
+              overflow: TextOverflow.ellipsis,
+              child: Text(title),
+            ),
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
       ),
     );
   }

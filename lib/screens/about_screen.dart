@@ -247,7 +247,9 @@ class _AboutScreenState extends State<AboutScreen> {
           content: _privacyPolicyContent,
           date: _privacyPolicyDate,
           isLoading: _isLoadingPrivacy,
+          isEmbedded: widget.isEmbedded,
         ),
+        settings: const RouteSettings(name: '隐私政策'),
       ),
     );
   }
@@ -447,7 +449,8 @@ class _AboutScreenState extends State<AboutScreen> {
                               Navigator.push(
                                 context,
                                 PageTransitions.slideHorizontal(
-                                  const DeviceVersionDetailPage(),
+                                  DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                                  settings: const RouteSettings(name: '设备版本明细'),
                                 ),
                               );
                             },
@@ -558,7 +561,8 @@ class _AboutScreenState extends State<AboutScreen> {
                   Navigator.push(
                     context,
                     PageTransitions.slideHorizontal(
-                      const DeviceVersionDetailPage(),
+                      DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '设备版本明细'),
                     ),
                   );
                 },
@@ -1174,18 +1178,20 @@ class PrivacyPolicyPage extends StatelessWidget {
   final String? content;
   final String? date;
   final bool isLoading;
+  final bool isEmbedded;
 
   const PrivacyPolicyPage({
     super.key,
     this.content,
     this.date,
     this.isLoading = true,
+    this.isEmbedded = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: isEmbedded ? null : AppBar(
         title: const Text('隐私政策'),
         centerTitle: true,
       ),
