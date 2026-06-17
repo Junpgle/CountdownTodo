@@ -67,24 +67,31 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Column(
             children: [
-              ListTile(
-                leading: const Icon(Icons.sync, color: Colors.blue),
-                title: const Text('自动同步频率'),
-                trailing: DropdownButton<int>(
-                  value: _syncInterval,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
-                    DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
-                    DropdownMenuItem(value: 60, child: Text('每小时')),
-                    DropdownMenuItem(value: 0, child: Text('每次启动')),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.sync, color: Colors.blue, size: 22),
+                        const SizedBox(width: 12),
+                        const Text('自动同步频率', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildFrequencyCard(5, '5 分钟', Icons.timer_outlined),
+                        const SizedBox(width: 8),
+                        _buildFrequencyCard(10, '10 分钟', Icons.timer),
+                        const SizedBox(width: 8),
+                        _buildFrequencyCard(60, '1 小时', Icons.hourglass_bottom),
+                        const SizedBox(width: 8),
+                        _buildFrequencyCard(0, '仅启动时', Icons.power_settings_new),
+                      ],
+                    ),
                   ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() => _syncInterval = val);
-                      StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, val);
-                    }
-                  },
                 ),
               ),
               const Divider(height: 1, indent: 56),
@@ -123,32 +130,111 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                 },
               ),
               const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: const Icon(Icons.refresh_outlined, color: Colors.deepPurple),
-                title: const Text('图片识别重试次数'),
-                subtitle: const Text('识别超时后自动重试的次数（后台异步执行）'),
-                trailing: DropdownButton<int>(
-                  value: _llmRetryCount,
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text('不重试')),
-                    DropdownMenuItem(value: 1, child: Text('1 次')),
-                    DropdownMenuItem(value: 2, child: Text('2 次')),
-                    DropdownMenuItem(value: 3, child: Text('3 次')),
-                    DropdownMenuItem(value: 5, child: Text('5 次')),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.refresh_outlined, color: Colors.deepPurple, size: 22),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('图片识别重试次数', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                              Text('识别超时后自动重试的次数（后台异步执行）', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildRetryCard(0, '不重试'),
+                        const SizedBox(width: 8),
+                        _buildRetryCard(1, '1 次'),
+                        const SizedBox(width: 8),
+                        _buildRetryCard(2, '2 次'),
+                        const SizedBox(width: 8),
+                        _buildRetryCard(3, '3 次'),
+                        const SizedBox(width: 8),
+                        _buildRetryCard(5, '5 次'),
+                      ],
+                    ),
                   ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() => _llmRetryCount = val);
-                      StorageService.setLLMRetryCount(val);
-                    }
-                  },
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFrequencyCard(int value, String title, IconData icon) {
+    final isSelected = _syncInterval == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _syncInterval = value);
+          StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? colorScheme.primary : Colors.grey.withValues(alpha: 0.3),
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: isSelected ? colorScheme.primary : Colors.grey, size: 20),
+              const SizedBox(height: 4),
+              Text(title, style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? colorScheme.primary : Colors.grey.shade600,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRetryCard(int value, String title) {
+    final isSelected = _llmRetryCount == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _llmRetryCount = value);
+          StorageService.setLLMRetryCount(value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.deepPurple.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? Colors.deepPurple : Colors.grey.withValues(alpha: 0.3),
+              width: 1.5,
+            ),
+          ),
+          child: Text(title, style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? Colors.deepPurple : Colors.grey.shade600,
+          )),
+        ),
+      ),
     );
   }
 }
