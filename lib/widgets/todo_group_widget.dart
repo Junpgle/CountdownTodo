@@ -843,6 +843,14 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     ),
                                   ),
                                 ),
+                                if (todo.hasConflict) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 13,
+                                    color: Colors.orange.shade400,
+                                  ),
+                                ],
                                 if (badge.isNotEmpty) ...[
                                   const SizedBox(width: 6),
                                   Container(

@@ -2140,6 +2140,18 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                               width: 4),
                                                           recurrenceIcon,
                                                         ],
+                                                        if (todo.hasConflict) ...[
+                                                          const SizedBox(
+                                                              width: 4),
+                                                          Icon(
+                                                            Icons
+                                                                .warning_amber_rounded,
+                                                            size: 14,
+                                                            color: Colors
+                                                                .orange
+                                                                .shade400,
+                                                          ),
+                                                        ],
                                                         const SizedBox(
                                                             width: 6),
                                                         Container(
@@ -2386,7 +2398,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             ),
                             if (isRecentlyUpdatedByOthers)
                               Positioned(
-                                top: 8,
+                                bottom: 8,
                                 right: 10,
                                 child: TweenAnimationBuilder<double>(
                                   key: ValueKey(
