@@ -67,7 +67,7 @@ class SearchService {
       icon: Icons.sync_alt,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/lan_sync'},
+      extraData: {'route': '/settings', 'target': 'lan_sync'},
     ),
     SearchResult(
       id: 'setting_animation',
@@ -76,7 +76,7 @@ class SearchService {
       icon: Icons.animation,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings/animation'},
+      extraData: {'route': '/settings', 'target': 'animation'},
     ),
     SearchResult(
       id: 'setting_wallpaper',
@@ -85,7 +85,7 @@ class SearchService {
       icon: Icons.image,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings/wallpaper'},
+      extraData: {'route': '/settings', 'target': 'wallpaper'},
     ),
     SearchResult(
       id: 'setting_llm_config',
@@ -94,7 +94,7 @@ class SearchService {
       icon: Icons.auto_awesome,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/llm_config'},
+      extraData: {'route': '/settings', 'target': 'llm_config'},
     ),
     SearchResult(
       id: 'setting_cache_clean',
@@ -112,7 +112,7 @@ class SearchService {
       icon: Icons.watch,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/band_sync'},
+      extraData: {'route': '/settings', 'target': 'band_sync'},
     ),
     SearchResult(
       id: 'setting_about',
@@ -1329,24 +1329,6 @@ class SearchNavigationHandler {
         break;
       case '/settings':
         page = SettingsPage(initialTarget: target);
-        break;
-      case '/settings/animation':
-        page = const AnimationSettingsPage();
-        break;
-      case '/settings/wallpaper':
-        page = const WallpaperSettingsPage();
-        break;
-      case '/settings/llm_config':
-        page = const LLMConfigPage();
-        break;
-      case '/settings/notifications':
-        page = const NotificationSettingsPage();
-        break;
-      case '/settings/lan_sync':
-        page = const LanSyncScreen();
-        break;
-      case '/settings/band_sync':
-        page = const BandSyncScreen();
         break;
       case '/about':
         page = const AboutScreen();
