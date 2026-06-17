@@ -371,118 +371,34 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             ),
           ),
           _buildTile(
-            targetId: 'semester_start',
-            child: ListTile(
-              contentPadding: const EdgeInsets.only(left: 72, right: 16),
-              title: const Text('开学日期'),
-              trailing: Text(_semesterStart == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
-              onTap: () => _pickSemesterDate(true),
-            ),
-          ),
-          _buildTile(
-            targetId: 'semester_end',
-            child: ListTile(
-              contentPadding: const EdgeInsets.only(left: 72, right: 16),
-              title: const Text('放假日期'),
-              trailing: Text(_semesterEnd == null ? "未设置" : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
-              onTap: () => _pickSemesterDate(false),
-            ),
-          ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'semester_sync',
-            child: ListTile(
-              leading: const Icon(Icons.cloud_download_outlined, color: Colors.teal),
-              title: const Text('从云端同步开学/放假时间'),
-              subtitle: const Text('将另一设备设置的学期日期同步到本机'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _fetchCoursesFromCloud,
-            ),
-          ),
-
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('课程导入与同步', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'webview_import',
-            child: ListTile(
-              leading: const Icon(Icons.language_outlined, color: Colors.teal),
-              title: const Text('在线登录并导入 (推荐)'),
-              subtitle: const Text('从应用内浏览器登录教务系统直接抓取'),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.teal.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Text('NEW', style: TextStyle(color: Colors.teal, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-              onTap: _courseImportHandler.importFromWebView,
-            ),
-          ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'smart_import',
-            child: ListTile(
-              leading: const Icon(Icons.file_upload_outlined, color: Colors.indigo),
-              title: const Text('智能导入本地课表'),
-              subtitle: const Text('自动嗅探文件格式 (工大/厦大/西电/HUEL)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _courseImportHandler.smartImportCourse,
-            ),
-          ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'course_sync',
-            child: ListTile(
-              leading: const Icon(Icons.cloud_download_outlined, color: Colors.green),
-              title: const Text('从云端获取课表'),
-              subtitle: const Text('将云端课表同步到本机，覆盖本地数据'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _fetchCoursesFromCloud,
-            ),
-          ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'course_upload',
-            child: ListTile(
-              leading: Icon(Icons.cloud_upload_outlined, color: Theme.of(context).colorScheme.primary),
-              title: const Text('上传课表到云端'),
-              subtitle: const Text('用于与电脑或其他设备同步'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _uploadCoursesToCloud,
-            ),
-          ),
-
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('课表展示与适配', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'no_course_behavior',
-            child: ListTile(
-              leading: const Icon(Icons.layers_clear_outlined, color: Colors.blueGrey),
-              title: const Text('无课时板块行为'),
-              trailing: DropdownButton<String>(
-                value: _noCourseBehavior,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'keep', child: Text('保持位置')),
-                  DropdownMenuItem(value: 'bottom', child: Text('排到最后')),
-                  DropdownMenuItem(value: 'hide', child: Text('自动隐藏')),
+            targetId: 'semester_start', // Keep target ID for scrolling
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildDateCard(
+                      title: '开学日期',
+                      date: _semesterStart,
+                      icon: Icons.school_outlined,
+                      color: Colors.blue,
+                      onTap: () => _pickSemesterDate(true),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12.0),
+                    child: Icon(Icons.arrow_forward, color: Colors.grey, size: 20),
+                  ),
+                  Expanded(
+                    child: _buildDateCard(
+                      title: '放假日期',
+                      date: _semesterEnd,
+                      icon: Icons.flight_takeoff_outlined,
+                      color: Colors.orange,
+                      onTap: () => _pickSemesterDate(false),
+                    ),
+                  ),
                 ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _noCourseBehavior = val);
-                    SharedPreferences.getInstance().then((prefs) {
-                      if (_username.isNotEmpty) {
-                        prefs.setString('no_course_behavior_$_username', val);
-                      }
-                      prefs.setString('no_course_behavior', val);
-                    });
-                  }
-                },
               ),
             ),
           ),
@@ -506,7 +422,86 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               },
             ),
           ),
-          const Divider(height: 1, indent: 72),
+
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('课程导入与同步', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 2.2,
+              children: [
+                _buildActionCard(
+                  id: 'webview_import',
+                  icon: Icons.language_outlined,
+                  title: '在线教务导入',
+                  subtitle: '推荐方式',
+                  color: Colors.teal,
+                  onTap: _courseImportHandler.importFromWebView,
+                ),
+                _buildActionCard(
+                  id: 'smart_import',
+                  icon: Icons.file_upload_outlined,
+                  title: '本地智能导入',
+                  subtitle: '自动嗅探格式',
+                  color: Colors.indigo,
+                  onTap: _courseImportHandler.smartImportCourse,
+                ),
+                _buildActionCard(
+                  id: 'course_sync',
+                  icon: Icons.cloud_download_outlined,
+                  title: '从云端获取',
+                  subtitle: '覆盖本地课表',
+                  color: Colors.green,
+                  onTap: _fetchCoursesFromCloud,
+                ),
+                _buildActionCard(
+                  id: 'course_upload',
+                  icon: Icons.cloud_upload_outlined,
+                  title: '上传到云端',
+                  subtitle: '多端备份同步',
+                  color: Theme.of(context).colorScheme.primary,
+                  onTap: _uploadCoursesToCloud,
+                ),
+              ],
+            ),
+          ),
+
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('无课时板块行为', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          _buildTile(
+            targetId: 'no_course_behavior',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _buildBehaviorCard('keep', '保持原位', Icons.align_vertical_top_outlined)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildBehaviorCard('bottom', '排到最后', Icons.align_vertical_bottom_outlined)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildBehaviorCard('hide', '自动隐藏', Icons.visibility_off_outlined)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('请求课表适配', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
           _buildTile(
             targetId: 'course_adapt',
             child: ListTile(
@@ -534,6 +529,115 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           ),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateCard({required String title, required DateTime? date, required IconData icon, required Color color, required VoidCallback onTap}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 4),
+            Text(
+              date == null ? "未设置" : DateFormat('yyyy/MM/dd').format(date),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: date == null ? Colors.grey : null),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionCard({required String id, required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return _buildTile(
+      targetId: id,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBehaviorCard(String value, String title, IconData icon) {
+    final isSelected = _noCourseBehavior == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _noCourseBehavior = value);
+        SharedPreferences.getInstance().then((prefs) {
+          if (_username.isNotEmpty) {
+            prefs.setString('no_course_behavior_$_username', value);
+          }
+          prefs.setString('no_course_behavior', value);
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? colorScheme.primary.withValues(alpha: 0.1) : (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? colorScheme.primary : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? colorScheme.primary : Colors.grey, size: 24),
+            const SizedBox(height: 6),
+            Text(title, style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? colorScheme.primary : Colors.grey.shade600,
+            )),
+          ],
+        ),
       ),
     );
   }
