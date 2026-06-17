@@ -16,7 +16,8 @@ import '../services/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AboutScreen extends StatefulWidget {
-  const AboutScreen({super.key});
+  final bool isEmbedded;
+  const AboutScreen({super.key, this.isEmbedded = false});
 
   @override
   State<AboutScreen> createState() => _AboutScreenState();
@@ -331,7 +332,7 @@ class _AboutScreenState extends State<AboutScreen> {
     final isWide = screenWidth > 800;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('关于此应用'),
         centerTitle: true,
       ),

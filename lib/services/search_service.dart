@@ -89,7 +89,7 @@ class SearchService {
     ),
     SearchResult(
       id: 'setting_llm_config',
-      title: 'AI 助手配置 / LLM 设置',
+      title: 'AI 助手 / LLM 设置',
       subtitle: '配置智能助手的 API 密钥与模型',
       icon: Icons.auto_awesome,
       type: SearchResultType.setting,

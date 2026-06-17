@@ -22,9 +22,9 @@ import 'settings/dialogs/change_password_dialog.dart';
 import 'settings/pages/preference_settings_page.dart';
 import 'settings/pages/course_settings_page.dart';
 import 'settings/pages/interconnect_settings_page.dart';
-import 'settings/pages/advanced_settings_page.dart';
 import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
+import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -91,8 +91,11 @@ class _SettingsPageState extends State<SettingsPage> {
       paneId = 'interconnect';
       paneBuilder = () => InterconnectSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (advancedTargets.contains(target)) {
-      paneId = 'advanced';
-      paneBuilder = () => AdvancedSettingsPage(initialTarget: target, isEmbedded: true);
+      paneId = 'preference'; // merged into preference
+      paneBuilder = () => PreferenceSettingsPage(initialTarget: target, isEmbedded: true);
+    } else if (target == 'llm_config') {
+      paneId = 'llm_config';
+      paneBuilder = () => const LLMConfigPage(isEmbedded: true);
     } else if (platformTargets.contains(target)) {
       paneId = 'platform';
       paneBuilder = () => PlatformSpecificSettingsPage(initialTarget: target, isEmbedded: true);
@@ -104,7 +107,7 @@ class _SettingsPageState extends State<SettingsPage> {
       paneBuilder = () => const NotificationSettingsPage(isEmbedded: true);
     } else if (target == 'about') {
       paneId = 'about';
-      paneBuilder = () => const AboutScreen(); // About doesn't have isEmbedded currently, but it can just be displayed
+      paneBuilder = () => const AboutScreen(isEmbedded: true);
     } else {
       return; // unknown target
     }
@@ -121,7 +124,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (paneId == 'preference') pushWidget = PreferenceSettingsPage(initialTarget: target);
       else if (paneId == 'course') pushWidget = CourseSettingsPage(initialTarget: target);
       else if (paneId == 'interconnect') pushWidget = InterconnectSettingsPage(initialTarget: target);
-      else if (paneId == 'advanced') pushWidget = AdvancedSettingsPage(initialTarget: target);
+      else if (paneId == 'llm_config') pushWidget = const LLMConfigPage();
       else if (paneId == 'platform') pushWidget = PlatformSpecificSettingsPage(initialTarget: target);
       else if (paneId == 'permissions') pushWidget = const PermissionSettingsPage();
       else if (paneId == 'notifications') pushWidget = const NotificationSettingsPage();
@@ -504,11 +507,10 @@ class _SettingsPageState extends State<SettingsPage> {
   String _getPaneTitle() {
     switch (_selectedPaneId) {
       case 'account': return '账号与系统公告';
-      case 'preference': return '外观与偏好';
+      case 'preference': return '系统与外观';
       case 'course': return '课表与学期';
       case 'interconnect': return '设备互联';
       case 'platform': return Platform.isWindows ? 'Windows 专属' : (Platform.isAndroid ? 'Android 专属' : '平台专属');
-      case 'advanced': return '系统与高级';
       case 'notifications': return '通知管理';
       case 'permissions': return '权限管理';
       case 'about': return '关于此应用';
@@ -648,7 +650,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   id: 'preference',
                   icon: Icons.palette,
                   color: Colors.indigo,
-                  title: '外观与偏好',
+                  title: '系统与外观',
                   widgetBuilder: () => const PreferenceSettingsPage(isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
@@ -665,6 +667,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '设备互联',
                   widgetBuilder: () => const InterconnectSettingsPage(isEmbedded: true),
                 ),
+                _buildMacSidebarItem(
+                  id: 'llm_config',
+                  icon: Icons.psychology_outlined,
+                  color: Colors.deepPurple,
+                  title: 'AI 助手配置',
+                  widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
+                ),
                 
                 const SizedBox(height: 12),
                 const Divider(height: 1),
@@ -676,13 +685,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: Colors.deepPurple,
                   title: Platform.isWindows ? 'Windows 专属' : (Platform.isAndroid ? 'Android 专属' : '平台专属'),
                   widgetBuilder: () => const PlatformSpecificSettingsPage(isEmbedded: true),
-                ),
-                _buildMacSidebarItem(
-                  id: 'advanced',
-                  icon: Icons.tune,
-                  color: Colors.orange,
-                  title: '系统与高级',
-                  widgetBuilder: () => const AdvancedSettingsPage(isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
                   id: 'notifications',
@@ -703,7 +705,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.info,
                   color: Colors.grey,
                   title: '关于此应用',
-                  widgetBuilder: () => const AboutScreen(),
+                  widgetBuilder: () => const AboutScreen(isEmbedded: true),
                 ),
               ],
             ),
@@ -843,8 +845,8 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.palette_outlined, color: Colors.indigo),
-                  title: const Text('外观与偏好'),
-                  subtitle: const Text('主题、动画、首页定制、同步频率等'),
+                  title: const Text('系统与外观'),
+                  subtitle: const Text('主题、动画、存储清理、数据迁移与高级选项'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const PreferenceSettingsPage())),
                 ),
@@ -864,13 +866,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const InterconnectSettingsPage())),
                 ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.psychology_outlined, color: Colors.deepPurple),
+                  title: const Text('AI 助手配置'),
+                  subtitle: const Text('大模型 API 及智能解析配置'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const LLMConfigPage())),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          const Padding(
-            padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-            child: Text('系统与高级', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
           ),
           Card(
             elevation: 1,
@@ -884,15 +889,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const PlatformSpecificSettingsPage())),
                 ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading: const Icon(Icons.tune_outlined, color: Colors.orange),
-                  title: const Text('高级设置与清理'),
-                  subtitle: const Text('清理缓存、AI配置、更新、迁移等'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const AdvancedSettingsPage())),
-                ),
-                const Divider(height: 1, indent: 56),
+
                 ListTile(
                   leading: const Icon(Icons.notifications_outlined, color: Colors.amber),
                   title: const Text('通知管理'),

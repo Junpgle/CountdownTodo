@@ -10,6 +10,11 @@ import '../server_choice_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import '../../animation_settings_page.dart';
+import '../calendar_sync_page.dart';
+import '../../feature_guide_screen.dart';
+import '../handlers/storage_management_handler.dart';
+import '../dialogs/migration_dialog.dart';
+import '../../../update_service.dart';
 
 class PreferenceSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -30,6 +35,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'wallpaper': GlobalKey(),
     'home_text': GlobalKey(),
     'animation': GlobalKey(),
+    'migration': GlobalKey(),
+    'cache': GlobalKey(),
+    'storage': GlobalKey(),
+    'calendar_sync': GlobalKey(),
+    'update': GlobalKey(),
+    'feature_guide': GlobalKey(),
   };
 
   bool _isLoading = true;
@@ -40,10 +51,27 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Color? _customThemeColor;
   String _username = '';
 
+  bool _isCheckingUpdate = false;
+  String _cacheSizeStr = "计算中...";
+  late StorageManagementHandler _storageManagementHandler;
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    
+    _storageManagementHandler = StorageManagementHandler(
+      context: context,
+      getUsername: () => _username,
+      onUpdateCacheSize: (val) {
+        if (mounted) setState(() => _cacheSizeStr = val);
+      },
+      showLoading: (msg) => _showLoadingDialog(context, msg),
+      closeLoading: () => _closeLoadingDialog(context),
+      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+    );
+    _storageManagementHandler.calculateCacheSize();
+
     if (widget.initialTarget != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToTarget(widget.initialTarget!);
@@ -88,6 +116,44 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
 
+
+  void _showLoadingDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 20),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _closeLoadingDialog(BuildContext context) {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
+  Future<void> _showMigrationDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => MigrationDialog(
+        onSuccess: () {},
+      ),
+    );
+  }
+
+  Future<void> _checkUpdatesAndNotices() async {
+    setState(() => _isCheckingUpdate = true);
+    await UpdateService.checkUpdateAndPrompt(context, isManual: true);
+    if (mounted) setState(() => _isCheckingUpdate = false);
+  }
 
   Future<void> _handleThemeColorModeChanged(String? val) async {
     if (val == null) return;
@@ -177,7 +243,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     }
     return Scaffold(
       appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('偏好设置'),
+        title: const Text('系统与外观'),
       ),
       body: ListView(
         children: [
@@ -303,6 +369,93 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               },
             ),
           ),
+          
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('系统与存储', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          _buildTile(
+            targetId: 'cache',
+            child: ListTile(
+              leading: const Icon(Icons.cleaning_services_outlined, color: Colors.brown),
+              title: const Text('深度清理缓存与冗余'),
+              subtitle: const Text('包含更新残留包与深度图片缓存'),
+              trailing: Text(_cacheSizeStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              onTap: _storageManagementHandler.clearCache,
+            ),
+          ),
+          const Divider(height: 1, indent: 72),
+          _buildTile(
+            targetId: 'storage',
+            child: ListTile(
+              leading: const Icon(Icons.data_usage, color: Colors.orange),
+              title: const Text('存储空间深度分析'),
+              subtitle: const Text('找出占用数百MB的隐藏文件'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _storageManagementHandler.showStorageAnalysis,
+            ),
+          ),
+          const Divider(height: 1, indent: 72),
+          _buildTile(
+            targetId: 'update',
+            child: ListTile(
+              leading: const Icon(Icons.system_update_outlined, color: Colors.green),
+              title: const Text('检查新版本'),
+              trailing: _isCheckingUpdate ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_right),
+              onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
+            ),
+          ),
+
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('其他工具', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          _buildTile(
+            targetId: 'feature_guide',
+            child: ListTile(
+              leading: const Icon(Icons.school_outlined, color: Colors.indigo),
+              title: const Text('重新查看新版教程与权限设置'),
+              subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(const FeatureGuideScreen()),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1, indent: 72),
+          _buildTile(
+            targetId: 'migration',
+            child: ListTile(
+              leading: const Icon(Icons.move_to_inbox, color: Colors.teal),
+              title: const Text('旧版本地数据一键迁移'),
+              subtitle: const Text('包含待办、课程、课表与习惯数据'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showMigrationDialog,
+            ),
+          ),
+          const Divider(height: 1, indent: 72),
+          _buildTile(
+            targetId: 'calendar_sync',
+            child: ListTile(
+              leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
+              title: const Text('日历同步向导'),
+              subtitle: const Text('将本软件课表双向同步至系统日历'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    CalendarSyncPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '日历同步向导'),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 32),
         ],
       ),
     );

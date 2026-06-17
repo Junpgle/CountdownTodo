@@ -16,6 +16,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   int _syncInterval = 0;
   bool _conflictDetectionEnabled = false;
   String _serverChoice = 'aliyun';
+  int _llmRetryCount = 3;
 
   @override
   void initState() {
@@ -27,12 +28,14 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     int interval = await StorageService.getSyncInterval();
     bool conflict = await StorageService.getConflictDetectionEnabled();
     String server = await StorageService.getServerChoice();
+    int llmRetryCount = await StorageService.getLLMRetryCount();
 
     if (mounted) {
       setState(() {
         _syncInterval = interval;
         _conflictDetectionEnabled = conflict;
         _serverChoice = server;
+        _llmRetryCount = llmRetryCount;
         _isLoading = false;
       });
     }
@@ -118,6 +121,29 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                     _loadSettings();
                   });
                 },
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(Icons.refresh_outlined, color: Colors.deepPurple),
+                title: const Text('图片识别重试次数'),
+                subtitle: const Text('识别超时后自动重试的次数（后台异步执行）'),
+                trailing: DropdownButton<int>(
+                  value: _llmRetryCount,
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('不重试')),
+                    DropdownMenuItem(value: 1, child: Text('1 次')),
+                    DropdownMenuItem(value: 2, child: Text('2 次')),
+                    DropdownMenuItem(value: 3, child: Text('3 次')),
+                    DropdownMenuItem(value: 5, child: Text('5 次')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() => _llmRetryCount = val);
+                      StorageService.setLLMRetryCount(val);
+                    }
+                  },
+                ),
               ),
             ],
           ),
