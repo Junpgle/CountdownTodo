@@ -4,6 +4,8 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_multi_window
+  dynamic_color
+  file_selector_windows
   fullscreen_window
   permission_handler_windows
   screen_retriever_windows

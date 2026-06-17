@@ -68,6 +68,16 @@ For `CountDownTodo-band/`:
 * Prefer adding code under existing feature folders instead of creating broad new top-level folders.
 * Keep generated files, build output, and temporary diagnostics out of commits unless required for release.
 
+## Theming & UI Rules
+
+* The app uses Flutter's Material 3 dynamic color themes (`ColorScheme.fromSeed` and `ColorScheme.fromImageProvider`).
+* Do not use hardcoded standard colors (e.g. `Colors.blue` or `Colors.blueAccent`) for custom UI components or elements.
+* Read colors dynamically from the theme context to support global dynamic theming.
+    * Use `Theme.of(context).colorScheme.primary` for primary/active elements.
+    * Use `Theme.of(context).colorScheme.secondary` for secondary/accent elements.
+    * Use `Theme.of(context).colorScheme.primaryContainer` or `surfaceContainer` for backgrounds and card bases.
+    * Use `Theme.of(context).colorScheme.onPrimary` for text/icons on top of primary colors.
+
 ## Testing Rules
 
 * Use `flutter_test` for Flutter tests.

@@ -58,36 +58,35 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
     );
     if (pickedFile == null) return;
 
-    final croppedFile = await ImageCropper().cropImage(
-      sourcePath: pickedFile.path,
-      aspectRatio: const CropAspectRatio(ratioX: 16, ratioY: 9),
-      compressFormat: ImageCompressFormat.jpg,
-      compressQuality: 90,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: '裁剪壁纸',
-          toolbarColor: Theme.of(context).primaryColor,
-          toolbarWidgetColor: Colors.white,
-          initAspectRatio: CropAspectRatioPreset.ratio16x9,
-          lockAspectRatio: true,
-        ),
-        IOSUiSettings(
-          title: '裁剪壁纸',
-          aspectRatioLockEnabled: true,
-          resetAspectRatioEnabled: false,
-        ),
-        WebUiSettings(
-          context: context,
-          presentStyle: WebPresentStyle.dialog,
-          boundary: const CroppieBoundary(width: 800, height: 450),
-          viewPort: const CroppieViewPort(width: 768, height: 432, type: 'rectangle'),
-        ),
-        WindowsUiSettings(
-          title: '裁剪壁纸',
-        ),
-      ],
-    );
-    if (croppedFile == null) return;
+    String sourcePath = pickedFile.path;
+    try {
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: pickedFile.path,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 90,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: '裁剪壁纸',
+            toolbarColor: Theme.of(context).primaryColor,
+            toolbarWidgetColor: Colors.white,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(
+            title: '裁剪壁纸',
+          ),
+          WebUiSettings(
+            context: context,
+            presentStyle: WebPresentStyle.dialog,
+            size: const CropperSize(width: 800, height: 600),
+          ),
+        ],
+      );
+      if (croppedFile != null) {
+        sourcePath = croppedFile.path;
+      }
+    } catch (e) {
+      debugPrint('ImageCropper not supported on this platform, using original image: $e');
+    }
 
     final appDir = await getApplicationDocumentsDirectory();
     final wallpaperDir = Directory(p.join(appDir.path, 'wallpaper'));
@@ -97,7 +96,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
 
     final fileName = 'custom_wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final savedPath = p.join(wallpaperDir.path, fileName);
-    await File(croppedFile.path).copy(savedPath);
+    await File(sourcePath).copy(savedPath);
 
     if (_customWallpaperPath != null) {
       try {
