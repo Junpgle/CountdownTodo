@@ -1464,9 +1464,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildAppBar(BuildContext context, ColorScheme cs) {
     final isCompact = MediaQuery.of(context).size.width < 600;
+    final extraHeight = _dimension != TimelineDimension.daily ? 36.0 : 0.0;
 
     return SliverAppBar(
-      expandedHeight: isCompact ? 260 : 232,
+      expandedHeight: (isCompact ? 280.0 : 240.0) + extraHeight,
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
