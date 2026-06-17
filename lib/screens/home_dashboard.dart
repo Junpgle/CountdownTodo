@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
@@ -101,6 +102,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
+  Color? _wallpaperDominantColor; // 🚀 保存提取的颜色
   String? _wallpaperCopyright;
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
@@ -148,6 +150,19 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 每次自增触发首页专注记录卡片与时间轴刷新
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
+
+  Future<void> _extractColorFromProvider(ImageProvider provider) async {
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(provider);
+      if (mounted) {
+        setState(() {
+          _wallpaperDominantColor = palette.dominantColor?.color ?? palette.vibrantColor?.color;
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to extract color: $e");
+    }
+  }
 
   int _selectedTabIndex = 0;
 
@@ -3889,12 +3904,25 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (showWallpaper)
             Positioned.fill(
               child: _wallpaperUrl!.startsWith('assets/')
-                  ? Image.asset(
-                      _wallpaperUrl!,
-                      fit: BoxFit.cover,
+                  ? Builder(
+                      builder: (context) {
+                        // 如果是本地壁纸，提取颜色
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (_wallpaperDominantColor == null) {
+                            _extractColorFromProvider(AssetImage(_wallpaperUrl!));
+                          }
+                        });
+                        return Image.asset(
+                          _wallpaperUrl!,
+                          fit: BoxFit.cover,
+                        );
+                      },
                     )
                   : _WallpaperNetworkImage(
                       url: _wallpaperUrl!,
+                      onImageProvider: (provider) {
+                        _extractColorFromProvider(provider);
+                      },
                       onSuccess: () {
                         _wallpaperRetryCount = 0;
                       },
@@ -4613,9 +4641,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
-    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color primaryColor = _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
-        (isLight || !isDarkMode) ? Colors.black45 : Colors.white54;
+        (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -4623,20 +4651,27 @@ class _HomeDashboardState extends State<HomeDashboard>
       margin: const EdgeInsets.fromLTRB(40, 0, 40, 12), // 增加左右间距以减小宽度
       decoration: BoxDecoration(
         color: isDarkMode
-            ? Colors.black.withValues(alpha: 0.4)
-            : Colors.white.withValues(alpha: 0.2),
+            ? Colors.black.withValues(alpha: 0.65)
+            : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(40), // 更圆润的边缘
         border: Border.all(
           color: isDarkMode
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.white.withValues(alpha: 0.2),
-          width: 0.5,
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.4),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(40),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
@@ -4816,11 +4851,13 @@ class _WallpaperNetworkImage extends StatefulWidget {
   final String url;
   final VoidCallback onSuccess;
   final VoidCallback onError;
+  final void Function(ImageProvider)? onImageProvider;
 
   const _WallpaperNetworkImage({
     required this.url,
     required this.onSuccess,
     required this.onError,
+    this.onImageProvider,
   });
 
   @override
@@ -4883,6 +4920,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         });
         _fadeController.forward();
         widget.onSuccess();
+        widget.onImageProvider?.call(MemoryImage(_imageBytes!));
       } else {
         _fail();
       }
@@ -4898,6 +4936,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         _reported = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
+          widget.onImageProvider?.call(const AssetImage('assets/images/default_wallpaper.png'));
         });
       }
     }
