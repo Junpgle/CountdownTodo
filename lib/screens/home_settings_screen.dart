@@ -582,6 +582,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ? const Center(child: CircularProgressIndicator())
             : LayoutBuilder(
                 builder: (context, constraints) {
+                  if (constraints.maxWidth < 150) {
+                    return const SizedBox.shrink();
+                  }
                   if (constraints.maxWidth >= 800) {
                     return _buildWideLayout();
                   }

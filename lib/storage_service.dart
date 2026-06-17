@@ -3230,6 +3230,11 @@ class StorageService {
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
+          // 🚀 已失败的冲突 op_log 不再重新发送（避免无限循环）
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           final localTodo = localTodosById[uuid];
           final hasLocalVersionConflict = localTodo != null &&
               localTodo.hasConflict &&
@@ -3240,6 +3245,10 @@ class StorageService {
           }
           dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
         } else if (table == 'todo_groups') {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           if (_payloadHasConflict(data) ||
               (localGroupsById[uuid]?.hasConflict ?? false)) {
             if (opId != null) consumedConflictOpIds.add(opId);
@@ -3247,6 +3256,10 @@ class StorageService {
           }
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           if (_payloadHasConflict(data) ||
               (localCountdownsById[uuid]?.hasConflict ?? false)) {
             if (opId != null) consumedConflictOpIds.add(opId);

@@ -371,7 +371,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     await StorageService.saveHomeTextConfig(config);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('保存成功，重启应用后生效')),
+        const SnackBar(content: Text('保存成功，已立即生效')),
       );
       Navigator.pop(context, true);
     }
@@ -488,14 +488,26 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         ],
       ),
       body: isWideScreen ? _buildWideLayout() : _buildNarrowLayout(),
+      floatingActionButton: widget.isEmbedded ? FloatingActionButton.extended(
+        onPressed: _saveConfig,
+        icon: const Icon(Icons.save),
+        label: const Text('保存配置'),
+      ) : null,
     );
   }
 
   Widget _buildWideLayout() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        // 左侧：基础配置 + 时间问候语
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: _buildOverallPreviewCard(),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 左侧：基础配置 + 时间问候语
         Expanded(
           flex: 1,
           child: ListView(
@@ -531,6 +543,9 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             ],
           ),
         ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -539,6 +554,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _buildOverallPreviewCard(),
+        const SizedBox(height: 16),
         _buildDateFormatCard(),
         const SizedBox(height: 16),
         _buildUsernameFormatCard(),
@@ -560,6 +577,93 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         _buildRestoreButton(),
         const SizedBox(height: 32),
       ],
+    );
+  }
+
+  Widget _buildOverallPreviewCard() {
+    String simulatedSalutation = '早上好';
+    if (_salutationMode == 'fixed' && _fixedSalutationController.text.isNotEmpty) {
+      simulatedSalutation = _fixedSalutationController.text;
+    } else if (_salutationMode == 'timed') {
+      final now = DateTime.now();
+      final currentMinutes = now.hour * 60 + now.minute;
+      for (var slot in _salutationSlots) {
+        final startM = slot.startHour * 60 + slot.startMinute;
+        final endM = slot.endHour * 60 + slot.endMinute;
+        bool inSlot = false;
+        if (startM <= endM) {
+          inSlot = currentMinutes >= startM && currentMinutes < endM;
+        } else {
+          inSlot = currentMinutes >= startM || currentMinutes < endM;
+        }
+        if (inSlot && slot.text.isNotEmpty) {
+          simulatedSalutation = slot.text;
+          break;
+        }
+      }
+    }
+
+    String simulatedGreeting = '愿你今天一切顺利！';
+    if (_greetingMode == 'fixed') {
+      final lines = _fixedGreetingController.text
+          .split('\n')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (lines.isNotEmpty) {
+        simulatedGreeting = lines.first;
+      }
+    } else {
+      final now = DateTime.now();
+      final currentMinutes = now.hour * 60 + now.minute;
+      for (var slot in _timeSlots) {
+        final startM = slot.startHour * 60 + slot.startMinute;
+        final endM = slot.endHour * 60 + slot.endMinute;
+        bool inSlot = false;
+        if (startM <= endM) {
+          inSlot = currentMinutes >= startM && currentMinutes < endM;
+        } else {
+          inSlot = currentMinutes >= startM || currentMinutes < endM;
+        }
+        if (inSlot && slot.greetings.isNotEmpty) {
+          simulatedGreeting = slot.greetings.first;
+          break;
+        }
+      }
+    }
+
+    final simulatedUsername = _usernameFormatController.text.isEmpty
+        ? '小明'
+        : _usernameFormatController.text.replaceAll('{name}', '小明');
+
+    return Card(
+      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.visibility, size: 18, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('实时预览 (基于当前时间)', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '$simulatedSalutation，$simulatedUsername',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              simulatedGreeting,
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

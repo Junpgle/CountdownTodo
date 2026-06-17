@@ -438,18 +438,68 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     if (salutationMode == 'fixed') {
        salutation = _homeTextConfig['fixedSalutation'] as String? ?? '你好';
     } else {
-       final hour = now.hour;
-       if (hour >= 5 && hour < 12) salutation = '上午好';
-       else if (hour >= 12 && hour < 14) salutation = '中午好';
-       else if (hour >= 14 && hour < 18) salutation = '下午好';
-       else if (hour >= 18 && hour < 23) salutation = '晚上好';
-       else salutation = '夜深了';
+       final slots = _homeTextConfig['salutationSlots'] as List<dynamic>?;
+       bool foundSlot = false;
+       if (slots != null && slots.isNotEmpty) {
+         final currentMinutes = now.hour * 60 + now.minute;
+         for (var slot in slots) {
+            final startM = slot['startHour'] * 60 + slot['startMinute'];
+            final endM = slot['endHour'] * 60 + slot['endMinute'];
+            bool inSlot = false;
+            if (startM <= endM) {
+              inSlot = currentMinutes >= startM && currentMinutes < endM;
+            } else {
+              inSlot = currentMinutes >= startM || currentMinutes < endM;
+            }
+            if (inSlot) {
+               final txt = slot['text'] as String?;
+               if (txt != null && txt.isNotEmpty) {
+                  salutation = txt;
+                  foundSlot = true;
+                  break;
+               }
+            }
+         }
+       }
+       if (!foundSlot) {
+         final hour = now.hour;
+         if (hour >= 5 && hour < 12) salutation = '上午好';
+         else if (hour >= 12 && hour < 14) salutation = '中午好';
+         else if (hour >= 14 && hour < 18) salutation = '下午好';
+         else if (hour >= 18 && hour < 23) salutation = '晚上好';
+         else salutation = '夜深了';
+       }
     }
 
     final greetingMode = _homeTextConfig['greetingMode'] as String? ?? 'timed';
     String greeting = '今天也要元气满满！';
     if (greetingMode == 'fixed') {
-       greeting = _homeTextConfig['fixedGreeting'] as String? ?? greeting;
+       final fixedList = _homeTextConfig['fixedGreetings'] as List<dynamic>?;
+       if (fixedList != null && fixedList.isNotEmpty) {
+         greeting = fixedList.first.toString();
+       }
+    } else {
+       final timeSlots = _homeTextConfig['timeSlots'] as List<dynamic>?;
+       if (timeSlots != null && timeSlots.isNotEmpty) {
+         final currentMinutes = now.hour * 60 + now.minute;
+         for (var slot in timeSlots) {
+            final startM = slot['startHour'] * 60 + slot['startMinute'];
+            final endM = slot['endHour'] * 60 + slot['endMinute'];
+            bool inSlot = false;
+            if (startM <= endM) {
+              inSlot = currentMinutes >= startM && currentMinutes < endM;
+            } else {
+              inSlot = currentMinutes >= startM || currentMinutes < endM;
+            }
+            if (inSlot) {
+              final greetings = slot['greetings'] as List<dynamic>?;
+              if (greetings != null && greetings.isNotEmpty) {
+                 greeting = greetings.first.toString();
+                 break;
+              }
+            }
+         }
+       }
     }
 
     return _buildTile(

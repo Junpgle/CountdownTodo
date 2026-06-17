@@ -745,14 +745,18 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 处理 App Shortcut 导航
-  void _handleShortcut(String shortcutType) {
+  Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
     debugPrint("⚡ 处理 Shortcut: $shortcutType");
     switch (shortcutType) {
       case 'settings':
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           PageTransitions.slideHorizontal(const SettingsPage()),
         );
+        _loadSectionPreferences();
+        _loadSemesterSettings();
+        await _loadHomeTextConfig();
+        _loadAllData(deferred: true);
         break;
       case 'schedule':
         PageTransitions.pushFromRect(
@@ -2817,6 +2821,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (mounted) {
       setState(() {
         _homeTextConfig = config;
+        _generateGreeting();
       });
     }
   }
@@ -4069,6 +4074,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
                       _loadSectionPreferences();
                       _loadSemesterSettings();
+                      await _loadHomeTextConfig();
                       _loadAllData(deferred: true);
                     },
                   ),
