@@ -66,72 +66,142 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     );
   }
 
+  Widget _buildFeatureCard({
+    required String id,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return _buildTile(
+      targetId: id,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const Spacer(),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('数据与互联'),
       ),
-      body: ListView(
-        children: [
-          const SizedBox(height: 16),
-          _buildTile(
-            targetId: 'lan_sync',
-            child: ListTile(
-              leading: const Icon(Icons.wifi_tethering, color: Colors.blue),
-              title: const Text('局域网同步'),
-              subtitle: const Text('同账号设备间局域网同步数据'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context, 
-                  PageTransitions.slideHorizontal(
-                    LanSyncScreen(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '局域网互传与同步'),
-                  ),
-                );
-              },
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16.0, left: 4.0),
+              child: Text('设备互联向导', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
             ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'band_sync',
-            child: ListTile(
-              leading: const Icon(Icons.watch_outlined, color: Colors.orange),
-              title: const Text('小米手环互联'),
-              subtitle: const Text('使用快应用将待办同步至小米手环'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context, 
-                  PageTransitions.slideHorizontal(
-                    BandSyncScreen(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '智能手环同步'),
-                  ),
-                );
-              },
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 0.95,
+              children: [
+                _buildFeatureCard(
+                  id: 'lan_sync',
+                  icon: Icons.wifi_tethering,
+                  title: '局域网同步',
+                  subtitle: '同账号设备间无缝互传数据',
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.push(
+                      context, 
+                      PageTransitions.slideHorizontal(
+                        LanSyncScreen(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '局域网互传与同步'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'band_sync',
+                  icon: Icons.watch_outlined,
+                  title: '小米手环',
+                  subtitle: '借助快应用将待办同步至手环',
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.push(
+                      context, 
+                      PageTransitions.slideHorizontal(
+                        BandSyncScreen(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '智能手环同步'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'calendar_sync',
+                  icon: Icons.calendar_month,
+                  title: '系统日历',
+                  subtitle: '将软件内课表双向同步至系统',
+                  color: Colors.redAccent,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        CalendarSyncPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '日历同步向导'),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'calendar_sync',
-            child: ListTile(
-              leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
-              title: const Text('日历同步向导'),
-              subtitle: const Text('将本软件课表双向同步至系统日历'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    CalendarSyncPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '日历同步向导'),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
