@@ -33,6 +33,16 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     with TickerProviderStateMixin {
   final Map<String, AnimationController> _pulseControllers = {};
   String? _selectedTeamUuid; // 🚀 选中的团队视口
+
+  static const _holidayKeywords = [
+    '假期', '放假', '休假', '春节', '国庆', '五一', '端午', '中秋',
+    '元旦', '清明', '新年', '圣诞', 'holiday', 'vacation', 'break',
+  ];
+
+  bool _isHolidayKeyword(String title) {
+    final lower = title.toLowerCase();
+    return _holidayKeywords.any((kw) => lower.contains(kw));
+  }
   
   // 🚀 桌面端滑动优化：增加控制器
   late final ScrollController _listScrollController = ScrollController();
@@ -345,15 +355,16 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               .inDays;
 
           final bool isUrgent = diff <= 3;
+          final bool isHoliday = _isHolidayKeyword(item.title);
 
-          if (isUrgent && !_pulseControllers.containsKey(item.id)) {
+          if (isUrgent && !isHoliday && !_pulseControllers.containsKey(item.id)) {
             final controller = AnimationController(
               duration: const Duration(milliseconds: 800),
               vsync: this,
             )
               ..repeat(reverse: true);
             _pulseControllers[item.id] = controller;
-          } else if (!isUrgent && _pulseControllers.containsKey(item.id)) {
+          } else if ((!isUrgent || isHoliday) && _pulseControllers.containsKey(item.id)) {
             _pulseControllers[item.id]?.dispose();
             _pulseControllers.remove(item.id);
           }
@@ -365,8 +376,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   .brightness == Brightness.dark;
           final bool useDarkUI = isDarkTheme || widget.isLight;
 
-          final bgColor = useDarkUI
-              ? (isUrgent
+          final Color bgColor = useDarkUI
+              ? (isUrgent && isHoliday
+              ? Colors.greenAccent.withAlpha((0.18 * 255).round())
+              : isUrgent
               ? Colors.redAccent.withAlpha((0.25 * 255).round())
               : (widget.isLight
               ? Colors.white.withAlpha((0.1 * 255).round())
@@ -375,7 +388,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               .colorScheme
               .surfaceContainerHighest
               .withAlpha((0.5 * 255).round())))
-              : (isUrgent
+              : (isUrgent && isHoliday
+              ? Colors.green.shade50
+              : isUrgent
               ? Colors.red.shade50
               : Theme
               .of(context)
@@ -383,10 +398,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               .surface);
 
           final borderColor = useDarkUI
-              ? (isUrgent
+              ? (isUrgent && isHoliday
+              ? Colors.greenAccent.withAlpha((0.5 * 255).round())
+              : isUrgent
               ? Colors.redAccent.withAlpha((0.5 * 255).round())
               : Colors.white.withAlpha((0.15 * 255).round()))
-              : (isUrgent
+              : (isUrgent && isHoliday
+              ? Colors.green.withAlpha((0.3 * 255).round())
+              : isUrgent
               ? Colors.redAccent.withAlpha((0.3 * 255).round())
               : Colors.black.withAlpha((0.05 * 255).round()));
 
@@ -405,8 +424,14 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               .onSurfaceVariant;
 
           final accentColor = useDarkUI
-              ? (isUrgent ? Colors.redAccent.shade100 : Colors.white)
-              : (isUrgent
+              ? (isUrgent && isHoliday
+              ? Colors.greenAccent.shade100
+              : isUrgent
+              ? Colors.redAccent.shade100
+              : Colors.white)
+              : (isUrgent && isHoliday
+              ? Colors.green
+              : isUrgent
               ? Colors.redAccent
               : Theme
               .of(context)
@@ -426,7 +451,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               animation:
               _pulseControllers[item.id] ?? const AlwaysStoppedAnimation(0.0),
             builder: (context, child) {
-              if (!isUrgent) return child!;
+              if (!isUrgent || isHoliday) return child!;
               final pulse = _pulseControllers[item.id]?.value ?? 0.0;
               final glowOpacity = 0.3 + (pulse * 0.4);
               final glowSpread = 4.0 + (pulse * 8.0);
