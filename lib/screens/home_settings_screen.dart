@@ -15,6 +15,7 @@ import '../services/course_service.dart';
 import 'login_screen.dart';
 import 'about_screen.dart';
 import 'settings/widgets/account_section.dart';
+import 'settings/widgets/sync_settings_section.dart';
 import 'settings/notification_settings_page.dart';
 import 'settings/dialogs/change_password_dialog.dart';
 
@@ -376,6 +377,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
             ),
+            SyncSettingsSection(username: _username),
           ],
         ),
       ),
@@ -600,10 +602,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () {
-                      setState(() {
-                        _selectedPaneId = 'account';
-                        _selectedRightPaneBuilder = _buildAccountAndAnnouncementsPane;
-                      });
+                      if (_selectedPaneId != 'account') {
+                        setState(() {
+                          _selectedPaneId = 'account';
+                          _selectedRightPaneBuilder = _buildAccountAndAnnouncementsPane;
+                          _nestedRouteNames.clear();
+                          _nestedNavigatorKey = GlobalKey<NavigatorState>();
+                          _breadcrumbObserver = _createObserver();
+                        });
+                      }
                     },
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -823,6 +830,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
           ),
+          SyncSettingsSection(username: _username),
           const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),

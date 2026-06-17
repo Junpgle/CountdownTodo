@@ -430,7 +430,7 @@ class CourseImportHandler {
   }
 
   void _closeLoadingDialog() {
-    if (Navigator.of(context).canPop()) {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }
   }

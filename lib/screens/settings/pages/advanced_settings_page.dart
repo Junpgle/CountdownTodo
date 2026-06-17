@@ -104,7 +104,7 @@ class _AdvancedSettingsPageState extends State<AdvancedSettingsPage> {
   }
 
   void _closeLoadingDialog(BuildContext context) {
-    if (Navigator.of(context).canPop()) {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }
   }

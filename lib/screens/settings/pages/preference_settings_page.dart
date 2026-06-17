@@ -35,9 +35,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   bool _isLoading = true;
   String? _highlightTarget;
 
-  int _syncInterval = 0;
-  bool _conflictDetectionEnabled = false;
-  String _serverChoice = 'aliyun';
   String _themeMode = 'system';
   String _themeColorMode = 'default';
   Color? _customThemeColor;
@@ -58,18 +55,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
     
-    int interval = await StorageService.getSyncInterval();
-    bool conflict = await StorageService.getConflictDetectionEnabled();
-    String server = await StorageService.getServerChoice();
     String theme = await StorageService.getThemeMode();
     String themeColorMode = prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
     int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
 
     if (mounted) {
       setState(() {
-        _syncInterval = interval;
-        _conflictDetectionEnabled = conflict;
-        _serverChoice = server;
         _themeMode = theme;
         _themeColorMode = themeColorMode;
         if (customColorVal != null) {
@@ -96,13 +87,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     }
   }
 
-  Future<void> _setConflictDetectionEnabled(bool enabled) async {
-    setState(() => _conflictDetectionEnabled = enabled);
-    await StorageService.saveAppSetting(StorageService.KEY_CONFLICT_DETECTION_ENABLED, enabled);
-    if (!enabled && _username.isNotEmpty && _username != '加载中...') {
-      await StorageService.clearLocalTodoScheduleConflicts(_username);
-    }
-  }
+
 
   Future<void> _handleThemeColorModeChanged(String? val) async {
     if (val == null) return;
@@ -198,69 +183,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         children: [
           const SizedBox(height: 16),
           _buildTile(
-            targetId: 'sync_interval',
-            child: ListTile(
-              leading: const Icon(Icons.sync),
-              title: const Text('自动同步频率'),
-              trailing: DropdownButton<int>(
-                value: _syncInterval,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 5, child: Text('每 5 分钟')),
-                  DropdownMenuItem(value: 10, child: Text('每 10 分钟')),
-                  DropdownMenuItem(value: 60, child: Text('每小时')),
-                  DropdownMenuItem(value: 0, child: Text('每次启动')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _syncInterval = val);
-                    StorageService.saveAppSetting(StorageService.KEY_SYNC_INTERVAL, val);
-                  }
-                },
-              ),
-            ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'conflict_detection',
-            child: ListTile(
-              leading: const Icon(Icons.warning_amber_outlined, color: Colors.orange),
-              title: const Text('冲突检测'),
-              subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
-              trailing: Switch(
-                value: _conflictDetectionEnabled,
-                activeThumbColor: Colors.orange,
-                onChanged: _setConflictDetectionEnabled,
-              ),
-            ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'server_choice',
-            child: ListTile(
-              leading: const Icon(Icons.cloud_queue),
-              title: const Text('云端数据接口线路'),
-              subtitle: Text(
-                _serverChoice == 'cloudflare' ? '当前: Cloudflare' : '当前: 阿里云ECS (更快)',
-                style: const TextStyle(fontSize: 12),
-              ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    ServerChoicePage(
-                      initialServerChoice: _serverChoice,
-                      isEmbedded: widget.isEmbedded,
-                    ),
-                    settings: const RouteSettings(name: '云端数据接口线路'),
-                  ),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
             targetId: 'theme',
             child: ListTile(
               leading: const Icon(Icons.palette_outlined),
@@ -351,9 +273,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
+                  PageTransitions.slideHorizontal(
+                    WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '首页壁纸设置'),
-                    builder: (context) => WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
                   ),
                 );
               },
@@ -370,9 +292,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: () async {
                 final result = await Navigator.push<bool>(
                   context,
-                  MaterialPageRoute(
+                  PageTransitions.slideHorizontal(
+                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '首页文字自定义'),
-                    builder: (context) => HomeTextConfigPage(isEmbedded: widget.isEmbedded),
                   ),
                 );
                 if (result == true && context.mounted) {
