@@ -81,25 +81,17 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final groups = results[1] as List<TodoGroup>;
     final countdowns = results[2] as List<CountdownItem>;
 
-    // 🩺 诊断：打印所有 hasConflict 待办
-    for (final t in todos) {
-      if (t.hasConflict) {
-        final data = t.serverVersionData;
-        debugPrint('🩺 [冲突诊断] UUID=${t.id} title="${t.title}" version=${t.version} hasConflict=${t.hasConflict} serverVersionData=${data != null ? 'present' : 'null'} isAllDay=${t.isAllDay} toJsonAllDay=${_isAllDayTask(t.toJson())}');
-      }
-    }
-
     final List<dynamic> items = [];
     items.addAll(todos.where((t) {
       if (t.isDeleted) return false;
       if (!t.hasConflict) return false;
-      // 独立完成待办的时间冲突同样展示
-      if (_isAllDayTask(t.toJson())) return false;
 
       // 如果有详细的冲突数据，检查其冲突对象是否全是全天任务
       final data = t.serverVersionData;
       if (data != null &&
           (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+        // 独立完成待办的时间冲突同样展示
+        if (_isAllDayTask(t.toJson())) return false;
         final peers = data['conflict_with'];
         if (peers is List) {
           final validPeers = peers.where(
