@@ -749,7 +749,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     return Container(
       width: double.infinity,
-      color: isDark ? Colors.black.withValues(alpha: 0.1) : Colors.grey,
+      color: Theme.of(context).colorScheme.surfaceContainer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2675,7 +2675,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     return Container(
       width: double.infinity,
-      color: isDark ? Colors.grey : Colors.grey,
+      color: Theme.of(context).colorScheme.surfaceContainer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
 
@@ -189,7 +190,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       EdgeInsetsGeometry? margin,
       bool isSmall = false,
       Key? buttonKey}) {
-    final double iconSize = isSmall ? 18.0 : 24.0;
+    final double iconSize = isSmall ? 22.0 : 28.0;
     final double padding = isSmall ? 4.0 : 8.0;
     final double? containerSize = isSmall ? 34.0 : null;
 
@@ -302,7 +303,7 @@ class _HomeAppBarState extends State<HomeAppBar>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
-    final toolbarH = isLandscape ? 64.0 : 112.0;
+    final toolbarH = isLandscape ? 64.0 : 86.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
     final greetingSize = isLandscape ? 11.0 : 12.0;
@@ -321,7 +322,6 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.search_rounded,
       onPressed: widget.onSearch ?? () {},
       buttonKey: widget.searchKey,
-      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final syncBtn = _buildActionButton(
@@ -329,7 +329,6 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.cloud_sync_rounded,
       isLoading: widget.isSyncing,
       onPressed: widget.onSync,
-      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final aiBtn = _buildActionButton(
@@ -337,17 +336,15 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.smart_toy_outlined,
       onPressed: widget.onAiAssistant ?? () {},
       buttonKey: widget.aiKey,
-      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final teamsBtn = _buildActionButton(
       context,
       icon: Icons.people_rounded,
-      onPressed: widget.onTeams ?? () => Navigator.pushNamed(context, '/teams'),
+      onPressed: widget.onTeams ?? () {},
       buttonKey: widget.teamsKey,
       badgeCount: widget.teamPendingCount,
       showAlertDot: widget.hasTeamConflictDot,
-      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final settingsBtn = _buildActionButton(
@@ -355,7 +352,6 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.settings_rounded,
       onPressed: widget.onSettings,
       buttonKey: widget.settingsKey,
-      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
 
@@ -363,6 +359,17 @@ class _HomeAppBarState extends State<HomeAppBar>
       backgroundColor: widget.isLight ? Colors.transparent : null,
       elevation: 0,
       toolbarHeight: toolbarH,
+      leading: (isTablet || isLandscape) ? null : _buildAnimatedAction(
+        0,
+        _buildActionButton(
+          context,
+          icon: Icons.menu_rounded,
+          onPressed: () {
+            ZoomDrawer.of(context)?.toggle();
+          },
+          margin: const EdgeInsets.only(left: 8),
+        ),
+      ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -418,36 +425,19 @@ class _HomeAppBarState extends State<HomeAppBar>
               ),
             ),
           _buildAnimatedAction(1, searchBtn),
-          _buildAnimatedAction(2, aiBtn),
-          _buildAnimatedAction(3, syncBtn),
-          _buildAnimatedAction(4, teamsBtn),
+          _buildAnimatedAction(2, syncBtn),
+          _buildAnimatedAction(3, teamsBtn),
+          _buildAnimatedAction(4, aiBtn),
           _buildAnimatedAction(5, settingsBtn),
         ] else ...[
-          // 🚀 手机端纵屏：两行操作区，新增 AI 助手入口
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildAnimatedAction(0, teamsBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(1, settingsBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(2, aiBtn),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildAnimatedAction(3, searchBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(4, syncBtn),
-                  ],
-                ),
+                _buildAnimatedAction(0, searchBtn),
+                const SizedBox(width: 8),
+                _buildAnimatedAction(1, syncBtn),
               ],
             ),
           ),
