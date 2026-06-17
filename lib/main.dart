@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'dart:io'; // 用于 Platform Check
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
@@ -184,24 +185,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   static const int _isolateTransformThreshold = 60;
-
-  late final ThemeData _lightTheme = ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.blue,
-      brightness: Brightness.light,
-    ),
-    useMaterial3: true,
-    pageTransitionsTheme: PageTransitions.theme,
-  );
-
-  late final ThemeData _darkTheme = ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.blue,
-      brightness: Brightness.dark,
-    ),
-    useMaterial3: true,
-    pageTransitionsTheme: PageTransitions.theme,
-  );
 
   String? _loggedInUser;
   bool _isChecking = true;
@@ -741,22 +724,52 @@ class _MyAppState extends State<MyApp> {
             currentThemeMode = ThemeMode.system;
         }
 
-        return MacosMenuBar(
-          child: MaterialApp(
-          title: 'CountDownTodo',
-          debugShowCheckedModeBanner: false,
-          navigatorKey: appNavigatorKey,
-          themeMode: currentThemeMode,
-          scrollBehavior: const MaterialScrollBehavior().copyWith(
-            dragDevices: {
-              PointerDeviceKind.mouse,
-              PointerDeviceKind.touch,
-              PointerDeviceKind.trackpad,
-              PointerDeviceKind.stylus,
-            },
-          ),
-          theme: _lightTheme,
-          darkTheme: _darkTheme,
+        return ValueListenableBuilder<String>(
+          valueListenable: StorageService.themeColorModeNotifier,
+          builder: (context, colorMode, _) {
+            return ValueListenableBuilder<Color?>(
+              valueListenable: StorageService.customThemeColorNotifier,
+              builder: (context, customColor, _) {
+                return DynamicColorBuilder(
+                  builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+                    ColorScheme lightScheme;
+                    ColorScheme darkScheme;
+
+                    if (colorMode == 'system_wallpaper' && lightDynamic != null && darkDynamic != null) {
+                      lightScheme = lightDynamic.harmonized();
+                      darkScheme = darkDynamic.harmonized();
+                    } else if ((colorMode == 'custom' || colorMode == 'image_extracted') && customColor != null) {
+                      lightScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.light);
+                      darkScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.dark);
+                    } else {
+                      lightScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.light);
+                      darkScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.dark);
+                    }
+
+                    return MacosMenuBar(
+                      child: MaterialApp(
+                        title: 'CountDownTodo',
+                        debugShowCheckedModeBanner: false,
+                        navigatorKey: appNavigatorKey,
+                        themeMode: currentThemeMode,
+                        scrollBehavior: const MaterialScrollBehavior().copyWith(
+                          dragDevices: {
+                            PointerDeviceKind.mouse,
+                            PointerDeviceKind.touch,
+                            PointerDeviceKind.trackpad,
+                            PointerDeviceKind.stylus,
+                          },
+                        ),
+                        theme: ThemeData(
+                          colorScheme: lightScheme,
+                          useMaterial3: true,
+                          pageTransitionsTheme: PageTransitions.theme,
+                        ),
+                        darkTheme: ThemeData(
+                          colorScheme: darkScheme,
+                          useMaterial3: true,
+                          pageTransitionsTheme: PageTransitions.theme,
+                        ),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -817,7 +830,7 @@ class _MyAppState extends State<MyApp> {
                       ? Scaffold(
                           backgroundColor: currentThemeMode == ThemeMode.dark
                               ? Colors.grey[900]
-                              : Colors.blue,
+                              : Theme.of(context).colorScheme.primary,
                           body: const Center(
                             child:
                                 CircularProgressIndicator(color: Colors.white),
@@ -831,7 +844,13 @@ class _MyAppState extends State<MyApp> {
                                   username: _loggedInUser!,
                                 )
                               : const LoginScreen(),
-          ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          },
         );
       },
     );

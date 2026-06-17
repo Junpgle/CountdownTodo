@@ -580,7 +580,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       case 'RESUME':
         if (_phase != PomodoroPhase.remoteWatching &&
-            _phase != PomodoroPhase.idle) break;
+            _phase != PomodoroPhase.idle) {
+          break;
+        }
         if (mounted) {
           final nowMs = DateTime.now().millisecondsSinceEpoch;
           final isCountUp = signal.mode == 1;
@@ -654,11 +656,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
         // 🚀 精准匹配：如果信号中包含 ID，必须与当前观察的 ID 一致才停止
         if (signal.sessionUuid != null &&
-            _currentSessionUuid != signal.sessionUuid) break;
+            _currentSessionUuid != signal.sessionUuid) {
+          break;
+        }
         if (signal.todoUuid != null && _boundTodo?.id != signal.todoUuid) break;
 
-        if (_phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished)
+        if (_phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished) {
           break;
+        }
         _stopRemoteTicker();
         setState(() {
           _phase = PomodoroPhase.idle;
@@ -2510,13 +2515,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         break;
       case SyncConnectionState.connecting:
         icon = Icons.sync;
-        color = Colors.blueAccent;
+        color = Theme.of(context).colorScheme.secondary;
         message = '正在连接同步通道...';
         break;
       case SyncConnectionState.error:
       case SyncConnectionState.disconnected:
-      default:
-        icon = Icons.link_off_rounded;
+      icon = Icons.link_off_rounded;
         color = Colors.redAccent.withValues(alpha: 0.8);
         message = '同步连接已断开，点击重试';
         canRetry = true;
@@ -2549,12 +2553,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_syncConnState == SyncConnectionState.connecting)
-                const SizedBox(
+                SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.blueAccent,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                 )
               else
@@ -2692,7 +2696,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           spacing: 6,
           runSpacing: 4,
           children: _remoteTagNames
-              .map((n) => _SimpleTag(name: n, color: Colors.blueAccent))
+              .map((n) => _SimpleTag(name: n, color: Theme.of(context).colorScheme.secondary))
               .toList());
     }
     final activeTags =

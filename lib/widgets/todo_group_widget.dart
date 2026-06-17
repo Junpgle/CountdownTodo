@@ -658,7 +658,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     if (totalMin > 0 && now.isAfter(cDate)) {
       progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
     }
-    final fillBrush = isPast ? Colors.redAccent : Colors.blue;
+    final fillBrush = isPast ? Colors.redAccent : Theme.of(context).colorScheme.primary;
 
     return Dismissible(
       key: Key('folder_todo_dismiss_${todo.id}'),
@@ -843,6 +843,14 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     ),
                                   ),
                                 ),
+                                if (todo.hasConflict) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 13,
+                                    color: Colors.orange.shade400,
+                                  ),
+                                ],
                                 if (badge.isNotEmpty) ...[
                                   const SizedBox(width: 6),
                                   Container(
@@ -1033,7 +1041,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.edit, color: Colors.blue),
+              leading: Icon(Icons.edit, color: Theme.of(context).colorScheme.primary),
               title: const Text("修改组名"),
               onTap: () {
                 Navigator.pop(ctx);

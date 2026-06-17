@@ -133,7 +133,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     switch(type) {
       case 'JOIN_REQUEST':
         icon = Icons.person_add_rounded;
-        color = Colors.blueAccent;
+        color = Theme.of(context).colorScheme.secondary;
         title = "入队申请";
         break;
       case 'MEMBER_EXIT':
@@ -218,7 +218,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
                               const SizedBox(width: 8),
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blueAccent,
+                                  backgroundColor: Theme.of(context).colorScheme.secondary,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

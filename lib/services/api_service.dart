@@ -750,7 +750,7 @@ class ApiService {
     try {
       final response = await _client.get(
         Uri.parse('$_effectiveBaseUrl/api/online_stats'),
-      );
+      ).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -765,7 +765,7 @@ class ApiService {
     try {
       final response = await _client.get(
         Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
-      );
+      ).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }

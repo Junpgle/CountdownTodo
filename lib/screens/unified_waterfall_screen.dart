@@ -112,10 +112,10 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent.withValues(alpha: 0.1),
+                      color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.assignment_outlined, color: Colors.blueAccent),
+                    child: Icon(Icons.assignment_outlined, color: Theme.of(context).colorScheme.secondary),
                   ),
                   const SizedBox(width: 12),
                   const Text("任务明细", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -144,12 +144,12 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.notes_rounded, size: 18, color: Colors.grey.shade500),
+                      Icon(Icons.notes_rounded, size: 18, color: Colors.grey),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           todo.remark!,
-                          style: TextStyle(fontSize: 14, color: isDark ? Colors.grey.shade400 : Colors.grey.shade700, height: 1.5),
+                          style: TextStyle(fontSize: 14, color: isDark ? Colors.grey : Colors.grey, height: 1.5),
                         ),
                       ),
                     ],
@@ -170,7 +170,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     );
   }
 
-  Widget _buildDetailCard(IconData icon, String label, String value, MaterialColor color) {
+  Widget _buildDetailCard(IconData icon, String label, String value, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -184,9 +184,9 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: color.shade400),
+              Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontWeight: FontWeight.w500)),
+              Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey : Colors.grey, fontWeight: FontWeight.w500)),
             ],
           ),
           const SizedBox(height: 8),
@@ -282,7 +282,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
                   children: [
-                    Expanded(child: _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Colors.blue, Icons.flash_on_rounded)),
+                    Expanded(child: _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Theme.of(context).colorScheme.primary, Icons.flash_on_rounded)),
                     const SizedBox(width: 12),
                     Expanded(child: _buildStatChip(context, "团队关联", "${_allCombinedTodos.where((t) => t.teamUuid != null).length}", Colors.purple, Icons.hub_rounded)),
                   ],
@@ -302,7 +302,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   children: [
                     Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
                     const SizedBox(height: 16),
-                    Text("暂无活跃的全景任务", style: TextStyle(fontSize: 16, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                    Text("暂无活跃的全景任务", style: TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -327,7 +327,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     );
   }
 
-  Widget _buildStatChip(BuildContext context, String label, String value, MaterialColor color, IconData icon) {
+  Widget _buildStatChip(BuildContext context, String label, String value, Color color, IconData icon) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
@@ -347,7 +347,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: color.shade400),
+              Icon(icon, size: 14, color: color),
               const SizedBox(width: 6),
               Text(_safeStr(label), style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
             ],
@@ -362,7 +362,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   Widget _buildWaterfallItem(TodoItem todo, {required bool isLast}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     bool isTeamTask = todo.teamUuid != null;
-    Color teamColor = isTeamTask ? Colors.blue.shade500 : Colors.orange.shade500;
+    Color teamColor = isTeamTask ? Theme.of(context).colorScheme.primary : Colors.orange;
 
     return IntrinsicHeight(
       child: Row(
@@ -457,7 +457,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       Row(
                         children: [
                           Icon(Icons.schedule_rounded,
-                              size: 12, color: Colors.grey.shade400),
+                              size: 12, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
                             _safeStr(TimezoneUtils.getRelativeTime(
@@ -466,8 +466,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                             style: TextStyle(
                                 fontSize: 11,
                                 color: isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade600,
+                                    ? Colors.grey
+                                    : Colors.grey,
                                 fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -486,8 +486,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                         style: TextStyle(
                             fontSize: 13,
                             color: isDark
-                                ? Colors.grey.shade500
-                                : Colors.grey.shade600,
+                                ? Colors.grey
+                                : Colors.grey,
                             height: 1.4),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

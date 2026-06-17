@@ -5,10 +5,12 @@ import '../../utils/page_transitions.dart';
 
 class ServerChoicePage extends StatefulWidget {
   final String initialServerChoice;
+  final bool isEmbedded;
 
   const ServerChoicePage({
     super.key,
     required this.initialServerChoice,
+    this.isEmbedded = false,
   });
 
   @override
@@ -33,7 +35,7 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('云端数据接口线路'),
       ),
       body: ListView(

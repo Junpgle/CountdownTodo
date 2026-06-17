@@ -164,7 +164,7 @@ class CourseSection extends StatelessWidget {
                 targetId: 'course_upload',
                 child: ListTile(
                   leading:
-                      const Icon(Icons.cloud_upload_outlined, color: Colors.blue),
+                      Icon(Icons.cloud_upload_outlined, color: Theme.of(context).colorScheme.primary),
                   title: const Text('上传课表到云端'),
                   subtitle: const Text('用于与电脑或其他设备同步'),
                   trailing: const Icon(Icons.chevron_right),

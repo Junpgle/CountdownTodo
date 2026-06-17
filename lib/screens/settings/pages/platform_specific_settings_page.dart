@@ -1,0 +1,361 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
+
+import '../../../services/tai_service.dart';
+import '../../../storage_service.dart';
+import '../../../services/float_window_service.dart';
+import '../../../services/island_data_provider.dart';
+import '../../../windows_island/island_manager.dart';
+import '../dialogs/island_priority_dialog.dart';
+
+class PlatformSpecificSettingsPage extends StatefulWidget {
+  final String? initialTarget;
+  final bool isEmbedded;
+  const PlatformSpecificSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+
+  @override
+  State<PlatformSpecificSettingsPage> createState() => _PlatformSpecificSettingsPageState();
+}
+
+class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsPage> {
+  static const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+
+  final Map<String, GlobalKey> _itemKeys = {
+    'float_window_style': GlobalKey(),
+    'force_refresh': GlobalKey(),
+    'island_priority': GlobalKey(),
+    'tai_db': GlobalKey(),
+    'live_updates': GlobalKey(),
+    'island_support': GlobalKey(),
+    'test_notification': GlobalKey(),
+  };
+
+  String? _highlightTarget;
+
+  // Windows Specific
+  int _floatWindowStyle = 0;
+  String _taiDbPath = '';
+
+  // Android Specific
+  String _islandStatus = "点击检测设备是否支持";
+  String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+    if (widget.initialTarget != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToTarget(widget.initialTarget!);
+      });
+    }
+  }
+
+  void _scrollToTarget(String target) {
+    final key = _itemKeys[target];
+    if (key?.currentContext != null) {
+      setState(() => _highlightTarget = target);
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        alignment: 0.15,
+      );
+      Future.delayed(const Duration(milliseconds: 3000), () {
+        if (mounted) setState(() => _highlightTarget = null);
+      });
+    }
+  }
+
+  Future<void> _loadSettings() async {
+    if (Platform.isWindows) {
+      final prefs = await SharedPreferences.getInstance();
+      String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      int style = 0;
+      if (username != null && username.isNotEmpty) {
+        style = prefs.getInt('float_window_style_$username') ?? 0;
+      }
+      style = style == 0 ? (prefs.getInt('float_window_style') ?? 0) : style;
+
+      final taiPath = await TaiService.getSavedDbPath() ?? await TaiService.detectDefaultPath();
+      if (taiPath != null) await TaiService.saveDbPath(taiPath);
+
+      if (mounted) {
+        setState(() {
+          _floatWindowStyle = style;
+          _taiDbPath = taiPath ?? '';
+        });
+      }
+    }
+  }
+
+  Widget _buildTile({required String targetId, required Widget child}) {
+    final bool isHighlighted = _highlightTarget == targetId;
+    return Container(
+      key: _itemKeys[targetId],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          color: isHighlighted
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
+              : Colors.transparent,
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  // --- Windows Methods ---
+  Future<void> _pickTaiDatabase() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['db', 'sqlite'],
+      dialogTitle: '选择 Tai 数据库文件',
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    final path = result.files.single.path!;
+    final valid = await TaiService.validateDb(path);
+
+    if (!valid) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 无效的 Tai 数据库文件')));
+      }
+      return;
+    }
+
+    await TaiService.saveDbPath(path);
+    setState(() => _taiDbPath = path);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据库路径已保存')));
+    }
+  }
+
+  void _showIslandPriorityDialog() async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (context) => const IslandPriorityDialog(),
+    );
+    if (changed == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
+      }
+      FloatWindowService.invalidateCache();
+      Future.delayed(const Duration(milliseconds: 300), () async {
+        if (!mounted) return;
+        try {
+          await FloatWindowService.update();
+        } catch (e) {
+          debugPrint('[Settings] Island priority refresh failed: $e');
+        }
+      });
+    }
+  }
+
+  // --- Android Methods ---
+  Future<void> _checkAndOpenLiveUpdates() async {
+    try {
+      final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
+      if (!hasPermission) {
+        setState(() => _liveUpdatesStatus = "权限未开启，尝试跳转设置...");
+        final bool opened = await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
+
+        if (opened) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请在设置中打开"推广的通知/实时更新"权限'), duration: Duration(seconds: 3)),
+          );
+        } else {
+          setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
+        }
+      } else {
+        setState(() => _liveUpdatesStatus = "✅ 已拥有实时通知权限");
+      }
+    } on PlatformException catch (e) {
+      setState(() => _liveUpdatesStatus = "检测失败: '${e.message}'.");
+    }
+  }
+
+  Future<void> _checkIslandSupport() async {
+    try {
+      final bool result = await platform.invokeMethod('checkIslandSupport');
+      setState(() {
+        if (result) {
+          _islandStatus = "✅ 设备已支持超级岛！";
+        } else {
+          _islandStatus = "❌ 不支持，或未开启状态栏显示权限";
+        }
+      });
+    } on PlatformException catch (e) {
+      setState(() => _islandStatus = "检测失败: '${e.message}'.");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String pageTitle = Platform.isWindows ? 'Windows 专属设置' : (Platform.isAndroid ? 'Android 专属整合' : '平台专属设置');
+
+    return Scaffold(
+      appBar: widget.isEmbedded ? null : AppBar(
+        title: Text(pageTitle),
+      ),
+      body: ListView(
+        children: [
+          if (!Platform.isWindows && !Platform.isAndroid) ...[
+            Container(
+              padding: const EdgeInsets.only(top: 100, left: 32, right: 32),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.stars_rounded, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '当前平台无专属设置',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '您的设备正在以最佳状态运行该应用，无需任何额外配置即可享受全部核心功能。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (Platform.isWindows) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
+              child: Text('屏幕时间统计', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            _buildTile(
+              targetId: 'tai_db',
+              child: ListTile(
+                leading: const Icon(Icons.timer_outlined, color: Colors.indigo),
+                title: const Text('Tai 屏幕时间数据库'),
+                subtitle: Text(
+                  _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: _taiDbPath.isEmpty ? Colors.orange : Colors.grey),
+                ),
+                trailing: const Icon(Icons.folder_open_outlined),
+                onTap: _pickTaiDatabase,
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+              child: Text('桌面挂件设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            _buildTile(
+              targetId: 'float_window_style',
+              child: ListTile(
+                leading: const Icon(Icons.layers_outlined, color: Colors.indigo),
+                title: const Text('桌面灵动岛'),
+                subtitle: const Text('开启灵动岛式浮动窗口'),
+                trailing: Switch(
+                  value: _floatWindowStyle != 2,
+                  activeThumbColor: Colors.indigo,
+                  onChanged: (val) async {
+                    int newStyle = val ? 1 : 2;
+                    setState(() => _floatWindowStyle = newStyle);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setInt('float_window_style', newStyle);
+                    if (newStyle == 2) {
+                      try {
+                        IslandDataProvider().invalidateCache();
+                        IslandManager().clearIslandCache('island-1');
+                      } catch (e) {}
+                    } else {
+                      try {
+                        IslandDataProvider().invalidateCache();
+                        IslandManager().clearIslandCache('island-1');
+                        await IslandManager().createIsland('island-1');
+                      } catch (e) {}
+                      try {
+                        await FloatWindowService.update(forceReset: true);
+                      } catch (e) {}
+                    }
+                  },
+                ),
+              ),
+            ),
+            const Divider(height: 1, indent: 72),
+            _buildTile(
+              targetId: 'force_refresh',
+              child: ListTile(
+                leading: const Icon(Icons.refresh, color: Colors.indigo),
+                title: const Text('强制刷新悬浮窗位置'),
+                subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
+                trailing: TextButton(
+                  onPressed: () async {
+                    try {
+                      await StorageService.saveIslandBounds('island-1', {});
+                    } catch (_) {}
+                    try {
+                      IslandDataProvider().invalidateCache();
+                    } catch (_) {}
+                    try {
+                      IslandManager().clearIslandCache('island-1');
+                    } catch (_) {}
+                    try {
+                      await FloatWindowService.update(forceReset: true);
+                    } catch (_) {}
+                  },
+                  child: const Text('强制刷新'),
+                ),
+              ),
+            ),
+            if (_floatWindowStyle != 2) ...[
+              const Divider(height: 1, indent: 72),
+              _buildTile(
+                targetId: 'island_priority',
+                child: ListTile(
+                  leading: const Icon(Icons.priority_high, color: Colors.indigo),
+                  title: const Text('灵动岛优先级设置'),
+                  subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showIslandPriorityDialog,
+                ),
+              ),
+            ],
+          ],
+
+          if (Platform.isAndroid) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
+              child: Text('Android 系统特性', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            _buildTile(
+              targetId: 'live_updates',
+              child: ListTile(
+                leading: const Icon(Icons.update, color: Colors.green),
+                title: const Text('Android 16 实时活动 (Live Updates)'),
+                subtitle: Text(_liveUpdatesStatus, style: TextStyle(color: _liveUpdatesStatus.contains('✅') ? Colors.green : Colors.orange, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _checkAndOpenLiveUpdates,
+              ),
+            ),
+            const Divider(height: 1, indent: 72),
+            _buildTile(
+              targetId: 'island_support',
+              child: ListTile(
+                leading: const Icon(Icons.phone_android, color: Colors.blue),
+                title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
+                subtitle: Text(_islandStatus, style: TextStyle(color: _islandStatus.contains('✅') ? Colors.green : Colors.orange, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _checkIslandSupport,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

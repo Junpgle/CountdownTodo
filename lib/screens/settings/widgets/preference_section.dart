@@ -4,6 +4,7 @@ import '../../../services/llm_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
+import '../home_text_config_page.dart';
 
 class PreferenceSection extends StatelessWidget {
   final String? highlightTarget;
@@ -24,6 +25,10 @@ class PreferenceSection extends StatelessWidget {
   final ValueChanged<int?>? onLLMRetryCountChanged;
   final bool conflictDetectionEnabled;
   final ValueChanged<bool>? onConflictDetectionChanged;
+  final String themeColorMode;
+  final ValueChanged<String?> onThemeColorModeChanged;
+  final Color? customThemeColor;
+  final VoidCallback onPickCustomThemeColor;
 
   const PreferenceSection({
     super.key,
@@ -45,6 +50,10 @@ class PreferenceSection extends StatelessWidget {
     this.onLLMRetryCountChanged,
     this.conflictDetectionEnabled = false,
     this.onConflictDetectionChanged,
+    required this.themeColorMode,
+    required this.onThemeColorModeChanged,
+    this.customThemeColor,
+    required this.onPickCustomThemeColor,
   });
 
   // 🚀 辅助方法：构建带高亮动画的 Tile
@@ -163,6 +172,45 @@ class PreferenceSection extends StatelessWidget {
               const Divider(height: 1, indent: 56),
               _buildTile(
                 context: context,
+                targetId: 'theme_color',
+                child: ListTile(
+                  leading: const Icon(Icons.format_paint_outlined),
+                  title: const Text('全局主题颜色'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (themeColorMode == 'custom' || themeColorMode == 'image_extracted')
+                        GestureDetector(
+                          onTap: onPickCustomThemeColor,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            margin: const EdgeInsets.only(right: 12),
+                            decoration: BoxDecoration(
+                              color: customThemeColor ?? Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                          ),
+                        ),
+                      DropdownButton<String>(
+                        value: themeColorMode,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'default', child: Text('默认蓝色')),
+                          DropdownMenuItem(value: 'system_wallpaper', child: Text('跟随壁纸/系统')),
+                          DropdownMenuItem(value: 'image_extracted', child: Text('从图片提取')),
+                          DropdownMenuItem(value: 'custom', child: Text('自定义颜色')),
+                        ],
+                        onChanged: onThemeColorModeChanged,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
                 targetId: 'llm_config',
                 child: ListTile(
                   leading: const Icon(Icons.psychology_outlined,
@@ -242,6 +290,28 @@ class PreferenceSection extends StatelessWidget {
                       MaterialPageRoute(
                           builder: (context) => const WallpaperSettingsPage()),
                     );
+                  },
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'home_text',
+                child: ListTile(
+                  leading: const Icon(Icons.text_fields,
+                      color: Colors.teal),
+                  title: const Text('首页文字自定义'),
+                  subtitle: const Text('自定义问候语、日期格式、用户名显示'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const HomeTextConfigPage()),
+                    );
+                    if (result == true && context.mounted) {
+                      (context as Element).markNeedsBuild();
+                    }
                   },
                 ),
               ),

@@ -232,7 +232,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       }
       rows.add(_buildSummaryRow(
         icon: Icons.task_alt_rounded,
-        color: Colors.blue,
+        color: Theme.of(context).colorScheme.primary,
         title: '待办事项',
         content: parts.join('、'),
         subColor: subColor,

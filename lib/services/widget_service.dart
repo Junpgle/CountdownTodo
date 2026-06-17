@@ -48,7 +48,7 @@ class WidgetService {
   static const String countdownOnlyWidgetName = 'CountdownOnlyWidgetProvider';
   static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
   static bool _initialized = false;
-  static bool _widgetUpdateDisabled = false;
+  static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
   static Timer? _periodicTimer;
 
@@ -340,11 +340,11 @@ class WidgetService {
 
           if (now.isAfter(courseStart) && now.isBefore(courseEnd)) {
             final remaining = courseEnd.difference(now).inMinutes;
-            statusText = '正在上课 · 还剩${remaining}分钟';
+            statusText = '正在上课 · 还剩$remaining分钟';
           } else if (now.isBefore(courseStart)) {
             final diff = courseStart.difference(now).inMinutes;
             if (diff <= 30) {
-              statusText = '即将开始 · ${diff}分钟后';
+              statusText = '即将开始 · $diff分钟后';
             } else {
               statusText = '待上';
             }

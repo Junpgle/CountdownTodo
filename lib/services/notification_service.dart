@@ -580,8 +580,9 @@ class NotificationService {
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported)
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) {
       return [];
+    }
 
     if (_isDesktopSupported) {
       return await StorageService.getWindowsScheduledReminders();

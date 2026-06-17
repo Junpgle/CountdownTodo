@@ -67,7 +67,7 @@ class SearchService {
       icon: Icons.sync_alt,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/lan_sync'},
+      extraData: {'route': '/settings', 'target': 'lan_sync'},
     ),
     SearchResult(
       id: 'setting_animation',
@@ -76,7 +76,7 @@ class SearchService {
       icon: Icons.animation,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings/animation'},
+      extraData: {'route': '/settings', 'target': 'animation'},
     ),
     SearchResult(
       id: 'setting_wallpaper',
@@ -85,16 +85,16 @@ class SearchService {
       icon: Icons.image,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 视觉',
-      extraData: {'route': '/settings/wallpaper'},
+      extraData: {'route': '/settings', 'target': 'wallpaper'},
     ),
     SearchResult(
       id: 'setting_llm_config',
-      title: 'AI 助手配置 / LLM 设置',
+      title: 'AI 助手 / LLM 设置',
       subtitle: '配置智能助手的 API 密钥与模型',
       icon: Icons.auto_awesome,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/llm_config'},
+      extraData: {'route': '/settings', 'target': 'llm_config'},
     ),
     SearchResult(
       id: 'setting_cache_clean',
@@ -112,7 +112,7 @@ class SearchService {
       icon: Icons.watch,
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
-      extraData: {'route': '/settings/band_sync'},
+      extraData: {'route': '/settings', 'target': 'band_sync'},
     ),
     SearchResult(
       id: 'setting_about',
@@ -132,6 +132,15 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 课表',
       extraData: {'route': '/settings', 'target': 'smart_import'},
+    ),
+    SearchResult(
+      id: 'setting_course_adapt',
+      title: '请求课表适配 / 申请适配',
+      subtitle: '如果没有你的学校，点此申请',
+      icon: Icons.auto_awesome,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 课表',
+      extraData: {'route': '/settings', 'target': 'course_adapt'},
     ),
     SearchResult(
       id: 'setting_course_sync',
@@ -169,15 +178,6 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 学期',
       extraData: {'route': '/settings', 'target': 'semester_end'},
-    ),
-    SearchResult(
-      id: 'setting_semester_sync',
-      title: '学期同步 / 同步日期',
-      subtitle: '从云端同步开学与放假日期',
-      icon: Icons.sync_problem,
-      type: SearchResultType.setting,
-      breadcrumb: '设置 > 学期',
-      extraData: {'route': '/settings', 'target': 'semester_sync'},
     ),
     // 🚀 通知相关
     SearchResult(
@@ -477,12 +477,16 @@ class SearchService {
               if (t.dueDate != null &&
                   t.dueDate!.isAfter(
                       startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                  t.dueDate!.isBefore(endOfDay!)) return true;
+                  t.dueDate!.isBefore(endOfDay!)) {
+                return true;
+              }
               if (t.createdDate != null) {
                 final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
                 if (cd.isAfter(startOfDay!
                         .subtract(const Duration(milliseconds: 1))) &&
-                    cd.isBefore(endOfDay!)) return true;
+                    cd.isBefore(endOfDay!)) {
+                  return true;
+                }
               }
               return false;
             })
@@ -1325,24 +1329,6 @@ class SearchNavigationHandler {
         break;
       case '/settings':
         page = SettingsPage(initialTarget: target);
-        break;
-      case '/settings/animation':
-        page = const AnimationSettingsPage();
-        break;
-      case '/settings/wallpaper':
-        page = const WallpaperSettingsPage();
-        break;
-      case '/settings/llm_config':
-        page = const LLMConfigPage();
-        break;
-      case '/settings/notifications':
-        page = const NotificationSettingsPage();
-        break;
-      case '/settings/lan_sync':
-        page = const LanSyncScreen();
-        break;
-      case '/settings/band_sync':
-        page = const BandSyncScreen();
         break;
       case '/about':
         page = const AboutScreen();

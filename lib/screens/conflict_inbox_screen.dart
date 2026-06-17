@@ -85,13 +85,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     items.addAll(todos.where((t) {
       if (t.isDeleted) return false;
       if (!t.hasConflict) return false;
-      if (t.collabType == 1) return false; // 🚀 独立完成待办不参与冲突展示
-      if (_isAllDayTask(t.toJson())) return false;
 
       // 如果有详细的冲突数据，检查其冲突对象是否全是全天任务
       final data = t.serverVersionData;
       if (data != null &&
           (data['type'] == 'schedule' || data['conflict_with'] != null)) {
+        // 独立完成待办的时间冲突同样展示
+        if (_isAllDayTask(t.toJson())) return false;
         final peers = data['conflict_with'];
         if (peers is List) {
           final validPeers = peers.where(
@@ -854,10 +854,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue.withValues(alpha: 0.1),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: Colors.blue, size: 32),
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 32),
         ),
         const SizedBox(height: 20),
         Text(
@@ -911,11 +911,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   Widget _buildModernConflictCard(dynamic item, bool isSelected, bool isDark) {
     String title = "";
-    if (item is TodoItem)
+    if (item is TodoItem) {
       title = item.title;
-    else if (item is TodoGroup)
+    } else if (item is TodoGroup){
       title = item.name;
-    else if (item is CountdownItem) title = item.title;
+     }else if (item is CountdownItem) {
+      title = item.title;
+    }
 
     final conflictColor = _conflictColor(item);
     final isTodo = item is TodoItem;
@@ -928,15 +930,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       decoration: BoxDecoration(
         color: isSelected || isBatchSelected
             ? (isDark
-                ? Colors.blue.withValues(alpha: 0.15)
-                : Colors.blue.withValues(alpha: 0.1))
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.1))
             : (isDark
                 ? Colors.white.withValues(alpha: 0.03)
                 : Colors.white.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSelected || isBatchSelected
-              ? Colors.blue
+              ? Theme.of(context).colorScheme.primary
               : (isDark
                   ? Colors.white.withValues(alpha: 0.05)
                   : Colors.black.withValues(alpha: 0.05)),
@@ -1030,7 +1032,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                             conflictColor.withValues(alpha: 0.1),
                             conflictColor),
                         _buildMiniBadge(_relationLabel(item),
-                            Colors.blue.withValues(alpha: 0.1), Colors.blue),
+                            Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), Theme.of(context).colorScheme.primary),
                       ],
                     ),
                   ],
@@ -1084,12 +1086,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   label: const Text('推荐方案'),
                   onPressed: _isBatchApplying ? null : _batchApplyRecommended,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.blue,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                    side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
                   ),
                 ),
               ),
@@ -1166,11 +1168,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 label: const Text('推荐方案'),
                 onPressed: _isBatchApplying ? null : _batchApplyRecommended,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  side: BorderSide(color: Colors.blue.withValues(alpha: 0.3)),
+                  side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1446,7 +1448,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             label: '全部冲突',
             count: _conflictItems.length,
             icon: Icons.all_inbox_rounded,
-            color: Colors.blue,
+            color: Theme.of(context).colorScheme.primary,
             isSelected: _selectedFilter == _ConflictFilter.all,
             onTap: () => setState(() => _selectedFilter = _ConflictFilter.all),
           ),
@@ -1608,7 +1610,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       child: Row(
         children: [
           Icon(isMain ? Icons.warning_amber_rounded : Icons.event_note_rounded,
-              color: isMain ? Colors.orangeAccent : Colors.blue, size: 20),
+              color: isMain ? Colors.orangeAccent : Theme.of(context).colorScheme.primary, size: 20),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -1714,7 +1716,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Colors.blue),
+          Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1821,12 +1823,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.08),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(6)),
                     child: Text(relationLabel,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 10,
-                            color: Colors.blue,
+                            color: Theme.of(context).colorScheme.primary,
                             fontWeight: FontWeight.w600)),
                   ),
                   const Spacer(),
@@ -1842,8 +1844,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                    child: Icon(icon, size: 18, color: Colors.blue),
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    child: Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -2237,20 +2239,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.05),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
                   Icon(Icons.info_outline_rounded,
-                      size: 18, color: Colors.blue),
+                      size: 18, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '批量推荐只处理版本冲突；时间冲突需要进入单条详情查看预览后确认。',
                       style:
-                          TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                          TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ],
@@ -2273,7 +2275,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                       await _batchApplyRecommendedExecute();
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                     ),
                     child: const Text('应用推荐方案'),
                   ),
@@ -2737,14 +2739,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelectedForEdit
-              ? Colors.blue.withValues(alpha: 0.1)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
               : (isPrimary
                   ? Colors.orangeAccent.withValues(alpha: 0.08)
                   : Colors.white),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelectedForEdit
-                ? Colors.blue
+                ? Theme.of(context).colorScheme.primary
                 : (isPrimary
                     ? Colors.orangeAccent.withValues(alpha: 0.25)
                     : Colors.grey.withValues(alpha: 0.15)),
@@ -2771,7 +2773,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                           : Icons.schedule_rounded),
                   size: 14,
                   color: isSelectedForEdit
-                      ? Colors.blue
+                      ? Theme.of(context).colorScheme.primary
                       : (isPrimary ? Colors.orangeAccent : Colors.grey),
                 ),
                 const SizedBox(width: 4),
@@ -2781,7 +2783,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: isSelectedForEdit
-                        ? Colors.blue
+                        ? Theme.of(context).colorScheme.primary
                         : (isPrimary ? Colors.orangeAccent : Colors.grey),
                   ),
                 ),
@@ -2791,13 +2793,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text("待调",
+                    child: Text("待调",
                         style: TextStyle(
                             fontSize: 9,
-                            color: Colors.blue,
+                            color: Theme.of(context).colorScheme.primary,
                             fontWeight: FontWeight.bold)),
                   ),
                 ],
@@ -2812,7 +2814,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             ),
             const Spacer(),
             _buildMiniInfoChip(_scheduleScopeLabel(data),
-                isPrimary ? Colors.orangeAccent : Colors.blue),
+                isPrimary ? Colors.orangeAccent : Theme.of(context).colorScheme.primary),
             const SizedBox(height: 6),
             if (update == null)
               Text(
@@ -2820,7 +2822,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 style: TextStyle(
                     fontSize: 11,
                     color: isSelectedForEdit
-                        ? Colors.blue
+                        ? Theme.of(context).colorScheme.primary
                         : (isPrimary
                             ? Colors.orangeAccent
                             : Colors.grey.shade600),
@@ -2843,14 +2845,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   ),
                   Row(
                     children: [
-                      const Icon(Icons.arrow_right_alt_rounded,
-                          size: 14, color: Colors.blue),
+                      Icon(Icons.arrow_right_alt_rounded,
+                          size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 2),
                       Text(
                         '${sf.format(update.start)}~${sf.format(update.end)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 11,
-                            color: Colors.blue,
+                            color: Theme.of(context).colorScheme.primary,
                             fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -2918,7 +2920,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     required VoidCallback onTap,
   }) {
     final color =
-        selected ? Colors.blue : (enabled ? Colors.grey : Colors.grey.shade300);
+        selected ? Theme.of(context).colorScheme.primary : (enabled ? Colors.grey : Colors.grey.shade300);
     return Expanded(
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -2927,12 +2929,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: selected
-                ? Colors.blue.withValues(alpha: 0.1)
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color:
-                  selected ? Colors.blue : Colors.grey.withValues(alpha: 0.2),
+                  selected ? Theme.of(context).colorScheme.primary : Colors.grey.withValues(alpha: 0.2),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -3119,7 +3121,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   bool _isAllDayTask(Map<String, dynamic> data) {
     if (data['is_all_day'] == 1 ||
         data['is_all_day'] == true ||
-        data['isAllDay'] == true) return true;
+        data['isAllDay'] == true) {
+      return true;
+    }
     final startMs = _parseMs(data['start_time'] ??
         data['startTime'] ??
         data['created_date'] ??
@@ -3372,7 +3376,7 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       _buildVersionCard(
         label: "本地版本",
         icon: Icons.phone_android_rounded,
-        color: Colors.blue,
+        color: Theme.of(context).colorScheme.primary,
         data: widget.localItem,
       ),
       const SizedBox(height: 12),

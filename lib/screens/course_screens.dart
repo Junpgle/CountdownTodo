@@ -749,7 +749,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     return Container(
       width: double.infinity,
-      color: isDark ? Colors.black.withValues(alpha: 0.1) : Colors.grey[50],
+      color: Theme.of(context).colorScheme.surfaceContainer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -869,11 +869,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 margin: const EdgeInsets.only(left: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                  border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
                 ),
-                child: const Icon(Icons.group, size: 12, color: Colors.blue),
+                child: Icon(Icons.group, size: 12, color: Theme.of(context).colorScheme.primary),
               ),
           ],
         ),
@@ -892,13 +892,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
       );
     } else if (item is TimeLogItem) {
-      const color = Colors.blue;
+      final color = Theme.of(context).colorScheme.primary;
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-          child: const Icon(Icons.edit_calendar, color: color, size: 20),
+          child: Icon(Icons.edit_calendar, color: color, size: 20),
         ),
         title: Text(item.title.isNotEmpty ? item.title : '时间日志',
             style: const TextStyle(fontSize: 15)),
@@ -1252,14 +1252,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   Color _getCourseColor(String courseName) {
     final List<Color> colors = [
-      Colors.blueAccent.shade200,
-      Colors.orangeAccent.shade200,
-      Colors.purpleAccent.shade200,
-      Colors.teal.shade300,
-      Colors.pinkAccent.shade200,
-      Colors.indigoAccent.shade200,
-      Colors.green.shade400,
-      Colors.deepOrange.shade300,
+      Theme.of(context).colorScheme.secondary,
+      Colors.orangeAccent,
+      Colors.purpleAccent,
+      Colors.teal,
+      Colors.pinkAccent,
+      Colors.indigoAccent,
+      Colors.green,
+      Colors.deepOrange,
     ];
     int hash = courseName.hashCode;
     return colors[hash % colors.length];
@@ -1292,7 +1292,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             width: 40,
                             height: 4,
                             decoration: BoxDecoration(
-                                color: Colors.grey.shade300,
+                                color: Colors.grey,
                                 borderRadius: BorderRadius.circular(2))),
                       ),
                       const SizedBox(height: 16),
@@ -1328,14 +1328,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                               const EdgeInsets.only(bottom: 2),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.group,
-                                                  size: 12, color: Colors.blue),
+                                              Icon(Icons.group,
+                                                  size: 12, color: Theme.of(context).colorScheme.primary),
                                               const SizedBox(width: 4),
                                               Text(
                                                   "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                       fontSize: 11,
-                                                      color: Colors.blue,
+                                                      color: Theme.of(context).colorScheme.primary,
                                                       fontWeight:
                                                           FontWeight.bold)),
                                             ],
@@ -1399,7 +1399,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 decoration: BoxDecoration(
                   color: allDone
                       ? Colors.green.withValues(alpha: 0.5)
-                      : Colors.amber.shade500.withValues(alpha: 0.85),
+                      : Colors.amber.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -1535,7 +1535,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   weekdays[index],
                   style: TextStyle(
                     color: isToday
-                        ? Colors.blue
+                        ? Theme.of(context).colorScheme.primary
                         : (isDark ? Colors.white70 : Colors.black87),
                     fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
                     fontSize: 13,
@@ -1545,7 +1545,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   Text(
                     dateStr,
                     style: TextStyle(
-                      color: isToday ? Colors.blue : Colors.grey,
+                      color: isToday ? Theme.of(context).colorScheme.primary : Colors.grey,
                       fontSize: 11,
                     ),
                   ),
@@ -1750,7 +1750,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
           Color todoColor = todo.isDone
               ? Colors.green.withValues(alpha: 0.5)
-              : Colors.amber.shade500.withValues(alpha: 0.85);
+              : Colors.amber.withValues(alpha: 0.85);
           final todoCardKey = _getTodoCardKey(todo.id);
           final todoIndex = _intraDayTodosPerDay.values
               .expand((e) => e)
@@ -2651,8 +2651,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             if (!treatAsAllDay) return false;
 
             // 如果开启了隐藏跨天，且该任务是跨天任务，则过滤掉
-            if (_activeDataViews.contains('hideCrossDay') && isCrossDay)
+            if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
               return false;
+            }
 
             DateTime todayStart = DateTime(now.year, now.month, now.day);
             DateTime todayEnd = todayStart
@@ -2674,7 +2675,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
     return Container(
       width: double.infinity,
-      color: isDark ? Colors.grey[900] : Colors.grey[50],
+      color: Theme.of(context).colorScheme.surfaceContainer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2781,13 +2782,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                               const EdgeInsets.only(bottom: 2),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.group,
-                                                  size: 10, color: Colors.blue),
+                                              Icon(Icons.group,
+                                                  size: 10, color: Theme.of(context).colorScheme.primary),
                                               const SizedBox(width: 4),
                                               Text(todo.teamName ?? '团队',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                       fontSize: 10,
-                                                      color: Colors.blue,
+                                                      color: Theme.of(context).colorScheme.primary,
                                                       fontWeight:
                                                           FontWeight.bold)),
                                             ],
@@ -2907,7 +2908,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         ? Icons.calendar_month
                         : Icons.calendar_view_week),
                 size: 20),
-            tooltip: '切换试图模式',
+            tooltip: '切换视图模式',
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
           IconButton(
@@ -2984,7 +2985,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           final now = DateTime.now();
                           if (_lastModeSwitch != null &&
                               now.difference(_lastModeSwitch!).inMilliseconds <
-                                  800) return;
+                                  800) {
+                            return;
+                          }
 
                           if (details.scale < 0.7) {
                             if (_viewMode < 2) {
@@ -3465,7 +3468,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         _getRecurrenceLabel(todo.recurrence)),
                   _buildDetailItem(
                       Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务",
-                      color: todo.teamUuid != null ? Colors.blue : null),
+                      color: todo.teamUuid != null ? Theme.of(context).colorScheme.primary : null),
                   if (todo.creatorName != null)
                     _buildDetailItem(
                         Icons.person_outline_rounded, "创建人", todo.creatorName!),
@@ -3592,7 +3595,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               child: Row(
                 children: [
                   _buildPanoStatStat(
-                      "全量待办", "${_allTodos.length}", Colors.blue),
+                      "全量待办", "${_allTodos.length}", Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 12),
                   _buildPanoStatStat(
                       "团队协作",
@@ -3646,7 +3649,7 @@ class CourseDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          const Icon(Icons.class_, size: 80, color: Colors.blueAccent),
+          Icon(Icons.class_, size: 80, color: Theme.of(context).colorScheme.secondary),
           const SizedBox(height: 16),
           Text(course.courseName,
               textAlign: TextAlign.center,
@@ -3803,7 +3806,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[900] : Colors.white,
+                color: isDark ? Colors.grey : Colors.white,
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
@@ -3973,7 +3976,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                       '仅显示最近 20 条',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[500],
+                        color: Colors.grey,
                       ),
                     ),
                   ),
@@ -4032,7 +4035,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: Colors.grey,
                       ),
                     ),
                   ],
@@ -4053,7 +4056,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
+        color: isDark ? Colors.grey : Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(

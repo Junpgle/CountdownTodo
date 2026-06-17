@@ -75,26 +75,27 @@ class ConflictAlertDialog extends StatelessWidget {
     final end = data['end_time'] ?? data['endTime'] ?? data['due_date'] ?? data['dueDate'];
 
     String timeStr = '时间未知';
-    if (start != null && end != null) {
-      final startTime = DateTime.fromMillisecondsSinceEpoch(
-          start is String ? int.parse(start) : (start is int ? start : 0),
-          isUtc: true).toLocal();
-      final endTime = DateTime.fromMillisecondsSinceEpoch(
-          end is String ? int.parse(end) : (end is int ? end : 0),
-          isUtc: true).toLocal();
+    final startMs = start is String ? int.tryParse(start) ?? 0 : (start is int ? start : 0);
+    final endMs = end is String ? int.tryParse(end) ?? 0 : (end is int ? end : 0);
+    if (startMs > 0 && endMs > 0) {
+      final startTime = DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      final endTime = DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
 
-      final startNum = int.tryParse(start.toString()) ?? 0;
-      final endNum = int.tryParse(end.toString()) ?? 0;
-
-      if (startTime.year == 1970 && startNum < 2400) {
-        final startHH = startNum ~/ 100;
-        final startMM = startNum % 100;
-        final endHH = endNum ~/ 100;
-        final endMM = endNum % 100;
+      if (startTime.year == 1970 && startMs < 2400) {
+        final startHH = startMs ~/ 100;
+        final startMM = startMs % 100;
+        final endHH = endMs ~/ 100;
+        final endMM = endMs % 100;
         timeStr = '${startHH.toString().padLeft(2,'0')}:${startMM.toString().padLeft(2,'0')} ~ ${endHH.toString().padLeft(2,'0')}:${endMM.toString().padLeft(2,'0')}';
       } else {
         timeStr = '${DateFormat('MM-dd HH:mm').format(startTime)} ~ ${DateFormat('HH:mm').format(endTime)}';
       }
+    } else if (startMs > 0) {
+      final startTime = DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      timeStr = DateFormat('MM-dd HH:mm').format(startTime);
+    } else if (endMs > 0) {
+      final endTime = DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+      timeStr = DateFormat('MM-dd HH:mm').format(endTime);
     }
 
     return Container(

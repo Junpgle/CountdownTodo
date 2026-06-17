@@ -5,7 +5,8 @@ import 'package:open_file/open_file.dart';
 import '../../services/lan_sync_service.dart';
 
 class LanSyncScreen extends StatefulWidget {
-  const LanSyncScreen({super.key});
+  final bool isEmbedded;
+  const LanSyncScreen({super.key, this.isEmbedded = false});
 
   @override
   State<LanSyncScreen> createState() => _LanSyncScreenState();
@@ -382,7 +383,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('局域网同步'),
         actions: [
           if (_service.isRunning && _devices.isEmpty)
@@ -492,6 +493,19 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                   ],
                 ),
               ),
+              if (widget.isEmbedded && _service.isRunning && _devices.isEmpty)
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  onPressed: _showManualAddDialog,
+                  tooltip: '手动添加设备',
+                ),
+              if (widget.isEmbedded)
+                IconButton(
+                  icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow, size: 20),
+                  onPressed: _toggleService,
+                  tooltip: _service.isRunning ? '停止' : '启动',
+                  color: _service.isRunning ? Colors.red : Colors.green,
+                ),
               if (_service.isRunning)
                 IconButton(
                   icon: const Icon(Icons.refresh, size: 20),
@@ -529,7 +543,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
         children: [
           ListTile(
             leading: CircleAvatar(
-              backgroundColor: isOnline ? Colors.blue : Colors.grey,
+              backgroundColor: isOnline ? Theme.of(context).colorScheme.primary : Colors.grey,
               child: const Icon(Icons.devices, color: Colors.white),
             ),
             title: Row(
@@ -579,8 +593,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                     onPressed:
                         !isOnline ? null : () => _pickAndSendFile(device),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      side: const BorderSide(color: Colors.blue),
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      side: BorderSide(color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ),
@@ -609,7 +623,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      color: Colors.blue.withValues(alpha: 0.1),
+      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -638,7 +652,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
           LinearProgressIndicator(
             value: _progressValue,
             backgroundColor: Colors.grey[300],
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
           ),
         ],
       ),

@@ -216,7 +216,7 @@ class CourseMonthView extends StatelessWidget {
                 Color? heatColor;
                 if (count > 0) {
                   double opacity = (count / 15).clamp(0.05, 0.4);
-                  heatColor = Colors.blue.withValues(alpha: opacity);
+                  heatColor = Theme.of(context).colorScheme.primary.withValues(alpha: opacity);
                 }
 
                 final List<CourseItem> dayCourses = activeDataViews.contains('courses') ? (courseMap[dStr] ?? []) : [];
@@ -450,12 +450,12 @@ class CourseMonthView extends StatelessWidget {
               child: Stack(
                 children: [
                   Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: List.generate(4, (i) => Container(height: 0.5, width: double.infinity, color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)))),
-                  ...courses.map((c) => _buildVerticalBar(c.startTime, c.endTime, Colors.blue.withValues(alpha: 0.6), height)),
+                  ...courses.map((c) => _buildVerticalBar(c.startTime, c.endTime, Theme.of(context).colorScheme.primary.withValues(alpha: 0.6), height)),
                   ...filteredTodos.where((t)=>t.dueDate != null).map((t) => _buildTimeDot(t.dueDate!.hour * 100 + t.dueDate!.minute, Colors.amber, height)),
                   ...logs.map((l) {
                     DateTime s = DateTime.fromMillisecondsSinceEpoch(l.startTime).toLocal();
                     DateTime e = DateTime.fromMillisecondsSinceEpoch(l.endTime).toLocal();
-                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Colors.blueAccent.withValues(alpha: 0.4), height);
+                    return _buildVerticalBar(s.hour * 100 + s.minute, e.hour * 100 + e.minute, Theme.of(context).colorScheme.secondary.withValues(alpha: 0.4), height);
                   }),
                   ...poms.map((p) {
                     final DateTime s = DateTime.fromMillisecondsSinceEpoch(p.startTime).toLocal();
@@ -470,9 +470,9 @@ class CourseMonthView extends StatelessWidget {
             Positioned(
               bottom: 4, left: 4, right: 4,
               child: Wrap(spacing: 2, children: [
-                if (courses.isNotEmpty) _buildMiniDot(Colors.blue),
+                if (courses.isNotEmpty) _buildMiniDot(Theme.of(context).colorScheme.primary),
                 if (filteredTodos.isNotEmpty) _buildMiniDot(Colors.amber),
-                if (logs.isNotEmpty) _buildMiniDot(Colors.blueAccent),
+                if (logs.isNotEmpty) _buildMiniDot(Theme.of(context).colorScheme.secondary),
                 if (poms.isNotEmpty) _buildMiniDot(Colors.redAccent),
               ]),
             ),

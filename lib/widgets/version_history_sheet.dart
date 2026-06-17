@@ -248,7 +248,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
         opIcon = Icons.add_circle_outline;
         break;
       case 'UPDATE':
-        opColor = Colors.blue;
+        opColor = Theme.of(context).colorScheme.primary;
         opIcon = Icons.edit_note;
         break;
       case 'ROLLBACK':

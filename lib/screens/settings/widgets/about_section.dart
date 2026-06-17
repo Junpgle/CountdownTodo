@@ -273,7 +273,7 @@ class _AboutSectionState extends State<AboutSection> {
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.info_outline, color: Colors.blue),
+                leading: Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
                 title: const Text('软件介绍'),
                 subtitle: const Text('CountDownTodo - 您的个人效率助手'),
                 trailing: const Icon(Icons.chevron_right),

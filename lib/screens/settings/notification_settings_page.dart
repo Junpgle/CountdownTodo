@@ -7,7 +7,8 @@ import '../../services/notification_service.dart';
 import 'package:intl/intl.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
-  const NotificationSettingsPage({super.key});
+  final bool isEmbedded;
+  const NotificationSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<NotificationSettingsPage> createState() =>
@@ -163,8 +164,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('通知管理'),
+      appBar: widget.isEmbedded ? null : AppBar(
+        title: const Text('通知与提醒设置'),
         centerTitle: true,
       ),
       body: ListView(
@@ -306,7 +307,6 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 ),
               ),
               if (_reminderEnabled) ...[
-                const Divider(height: 1, indent: 56),
                 _buildCourseReminderTile(),
               ],
             ],
@@ -338,26 +338,50 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ),
           const SizedBox(height: 16),
           Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              leading: CircleAvatar(
-                backgroundColor: Colors.teal.withValues(alpha: 0.12),
-                child: const Icon(Icons.manage_search, color: Colors.teal),
-              ),
-              title: const Text(
-                '定时闹钟管理',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-              ),
-              subtitle: Text(
-                '查看当前已注册到系统的精确闹钟提醒',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-              trailing: const Icon(Icons.chevron_right),
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: Colors.transparent, width: 1.5),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
               onTap: _showScheduledReminders,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.manage_search, color: Colors.teal, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '定时闹钟管理',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '查看当前已注册到系统的精确闹钟提醒',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+              ),
             ),
           ),
           if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
@@ -378,26 +402,57 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required ValueChanged<bool?> onChanged,
   }) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: SwitchListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        secondary: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.12),
-          child: Icon(icon, color: color),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: value ? color.withValues(alpha: 0.1) : (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: value ? color.withValues(alpha: 0.5) : Colors.transparent,
+          width: 1.5,
         ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => onChanged(!value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: color,
+              ),
+            ],
+          ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        value: value,
-        activeThumbColor: color,
-        onChanged: onChanged,
       ),
     );
   }
@@ -406,32 +461,23 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool enabled,
     required List<Widget> children,
   }) {
-    if (!enabled) {
-      return Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24.0),
-          child: Center(
-            child: Text(
-              '已关闭所有通知',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[500],
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
+    return AnimatedCrossFade(
+      firstChild: const SizedBox(width: double.infinity, height: 0),
+      secondChild: Padding(
+        padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+        child: GridView.extent(
+          maxCrossAxisExtent: 220,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.95,
+          children: children,
         ),
-      );
-    }
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        children: children,
       ),
+      crossFadeState:
+          enabled ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      duration: const Duration(milliseconds: 300),
     );
   }
 
@@ -442,38 +488,137 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return SwitchListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      secondary: Icon(icon, size: 20, color: Colors.grey[700]),
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: Theme.of(context).brightness == Brightness.dark 
+          ? Colors.grey.shade900 
+          : Colors.grey.shade100,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: value 
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5) 
+              : Colors.transparent,
+          width: 1.5,
+        )
       ),
-      value: value,
-      activeThumbColor: Colors.blue,
-      onChanged: onChanged,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => onChanged(!value),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: value 
+                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) 
+                          : Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: value ? Theme.of(context).colorScheme.primary : Colors.grey, size: 24),
+                  ),
+                  Switch(
+                    value: value,
+                    onChanged: onChanged,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildCourseReminderTile() {
-    return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      leading: const SizedBox(width: 20, height: 20), // Placeholder for indent
-      title: const Text('课程提醒时间', style: TextStyle(fontSize: 14)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '提前 $_courseReminderMinutes 分钟',
-            style: TextStyle(fontSize: 13, color: Colors.blue[700]),
-          ),
-          const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
-        ],
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: Theme.of(context).brightness == Brightness.dark 
+          ? Colors.grey.shade900 
+          : Colors.grey.shade100,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Colors.transparent, width: 1.5)
       ),
-      onTap: _showReminderTimePicker,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: _showReminderTimePicker,
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.timer, color: Colors.blue, size: 24),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$_courseReminderMinutes 分钟',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '课程提醒时间',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: Text(
+                  '距上课提前 $_courseReminderMinutes 分钟提醒',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -655,30 +800,80 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
         ),
-        Card(
-          elevation: 1,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: _todoGroups.map((group) {
-              final mins = _categoryReminderMinutes[group.id] ?? 5;
-              return ListTile(
-                leading: const Icon(Icons.folder_open_outlined, size: 20),
-                title: Text(group.name, style: const TextStyle(fontSize: 14)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      mins == 0 ? '准时' : '提前 $mins 分钟',
-                      style: TextStyle(fontSize: 13, color: Colors.blue[700]),
-                    ),
-                    const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
-                  ],
-                ),
+        GridView.extent(
+          maxCrossAxisExtent: 220,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.1,
+          children: _todoGroups.map((group) {
+            final mins = _categoryReminderMinutes[group.id] ?? 5;
+            return Card(
+              elevation: 0,
+              margin: EdgeInsets.zero,
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.grey.shade900 
+                  : Colors.grey.shade100,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Colors.transparent, width: 1.5)
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
                 onTap: () => _showCategoryReminderPicker(group),
-              );
-            }).toList(),
-          ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.folder, color: Colors.teal, size: 24),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              mins == 0 ? '准时' : '提前 $mins分',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        group.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Expanded(
+                        child: Text(
+                          '点击设置该分类下的待办默认提前提醒时间',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );

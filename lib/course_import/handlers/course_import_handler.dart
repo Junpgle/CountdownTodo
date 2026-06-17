@@ -46,11 +46,11 @@ class CourseImportHandler {
                 children: [
                   const SizedBox(height: 12),
                   Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(
                       children: [
-                        Icon(Icons.school_outlined, color: Colors.blueAccent),
+                        Icon(Icons.school_outlined, color: Theme.of(context).colorScheme.secondary),
                         SizedBox(width: 12),
                         Text('请选择所属高校/系统', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       ],
@@ -193,18 +193,18 @@ class CourseImportHandler {
                 children: [
                   const SizedBox(height: 12),
                   Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 24),
                     child: Row(
                       children: [
-                        Icon(Icons.public, color: Colors.blueAccent),
+                        Icon(Icons.public, color: Theme.of(context).colorScheme.secondary),
                         SizedBox(width: 12),
                         Text('选择教务入口', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
                   ...schoolUrls.entries.map((e) => ListTile(
-                    leading: const Icon(Icons.language_rounded, color: Colors.blueAccent),
+                    leading: Icon(Icons.language_rounded, color: Theme.of(context).colorScheme.secondary),
                     title: Text(e.key),
                     subtitle: Text(e.value, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                     onTap: () => Navigator.pop(context, e.value),
@@ -430,7 +430,7 @@ class CourseImportHandler {
   }
 
   void _closeLoadingDialog() {
-    if (Navigator.of(context).canPop()) {
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }
   }

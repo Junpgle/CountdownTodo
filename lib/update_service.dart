@@ -1107,8 +1107,8 @@ class UpdateService {
                         children: [
                           if (hasUpdate) ...[
                             Row(children: [
-                              const Icon(Icons.new_releases,
-                                  color: Colors.blue),
+                              Icon(Icons.new_releases,
+                                  color: Theme.of(context).colorScheme.primary),
                               const SizedBox(width: 8),
                               Text(manifest.updateInfo.title,
                                   style: const TextStyle(
@@ -1118,9 +1118,9 @@ class UpdateService {
                             const SizedBox(height: 6),
                             Text(
                                 "当前: $currentVersion  →  最新: ${manifest.versionName}",
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.blue,
+                                    color: Theme.of(context).colorScheme.primary,
                                     fontWeight: FontWeight.bold)),
                             const SizedBox(height: 10),
                             Text(manifest.updateInfo.description),
@@ -1188,9 +1188,9 @@ class UpdateService {
                                                 color: Colors.grey)),
                                         Text(
                                             "${(_downloadProgress * 100).toStringAsFixed(1)}%",
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 13,
-                                                color: Colors.blue,
+                                                color: Theme.of(context).colorScheme.primary,
                                                 fontWeight: FontWeight.bold)),
                                       ],
                                     ),
@@ -1202,8 +1202,8 @@ class UpdateService {
                                         minHeight: 12,
                                         backgroundColor: Colors.grey[200],
                                         valueColor:
-                                            const AlwaysStoppedAnimation<Color>(
-                                                Colors.blueAccent),
+                                            AlwaysStoppedAnimation<Color>(
+                                                Theme.of(context).colorScheme.secondary),
                                       ),
                                     ),
                                   ],

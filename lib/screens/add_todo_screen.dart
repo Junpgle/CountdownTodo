@@ -1125,7 +1125,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
     for (final m in RegExp(r'[一-鿿]+').allMatches(text)) {
       final seg = m.group(0)!;
-      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length; i++) {
+        tokens.add(seg[i]);
+      }
       for (int i = 0; i < seg.length - 1; i++) {
         tokens.add(seg.substring(i, i + 2));
       }
@@ -1366,7 +1368,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
                     .format(_createdAt),
                 icon: Icons.play_circle_fill,
-                color: Colors.blueAccent,
+                color: Theme.of(context).colorScheme.secondary,
                 onTap: _pickStartTime,
               )),
               const SizedBox(width: 12),
@@ -1472,8 +1474,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         firstDate: DateTime.now(),
                         lastDate: DateTime(2100),
                       );
-                      if (picked != null)
+                      if (picked != null) {
                         setState(() => _recurrenceEndDate = picked);
+                      }
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -677,7 +677,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: Colors.grey),
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
@@ -707,10 +707,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: _isRetrying
-                            ? Colors.blue.shade50
+                            ? Theme.of(context).colorScheme.primary
                             : (_retryStatus!.contains('失败')
-                                ? Colors.red.shade50
-                                : Colors.orange.shade50),
+                                ? Colors.red
+                                : Colors.orange),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -795,11 +795,11 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
+          Icon(Icons.inbox, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
             '没有待办事项',
-            style: TextStyle(color: Colors.grey.shade600),
+            style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -869,14 +869,14 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: Colors.grey,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     todo.remark!,
                     style: TextStyle(
                       fontSize: 14,
-                      color: Colors.grey.shade700,
+                      color: Colors.grey,
                     ),
                   ),
                 ),
@@ -893,20 +893,20 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
+                    color: Colors.green,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.check_circle,
-                          size: 16, color: Colors.green.shade700),
+                          size: 16, color: Colors.green),
                       const SizedBox(width: 8),
                       Text(
                         '已添加 ${_confirmedTodos.length} 个待办',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.green.shade700,
+                          color: Colors.green,
                         ),
                       ),
                     ],
@@ -948,13 +948,13 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
     return Row(
       children: [
-        Icon(timeIcon, size: 18, color: Colors.grey.shade600),
+        Icon(timeIcon, size: 18, color: Colors.grey),
         const SizedBox(width: 8),
         Text(
           timeText,
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey.shade600,
+            color: Colors.grey,
           ),
         ),
       ],
@@ -967,20 +967,20 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.check_circle_outline,
-              size: 80, color: Colors.green.shade400),
+              size: 80, color: Colors.green),
           const SizedBox(height: 16),
           Text(
             '确认完成',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.green.shade700,
+              color: Colors.green,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '已添加 ${_confirmedTodos.length} 个待办',
-            style: TextStyle(color: Colors.grey.shade600),
+            style: TextStyle(color: Colors.grey),
           ),
         ],
       ),
@@ -1061,7 +1061,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
   Widget _buildSkeleton(bool isDark) {
     final baseColor =
-        isDark ? Colors.grey[800]! : Colors.white.withValues(alpha: 0.5);
+        isDark ? Colors.grey : Colors.white.withValues(alpha: 0.5);
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(

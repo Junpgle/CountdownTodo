@@ -45,10 +45,10 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
     final isDark = theme.brightness == Brightness.dark;
     
     // 优先级色彩方案
-    final accentColor = widget.announcement.isPriority ? Colors.orange[400]! : Colors.blue[400]!;
+    final accentColor = widget.announcement.isPriority ? Colors.orange : Theme.of(context).colorScheme.primary;
     final bgColor = widget.announcement.isPriority 
-        ? (isDark ? Colors.orange[900]!.withValues(alpha: 0.15) : Colors.orange[50]!.withValues(alpha: 0.7))
-        : (isDark ? Colors.blueGrey[900]!.withValues(alpha: 0.15) : Colors.blue[50]!.withValues(alpha: 0.7));
+        ? (isDark ? Colors.orange.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.7))
+        : (isDark ? Colors.blueGrey.withValues(alpha: 0.15) : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

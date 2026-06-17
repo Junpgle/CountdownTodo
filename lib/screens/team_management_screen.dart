@@ -212,10 +212,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
+                  color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.auto_awesome_rounded,
-                  color: Colors.blueAccent),
+              child: Icon(Icons.auto_awesome_rounded,
+                  color: Theme.of(context).colorScheme.secondary),
             ),
             const SizedBox(width: 12),
             const Text('发现团队邀请',
@@ -249,7 +249,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           StatefulBuilder(builder: (ctx, setDialogState) {
             return ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -378,7 +378,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         if (item is TodoItem) {
           if (item.isDeleted) continue;
           if (!item.hasConflict) continue;
-          if (item.collabType == 1) continue; // 🚀 独立完成待办不参与冲突展示
+          // 独立完成待办的时间冲突同样展示
           if (item.isAllDayTask) continue;
 
           // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过
@@ -585,9 +585,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.1),
+                  color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, color: Colors.blueAccent),
+              child: Icon(icon, color: Theme.of(context).colorScheme.secondary),
             ),
             const SizedBox(width: 12),
             Text(title,
@@ -605,7 +605,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           StatefulBuilder(builder: (ctx, setDialogState) {
             return ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -763,7 +763,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           ],
         ),
         floatingActionButton: FloatingActionButton(
-          backgroundColor: Colors.blueAccent,
+          backgroundColor: Theme.of(context).colorScheme.secondary,
           onPressed: _showSpeedDialMenu,
           child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
         ),
@@ -891,7 +891,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               height: 42,
               child: CircularProgressIndicator(
                 strokeWidth: 3,
-                color: isDark ? Colors.white70 : Colors.blueAccent,
+                color: isDark ? Colors.white70 : Theme.of(context).colorScheme.secondary,
               ),
             ),
             const SizedBox(height: 16),
@@ -1054,14 +1054,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? Colors.blueAccent.withValues(alpha: 0.1)
+                            ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)
                             : (isDark
                                 ? Colors.white.withValues(alpha: 0.05)
                                 : Colors.white),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                             color: isSelected
-                                ? Colors.blueAccent.withValues(alpha: 0.3)
+                                ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)
                                 : Colors.transparent),
                       ),
                       child: Row(
@@ -1136,10 +1136,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-              color: Colors.blueAccent.withValues(alpha: 0.05),
+              color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.05),
               shape: BoxShape.circle),
           child: Icon(Icons.groups_2_rounded,
-              size: 72, color: Colors.blueAccent.withValues(alpha: 0.5)),
+              size: 72, color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.5)),
         ),
         const SizedBox(height: 24),
         Text('还没加入任何团队哦',
@@ -1156,7 +1156,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           children: [
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -1172,13 +1172,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             const SizedBox(width: 16),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.blueAccent,
+                foregroundColor: Theme.of(context).colorScheme.secondary,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
                 side:
-                    BorderSide(color: Colors.blueAccent.withValues(alpha: 0.3)),
+                    BorderSide(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.3)),
               ),
               onPressed: _showJoinTeamDialog,
               icon: const Icon(Icons.link_rounded, size: 20),
@@ -1201,9 +1201,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           child: Row(
             children: [
               Icon(Icons.mark_email_unread_rounded,
-                  size: 18, color: Colors.blueAccent),
+                  size: 18, color: Theme.of(context).colorScheme.secondary),
               const SizedBox(width: 8),
-              const Text('待处理的邀请',
+              Text('待处理的邀请',
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -1216,16 +1216,16 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isDark
-                    ? Colors.blueAccent.withValues(alpha: 0.05)
+                    ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.05)
                     : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border:
-                    Border.all(color: Colors.blueAccent.withValues(alpha: 0.2)),
+                    Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.2)),
                 boxShadow: isDark
                     ? []
                     : [
                         BoxShadow(
-                            color: Colors.blueAccent.withValues(alpha: 0.05),
+                            color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.05),
                             blurRadius: 10,
                             offset: const Offset(0, 4))
                       ],
@@ -1233,9 +1233,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               child: Row(
                 children: [
                   CircleAvatar(
-                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
-                      child: const Icon(Icons.groups_rounded,
-                          color: Colors.blueAccent)),
+                      backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
+                      child: Icon(Icons.groups_rounded,
+                          color: Theme.of(context).colorScheme.secondary)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1272,9 +1272,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                       IconButton(
                         style: IconButton.styleFrom(
                             backgroundColor:
-                                Colors.blueAccent.withValues(alpha: 0.1)),
-                        icon: const Icon(Icons.check_rounded,
-                            size: 18, color: Colors.blueAccent),
+                                Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)),
+                        icon: Icon(Icons.check_rounded,
+                            size: 18, color: Theme.of(context).colorScheme.secondary),
                         onPressed: () =>
                             _handleInvitation(inv['team_uuid'], 'accept'),
                         tooltip: '加入',
@@ -1574,8 +1574,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
-                      foregroundColor: Colors.blueAccent,
+                      backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
+                      foregroundColor: Theme.of(context).colorScheme.secondary,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -1643,7 +1643,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   Widget _buildTeamAvatar(Team team) {
     final colors = [
-      Colors.blueAccent,
+      Theme.of(context).colorScheme.secondary,
       Colors.purpleAccent,
       Colors.orangeAccent,
       Colors.teal,
@@ -1701,7 +1701,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
               icon: Icons.copy_all_rounded,
               title: '分享邀请码',
               subtitle: '复制邀请话术发送给好友，点击自动申请',
-              color: Colors.blueAccent,
+              color: Theme.of(context).colorScheme.secondary,
               onTap: () {
                 Navigator.pop(context);
                 unawaited(_copyTeamInviteText(team));
@@ -1906,7 +1906,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   Widget _buildSpeedDial(BuildContext context, bool isDark) {
     return FloatingActionButton(
-      backgroundColor: Colors.blueAccent,
+      backgroundColor: Theme.of(context).colorScheme.secondary,
       onPressed: () {
         showModalBottomSheet(
           context: context,
@@ -1937,10 +1937,10 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                          color: Colors.blueAccent.withValues(alpha: 0.1),
+                          color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
                           shape: BoxShape.circle),
-                      child: const Icon(Icons.add_rounded,
-                          color: Colors.blueAccent)),
+                      child: Icon(Icons.add_rounded,
+                          color: Theme.of(context).colorScheme.secondary)),
                   title: const Text('创建新团队',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('开启一个全新的协作项目'),
@@ -2100,8 +2100,8 @@ class _TeamDetailViewState extends State<_TeamDetailView>
               TabBar(
                 controller: _tabController,
                 isScrollable: false,
-                indicatorColor: Colors.blueAccent,
-                labelColor: Colors.blueAccent,
+                indicatorColor: Theme.of(context).colorScheme.secondary,
+                labelColor: Theme.of(context).colorScheme.secondary,
                 unselectedLabelColor: Colors.grey,
                 indicatorSize: TabBarIndicatorSize.label,
                 tabs: const [
@@ -2141,7 +2141,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
 
   Widget _buildTeamAvatarLarge(Team team) {
     final colors = [
-      Colors.blueAccent,
+      Theme.of(context).colorScheme.secondary,
       Colors.purpleAccent,
       Colors.orangeAccent,
       Colors.teal,
@@ -2180,7 +2180,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
         const SizedBox(width: 8),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blueAccent,
+            backgroundColor: Theme.of(context).colorScheme.secondary,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             shape:
@@ -2333,7 +2333,7 @@ class _TeamSettingsView extends StatelessWidget {
         _buildSettingItem(
           context,
           icon: Icons.vpn_key_rounded,
-          color: Colors.blueAccent,
+          color: Theme.of(context).colorScheme.secondary,
           title: '团队邀请码',
           subtitle: normalizeInviteCode(team.inviteCode) ?? '尚未生成',
           trailing:
@@ -2352,7 +2352,7 @@ class _TeamSettingsView extends StatelessWidget {
           _buildSettingItem(
             context,
             icon: Icons.refresh_rounded,
-            color: Colors.blueAccent,
+            color: Theme.of(context).colorScheme.secondary,
             title: '重置邀请码',
             subtitle: '旧的邀请码将立即失效',
             onTap: () async {
@@ -2489,8 +2489,8 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
           padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              const Icon(Icons.manage_accounts_rounded,
-                  color: Colors.blueAccent),
+              Icon(Icons.manage_accounts_rounded,
+                  color: Theme.of(context).colorScheme.secondary),
               const SizedBox(width: 12),
               Text('成员管理 - ${widget.team.name}',
                   style: const TextStyle(
@@ -2511,13 +2511,13 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
                     if (_requests.isNotEmpty) ...[
-                      const Padding(
+                      Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Text('待审批申请',
                             style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blueAccent)),
+                                color: Theme.of(context).colorScheme.secondary)),
                       ),
                       ..._requests.map((r) => _buildRequestItem(r)),
                       const SizedBox(height: 16),
@@ -2542,15 +2542,15 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: Colors.blueAccent.withValues(alpha: 0.05),
+          color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.1))),
+          border: Border.all(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1))),
       child: Row(
         children: [
           CircleAvatar(
-              backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
+              backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
               child: Text(r['username']?[0]?.toUpperCase() ?? '?',
-                  style: const TextStyle(color: Colors.blueAccent))),
+                  style: TextStyle(color: Theme.of(context).colorScheme.secondary))),
           const SizedBox(width: 12),
           Expanded(
               child: Text(r['username'] ?? '未知用户',
@@ -2561,7 +2561,7 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
           ElevatedButton(
             onPressed: () => _handleRequest(r, 'approve'),
             style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -2580,17 +2580,17 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     return ListTile(
       leading: CircleAvatar(
           backgroundColor: isAdmin
-              ? Colors.blueAccent.withValues(alpha: 0.1)
+              ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)
               : Colors.grey.withValues(alpha: 0.1),
           child: Text(m['username']?[0]?.toUpperCase() ?? '?',
               style:
-                  TextStyle(color: isAdmin ? Colors.blueAccent : Colors.grey))),
+                  TextStyle(color: isAdmin ? Theme.of(context).colorScheme.secondary : Colors.grey))),
       title: Text('${m['username']}${isMe ? ' (我)' : ''}',
           style: TextStyle(
               fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
       subtitle: Text(isAdmin ? '管理员' : '成员',
           style: TextStyle(
-              fontSize: 12, color: isAdmin ? Colors.blueAccent : Colors.grey)),
+              fontSize: 12, color: isAdmin ? Theme.of(context).colorScheme.secondary : Colors.grey)),
       trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
           ? IconButton(
               icon: const Icon(Icons.person_remove_rounded,

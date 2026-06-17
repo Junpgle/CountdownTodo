@@ -7,10 +7,10 @@ class MedalRecommendationCard extends StatelessWidget {
   final VoidCallback? onViewAll;
 
   const MedalRecommendationCard({
-    Key? key,
+    super.key,
     required this.recommendation,
     this.onViewAll,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +62,7 @@ class MedalRecommendationCard extends StatelessWidget {
                 if (recommendation.earnedMedals.isNotEmpty)
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
+                      color: Colors.amber.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     padding: const EdgeInsets.symmetric(
@@ -137,7 +137,7 @@ class MedalRecommendationCard extends StatelessWidget {
                     '查看全部勋章 (${recommendation.allMedals.length})',
                   ),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.blue,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
@@ -257,9 +257,9 @@ class MedalListDialog extends StatefulWidget {
   final MedalRecommendation recommendation;
 
   const MedalListDialog({
-    Key? key,
+    super.key,
     required this.recommendation,
-  }) : super(key: key);
+  });
 
   @override
   State<MedalListDialog> createState() => _MedalListDialogState();

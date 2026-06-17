@@ -17,6 +17,7 @@ import '../utils/page_transitions.dart';
 import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
+import 'home_settings_screen.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -66,7 +67,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   // 🚀 最近更新功能数据 —— 每次发版只改这里
   List<_RecentFeature> get _recentFeatures => [
-    _RecentFeature(Icons.view_week_rounded, Colors.blue, '周视图午休折叠', '课程->周视图',
+    _RecentFeature(Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
+        destinationBuilder: () => const SettingsPage(initialTarget: 'theme_color')),
+    _RecentFeature(Icons.view_week_rounded, Theme.of(context).colorScheme.primary, '周视图午休折叠', '课程->周视图',
         destinationBuilder: () => WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
     _RecentFeature(Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
         destinationBuilder: () => PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
@@ -681,13 +684,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
     if (item.startsWith('【新增】')) {
       dotColor = Colors.green;
-    } else if (item.startsWith('【优化】'))
-      dotColor = Colors.blue;
-    else if (item.startsWith('【修复】'))
+    } else if (item.startsWith('【优化】')){
+      dotColor = Theme.of(context).colorScheme.primary;
+    } else if (item.startsWith('【修复】')){
       dotColor = Colors.orange;
-    else if (item.startsWith('【重构】'))
+    } else if (item.startsWith('【重构】')){
       dotColor = Colors.purple;
-    else if (item.startsWith('⚠️')) dotColor = Colors.red;
+    } else if (item.startsWith('⚠️')) {
+      dotColor = Colors.red;
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
@@ -912,7 +917,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         const SizedBox(height: 16),
         _buildStepHeader(
           icon: Icons.notifications_active_outlined,
-          iconColor: Colors.blue,
+          iconColor: Theme.of(context).colorScheme.primary,
           title: '精确保活的通知唤醒',
           subtitle: '不论是日程、倒计时、还是番茄钟，我们确保即使应用在后台，也会准时向您推送提醒。',
         ),
@@ -1144,7 +1149,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       const SizedBox(height: 16),
       _buildStepHeader(
         icon: Icons.web_asset_rounded,
-        iconColor: Colors.blueAccent,
+        iconColor: Theme.of(context).colorScheme.secondary,
         title: '无缝接入 Windows 屏幕时间',
         subtitle: '利用本地读取 Tai 软件（专业 Windows 时间追踪应用）的数据库，轻松在应用内部汇总双端时长。',
       ),
@@ -1183,7 +1188,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               Text(
                 _taiDbPath.isNotEmpty ? _taiDbPath : '未设置，功能无法生效',
                 style: TextStyle(
-                    color: _taiDbPath.isNotEmpty ? Colors.blue : Colors.red,
+                    color: _taiDbPath.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.red,
                     fontSize: 13),
               ),
               const SizedBox(height: 16),

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
@@ -45,9 +48,11 @@ import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
 import 'course_screens.dart';
 import 'course_calendar_adjustment_screen.dart';
+import 'time_log_screen.dart';
 import 'band_sync_screen.dart';
 import 'conflict_inbox_screen.dart';
 import 'team_management_screen.dart';
+import 'personal_timeline_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';
@@ -109,6 +114,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
+  Map<String, dynamic> _homeTextConfig = {};
 
   List<String> _leftSections = ['courses', 'todos', 'math'];
   List<String> _rightSections = [
@@ -308,6 +314,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     _loadSectionPreferences();
     _loadSemesterSettings();
+    _loadHomeTextConfig();
     _generateGreeting();
     _loadAllData();
     _initManifestWallpaper();
@@ -327,6 +334,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
+    StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (Platform.isAndroid || Platform.isIOS) {
@@ -495,6 +503,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _bannerRefreshTimer?.cancel();
     _pomodoroTickNotifier.dispose();
     MacPomodoroStatusBarService.dispose();
+    StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -741,14 +750,18 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   /// 处理 App Shortcut 导航
-  void _handleShortcut(String shortcutType) {
+  Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
     debugPrint("⚡ 处理 Shortcut: $shortcutType");
     switch (shortcutType) {
       case 'settings':
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           PageTransitions.slideHorizontal(const SettingsPage()),
         );
+        _loadSectionPreferences();
+        _loadSemesterSettings();
+        await _loadHomeTextConfig();
+        _loadAllData(deferred: true);
         break;
       case 'schedule':
         PageTransitions.pushFromRect(
@@ -2695,6 +2708,54 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   String get _timeSalutation {
+    // 从配置中获取时间问候语模式
+    final salutationMode =
+        _homeTextConfig['salutationMode'] as String? ?? 'timed';
+
+    if (salutationMode == 'fixed') {
+      // 固定模式：返回固定的问候语
+      final fixedSalutation =
+          _homeTextConfig['fixedSalutation'] as String?;
+      if (fixedSalutation != null && fixedSalutation.isNotEmpty) {
+        return fixedSalutation;
+      }
+      return '你好';
+    }
+
+    // 分时段模式：根据配置或默认值返回
+    final salutationSlots =
+        _homeTextConfig['salutationSlots'] as List<dynamic>?;
+    if (salutationSlots != null && salutationSlots.isNotEmpty) {
+      final now = DateTime.now();
+      final currentMinutes = now.hour * 60 + now.minute;
+
+      for (var slot in salutationSlots) {
+        final slotMap = slot as Map<String, dynamic>;
+        final startHour = slotMap['startHour'] as int;
+        final startMinute = slotMap['startMinute'] as int;
+        final endHour = slotMap['endHour'] as int;
+        final endMinute = slotMap['endMinute'] as int;
+        final text = slotMap['text'] as String?;
+
+        if (text == null || text.isEmpty) continue;
+
+        final startMinutes = startHour * 60 + startMinute;
+        final endMinutes = endHour * 60 + endMinute;
+
+        bool isInSlot;
+        if (endMinutes <= startMinutes) {
+          isInSlot =
+              currentMinutes >= startMinutes || currentMinutes < endMinutes;
+        } else {
+          isInSlot =
+              currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        }
+
+        if (isInSlot) return text;
+      }
+    }
+
+    // 默认分时段逻辑
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) return "上午好";
     if (hour >= 12 && hour < 14) return "中午好";
@@ -2703,60 +2764,71 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   void _generateGreeting() {
-    final hour = DateTime.now().hour;
-    List<String> greetings;
+    final now = DateTime.now();
+    final currentMinutes = now.hour * 60 + now.minute;
 
-    if (hour >= 5 && hour < 11) {
-      greetings = [
-        "今天也要元气超标！",
-        "新的一天，把快乐置顶。",
-        "迎着光，做自己的小太阳。",
-        "起床充电，活力满格。",
-        "今日宜：开心、努力、好运。"
-      ];
-    } else if (hour >= 11 && hour < 14) {
-      greetings = [
-        "吃饱喝足，继续奔赴。",
-        "中场能量补给，快乐不打烊。",
-        "稳住状态，万事可期。",
-        "生活不慌不忙，慢慢发光。",
-        "好好吃饭，就是好好爱自己。"
-      ];
-    } else if (hour >= 14 && hour < 18) {
-      greetings = [
-        "保持热爱，保持冲劲。",
-        "状态在线，干劲拉满。",
-        "不急不躁，温柔又有力量。",
-        "把普通日子，过得热气腾腾。",
-        "继续向前，好运正在路上。"
-      ];
-    } else if (hour >= 18 && hour < 23) {
-      greetings = [
-        "晚风轻踩云朵，今天辛苦啦。",
-        "卸下疲惫，拥抱温柔。",
-        "今日圆满，万事顺心。",
-        "把烦恼清空，把快乐装满。",
-        "好好休息，明天依旧闪亮。"
-      ];
-    } else if (hour >= 23 || hour < 3) {
-      greetings = [
-        "愿你心安，好梦常伴。",
-        "安静沉淀，积蓄力量。",
-        "不慌不忙，自在生长。",
-        "温柔治愈，接纳所有情绪。",
-        "今夜安睡，明日更好。"
-      ];
+    // 从配置中获取问候语模式
+    final greetingMode = _homeTextConfig['greetingMode'] as String? ?? 'timed';
+
+    if (greetingMode == 'fixed') {
+      // 固定模式：从固定问候语列表中随机选择
+      final fixedGreetings =
+          _homeTextConfig['fixedGreetings'] as List<dynamic>?;
+      if (fixedGreetings != null && fixedGreetings.isNotEmpty) {
+        _currentGreeting =
+            fixedGreetings[Random().nextInt(fixedGreetings.length)] as String;
+        return;
+      }
     } else {
-      greetings = [
-        "凌晨的星光，为你照亮前路。",
-        "此刻努力，未来可期。",
-        "安静时光，悄悄变优秀。",
-        "不负自己，不负岁月。",
-        "愿你眼里有光，心中有梦。"
-      ];
+      // 分时段模式：根据当前时间匹配时段
+      final timeSlots =
+          _homeTextConfig['timeSlots'] as List<dynamic>?;
+      if (timeSlots != null) {
+        for (var slot in timeSlots) {
+          final slotMap = slot as Map<String, dynamic>;
+          final startHour = slotMap['startHour'] as int;
+          final startMinute = slotMap['startMinute'] as int;
+          final endHour = slotMap['endHour'] as int;
+          final endMinute = slotMap['endMinute'] as int;
+          final greetings =
+              (slotMap['greetings'] as List<dynamic>?)?.cast<String>();
+
+          if (greetings == null || greetings.isEmpty) continue;
+
+          final startMinutes = startHour * 60 + startMinute;
+          final endMinutes = endHour * 60 + endMinute;
+
+          bool isInSlot;
+          if (endMinutes <= startMinutes) {
+            // 跨天时段
+            isInSlot =
+                currentMinutes >= startMinutes || currentMinutes < endMinutes;
+          } else {
+            // 正常时段
+            isInSlot =
+                currentMinutes >= startMinutes && currentMinutes < endMinutes;
+          }
+
+          if (isInSlot) {
+            _currentGreeting = greetings[Random().nextInt(greetings.length)];
+            return;
+          }
+        }
+      }
     }
 
-    _currentGreeting = greetings[Random().nextInt(greetings.length)];
+    // 兜底：使用默认问候语
+    _currentGreeting = "愿你今天一切顺利！";
+  }
+
+  Future<void> _loadHomeTextConfig() async {
+    final config = await StorageService.getHomeTextConfig();
+    if (mounted) {
+      setState(() {
+        _homeTextConfig = config;
+        _generateGreeting();
+      });
+    }
   }
 
   Future<void> _initNotifications() async {
@@ -2931,7 +3003,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
       final bool hasTeamConflict = conflictDetectionEnabled &&
           (allTodos.any((t) {
-                if (!t.hasConflict || t.collabType == 1 || (t.teamUuid?.isEmpty ?? true)) {
+                if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) {
                   return false;
                 }
                 if (t.isAllDayTask) return false;
@@ -3400,7 +3472,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           return AlertDialog(
             title: Row(
               children: [
-                const Icon(Icons.analytics_outlined, color: Colors.blueAccent),
+                Icon(Icons.analytics_outlined, color: Theme.of(context).colorScheme.secondary),
                 const SizedBox(width: 10),
                 const Text("链路诊断报告",
                     style:
@@ -3627,6 +3699,13 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<String> _randomWallpaperUrls = [];
   bool _isWallpaperLoadingError = false;
 
+  bool _isLocalFilePath(String path) {
+    return !path.startsWith('http://') &&
+        !path.startsWith('https://') &&
+        !path.startsWith('assets/') &&
+        !path.startsWith('data:');
+  }
+
   void _handleWallpaperError() {
     if (!mounted || _isWallpaperLoadingError) return;
     debugPrint(
@@ -3643,6 +3722,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     // Priority: Manifest -> Bing -> Random List -> Asset Fallback -> None
     final prefs = await SharedPreferences.getInstance();
     final provider = prefs.getString('wallpaper_provider') ?? 'bing';
+
+    // 自定义壁纸模式：不执行任何 fallback
+    if (provider == 'custom') return;
 
     if (_wallpaperRetryCount == 1) {
       // If manifest failed (or was first), try provider
@@ -3728,6 +3810,33 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _initManifestWallpaper() async {
+    _setupWallpaperListeners();
+    await _refreshWallpaper();
+  }
+
+  void _onWallpaperRefresh() {
+    if (mounted) _refreshWallpaper();
+  }
+
+  Future<void> _refreshWallpaper() async {
+    final provider = await StorageService.getWallpaperProvider();
+
+    // 自定义壁纸模式：直接从本地加载，跳过所有网络逻辑和 manifest 推送
+    if (provider == 'custom') {
+      final customPath = await StorageService.getWallpaperCustomPath();
+      if (customPath != null && customPath.isNotEmpty) {
+        final file = File(customPath);
+        if (await file.exists() && mounted) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = customPath;
+            _isWallpaperLoadingError = false;
+          });
+        }
+      }
+      return;
+    }
+
     await WallpaperCacheService.cleanupIfNeeded();
     await UpdateService.initWallpaper();
     final manifestShow = UpdateService.wallpaperShowNotifier.value;
@@ -3741,7 +3850,6 @@ class _HomeDashboardState extends State<HomeDashboard>
         _isWallpaperLoadingError = false;
       });
     } else {
-      final provider = await StorageService.getWallpaperProvider();
       if (provider == 'bing') {
         await _fetchBingWallpaper();
       } else {
@@ -3753,7 +3861,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (await UpdateService.needsWallpaperRefresh()) {
       UpdateService.updateWallpaperFromManifest();
     }
+  }
 
+  void _setupWallpaperListeners() {
     UpdateService.wallpaperShowNotifier.addListener(() {
       if (mounted) {
         final show = UpdateService.wallpaperShowNotifier.value;
@@ -3762,7 +3872,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           setState(() {
             _wallpaperShow = true;
             _wallpaperUrl = url;
-            _wallpaperRetryCount = 0; // Reset on manual/auto update
+            _wallpaperRetryCount = 0;
             _isWallpaperLoadingError = false;
           });
         } else if (mounted) {
@@ -3878,7 +3988,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     bool isLight = showWallpaper;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
 
-    return Scaffold(
+    final mainScreen = Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
       backgroundColor: (showWallpaper && !Platform.isWindows)
@@ -3893,15 +4003,22 @@ class _HomeDashboardState extends State<HomeDashboard>
                       _wallpaperUrl!,
                       fit: BoxFit.cover,
                     )
-                  : _WallpaperNetworkImage(
-                      url: _wallpaperUrl!,
-                      onSuccess: () {
-                        _wallpaperRetryCount = 0;
-                      },
-                      onError: () {
-                        _handleWallpaperError();
-                      },
-                    ),
+                  : _isLocalFilePath(_wallpaperUrl!)
+                      ? Image.file(
+                          File(_wallpaperUrl!),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const SizedBox.shrink(),
+                        )
+                      : _WallpaperNetworkImage(
+                          url: _wallpaperUrl!,
+                          onSuccess: () {
+                            _wallpaperRetryCount = 0;
+                          },
+                          onError: () {
+                            _handleWallpaperError();
+                          },
+                        ),
             ),
           if (showWallpaper)
             Positioned.fill(
@@ -3916,6 +4033,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                     username: widget.username,
                     timeSalutation: _timeSalutation,
                     currentGreeting: _currentGreeting,
+                    textConfig: HomeTextConfig(
+                      customTimeSalutation: _homeTextConfig['customTimeSalutation'] as String?,
+                      dateFormat: _homeTextConfig['dateFormat'] as String?,
+                      usernameFormat: _homeTextConfig['usernameFormat'] as String?,
+                    ),
                     isLight: isLight,
                     isSyncing: _isSyncing,
                     onSync: _showSyncOptionsDialog,
@@ -3957,6 +4079,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       );
                       _loadSectionPreferences();
                       _loadSemesterSettings();
+                      await _loadHomeTextConfig();
                       _loadAllData(deferred: true);
                     },
                   ),
@@ -4527,18 +4650,14 @@ class _HomeDashboardState extends State<HomeDashboard>
               context: context,
               page: AddTodoScreen(
                 todoGroups: _todoGroups,
-                initialTeamUuid:
-                    _currentSelectedTeamUuid, // 🚀 关键修复：将当前选中的团队 Tab 传给创建页
+                initialTeamUuid: _currentSelectedTeamUuid,
                 initialTeamName: _currentSelectedTeamName,
                 onTodoAdded: (todo) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
+                  final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
                   await StorageService.saveTodos(widget.username, allTodos);
-                  // 🚀 协作实时化：发送更新信号
                   if (todo.teamUuid != null) {
-                    PomodoroSyncService.instance
-                        .sendTeamUpdateSignal(todo.teamUuid);
+                    PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -4548,23 +4667,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) {
                     await _loadAllData(deferred: true);
-                    // 🧪 额外加固：确保 UI 刷新
                     setState(() {});
                   }
                 },
                 onTodosBatchAdded: (todos) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
+                  final allTodos = await StorageService.getTodos(widget.username);
                   allTodos.addAll(todos);
                   await StorageService.saveTodos(widget.username, allTodos);
-                  // 🚀 协作实时化：发送更新信号
-                  final updatedTeamUuid = todos
-                      .firstWhere((t) => t.teamUuid != null,
-                          orElse: () => todos.first)
-                      .teamUuid;
+                  final updatedTeamUuid = todos.firstWhere((t) => t.teamUuid != null, orElse: () => todos.first).teamUuid;
                   if (updatedTeamUuid != null) {
-                    PomodoroSyncService.instance
-                        .sendTeamUpdateSignal(updatedTeamUuid);
+                    PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -4574,11 +4686,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) await _loadAllData(deferred: true);
                 },
-                onLLMResultsParsed:
-                    (results, imagePath, originalText, tUuid, tName) {
-                  Navigator.pop(context); // 关闭添加页面
-                  _navigateToTodoConfirm(
-                      results, imagePath, originalText, tUuid, tName);
+                onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+                  Navigator.pop(context);
+                  _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
                 },
               ),
               sourceKey: _fabTodoKey,
@@ -4587,9 +4697,123 @@ class _HomeDashboardState extends State<HomeDashboard>
             icon: const Icon(Icons.add_task),
             label: const Text("记待办"),
           ),
-          const SizedBox(height: 100), // 🚀 关键：将 FAB 抬高，避开下方的悬浮底栏
+          const SizedBox(height: 100), // 避开底部的悬浮导航栏
         ],
       ),
+    );
+
+    if (isTablet) {
+      return mainScreen;
+    }
+
+    return ZoomDrawer(
+      menuScreen: HomeDrawerMenu(
+        username: widget.username,
+        timeSalutation: _timeSalutation,
+        onSettings: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: const SettingsPage(),
+              sourceKey: _settingsButtonKey,
+            );
+            _loadSectionPreferences();
+            _loadSemesterSettings();
+            await _loadHomeTextConfig();
+            _loadAllData(deferred: true);
+          });
+        },
+        onAiAssistant: () {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            _openAiAssistantFromAppBar();
+          });
+        },
+        onTeams: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: TeamManagementScreen(username: widget.username),
+              sourceKey: _teamsButtonKey,
+            );
+            final unreadBackgroundNotifications =
+                await BackgroundNotificationService
+                    .getUnreadBackgroundNotifications();
+            final notificationIds = unreadBackgroundNotifications
+                .map((e) => e['id'])
+                .whereType<num>()
+                .map((e) => e.toInt())
+                .toList();
+            await ApiService.markNotificationsRead(notificationIds);
+            await BackgroundNotificationService
+                .clearUnreadBackgroundNotifications();
+            await _fetchTeamPendingCount();
+            _loadAllData(deferred: true);
+          });
+        },
+        teamPendingCount: _teamPendingCount,
+        hasTeamConflictDot: _hasTeamConflictDot,
+        onTimeline: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: PersonalTimelineScreen(username: widget.username),
+              sourceKey: GlobalKey(),
+            );
+          });
+        },
+        onScreenTime: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: TimeLogScreen(username: widget.username),
+              sourceKey: GlobalKey(),
+            );
+          });
+        },
+        onPlanCenter: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: TodoPlanScreen(username: widget.username),
+              sourceKey: GlobalKey(),
+            );
+            _loadSemesterSettings();
+            _loadAllData(deferred: true);
+          });
+        },
+        onGuide: () {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FeatureGuideScreen(
+                  isManualReview: true,
+                  loggedInUser: widget.username,
+                ),
+              ),
+            );
+          });
+        },
+        onUpdate: () {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            UpdateService.checkUpdateAndPrompt(context, isManual: true);
+          });
+        },
+      ),
+      mainScreen: mainScreen,
+      borderRadius: 24.0,
+      showShadow: true,
+      angle: 0.0,
+      drawerShadowsBackgroundColor: Colors.grey.shade300,
+      slideWidth: MediaQuery.of(context).size.width * 0.72,
     );
   }
 
@@ -4615,43 +4839,48 @@ class _HomeDashboardState extends State<HomeDashboard>
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
-        (isLight || !isDarkMode) ? Colors.black45 : Colors.white54;
+        (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      height: 54 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6), // 进一步压缩高度
-      margin: const EdgeInsets.fromLTRB(40, 0, 40, 12), // 增加左右间距以减小宽度
+      height: 60 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6),
+      margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       decoration: BoxDecoration(
         color: isDarkMode
-            ? Colors.black.withValues(alpha: 0.4)
-            : Colors.white.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(40), // 更圆润的边缘
+            ? Colors.white.withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(40),
         border: Border.all(
           color: isDarkMode
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.white.withValues(alpha: 0.2),
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.05),
           width: 0.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(40),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Row(
               children: [
                 Expanded(
-                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页',
-                      primaryColor, inactiveColor),
+                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
                 ),
                 SizedBox(
                   width: 64,
                   child: Center(child: _buildCourseCenterButton(primaryColor)),
                 ),
                 Expanded(
-                  child: _buildTabItem(2, Icons.adjust_rounded, '专注',
-                      primaryColor, inactiveColor),
+                  child: _buildTabItem(2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
                 ),
               ],
             ),
@@ -4661,30 +4890,30 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  Widget _buildTabItem(
-      int index, IconData icon, String label, Color primary, Color inactive) {
+  Widget _buildTabItem(int index, IconData icon, String label, Color primary, Color inactive) {
     bool isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () => setState(() => _selectedTabIndex = index),
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
               color: isSelected ? primary : inactive,
-              size: 22, // 缩小图标
+              size: 24,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 color: isSelected ? primary : inactive,
-                fontSize: 9, // 缩小文字
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ],

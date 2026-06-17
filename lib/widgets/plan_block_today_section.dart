@@ -488,7 +488,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       case PomodoroRecordStatus.interrupted:
         return (Icons.warning_amber_rounded, Colors.orange);
       case PomodoroRecordStatus.switched:
-        return (Icons.swap_horiz_rounded, Colors.blue);
+        return (Icons.swap_horiz_rounded, Theme.of(context).colorScheme.primary);
     }
   }
 
@@ -553,7 +553,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       case TodoPlanStatus.finished:
         return Colors.green;
       case TodoPlanStatus.focusing:
-        return Colors.blue;
+        return Theme.of(context).colorScheme.primary;
       case TodoPlanStatus.missed:
         return Colors.redAccent;
       case TodoPlanStatus.skipped:

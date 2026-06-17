@@ -2317,7 +2317,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: providerLabels.containsKey(customProvider)
+                    initialValue: providerLabels.containsKey(customProvider)
                         ? customProvider
                         : null,
                     decoration: InputDecoration(
@@ -2991,7 +2991,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         label = '新增';
         break;
       case AiTodoActionType.completeTodo:
-        color = Colors.blue;
+        color = Theme.of(context).colorScheme.primary;
         label = '完成';
         break;
       case AiTodoActionType.deleteTodo:
@@ -3179,7 +3179,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
     for (final m in RegExp(r'[一-鿿]+').allMatches(lower)) {
       final seg = m.group(0)!;
-      for (int i = 0; i < seg.length; i++) tokens.add(seg[i]);
+      for (int i = 0; i < seg.length; i++) {
+        tokens.add(seg[i]);
+      }
       for (int i = 0; i < seg.length - 1; i++) {
         tokens.add(seg.substring(i, i + 2));
       }

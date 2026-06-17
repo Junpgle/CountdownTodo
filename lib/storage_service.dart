@@ -205,6 +205,8 @@ class StorageService {
   static const String KEY_DEVICE_ID = "app_device_uuid";
   static const String KEY_SYNC_INTERVAL = "app_sync_interval";
   static const String KEY_THEME_MODE = "app_theme_mode";
+  static const String KEY_THEME_COLOR_MODE = "app_theme_color_mode";
+  static const String KEY_CUSTOM_THEME_COLOR = "app_custom_theme_color";
   static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time";
   static const String KEY_SEMESTER_PROGRESS_ENABLED =
       "semester_progress_enabled";
@@ -238,6 +240,7 @@ class StorageService {
   static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
   static const String keyWallpaperCacheCleanupTime =
       "app_wallpaper_cache_cleanup_time";
+  static const String KEY_WALLPAPER_CUSTOM_PATH = "app_wallpaper_custom_path";
 
   // Notification settings keys
   static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
@@ -273,6 +276,8 @@ class StorageService {
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
+  static ValueNotifier<String> themeColorModeNotifier = ValueNotifier('default');
+  static ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
   static final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
   static final ValueNotifier<Map<String, dynamic>> conflictScanNotifier =
       ValueNotifier<Map<String, dynamic>>({
@@ -284,6 +289,7 @@ class StorageService {
   });
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
+  static final ValueNotifier<int> wallpaperRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
   static Timer? _syncDebouncer;
   static String? _queuedSyncUsername;
@@ -296,6 +302,10 @@ class StorageService {
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
     });
+  }
+
+  static void triggerWallpaperRefresh() {
+    wallpaperRefreshNotifier.value++;
   }
 
   static void setForceFlushProtectedUuids(Set<String> uuids) {
@@ -514,6 +524,11 @@ class StorageService {
   static Future<void> initTheme() async {
     final prefs = await StorageService.prefs;
     themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
+    themeColorModeNotifier.value = prefs.getString(KEY_THEME_COLOR_MODE) ?? 'default';
+    int? colorVal = prefs.getInt(KEY_CUSTOM_THEME_COLOR);
+    if (colorVal != null) {
+      customThemeColorNotifier.value = Color(colorVal);
+    }
   }
 
   static Future<bool> register(String username, String password) async {
@@ -1637,18 +1652,22 @@ class StorageService {
         }
       }
 
-      if (beforeData['group_id'] != null)
+      if (beforeData['group_id'] != null) {
         beforeData['group_name'] =
             await lookupName('todo_groups', beforeData['group_id']);
-      if (beforeData['team_uuid'] != null)
+      }
+      if (beforeData['team_uuid'] != null) {
         beforeData['team_name'] =
             await lookupName('teams', beforeData['team_uuid']);
-      if (enrichedAfter['group_id'] != null)
+      }
+      if (enrichedAfter['group_id'] != null) {
         enrichedAfter['group_name'] =
             await lookupName('todo_groups', enrichedAfter['group_id']);
-      if (enrichedAfter['team_uuid'] != null)
+      }
+      if (enrichedAfter['team_uuid'] != null) {
         enrichedAfter['team_name'] =
             await lookupName('teams', enrichedAfter['team_uuid']);
+      }
 
       // 2. 存入本地审计表
       await DatabaseHelper.instance.insertLocalAuditLog(
@@ -2317,8 +2336,9 @@ class StorageService {
     }
 
     final cacheKey = 'recurrence_$username';
-    if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence)
+    if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence) {
       return todos;
+    }
 
     _isCheckingRecurrence = true;
 
@@ -2327,7 +2347,9 @@ class StorageService {
       for (var todo in todos) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
         if (todo.recurrenceEndDate != null &&
-            today.isAfter(todo.recurrenceEndDate!)) continue;
+            today.isAfter(todo.recurrenceEndDate!)) {
+          continue;
+        }
 
         final DateTime baseLocal = _getRecurrenceBaseDate(todo);
         final DateTime baseDay =
@@ -3208,6 +3230,11 @@ class StorageService {
         if (table == 'todos') {
           data.remove('image_path');
           data.remove('imagePath');
+          // 🚀 已失败的冲突 op_log 不再重新发送（避免无限循环）
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           final localTodo = localTodosById[uuid];
           final hasLocalVersionConflict = localTodo != null &&
               localTodo.hasConflict &&
@@ -3218,6 +3245,10 @@ class StorageService {
           }
           dedupTodos[uuid] = _stripClientOnlyConflictForSync(data);
         } else if (table == 'todo_groups') {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           if (_payloadHasConflict(data) ||
               (localGroupsById[uuid]?.hasConflict ?? false)) {
             if (opId != null) consumedConflictOpIds.add(opId);
@@ -3225,6 +3256,10 @@ class StorageService {
           }
           dedupGroups[uuid] = data;
         } else if (table == 'countdowns') {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
           if (_payloadHasConflict(data) ||
               (localCountdownsById[uuid]?.hasConflict ?? false)) {
             if (opId != null) consumedConflictOpIds.add(opId);
@@ -3623,8 +3658,9 @@ class StorageService {
                 if (allLocalTodos[localIdx].isDone != (localIsCompleted == 1)) {
                   allLocalTodos[localIdx].isDone = localIsCompleted == 1;
                   independentCompletionChanged = true;
-                  if (!allLocalTodos[localIdx].isDeleted)
+                  if (!allLocalTodos[localIdx].isDeleted) {
                     updatedTodoIds.add(todoUuid);
+                  }
                 }
               }
               //debugPrint(
@@ -3650,8 +3686,9 @@ class StorageService {
               if (allLocalTodos[localIdx].isDone != isCompleted) {
                 allLocalTodos[localIdx].isDone = isCompleted;
                 independentCompletionChanged = true;
-                if (!allLocalTodos[localIdx].isDeleted)
+                if (!allLocalTodos[localIdx].isDeleted) {
                   updatedTodoIds.add(todoUuid);
+                }
               }
             }
           }
@@ -3803,9 +3840,15 @@ class StorageService {
             continue;
           }
 
+          final mergeVersionCond = sItem.version > local.version;
+          final mergeTimeCond =
+              sItem.updatedAt > local.updatedAt && !sItem.hasConflict;
+          if (sItem.hasConflict || local.hasConflict) {
+            debugPrint('🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
+          }
           if (sItem.isDeleted ||
               sItem.version > local.version ||
-              sItem.updatedAt > local.updatedAt) {
+              (sItem.updatedAt > local.updatedAt && !sItem.hasConflict)) {
             _preserveLocalTodoSourceFields(local, sItem);
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
@@ -3825,13 +3868,8 @@ class StorageService {
           if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
-            // 🚀 独立完成待办不参与冲突，清除可能的残留冲突标记
-            if (sItem.collabType == 1 && (sItem.hasConflict || localItem.hasConflict)) {
-              localItem.hasConflict = false;
-              localItem.serverVersionData = null;
-              hasChanges = true;
-              continue;
-            }
+            // 服务端 isDataDifferent 已排除 collabType=1 的纯完成状态变化，
+            // 若服务端标记了冲突，说明确有内容差异，客户端应尊重该标记。
             if (sItem.hasConflict && !localItem.hasConflict) {
               if (isRecentlyResolved(localItem.id)) {
                 debugPrint(
@@ -3978,7 +4016,7 @@ class StorageService {
           }
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
+              (sItem.updatedAt > allLocalCountdowns[idx].updatedAt && !sItem.hasConflict)) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
           }
@@ -4285,7 +4323,7 @@ class StorageService {
       final isAllDayRange =
           startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
 
-      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange || todo.collabType == 1) {
+      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
         continue;
       }
 
@@ -4670,6 +4708,18 @@ class StorageService {
     return prefs.getString(KEY_THEME_MODE) ?? 'system';
   }
 
+  static Future<void> setThemeColorMode(String mode) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_THEME_COLOR_MODE, mode);
+    themeColorModeNotifier.value = mode;
+  }
+
+  static Future<void> setCustomThemeColor(Color color) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setInt(KEY_CUSTOM_THEME_COLOR, color.toARGB32());
+    customThemeColorNotifier.value = color;
+  }
+
   static Future<void> saveServerChoice(String choice) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(KEY_SERVER_CHOICE, choice);
@@ -4679,6 +4729,33 @@ class StorageService {
   static Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
     return prefs.getString(KEY_SERVER_CHOICE) ?? 'aliyun';
+  }
+
+  // ==========================================
+  // 首页文字自定义配置
+  // ==========================================
+  static const String _KEY_HOME_TEXT_CONFIG = 'home_text_config';
+
+  static Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = username != null && username.isNotEmpty
+        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
+        : _KEY_HOME_TEXT_CONFIG;
+    await prefs.setString(key, jsonEncode(config));
+  }
+
+  static Future<Map<String, dynamic>> getHomeTextConfig() async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = username != null && username.isNotEmpty
+        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
+        : _KEY_HOME_TEXT_CONFIG;
+    final String? jsonStr = prefs.getString(key);
+    if (jsonStr != null) {
+      return Map<String, dynamic>.from(jsonDecode(jsonStr));
+    }
+    return {};
   }
 
   static Future<bool> getSemesterEnabled() async {
@@ -5185,6 +5262,21 @@ class StorageService {
   static Future<void> saveWallpaperCacheCleanupTime(int timestamp) async {
     final prefs = await StorageService.prefs;
     await prefs.setInt(keyWallpaperCacheCleanupTime, timestamp);
+  }
+
+  static Future<String?> getWallpaperCustomPath() async {
+    final prefs = await StorageService.prefs;
+    return prefs.getString(KEY_WALLPAPER_CUSTOM_PATH);
+  }
+
+  static Future<void> saveWallpaperCustomPath(String path) async {
+    final prefs = await StorageService.prefs;
+    await prefs.setString(KEY_WALLPAPER_CUSTOM_PATH, path);
+  }
+
+  static Future<void> clearWallpaperCustomPath() async {
+    final prefs = await StorageService.prefs;
+    await prefs.remove(KEY_WALLPAPER_CUSTOM_PATH);
   }
 
   static Future<bool> getTodoFoldersInline() async {

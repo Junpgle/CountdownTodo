@@ -5,7 +5,8 @@ import 'package:video_player/video_player.dart';
 
 /// 适配请求二级界面 - 经过美化重构
 class CourseAdaptationScreen extends StatefulWidget {
-  const CourseAdaptationScreen({super.key});
+  final bool isEmbedded;
+  const CourseAdaptationScreen({super.key, this.isEmbedded = false});
 
   @override
   State<CourseAdaptationScreen> createState() => _CourseAdaptationScreenState();
@@ -69,9 +70,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title:
-            const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
+      appBar: widget.isEmbedded ? null : AppBar(
+        title: const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -88,8 +88,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
               color: colorScheme.primary.withValues(alpha: 0.05),
               child: Column(
                 children: [
-                  const Icon(Icons.school_rounded,
-                      size: 48, color: Colors.blueAccent),
+                  Icon(Icons.school_rounded,
+                      size: 48, color: Theme.of(context).colorScheme.secondary),
                   const SizedBox(height: 12),
                   const Text('让你的校园生活更高效',
                       style:
@@ -245,7 +245,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                           'QQ 邮箱',
                           'junpgle@qq.com',
                           Icons.alternate_email_rounded,
-                          Colors.blue,
+                          Theme.of(context).colorScheme.primary,
                           _launchEmail),
                       const SizedBox(width: 16),
                       _buildContactCard('开发者 QQ', '674155783',
@@ -265,7 +265,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
   Widget _buildSectionHeader(IconData icon, String title) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: Colors.blueAccent),
+        Icon(icon, size: 20, color: Theme.of(context).colorScheme.secondary),
         const SizedBox(width: 8),
         Text(title,
             style: const TextStyle(

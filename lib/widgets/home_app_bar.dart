@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../screens/course_screens.dart';
 import '../utils/page_transitions.dart';
 
@@ -76,10 +77,23 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   }
 }
 
+class HomeTextConfig {
+  final String? customTimeSalutation;
+  final String? dateFormat;
+  final String? usernameFormat;
+
+  const HomeTextConfig({
+    this.customTimeSalutation,
+    this.dateFormat,
+    this.usernameFormat,
+  });
+}
+
 class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String username;
   final String timeSalutation;
   final String currentGreeting;
+  final HomeTextConfig? textConfig;
   final bool isLight;
   final bool isSyncing;
   final VoidCallback onSync;
@@ -101,6 +115,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.username,
     required this.timeSalutation,
     required this.currentGreeting,
+    this.textConfig,
     required this.isLight,
     required this.isSyncing,
     required this.onSync,
@@ -161,6 +176,11 @@ class _HomeAppBarState extends State<HomeAppBar>
     }
   }
 
+  String _formatUsername(String username, String? format) {
+    if (format == null || format.isEmpty) return username;
+    return format.replaceAll('{name}', username);
+  }
+
   Widget _buildActionButton(BuildContext context,
       {required IconData icon,
       required VoidCallback onPressed,
@@ -170,7 +190,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       EdgeInsetsGeometry? margin,
       bool isSmall = false,
       Key? buttonKey}) {
-    final double iconSize = isSmall ? 18.0 : 24.0;
+    final double iconSize = isSmall ? 22.0 : 28.0;
     final double padding = isSmall ? 4.0 : 8.0;
     final double? containerSize = isSmall ? 34.0 : null;
 
@@ -283,12 +303,19 @@ class _HomeAppBarState extends State<HomeAppBar>
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
-    final toolbarH = isLandscape ? 64.0 : 112.0;
+    final toolbarH = isLandscape ? 64.0 : 86.0;
     final titleSize = isLandscape ? 18.0 : 22.0;
     final dateSize = isLandscape ? 12.0 : 13.0;
     final greetingSize = isLandscape ? 11.0 : 12.0;
 
     final bool isMobileGrid = !isTablet && !isLandscape;
+
+    // 应用自定义文字配置
+    final config = widget.textConfig;
+    final displayTimeSalutation = config?.customTimeSalutation ?? widget.timeSalutation;
+    final displayGreeting = widget.currentGreeting;
+    final displayDateFormat = config?.dateFormat ?? 'MM月dd日 EEEE';
+    final displayUsername = _formatUsername(widget.username, config?.usernameFormat);
 
     final searchBtn = _buildActionButton(
       context,
@@ -317,7 +344,7 @@ class _HomeAppBarState extends State<HomeAppBar>
     final teamsBtn = _buildActionButton(
       context,
       icon: Icons.people_rounded,
-      onPressed: widget.onTeams ?? () => Navigator.pushNamed(context, '/teams'),
+      onPressed: widget.onTeams ?? () {},
       buttonKey: widget.teamsKey,
       badgeCount: widget.teamPendingCount,
       showAlertDot: widget.hasTeamConflictDot,
@@ -337,12 +364,22 @@ class _HomeAppBarState extends State<HomeAppBar>
       backgroundColor: widget.isLight ? Colors.transparent : null,
       elevation: 0,
       toolbarHeight: toolbarH,
+      leading: (isTablet || isLandscape) ? null : IconButton(
+        icon: const Icon(Icons.menu_rounded),
+        iconSize: 28,
+        color: widget.isLight ? Colors.white : Theme.of(context).colorScheme.onSurface,
+        padding: const EdgeInsets.only(left: 8),
+        onPressed: () {
+          ZoomDrawer.of(context)?.toggle();
+        },
+      ),
+      titleSpacing: (isTablet || isLandscape) ? NavigationToolbar.kMiddleSpacing : 0,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "${widget.timeSalutation}, ${widget.username}",
+            "$displayTimeSalutation, $displayUsername",
             style: TextStyle(
               fontSize: titleSize,
               fontWeight: FontWeight.bold,
@@ -352,7 +389,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
           const SizedBox(height: 4),
           Text(
-            DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
+            DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
             style: TextStyle(
               fontSize: dateSize,
               fontWeight: FontWeight.w500,
@@ -363,7 +400,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
           const SizedBox(height: 2),
           Text(
-            widget.currentGreeting,
+            displayGreeting,
             style: TextStyle(
               fontSize: greetingSize,
               color: widget.isLight
@@ -392,36 +429,19 @@ class _HomeAppBarState extends State<HomeAppBar>
               ),
             ),
           _buildAnimatedAction(1, searchBtn),
-          _buildAnimatedAction(2, aiBtn),
-          _buildAnimatedAction(3, syncBtn),
-          _buildAnimatedAction(4, teamsBtn),
+          _buildAnimatedAction(2, syncBtn),
+          _buildAnimatedAction(3, teamsBtn),
+          _buildAnimatedAction(4, aiBtn),
           _buildAnimatedAction(5, settingsBtn),
         ] else ...[
-          // 🚀 手机端纵屏：两行操作区，新增 AI 助手入口
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildAnimatedAction(0, teamsBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(1, settingsBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(2, aiBtn),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildAnimatedAction(3, searchBtn),
-                    const SizedBox(width: 8),
-                    _buildAnimatedAction(4, syncBtn),
-                  ],
-                ),
+                _buildAnimatedAction(0, searchBtn),
+                const SizedBox(width: 8),
+                _buildAnimatedAction(1, syncBtn),
               ],
             ),
           ),

@@ -1074,7 +1074,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
                   fontSize: 9, color: _TC.textHint(context), letterSpacing: 2)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: _todoId,
+            initialValue: _todoId,
             isExpanded: true,
             items: _sortedTodos
                 .map((todo) => DropdownMenuItem(
