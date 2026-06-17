@@ -3805,7 +3805,7 @@ class StorageService {
 
           if (sItem.isDeleted ||
               sItem.version > local.version ||
-              sItem.updatedAt > local.updatedAt) {
+              (sItem.updatedAt > local.updatedAt && !sItem.hasConflict)) {
             _preserveLocalTodoSourceFields(local, sItem);
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
@@ -3825,13 +3825,8 @@ class StorageService {
           if (!sItem.isDeleted && todosIndexMap.containsKey(sItem.id)) {
             final idx2 = todosIndexMap[sItem.id]!;
             final localItem = allLocalTodos[idx2];
-            // 🚀 独立完成待办不参与冲突，清除可能的残留冲突标记
-            if (sItem.collabType == 1 && (sItem.hasConflict || localItem.hasConflict)) {
-              localItem.hasConflict = false;
-              localItem.serverVersionData = null;
-              hasChanges = true;
-              continue;
-            }
+            // 服务端 isDataDifferent 已排除 collabType=1 的纯完成状态变化，
+            // 若服务端标记了冲突，说明确有内容差异，客户端应尊重该标记。
             if (sItem.hasConflict && !localItem.hasConflict) {
               if (isRecentlyResolved(localItem.id)) {
                 debugPrint(
