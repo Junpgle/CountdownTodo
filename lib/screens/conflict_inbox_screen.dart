@@ -81,6 +81,14 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final groups = results[1] as List<TodoGroup>;
     final countdowns = results[2] as List<CountdownItem>;
 
+    // 🩺 诊断：打印所有 hasConflict 待办
+    for (final t in todos) {
+      if (t.hasConflict) {
+        final data = t.serverVersionData;
+        debugPrint('🩺 [冲突诊断] UUID=${t.id} title="${t.title}" version=${t.version} hasConflict=${t.hasConflict} serverVersionData=${data != null ? 'present' : 'null'} isAllDay=${t.isAllDay} toJsonAllDay=${_isAllDayTask(t.toJson())}');
+      }
+    }
+
     final List<dynamic> items = [];
     items.addAll(todos.where((t) {
       if (t.isDeleted) return false;

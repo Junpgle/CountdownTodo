@@ -3767,9 +3767,6 @@ class StorageService {
             raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
         final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
         TodoItem sItem = TodoItem.fromJson(sanitizedServerRaw);
-        if (sItem.hasConflict) {
-          debugPrint('🩺 [合并诊断] UUID=${sItem.id} 服务端返回 hasConflict=true version=${sItem.version}');
-        }
         if (ignoredUuids.contains(sItem.id)) {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
           continue;

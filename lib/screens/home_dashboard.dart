@@ -2699,6 +2699,54 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   String get _timeSalutation {
+    // 从配置中获取时间问候语模式
+    final salutationMode =
+        _homeTextConfig['salutationMode'] as String? ?? 'timed';
+
+    if (salutationMode == 'fixed') {
+      // 固定模式：返回固定的问候语
+      final fixedSalutation =
+          _homeTextConfig['fixedSalutation'] as String?;
+      if (fixedSalutation != null && fixedSalutation.isNotEmpty) {
+        return fixedSalutation;
+      }
+      return '你好';
+    }
+
+    // 分时段模式：根据配置或默认值返回
+    final salutationSlots =
+        _homeTextConfig['salutationSlots'] as List<dynamic>?;
+    if (salutationSlots != null && salutationSlots.isNotEmpty) {
+      final now = DateTime.now();
+      final currentMinutes = now.hour * 60 + now.minute;
+
+      for (var slot in salutationSlots) {
+        final slotMap = slot as Map<String, dynamic>;
+        final startHour = slotMap['startHour'] as int;
+        final startMinute = slotMap['startMinute'] as int;
+        final endHour = slotMap['endHour'] as int;
+        final endMinute = slotMap['endMinute'] as int;
+        final text = slotMap['text'] as String?;
+
+        if (text == null || text.isEmpty) continue;
+
+        final startMinutes = startHour * 60 + startMinute;
+        final endMinutes = endHour * 60 + endMinute;
+
+        bool isInSlot;
+        if (endMinutes <= startMinutes) {
+          isInSlot =
+              currentMinutes >= startMinutes || currentMinutes < endMinutes;
+        } else {
+          isInSlot =
+              currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        }
+
+        if (isInSlot) return text;
+      }
+    }
+
+    // 默认分时段逻辑
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) return "上午好";
     if (hour >= 12 && hour < 14) return "中午好";
@@ -2707,69 +2755,61 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   void _generateGreeting() {
-    final hour = DateTime.now().hour;
-    List<String> greetings;
+    final now = DateTime.now();
+    final currentMinutes = now.hour * 60 + now.minute;
 
-    // 从配置中获取自定义问候语
-    final customGreetings = _homeTextConfig['customGreetings'] as Map<String, dynamic>?;
+    // 从配置中获取问候语模式
+    final greetingMode = _homeTextConfig['greetingMode'] as String? ?? 'timed';
 
-    if (hour >= 5 && hour < 11) {
-      final custom = customGreetings?['morning'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "今天也要元气超标！",
-        "新的一天，把快乐置顶。",
-        "迎着光，做自己的小太阳。",
-        "起床充电，活力满格。",
-        "今日宜：开心、努力、好运。"
-      ];
-    } else if (hour >= 11 && hour < 14) {
-      final custom = customGreetings?['noon'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "吃饱喝足，继续奔赴。",
-        "中场能量补给，快乐不打烊。",
-        "稳住状态，万事可期。",
-        "生活不慌不忙，慢慢发光。",
-        "好好吃饭，就是好好爱自己。"
-      ];
-    } else if (hour >= 14 && hour < 18) {
-      final custom = customGreetings?['afternoon'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "保持热爱，保持冲劲。",
-        "状态在线，干劲拉满。",
-        "不急不躁，温柔又有力量。",
-        "把普通日子，过得热气腾腾。",
-        "继续向前，好运正在路上。"
-      ];
-    } else if (hour >= 18 && hour < 23) {
-      final custom = customGreetings?['evening'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "晚风轻踩云朵，今天辛苦啦。",
-        "卸下疲惫，拥抱温柔。",
-        "今日圆满，万事顺心。",
-        "把烦恼清空，把快乐装满。",
-        "好好休息，明天依旧闪亮。"
-      ];
-    } else if (hour >= 23 || hour < 3) {
-      final custom = customGreetings?['night'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "愿你心安，好梦常伴。",
-        "安静沉淀，积蓄力量。",
-        "不慌不忙，自在生长。",
-        "温柔治愈，接纳所有情绪。",
-        "今夜安睡，明日更好。"
-      ];
+    if (greetingMode == 'fixed') {
+      // 固定模式：从固定问候语列表中随机选择
+      final fixedGreetings =
+          _homeTextConfig['fixedGreetings'] as List<dynamic>?;
+      if (fixedGreetings != null && fixedGreetings.isNotEmpty) {
+        _currentGreeting =
+            fixedGreetings[Random().nextInt(fixedGreetings.length)] as String;
+        return;
+      }
     } else {
-      final custom = customGreetings?['latenight'] as List<dynamic>?;
-      greetings = custom?.cast<String>() ?? [
-        "凌晨的星光，为你照亮前路。",
-        "此刻努力，未来可期。",
-        "安静时光，悄悄变优秀。",
-        "不负自己，不负岁月。",
-        "愿你眼里有光，心中有梦。"
-      ];
+      // 分时段模式：根据当前时间匹配时段
+      final timeSlots =
+          _homeTextConfig['timeSlots'] as List<dynamic>?;
+      if (timeSlots != null) {
+        for (var slot in timeSlots) {
+          final slotMap = slot as Map<String, dynamic>;
+          final startHour = slotMap['startHour'] as int;
+          final startMinute = slotMap['startMinute'] as int;
+          final endHour = slotMap['endHour'] as int;
+          final endMinute = slotMap['endMinute'] as int;
+          final greetings =
+              (slotMap['greetings'] as List<dynamic>?)?.cast<String>();
+
+          if (greetings == null || greetings.isEmpty) continue;
+
+          final startMinutes = startHour * 60 + startMinute;
+          final endMinutes = endHour * 60 + endMinute;
+
+          bool isInSlot;
+          if (endMinutes <= startMinutes) {
+            // 跨天时段
+            isInSlot =
+                currentMinutes >= startMinutes || currentMinutes < endMinutes;
+          } else {
+            // 正常时段
+            isInSlot =
+                currentMinutes >= startMinutes && currentMinutes < endMinutes;
+          }
+
+          if (isInSlot) {
+            _currentGreeting = greetings[Random().nextInt(greetings.length)];
+            return;
+          }
+        }
+      }
     }
 
-    _currentGreeting = greetings[Random().nextInt(greetings.length)];
+    // 兜底：使用默认问候语
+    _currentGreeting = "愿你今天一切顺利！";
   }
 
   Future<void> _loadHomeTextConfig() async {
