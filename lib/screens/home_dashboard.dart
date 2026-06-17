@@ -4813,7 +4813,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       showShadow: true,
       angle: 0.0,
       drawerShadowsBackgroundColor: Colors.grey.shade300,
-      slideWidth: MediaQuery.of(context).size.width * 0.65,
+      slideWidth: MediaQuery.of(context).size.width * 0.72,
     );
   }
 

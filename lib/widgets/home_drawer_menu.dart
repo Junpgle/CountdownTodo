@@ -54,21 +54,21 @@ class HomeDrawerMenu extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16.0, right: 12.0, top: 40.0, bottom: 24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Avatar & Profile
               Row(
                 children: [
                   CircleAvatar(
-                    radius: 36,
+                    radius: 28,
                     backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                     child: Text(
                       username.isNotEmpty ? username.substring(0, 1).toUpperCase() : '?',
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.primary,
                       ),
@@ -90,7 +90,7 @@ class HomeDrawerMenu extends StatelessWidget {
                         Text(
                           username,
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontSize: 19,
                             fontWeight: FontWeight.bold,
                           ),
                           maxLines: 1,
