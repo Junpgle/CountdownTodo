@@ -286,68 +286,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               },
             ),
           ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'theme',
-            child: ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('深色模式/主题'),
-              trailing: DropdownButton<String>(
-                value: _themeMode,
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                  DropdownMenuItem(value: 'light', child: Text('浅色')),
-                  DropdownMenuItem(value: 'dark', child: Text('深色')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _themeMode = val);
-                    StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, val);
-                    StorageService.themeNotifier.value = val;
-                  }
-                },
-              ),
-            ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'theme_color',
-            child: ListTile(
-              leading: const Icon(Icons.format_paint_outlined),
-              title: const Text('全局主题颜色'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_themeColorMode == 'custom' || _themeColorMode == 'image_extracted')
-                    GestureDetector(
-                      onTap: _handlePickCustomThemeColor,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        margin: const EdgeInsets.only(right: 12),
-                        decoration: BoxDecoration(
-                          color: _customThemeColor ?? Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.grey.shade400),
-                        ),
-                      ),
-                    ),
-                  DropdownButton<String>(
-                    value: _themeColorMode,
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 'default', child: Text('默认蓝色')),
-                      DropdownMenuItem(value: 'system_wallpaper', child: Text('跟随壁纸/系统')),
-                      DropdownMenuItem(value: 'image_extracted', child: Text('从图片提取')),
-                      DropdownMenuItem(value: 'custom', child: Text('自定义颜色')),
-                    ],
-                    onChanged: _handleThemeColorModeChanged,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _buildAppearanceSection(),
+          _buildColorSection(),
           const Divider(height: 1, indent: 56),
           _buildTile(
             targetId: 'animation',
@@ -438,6 +378,251 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
           const SizedBox(height: 32),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAppearanceSection() {
+    return _buildTile(
+      targetId: 'theme',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('外观', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildAppearanceCard('system', '自动', _buildAutoIcon()),
+                const SizedBox(width: 24),
+                _buildAppearanceCard('light', '浅色', _buildLightIcon()),
+                const SizedBox(width: 24),
+                _buildAppearanceCard('dark', '深色', _buildDarkIcon()),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppearanceCard(String value, String title, Widget icon) {
+    final isSelected = _themeMode == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _themeMode = value);
+        StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, value);
+        StorageService.themeNotifier.value = value;
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 86,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? colorScheme.primary : Colors.transparent,
+                width: 2.5,
+              ),
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade200,
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(color: colorScheme.primary.withValues(alpha: 0.2), blurRadius: 6, spreadRadius: 1)
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: icon,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(title, style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? colorScheme.primary : null,
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLightIcon() {
+    return Container(
+      color: Colors.white,
+      child: Column(
+        children: [
+          Container(height: 14, color: Colors.grey.shade200),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Row(
+                children: [
+                  Expanded(flex: 1, child: Container(color: Colors.grey.shade100, margin: const EdgeInsets.only(right: 4))),
+                  Expanded(flex: 2, child: Container(
+                    decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(2)),
+                  )),
+                ],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDarkIcon() {
+    return Container(
+      color: const Color(0xFF1E1E1E),
+      child: Column(
+        children: [
+          Container(height: 14, color: const Color(0xFF2D2D2D)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
+              child: Row(
+                children: [
+                  Expanded(flex: 1, child: Container(color: const Color(0xFF252525), margin: const EdgeInsets.only(right: 4))),
+                  Expanded(flex: 2, child: Container(
+                    decoration: BoxDecoration(color: Colors.blue.shade800, borderRadius: BorderRadius.circular(2)),
+                  )),
+                ],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutoIcon() {
+    return Row(
+      children: [
+        Expanded(child: _buildLightIcon()),
+        Expanded(child: _buildDarkIcon()),
+      ],
+    );
+  }
+
+  Widget _buildColorSection() {
+    final presetColors = [
+      Colors.blue, Colors.purple, Colors.pink, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.grey
+    ];
+
+    return _buildTile(
+      targetId: 'theme_color',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('主题颜色', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 16),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildColorCircle('system_wallpaper', null, '多色/自动'),
+                  const SizedBox(width: 12),
+                  ...presetColors.map((c) => Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
+                    child: _buildColorCircle('custom', c, null),
+                  )),
+                  _buildColorCircle('custom_picker', null, '自定义'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorCircle(String mode, Color? color, String? label) {
+    bool isSelected = false;
+    final presetColors = [Colors.blue, Colors.purple, Colors.pink, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.grey];
+
+    if (mode == 'system_wallpaper') {
+      isSelected = _themeColorMode == 'system_wallpaper' || _themeColorMode == 'default';
+    } else if (mode == 'custom' && color != null) {
+      isSelected = (_themeColorMode == 'custom') && _customThemeColor?.value == color.value;
+    } else if (mode == 'custom_picker') {
+      isSelected = (_themeColorMode == 'custom' || _themeColorMode == 'image_extracted') && !presetColors.any((c) => c.value == _customThemeColor?.value);
+    }
+
+    Widget inner;
+    if (mode == 'system_wallpaper') {
+      inner = Container(
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: SweepGradient(
+            colors: [Colors.blue, Colors.purple, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.blue],
+          ),
+        ),
+      );
+    } else if (mode == 'custom_picker') {
+      inner = Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200,
+        ),
+        child: const Icon(Icons.colorize, size: 16, color: Colors.grey),
+      );
+    } else {
+      inner = Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color ?? Colors.blue,
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () async {
+        if (mode == 'system_wallpaper') {
+          await StorageService.setThemeColorMode(mode);
+          setState(() => _themeColorMode = mode);
+        } else if (mode == 'custom' && color != null) {
+          await StorageService.setCustomThemeColor(color);
+          await StorageService.setThemeColorMode('custom');
+          setState(() {
+            _customThemeColor = color;
+            _themeColorMode = 'custom';
+          });
+        } else if (mode == 'custom_picker') {
+          await _handlePickCustomThemeColor();
+        }
+      },
+      child: SizedBox(
+        width: 48,
+        child: Column(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                  width: 2.5,
+                ),
+              ),
+              child: inner,
+            ),
+            if (label != null) ...[
+              const SizedBox(height: 6),
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey), textAlign: TextAlign.center),
+            ]
+          ],
+        ),
       ),
     );
   }
