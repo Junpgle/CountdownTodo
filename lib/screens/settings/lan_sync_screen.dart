@@ -5,7 +5,8 @@ import 'package:open_file/open_file.dart';
 import '../../services/lan_sync_service.dart';
 
 class LanSyncScreen extends StatefulWidget {
-  const LanSyncScreen({super.key});
+  final bool isEmbedded;
+  const LanSyncScreen({super.key, this.isEmbedded = false});
 
   @override
   State<LanSyncScreen> createState() => _LanSyncScreenState();
@@ -382,7 +383,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('局域网同步'),
         actions: [
           if (_service.isRunning && _devices.isEmpty)
@@ -492,6 +493,19 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                   ],
                 ),
               ),
+              if (widget.isEmbedded && _service.isRunning && _devices.isEmpty)
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  onPressed: _showManualAddDialog,
+                  tooltip: '手动添加设备',
+                ),
+              if (widget.isEmbedded)
+                IconButton(
+                  icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow, size: 20),
+                  onPressed: _toggleService,
+                  tooltip: _service.isRunning ? '停止' : '启动',
+                  color: _service.isRunning ? Colors.red : Colors.green,
+                ),
               if (_service.isRunning)
                 IconButton(
                   icon: const Icon(Icons.refresh, size: 20),

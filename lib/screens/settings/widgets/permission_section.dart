@@ -20,7 +20,29 @@ class PermissionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isAndroid && !Platform.isIOS) return const SizedBox.shrink();
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shield_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            const Text(
+              '桌面端无需管理权限',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '当前平台 (macOS / Windows / Linux) 的系统权限由底层自动分配和托管，您无需在此手动授权。',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
 
     final allGranted = permissionDefs.every((def) {
       final status = permissionStatuses[def['key'] as String];

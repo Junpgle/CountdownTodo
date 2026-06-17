@@ -45,7 +45,8 @@ class VisionModelInfo {
 }
 
 class LLMConfigPage extends StatefulWidget {
-  const LLMConfigPage({super.key});
+  final bool isEmbedded;
+  const LLMConfigPage({super.key, this.isEmbedded = false});
 
   @override
   State<LLMConfigPage> createState() => _LLMConfigPageState();
@@ -1704,7 +1705,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('大模型API配置'),
         actions: [
           IconButton(

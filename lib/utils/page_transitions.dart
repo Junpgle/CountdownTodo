@@ -122,16 +122,16 @@ class PageTransitions {
     );
   }
 
-  static Route<T> slideHorizontal<T>(Widget page) {
-    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideEnd);
+  static Route<T> slideHorizontal<T>(Widget page, {RouteSettings? settings}) {
+    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideEnd, settings: settings);
   }
 
-  static Route<T> slideUp<T>(Widget page) {
-    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideBottom);
+  static Route<T> slideUp<T>(Widget page, {RouteSettings? settings}) {
+    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideBottom, settings: settings);
   }
 
-  static Route<T> fadeThrough<T>(Widget page) {
-    return _FadeRoute<T>(page: page);
+  static Route<T> fadeThrough<T>(Widget page, {RouteSettings? settings}) {
+    return _FadeRoute<T>(page: page, settings: settings);
   }
 }
 
@@ -755,8 +755,9 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
   final _PageLayerRouteMode mode;
 
-  _SlideRoute({required this.page, required this.mode})
+  _SlideRoute({required this.page, required this.mode, RouteSettings? settings})
       : super(
+          settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: Duration(milliseconds: _AnimSettings.duration),
           reverseTransitionDuration:
@@ -833,8 +834,9 @@ class _SlideWidgetState extends State<_SlideWidget> {
 class _FadeRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
 
-  _FadeRoute({required this.page})
+  _FadeRoute({required this.page, RouteSettings? settings})
       : super(
+          settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: Duration(milliseconds: _AnimSettings.duration),
           reverseTransitionDuration:

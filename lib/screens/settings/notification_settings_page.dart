@@ -7,7 +7,8 @@ import '../../services/notification_service.dart';
 import 'package:intl/intl.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
-  const NotificationSettingsPage({super.key});
+  final bool isEmbedded;
+  const NotificationSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<NotificationSettingsPage> createState() =>
@@ -163,8 +164,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('通知管理'),
+      appBar: widget.isEmbedded ? null : AppBar(
+        title: const Text('通知与提醒设置'),
         centerTitle: true,
       ),
       body: ListView(

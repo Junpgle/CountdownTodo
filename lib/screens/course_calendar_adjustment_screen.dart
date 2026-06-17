@@ -5,10 +5,12 @@ import '../services/course_calendar_adjustment_service.dart';
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
+  final bool isEmbedded;
 
   const CourseCalendarAdjustmentScreen({
     super.key,
     this.initialOfficialHolidayKey,
+    this.isEmbedded = false,
   });
 
   @override
@@ -200,13 +202,15 @@ class _CourseCalendarAdjustmentScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('放假与调休'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('放假与调休'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(

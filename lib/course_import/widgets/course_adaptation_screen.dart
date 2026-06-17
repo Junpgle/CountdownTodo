@@ -5,7 +5,8 @@ import 'package:video_player/video_player.dart';
 
 /// 适配请求二级界面 - 经过美化重构
 class CourseAdaptationScreen extends StatefulWidget {
-  const CourseAdaptationScreen({super.key});
+  final bool isEmbedded;
+  const CourseAdaptationScreen({super.key, this.isEmbedded = false});
 
   @override
   State<CourseAdaptationScreen> createState() => _CourseAdaptationScreenState();
@@ -69,9 +70,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title:
-            const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
+      appBar: widget.isEmbedded ? null : AppBar(
+        title: const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,

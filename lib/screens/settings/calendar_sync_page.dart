@@ -7,7 +7,8 @@ import '../../services/calendar_sync_service.dart';
 import '../../storage_service.dart';
 
 class CalendarSyncPage extends StatefulWidget {
-  const CalendarSyncPage({super.key});
+  final bool isEmbedded;
+  const CalendarSyncPage({super.key, this.isEmbedded = false});
 
   @override
   State<CalendarSyncPage> createState() => _CalendarSyncPageState();
@@ -256,7 +257,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('写入系统日历'),
         actions: [
           IconButton(

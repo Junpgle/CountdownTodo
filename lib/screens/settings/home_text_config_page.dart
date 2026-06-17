@@ -107,7 +107,9 @@ class SalutationTimeSlot {
 }
 
 class HomeTextConfigPage extends StatefulWidget {
-  const HomeTextConfigPage({super.key});
+  final bool isEmbedded;
+
+  const HomeTextConfigPage({super.key, this.isEmbedded = false});
 
   @override
   State<HomeTextConfigPage> createState() => _HomeTextConfigPageState();
@@ -476,7 +478,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     final isWideScreen = MediaQuery.of(context).size.width > 768;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('首页文字自定义'),
         actions: [
           TextButton(

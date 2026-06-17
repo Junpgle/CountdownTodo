@@ -7,7 +7,9 @@ import 'package:path/path.dart' as p;
 import '../../storage_service.dart';
 
 class WallpaperSettingsPage extends StatefulWidget {
-  const WallpaperSettingsPage({super.key});
+  final bool isEmbedded;
+
+  const WallpaperSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<WallpaperSettingsPage> createState() => _WallpaperSettingsPageState();
@@ -140,7 +142,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('壁纸设置'),
         elevation: 0,
       ),

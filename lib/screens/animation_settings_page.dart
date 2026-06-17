@@ -3,7 +3,9 @@ import '../services/animation_config_service.dart';
 import '../utils/page_transitions.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
-  const AnimationSettingsPage({super.key});
+  final bool isEmbedded;
+
+  const AnimationSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<AnimationSettingsPage> createState() => _AnimationSettingsPageState();
@@ -98,7 +100,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('动画设置'),
         centerTitle: true,
       ),

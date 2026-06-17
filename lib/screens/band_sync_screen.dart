@@ -11,7 +11,8 @@ import '../update_service.dart';
 
 /// 手环同步界面
 class BandSyncScreen extends StatefulWidget {
-  const BandSyncScreen({super.key});
+  final bool isEmbedded;
+  const BandSyncScreen({super.key, this.isEmbedded = false});
 
   @override
   State<BandSyncScreen> createState() => _BandSyncScreenState();
@@ -165,7 +166,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: widget.isEmbedded ? null : AppBar(
         title: const Text('手环同步'),
         elevation: 0,
       ),
