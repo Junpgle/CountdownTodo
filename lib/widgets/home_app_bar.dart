@@ -76,10 +76,23 @@ class _ShimmerWidgetState extends State<ShimmerWidget>
   }
 }
 
+class HomeTextConfig {
+  final String? customTimeSalutation;
+  final String? dateFormat;
+  final String? usernameFormat;
+
+  const HomeTextConfig({
+    this.customTimeSalutation,
+    this.dateFormat,
+    this.usernameFormat,
+  });
+}
+
 class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String username;
   final String timeSalutation;
   final String currentGreeting;
+  final HomeTextConfig? textConfig;
   final bool isLight;
   final bool isSyncing;
   final VoidCallback onSync;
@@ -101,6 +114,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     required this.username,
     required this.timeSalutation,
     required this.currentGreeting,
+    this.textConfig,
     required this.isLight,
     required this.isSyncing,
     required this.onSync,
@@ -159,6 +173,11 @@ class _HomeAppBarState extends State<HomeAppBar>
       _syncRotationController.stop();
       _syncRotationController.reset();
     }
+  }
+
+  String _formatUsername(String username, String? format) {
+    if (format == null || format.isEmpty) return username;
+    return format.replaceAll('{name}', username);
   }
 
   Widget _buildActionButton(BuildContext context,
@@ -290,6 +309,13 @@ class _HomeAppBarState extends State<HomeAppBar>
 
     final bool isMobileGrid = !isTablet && !isLandscape;
 
+    // 应用自定义文字配置
+    final config = widget.textConfig;
+    final displayTimeSalutation = config?.customTimeSalutation ?? widget.timeSalutation;
+    final displayGreeting = widget.currentGreeting;
+    final displayDateFormat = config?.dateFormat ?? 'MM月dd日 EEEE';
+    final displayUsername = _formatUsername(widget.username, config?.usernameFormat);
+
     final searchBtn = _buildActionButton(
       context,
       icon: Icons.search_rounded,
@@ -342,7 +368,7 @@ class _HomeAppBarState extends State<HomeAppBar>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            "${widget.timeSalutation}, ${widget.username}",
+            "$displayTimeSalutation, $displayUsername",
             style: TextStyle(
               fontSize: titleSize,
               fontWeight: FontWeight.bold,
@@ -352,7 +378,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
           const SizedBox(height: 4),
           Text(
-            DateFormat('MM月dd日 EEEE', 'zh_CN').format(DateTime.now()),
+            DateFormat(displayDateFormat, 'zh_CN').format(DateTime.now()),
             style: TextStyle(
               fontSize: dateSize,
               fontWeight: FontWeight.w500,
@@ -363,7 +389,7 @@ class _HomeAppBarState extends State<HomeAppBar>
           ),
           const SizedBox(height: 2),
           Text(
-            widget.currentGreeting,
+            displayGreeting,
             style: TextStyle(
               fontSize: greetingSize,
               color: widget.isLight

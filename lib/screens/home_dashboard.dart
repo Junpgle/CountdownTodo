@@ -109,6 +109,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
+  Map<String, dynamic> _homeTextConfig = {};
 
   List<String> _leftSections = ['courses', 'todos', 'math'];
   List<String> _rightSections = [
@@ -308,6 +309,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
     _loadSectionPreferences();
     _loadSemesterSettings();
+    _loadHomeTextConfig();
     _generateGreeting();
     _loadAllData();
     _initManifestWallpaper();
@@ -327,6 +329,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
+    StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (Platform.isAndroid || Platform.isIOS) {
@@ -495,6 +498,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _bannerRefreshTimer?.cancel();
     _pomodoroTickNotifier.dispose();
     MacPomodoroStatusBarService.dispose();
+    StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -2706,8 +2710,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     final hour = DateTime.now().hour;
     List<String> greetings;
 
+    // 从配置中获取自定义问候语
+    final customGreetings = _homeTextConfig['customGreetings'] as Map<String, dynamic>?;
+
     if (hour >= 5 && hour < 11) {
-      greetings = [
+      final custom = customGreetings?['morning'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "今天也要元气超标！",
         "新的一天，把快乐置顶。",
         "迎着光，做自己的小太阳。",
@@ -2715,7 +2723,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         "今日宜：开心、努力、好运。"
       ];
     } else if (hour >= 11 && hour < 14) {
-      greetings = [
+      final custom = customGreetings?['noon'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "吃饱喝足，继续奔赴。",
         "中场能量补给，快乐不打烊。",
         "稳住状态，万事可期。",
@@ -2723,7 +2732,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         "好好吃饭，就是好好爱自己。"
       ];
     } else if (hour >= 14 && hour < 18) {
-      greetings = [
+      final custom = customGreetings?['afternoon'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "保持热爱，保持冲劲。",
         "状态在线，干劲拉满。",
         "不急不躁，温柔又有力量。",
@@ -2731,7 +2741,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         "继续向前，好运正在路上。"
       ];
     } else if (hour >= 18 && hour < 23) {
-      greetings = [
+      final custom = customGreetings?['evening'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "晚风轻踩云朵，今天辛苦啦。",
         "卸下疲惫，拥抱温柔。",
         "今日圆满，万事顺心。",
@@ -2739,7 +2750,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         "好好休息，明天依旧闪亮。"
       ];
     } else if (hour >= 23 || hour < 3) {
-      greetings = [
+      final custom = customGreetings?['night'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "愿你心安，好梦常伴。",
         "安静沉淀，积蓄力量。",
         "不慌不忙，自在生长。",
@@ -2747,7 +2759,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         "今夜安睡，明日更好。"
       ];
     } else {
-      greetings = [
+      final custom = customGreetings?['latenight'] as List<dynamic>?;
+      greetings = custom?.cast<String>() ?? [
         "凌晨的星光，为你照亮前路。",
         "此刻努力，未来可期。",
         "安静时光，悄悄变优秀。",
@@ -2757,6 +2770,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     _currentGreeting = greetings[Random().nextInt(greetings.length)];
+  }
+
+  Future<void> _loadHomeTextConfig() async {
+    final config = await StorageService.getHomeTextConfig();
+    if (mounted) {
+      setState(() {
+        _homeTextConfig = config;
+      });
+    }
   }
 
   Future<void> _initNotifications() async {
@@ -3738,6 +3760,15 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _initManifestWallpaper() async {
+    _setupWallpaperListeners();
+    await _refreshWallpaper();
+  }
+
+  void _onWallpaperRefresh() {
+    if (mounted) _refreshWallpaper();
+  }
+
+  Future<void> _refreshWallpaper() async {
     final provider = await StorageService.getWallpaperProvider();
 
     // 自定义壁纸模式：直接从本地加载，跳过所有网络逻辑和 manifest 推送
@@ -3780,7 +3811,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (await UpdateService.needsWallpaperRefresh()) {
       UpdateService.updateWallpaperFromManifest();
     }
+  }
 
+  void _setupWallpaperListeners() {
     UpdateService.wallpaperShowNotifier.addListener(() {
       if (mounted) {
         final show = UpdateService.wallpaperShowNotifier.value;
@@ -3950,6 +3983,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                     username: widget.username,
                     timeSalutation: _timeSalutation,
                     currentGreeting: _currentGreeting,
+                    textConfig: HomeTextConfig(
+                      customTimeSalutation: _homeTextConfig['customTimeSalutation'] as String?,
+                      dateFormat: _homeTextConfig['dateFormat'] as String?,
+                      usernameFormat: _homeTextConfig['usernameFormat'] as String?,
+                    ),
                     isLight: isLight,
                     isSyncing: _isSyncing,
                     onSync: _showSyncOptionsDialog,

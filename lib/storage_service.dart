@@ -289,6 +289,7 @@ class StorageService {
   });
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
+  static final ValueNotifier<int> wallpaperRefreshNotifier = ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
   static Timer? _syncDebouncer;
   static String? _queuedSyncUsername;
@@ -301,6 +302,10 @@ class StorageService {
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
     });
+  }
+
+  static void triggerWallpaperRefresh() {
+    wallpaperRefreshNotifier.value++;
   }
 
   static void setForceFlushProtectedUuids(Set<String> uuids) {
@@ -3762,6 +3767,9 @@ class StorageService {
             raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
         final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
         TodoItem sItem = TodoItem.fromJson(sanitizedServerRaw);
+        if (sItem.hasConflict) {
+          debugPrint('🩺 [合并诊断] UUID=${sItem.id} 服务端返回 hasConflict=true version=${sItem.version}');
+        }
         if (ignoredUuids.contains(sItem.id)) {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
           continue;
@@ -3822,6 +3830,12 @@ class StorageService {
             continue;
           }
 
+          final mergeVersionCond = sItem.version > local.version;
+          final mergeTimeCond =
+              sItem.updatedAt > local.updatedAt && !sItem.hasConflict;
+          if (sItem.hasConflict || local.hasConflict) {
+            debugPrint('🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
+          }
           if (sItem.isDeleted ||
               sItem.version > local.version ||
               (sItem.updatedAt > local.updatedAt && !sItem.hasConflict)) {
@@ -3992,7 +4006,7 @@ class StorageService {
           }
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              sItem.updatedAt > allLocalCountdowns[idx].updatedAt) {
+              (sItem.updatedAt > allLocalCountdowns[idx].updatedAt && !sItem.hasConflict)) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
           }
@@ -4705,6 +4719,33 @@ class StorageService {
   static Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
     return prefs.getString(KEY_SERVER_CHOICE) ?? 'aliyun';
+  }
+
+  // ==========================================
+  // 首页文字自定义配置
+  // ==========================================
+  static const String _KEY_HOME_TEXT_CONFIG = 'home_text_config';
+
+  static Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = username != null && username.isNotEmpty
+        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
+        : _KEY_HOME_TEXT_CONFIG;
+    await prefs.setString(key, jsonEncode(config));
+  }
+
+  static Future<Map<String, dynamic>> getHomeTextConfig() async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final key = username != null && username.isNotEmpty
+        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
+        : _KEY_HOME_TEXT_CONFIG;
+    final String? jsonStr = prefs.getString(key);
+    if (jsonStr != null) {
+      return Map<String, dynamic>.from(jsonDecode(jsonStr));
+    }
+    return {};
   }
 
   static Future<bool> getSemesterEnabled() async {

@@ -106,6 +106,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
     }
 
     await StorageService.saveWallpaperCustomPath(savedPath);
+    StorageService.triggerWallpaperRefresh();
     if (mounted) {
       setState(() {
         _customWallpaperPath = savedPath;
@@ -121,6 +122,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
       } catch (_) {}
     }
     await StorageService.clearWallpaperCustomPath();
+    StorageService.triggerWallpaperRefresh();
     if (mounted) {
       setState(() {
         _customWallpaperPath = null;
@@ -161,6 +163,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                 if (val != null) {
                   setState(() => _provider = val);
                   StorageService.saveWallpaperProvider(val);
+                  StorageService.triggerWallpaperRefresh();
                 }
               },
             ),

@@ -4,6 +4,7 @@ import '../../../services/llm_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
+import '../home_text_config_page.dart';
 
 class PreferenceSection extends StatelessWidget {
   final String? highlightTarget;
@@ -289,6 +290,28 @@ class PreferenceSection extends StatelessWidget {
                       MaterialPageRoute(
                           builder: (context) => const WallpaperSettingsPage()),
                     );
+                  },
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'home_text',
+                child: ListTile(
+                  leading: const Icon(Icons.text_fields,
+                      color: Colors.teal),
+                  title: const Text('首页文字自定义'),
+                  subtitle: const Text('自定义问候语、日期格式、用户名显示'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const HomeTextConfigPage()),
+                    );
+                    if (result == true && context.mounted) {
+                      (context as Element).markNeedsBuild();
+                    }
                   },
                 ),
               ),
