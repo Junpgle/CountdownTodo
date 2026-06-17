@@ -4711,7 +4711,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         username: widget.username,
         timeSalutation: _timeSalutation,
         onSettings: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
+          Future.delayed(const Duration(milliseconds: 350), () async {
             if (!mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
@@ -4788,10 +4788,9 @@ class _HomeDashboardState extends State<HomeDashboard>
           });
         },
         onGuide: () {
-          Future.delayed(const Duration(milliseconds: 300), () {
+          Future.delayed(const Duration(milliseconds: 350), () {
             if (!mounted) return;
-            Navigator.push(
-              context,
+            Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(
                 builder: (context) => FeatureGuideScreen(
                   isManualReview: true,
@@ -4813,7 +4812,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       showShadow: true,
       angle: 0.0,
       drawerShadowsBackgroundColor: Colors.grey.shade300,
-      slideWidth: MediaQuery.of(context).size.width * 0.65,
+      slideWidth: MediaQuery.of(context).size.width * 0.72,
     );
   }
 

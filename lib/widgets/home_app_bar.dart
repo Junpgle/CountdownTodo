@@ -322,6 +322,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.search_rounded,
       onPressed: widget.onSearch ?? () {},
       buttonKey: widget.searchKey,
+      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final syncBtn = _buildActionButton(
@@ -329,6 +330,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.cloud_sync_rounded,
       isLoading: widget.isSyncing,
       onPressed: widget.onSync,
+      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final aiBtn = _buildActionButton(
@@ -336,6 +338,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.smart_toy_outlined,
       onPressed: widget.onAiAssistant ?? () {},
       buttonKey: widget.aiKey,
+      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final teamsBtn = _buildActionButton(
@@ -345,6 +348,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       buttonKey: widget.teamsKey,
       badgeCount: widget.teamPendingCount,
       showAlertDot: widget.hasTeamConflictDot,
+      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
     final settingsBtn = _buildActionButton(
@@ -352,6 +356,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.settings_rounded,
       onPressed: widget.onSettings,
       buttonKey: widget.settingsKey,
+      isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
 
@@ -359,17 +364,16 @@ class _HomeAppBarState extends State<HomeAppBar>
       backgroundColor: widget.isLight ? Colors.transparent : null,
       elevation: 0,
       toolbarHeight: toolbarH,
-      leading: (isTablet || isLandscape) ? null : _buildAnimatedAction(
-        0,
-        _buildActionButton(
-          context,
-          icon: Icons.menu_rounded,
-          onPressed: () {
-            ZoomDrawer.of(context)?.toggle();
-          },
-          margin: const EdgeInsets.only(left: 8),
-        ),
+      leading: (isTablet || isLandscape) ? null : IconButton(
+        icon: const Icon(Icons.menu_rounded),
+        iconSize: 28,
+        color: widget.isLight ? Colors.white : Theme.of(context).colorScheme.onSurface,
+        padding: const EdgeInsets.only(left: 8),
+        onPressed: () {
+          ZoomDrawer.of(context)?.toggle();
+        },
       ),
+      titleSpacing: (isTablet || isLandscape) ? NavigationToolbar.kMiddleSpacing : 0,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
