@@ -10,7 +10,6 @@ import '../server_choice_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import '../../animation_settings_page.dart';
-import '../calendar_sync_page.dart';
 import '../../feature_guide_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
@@ -38,7 +37,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'migration': GlobalKey(),
     'cache': GlobalKey(),
     'storage': GlobalKey(),
-    'calendar_sync': GlobalKey(),
     'update': GlobalKey(),
     'feature_guide': GlobalKey(),
   };
@@ -249,6 +247,47 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         children: [
           const SizedBox(height: 16),
           _buildTile(
+            targetId: 'wallpaper',
+            child: ListTile(
+              leading: const Icon(Icons.wallpaper_outlined, color: Colors.deepPurple),
+              title: const Text('首页壁纸设置'),
+              subtitle: const Text('来源切换、必应选项配置 (地区/分辨率/格式)'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '首页壁纸设置'),
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1, indent: 56),
+          _buildTile(
+            targetId: 'home_text',
+            child: ListTile(
+              leading: const Icon(Icons.text_fields, color: Colors.teal),
+              title: const Text('首页文字自定义'),
+              subtitle: const Text('自定义问候语、日期格式、用户名显示'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final result = await Navigator.push<bool>(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '首页文字自定义'),
+                  ),
+                );
+                if (result == true && context.mounted) {
+                  setState(() {});
+                }
+              },
+            ),
+          ),
+          const Divider(height: 1, indent: 56),
+          _buildTile(
             targetId: 'theme',
             child: ListTile(
               leading: const Icon(Icons.palette_outlined),
@@ -328,47 +367,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               },
             ),
           ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'wallpaper',
-            child: ListTile(
-              leading: const Icon(Icons.wallpaper_outlined, color: Colors.deepPurple),
-              title: const Text('首页壁纸设置'),
-              subtitle: const Text('来源切换、必应选项配置 (地区/分辨率/格式)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页壁纸设置'),
-                  ),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'home_text',
-            child: ListTile(
-              leading: const Icon(Icons.text_fields, color: Colors.teal),
-              title: const Text('首页文字自定义'),
-              subtitle: const Text('自定义问候语、日期格式、用户名显示'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                final result = await Navigator.push<bool>(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页文字自定义'),
-                  ),
-                );
-                if (result == true && context.mounted) {
-                  setState(() {});
-                }
-              },
-            ),
-          ),
+
           
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
@@ -436,25 +435,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: _showMigrationDialog,
             ),
           ),
-          const Divider(height: 1, indent: 72),
-          _buildTile(
-            targetId: 'calendar_sync',
-            child: ListTile(
-              leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
-              title: const Text('日历同步向导'),
-              subtitle: const Text('将本软件课表双向同步至系统日历'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    CalendarSyncPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '日历同步向导'),
-                  ),
-                );
-              },
-            ),
-          ),
+
           const SizedBox(height: 32),
         ],
       ),

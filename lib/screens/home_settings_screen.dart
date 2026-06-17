@@ -77,8 +77,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final preferenceTargets = ['theme', 'theme_color', 'sync_interval', 'conflict_detection', 'server_choice', 'wallpaper', 'home_text', 'animation'];
     final courseTargets = ['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt', 'course_calendar_adjustment', 'semester_progress', 'semester_start', 'semester_end', 'semester_sync'];
-    final interconnectTargets = ['lan_sync', 'band_sync'];
-    final advancedTargets = ['llm_config', 'llm_retry', 'migration', 'cache', 'storage', 'update', 'feature_guide', 'calendar_sync'];
+    final interconnectTargets = ['lan_sync', 'band_sync', 'calendar_sync'];
+    final advancedTargets = ['llm_config', 'llm_retry', 'migration', 'cache', 'storage', 'update', 'feature_guide'];
     final platformTargets = ['float_window_style', 'force_refresh', 'island_priority', 'tai_db', 'live_updates', 'island_support', 'test_notification'];
 
     if (preferenceTargets.contains(target)) {
@@ -664,7 +664,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   id: 'interconnect',
                   icon: Icons.devices,
                   color: Colors.blue,
-                  title: '设备互联',
+                  title: '数据与互联',
                   widgetBuilder: () => const InterconnectSettingsPage(isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
@@ -861,8 +861,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1, indent: 56),
                 ListTile(
                   leading: const Icon(Icons.devices_outlined, color: Colors.blue),
-                  title: const Text('设备互联'),
-                  subtitle: const Text('局域网同步、小米手环同步'),
+                  title: const Text('数据与互联'),
+                  subtitle: const Text('局域网同步、手环、日历双向同步'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const InterconnectSettingsPage())),
                 ),

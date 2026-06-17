@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../utils/page_transitions.dart';
 import '../../band_sync_screen.dart';
 import '../lan_sync_screen.dart';
+import '../calendar_sync_page.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -17,6 +18,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'lan_sync': GlobalKey(),
     'band_sync': GlobalKey(),
+    'calendar_sync': GlobalKey(),
   };
 
   String? _highlightTarget;
@@ -68,7 +70,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('设备互联'),
+        title: const Text('数据与互联'),
       ),
       body: ListView(
         children: [
@@ -105,6 +107,25 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   PageTransitions.slideHorizontal(
                     BandSyncScreen(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '智能手环同步'),
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1, indent: 56),
+          _buildTile(
+            targetId: 'calendar_sync',
+            child: ListTile(
+              leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
+              title: const Text('日历同步向导'),
+              subtitle: const Text('将本软件课表双向同步至系统日历'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    CalendarSyncPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '日历同步向导'),
                   ),
                 );
               },
