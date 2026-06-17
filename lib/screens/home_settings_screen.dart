@@ -12,6 +12,7 @@ import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
 
+import 'animation_settings_page.dart';
 import 'login_screen.dart';
 import 'about_screen.dart';
 import 'settings/widgets/account_section.dart';
@@ -75,7 +76,7 @@ class _SettingsPageState extends State<SettingsPage> {
     String paneId;
     Widget Function() paneBuilder;
 
-    final preferenceTargets = ['theme', 'theme_color', 'sync_interval', 'conflict_detection', 'server_choice', 'wallpaper', 'home_text', 'animation'];
+    final preferenceTargets = ['theme', 'theme_color', 'sync_interval', 'conflict_detection', 'server_choice', 'wallpaper', 'home_text'];
     final courseTargets = ['no_course_behavior', 'webview_import', 'smart_import', 'course_sync', 'course_upload', 'course_adapt', 'course_calendar_adjustment', 'semester_progress', 'semester_start', 'semester_end', 'semester_sync'];
     final interconnectTargets = ['lan_sync', 'band_sync', 'calendar_sync'];
     final advancedTargets = ['llm_config', 'llm_retry', 'migration', 'cache', 'storage', 'update', 'feature_guide'];
@@ -96,6 +97,9 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (target == 'llm_config') {
       paneId = 'llm_config';
       paneBuilder = () => const LLMConfigPage(isEmbedded: true);
+    } else if (target == 'animation') {
+      paneId = 'animation';
+      paneBuilder = () => const AnimationSettingsPage(isEmbedded: true);
     } else if (platformTargets.contains(target)) {
       paneId = 'platform';
       paneBuilder = () => PlatformSpecificSettingsPage(initialTarget: target, isEmbedded: true);
@@ -125,6 +129,7 @@ class _SettingsPageState extends State<SettingsPage> {
       else if (paneId == 'course') pushWidget = CourseSettingsPage(initialTarget: target);
       else if (paneId == 'interconnect') pushWidget = InterconnectSettingsPage(initialTarget: target);
       else if (paneId == 'llm_config') pushWidget = const LLMConfigPage();
+      else if (paneId == 'animation') pushWidget = const AnimationSettingsPage();
       else if (paneId == 'platform') pushWidget = PlatformSpecificSettingsPage(initialTarget: target);
       else if (paneId == 'permissions') pushWidget = const PermissionSettingsPage();
       else if (paneId == 'notifications') pushWidget = const NotificationSettingsPage();
@@ -654,6 +659,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   widgetBuilder: () => const PreferenceSettingsPage(isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
+                  id: 'animation',
+                  icon: Icons.animation,
+                  color: Colors.pinkAccent,
+                  title: '动画与特效',
+                  widgetBuilder: () => const AnimationSettingsPage(isEmbedded: true),
+                ),
+                _buildMacSidebarItem(
                   id: 'course',
                   icon: Icons.school,
                   color: Colors.teal,
@@ -849,6 +861,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('主题、动画、存储清理、数据迁移与高级选项'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const PreferenceSettingsPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.animation_outlined, color: Colors.pinkAccent),
+                  title: const Text('动画与特效'),
+                  subtitle: const Text('页面切换动画、过渡效果及性能选项'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context, PageTransitions.slideHorizontal(const AnimationSettingsPage())),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

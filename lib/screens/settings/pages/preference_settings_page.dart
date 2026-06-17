@@ -9,7 +9,6 @@ import '../../../utils/page_transitions.dart';
 import '../server_choice_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
-import '../../animation_settings_page.dart';
 import '../../feature_guide_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
@@ -33,7 +32,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'theme_color': GlobalKey(),
     'wallpaper': GlobalKey(),
     'home_text': GlobalKey(),
-    'animation': GlobalKey(),
     'migration': GlobalKey(),
     'cache': GlobalKey(),
     'storage': GlobalKey(),
@@ -288,25 +286,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           ),
           _buildAppearanceSection(),
           _buildColorSection(),
-          const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'animation',
-            child: ListTile(
-              leading: Icon(Icons.animation_outlined, color: Theme.of(context).colorScheme.primary),
-              title: const Text('动画设置', style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text('页面切换动画、Container Transform、性能选项'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    AnimationSettingsPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '动画设置'),
-                  ),
-                );
-              },
-            ),
-          ),
+
 
           
           const Padding(
@@ -524,19 +504,22 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           children: [
             const Text('主题颜色', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
             const SizedBox(height: 16),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildColorCircle('system_wallpaper', null, '多色/自动'),
-                  const SizedBox(width: 12),
-                  ...presetColors.map((c) => Padding(
-                    padding: const EdgeInsets.only(right: 12.0),
-                    child: _buildColorCircle('custom', c, null),
-                  )),
-                  _buildColorCircle('custom_picker', null, '自定义'),
-                ],
+            Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildColorCircle('system_wallpaper', null, '多色/自动'),
+                    const SizedBox(width: 12),
+                    ...presetColors.map((c) => Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: _buildColorCircle('custom', c, null),
+                    )),
+                    _buildColorCircle('custom_picker', null, '自定义'),
+                  ],
+                ),
               ),
             ),
           ],
