@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
@@ -46,6 +47,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   String _themeColorMode = 'default';
   Color? _customThemeColor;
   String _wallpaperProvider = 'bing';
+  Map<String, dynamic> _homeTextConfig = {};
   String _username = '';
 
   bool _isCheckingUpdate = false;
@@ -84,12 +86,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     String themeColorMode = prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
     int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
     String wallpaperProvider = await StorageService.getWallpaperProvider();
+    Map<String, dynamic> homeTextConfig = await StorageService.getHomeTextConfig();
 
     if (mounted) {
       setState(() {
         _themeMode = theme;
         _themeColorMode = themeColorMode;
         _wallpaperProvider = wallpaperProvider;
+        _homeTextConfig = homeTextConfig;
         if (customColorVal != null) {
           _customThemeColor = Color(customColorVal);
         }
@@ -249,27 +253,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           const SizedBox(height: 16),
           _buildWallpaperSection(),
           const Divider(height: 1, indent: 56),
-          _buildTile(
-            targetId: 'home_text',
-            child: ListTile(
-              leading: const Icon(Icons.text_fields, color: Colors.teal),
-              title: const Text('首页文字自定义'),
-              subtitle: const Text('自定义问候语、日期格式、用户名显示'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                final result = await Navigator.push<bool>(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页文字自定义'),
-                  ),
-                );
-                if (result == true && context.mounted) {
-                  setState(() {});
-                }
-              },
-            ),
-          ),
+          _buildHomeTextSection(),
           _buildAppearanceSection(),
           _buildColorSection(),
 
@@ -435,6 +419,121 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
+  Widget _buildHomeTextSection() {
+    final now = DateTime.now();
+    
+    final usernameFormat = _homeTextConfig['usernameFormat'] as String? ?? '{name}';
+    final displayName = usernameFormat.replaceAll('{name}', _username.isNotEmpty ? _username : '用户');
+
+    final dateFormat = _homeTextConfig['dateFormat'] as String? ?? 'MM月dd日 EEEE';
+    String dateStr;
+    try {
+      dateStr = DateFormat(dateFormat, 'zh_CN').format(now);
+    } catch (_) {
+      dateStr = DateFormat('MM月dd日 EEEE', 'zh_CN').format(now);
+    }
+
+    final salutationMode = _homeTextConfig['salutationMode'] as String? ?? 'timed';
+    String salutation = '你好';
+    if (salutationMode == 'fixed') {
+       salutation = _homeTextConfig['fixedSalutation'] as String? ?? '你好';
+    } else {
+       final hour = now.hour;
+       if (hour >= 5 && hour < 12) salutation = '上午好';
+       else if (hour >= 12 && hour < 14) salutation = '中午好';
+       else if (hour >= 14 && hour < 18) salutation = '下午好';
+       else if (hour >= 18 && hour < 23) salutation = '晚上好';
+       else salutation = '夜深了';
+    }
+
+    final greetingMode = _homeTextConfig['greetingMode'] as String? ?? 'timed';
+    String greeting = '今天也要元气满满！';
+    if (greetingMode == 'fixed') {
+       greeting = _homeTextConfig['fixedGreeting'] as String? ?? greeting;
+    }
+
+    return _buildTile(
+      targetId: 'home_text',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('首页文字', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                GestureDetector(
+                  onTap: () async {
+                    final result = await Navigator.push<bool>(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '首页文字自定义'),
+                      ),
+                    );
+                    if (result == true && mounted) {
+                       final newConfig = await StorageService.getHomeTextConfig();
+                       setState(() => _homeTextConfig = newConfig);
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Text('高级设置', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
+                      Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () async {
+                  final result = await Navigator.push<bool>(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '首页文字自定义'),
+                    ),
+                  );
+                  if (result == true && mounted) {
+                     final newConfig = await StorageService.getHomeTextConfig();
+                     setState(() => _homeTextConfig = newConfig);
+                  }
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+                  border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$salutation，${displayName.isEmpty ? "访客" : displayName}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Text(dateStr, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('“ $greeting ”', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary, fontStyle: FontStyle.italic)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAppearanceSection() {
     return _buildTile(
       targetId: 'theme',
@@ -564,9 +663,26 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildColorSection() {
-    final presetColors = [
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
+    final allPresetColors = [
       Colors.blue, Colors.purple, Colors.pink, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.grey
     ];
+
+    List<Color> displayColors;
+    if (isMobile) {
+      displayColors = [Colors.blue, Colors.purple, Colors.orange, Colors.green];
+      if (_themeColorMode == 'custom' && _customThemeColor != null) {
+         if (allPresetColors.any((c) => c.value == _customThemeColor!.value)) {
+            if (!displayColors.any((c) => c.value == _customThemeColor!.value)) {
+               displayColors[3] = _customThemeColor!;
+            }
+         }
+      }
+    } else {
+      displayColors = allPresetColors;
+    }
 
     return _buildTile(
       targetId: 'theme_color',
@@ -584,13 +700,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildColorCircle('system_wallpaper', null, '多色/自动'),
+                    _buildColorCircle('system_wallpaper', null, '多色/自动', displayColors),
                     const SizedBox(width: 12),
-                    ...presetColors.map((c) => Padding(
+                    ...displayColors.map((c) => Padding(
                       padding: const EdgeInsets.only(right: 12.0),
-                      child: _buildColorCircle('custom', c, null),
+                      child: _buildColorCircle('custom', c, null, displayColors),
                     )),
-                    _buildColorCircle('custom_picker', null, '自定义'),
+                    _buildColorCircle('custom_picker', null, '自定义', displayColors),
                   ],
                 ),
               ),
@@ -601,16 +717,15 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildColorCircle(String mode, Color? color, String? label) {
+  Widget _buildColorCircle(String mode, Color? color, String? label, List<Color> displayColors) {
     bool isSelected = false;
-    final presetColors = [Colors.blue, Colors.purple, Colors.pink, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.grey];
 
     if (mode == 'system_wallpaper') {
       isSelected = _themeColorMode == 'system_wallpaper' || _themeColorMode == 'default';
     } else if (mode == 'custom' && color != null) {
       isSelected = (_themeColorMode == 'custom') && _customThemeColor?.value == color.value;
     } else if (mode == 'custom_picker') {
-      isSelected = (_themeColorMode == 'custom' || _themeColorMode == 'image_extracted') && !presetColors.any((c) => c.value == _customThemeColor?.value);
+      isSelected = (_themeColorMode == 'custom' || _themeColorMode == 'image_extracted') && !displayColors.any((c) => c.value == _customThemeColor?.value);
     }
 
     Widget inner;
