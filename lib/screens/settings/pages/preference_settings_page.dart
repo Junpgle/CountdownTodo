@@ -45,6 +45,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   String _themeMode = 'system';
   String _themeColorMode = 'default';
   Color? _customThemeColor;
+  String _wallpaperProvider = 'bing';
   String _username = '';
 
   bool _isCheckingUpdate = false;
@@ -82,11 +83,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     String theme = await StorageService.getThemeMode();
     String themeColorMode = prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
     int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
+    String wallpaperProvider = await StorageService.getWallpaperProvider();
 
     if (mounted) {
       setState(() {
         _themeMode = theme;
         _themeColorMode = themeColorMode;
+        _wallpaperProvider = wallpaperProvider;
         if (customColorVal != null) {
           _customThemeColor = Color(customColorVal);
         }
@@ -244,24 +247,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       body: ListView(
         children: [
           const SizedBox(height: 16),
-          _buildTile(
-            targetId: 'wallpaper',
-            child: ListTile(
-              leading: const Icon(Icons.wallpaper_outlined, color: Colors.deepPurple),
-              title: const Text('首页壁纸设置'),
-              subtitle: const Text('来源切换、必应选项配置 (地区/分辨率/格式)'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  PageTransitions.slideHorizontal(
-                    WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
-                    settings: const RouteSettings(name: '首页壁纸设置'),
-                  ),
-                );
-              },
-            ),
-          ),
+          _buildWallpaperSection(),
           const Divider(height: 1, indent: 56),
           _buildTile(
             targetId: 'home_text',
@@ -357,6 +343,93 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           ),
 
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWallpaperSection() {
+    return _buildTile(
+      targetId: 'wallpaper',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('首页壁纸', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      WallpaperSettingsPage(isEmbedded: widget.isEmbedded),
+                      settings: const RouteSettings(name: '首页壁纸设置'),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text('高级设置', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
+                      Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined, Colors.blue),
+                const SizedBox(width: 24),
+                _buildWallpaperCard('github', 'GitHub随机', Icons.code, Colors.purple),
+                const SizedBox(width: 24),
+                _buildWallpaperCard('custom', '自定义图片', Icons.folder_special_outlined, Colors.orange),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWallpaperCard(String value, String title, IconData icon, Color accentColor) {
+    final isSelected = _wallpaperProvider == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _wallpaperProvider = value);
+        StorageService.saveWallpaperProvider(value);
+        StorageService.triggerWallpaperRefresh();
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 86,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? colorScheme.primary : Colors.transparent,
+                width: 2.5,
+              ),
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade200,
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(color: colorScheme.primary.withValues(alpha: 0.2), blurRadius: 6, spreadRadius: 1)
+              ],
+            ),
+            child: Center(
+              child: Icon(icon, size: 28, color: isSelected ? colorScheme.primary : Colors.grey.shade600),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(title, style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? colorScheme.primary : null,
+          )),
         ],
       ),
     );

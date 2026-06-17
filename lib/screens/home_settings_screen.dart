@@ -513,8 +513,10 @@ class _SettingsPageState extends State<SettingsPage> {
     switch (_selectedPaneId) {
       case 'account': return '账号与系统公告';
       case 'preference': return '系统与外观';
+      case 'animation': return '动画与特效';
       case 'course': return '课表与学期';
-      case 'interconnect': return '设备互联';
+      case 'interconnect': return '数据与互联';
+      case 'llm_config': return 'AI 助手配置';
       case 'platform': return Platform.isWindows ? 'Windows 专属' : (Platform.isAndroid ? 'Android 专属' : '平台专属');
       case 'notifications': return '通知管理';
       case 'permissions': return '权限管理';
