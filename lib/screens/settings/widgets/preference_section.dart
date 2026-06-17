@@ -24,6 +24,10 @@ class PreferenceSection extends StatelessWidget {
   final ValueChanged<int?>? onLLMRetryCountChanged;
   final bool conflictDetectionEnabled;
   final ValueChanged<bool>? onConflictDetectionChanged;
+  final String themeColorMode;
+  final ValueChanged<String?> onThemeColorModeChanged;
+  final Color? customThemeColor;
+  final VoidCallback onPickCustomThemeColor;
 
   const PreferenceSection({
     super.key,
@@ -45,6 +49,10 @@ class PreferenceSection extends StatelessWidget {
     this.onLLMRetryCountChanged,
     this.conflictDetectionEnabled = false,
     this.onConflictDetectionChanged,
+    required this.themeColorMode,
+    required this.onThemeColorModeChanged,
+    this.customThemeColor,
+    required this.onPickCustomThemeColor,
   });
 
   // 🚀 辅助方法：构建带高亮动画的 Tile
@@ -157,6 +165,45 @@ class PreferenceSection extends StatelessWidget {
                       DropdownMenuItem(value: 'dark', child: Text('深色')),
                     ],
                     onChanged: onThemeModeChanged,
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
+              _buildTile(
+                context: context,
+                targetId: 'theme_color',
+                child: ListTile(
+                  leading: const Icon(Icons.format_paint_outlined),
+                  title: const Text('全局主题颜色'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (themeColorMode == 'custom' || themeColorMode == 'image_extracted')
+                        GestureDetector(
+                          onTap: onPickCustomThemeColor,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            margin: const EdgeInsets.only(right: 12),
+                            decoration: BoxDecoration(
+                              color: customThemeColor ?? Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                          ),
+                        ),
+                      DropdownButton<String>(
+                        value: themeColorMode,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 'default', child: Text('默认蓝色')),
+                          DropdownMenuItem(value: 'system_wallpaper', child: Text('跟随壁纸/系统')),
+                          DropdownMenuItem(value: 'image_extracted', child: Text('从图片提取')),
+                          DropdownMenuItem(value: 'custom', child: Text('自定义颜色')),
+                        ],
+                        onChanged: onThemeColorModeChanged,
+                      ),
+                    ],
                   ),
                 ),
               ),

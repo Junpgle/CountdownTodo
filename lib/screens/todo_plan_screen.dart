@@ -1141,9 +1141,9 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     if (minutes >= 60) {
       final h = minutes ~/ 60;
       final m = minutes % 60;
-      return m > 0 ? '${h}小时${m}分钟' : '${h}小时';
+      return m > 0 ? '$h小时$m分钟' : '$h小时';
     }
-    return '${minutes}分钟';
+    return '$minutes分钟';
   }
 
   Future<void> _prefillEstimate(String todoId) async {

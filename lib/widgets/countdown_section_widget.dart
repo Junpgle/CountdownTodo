@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:CountDownTodo/models.dart';
@@ -371,8 +372,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     final today = DateTime(now.year, now.month, now.day);
     final List<CountdownItem> activeCountdowns =
         widget.countdowns.where((item) {
-      if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid)
+      if (_selectedTeamUuid != null && item.teamUuid != _selectedTeamUuid) {
         return false;
+      }
       return item.targetDate.difference(today).inDays >= 0;
     }).toList()
           ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
@@ -396,11 +398,10 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
       child: ClipRect(
         clipper: _HorizontalClipper(),
         child: ListView.builder(
-          controller: _listScrollController,
+          scrollCacheExtent: ScrollCacheExtent.pixels(1000), controller: _listScrollController,
           padding: const EdgeInsets.only(right: 12),
           clipBehavior: Clip.none,
           scrollDirection: Axis.horizontal,
-          cacheExtent: 1000,
           itemCount: activeCountdowns.length,
           itemBuilder: (context, index) {
               final item = activeCountdowns[index];

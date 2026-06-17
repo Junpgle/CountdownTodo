@@ -3915,7 +3915,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
                     .format(_createdDate),
                 icon: Icons.play_circle_fill,
-                color: Colors.blueAccent,
+                color: Theme.of(context).colorScheme.secondary,
                 onTap: () async {
                   final pickedDate = await showDatePicker(
                       context: context,
@@ -3930,13 +3930,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       final pickedTime = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(_createdDate));
-                      if (pickedTime != null)
+                      if (pickedTime != null) {
                         setState(() => _createdDate = DateTime(
                             pickedDate.year,
                             pickedDate.month,
                             pickedDate.day,
                             pickedTime.hour,
                             pickedTime.minute));
+                      }
                     }
                   }
                 },
@@ -3966,13 +3967,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(
                               _dueDate ?? DateTime.now()));
-                      if (pickedTime != null)
+                      if (pickedTime != null) {
                         setState(() => _dueDate = DateTime(
                             pickedDate.year,
                             pickedDate.month,
                             pickedDate.day,
                             pickedTime.hour,
                             pickedTime.minute));
+                      }
                     }
                   }
                 },
@@ -4063,8 +4065,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           lastDate: DateTime(2100),
                           initialDate: _recurrenceEndDate ??
                               DateTime.now().add(const Duration(days: 30)));
-                      if (picked != null)
+                      if (picked != null) {
                         setState(() => _recurrenceEndDate = picked);
+                      }
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4522,7 +4525,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       const SizedBox(width: 6),
       chip('实际', '${actual}m', Colors.green),
       const SizedBox(width: 6),
-      chip('达成', '${(rate * 100).round()}%', Colors.blue),
+      chip('达成', '${(rate * 100).round()}%', Theme.of(context).colorScheme.primary),
       const SizedBox(width: 6),
       chip('完成', '$done', Colors.teal),
       const SizedBox(width: 6),

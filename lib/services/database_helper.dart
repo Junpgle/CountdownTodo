@@ -1787,11 +1787,13 @@ class DatabaseHelper {
     final db = await database;
     final hour = DateTime.now().hour;
     String column = 'morning_count';
-    if (hour >= 12 && hour < 18)
+    if (hour >= 12 && hour < 18) {
       column = 'afternoon_count';
-    else if (hour >= 18 && hour < 24)
+    } else if (hour >= 18 && hour < 24){
       column = 'evening_count';
-    else if (hour >= 0 && hour < 6) column = 'night_count';
+    } else if (hour >= 0 && hour < 6) {
+      column = 'night_count';
+    }
 
     await db.rawInsert('''
       INSERT INTO search_history (query, timestamp, frequency, $column)
@@ -1813,11 +1815,13 @@ class DatabaseHelper {
     final hour = currentHour ?? DateTime.now().hour;
 
     String timeWeightCol = 'morning_count';
-    if (hour >= 12 && hour < 18)
+    if (hour >= 12 && hour < 18) {
       timeWeightCol = 'afternoon_count';
-    else if (hour >= 18 && hour < 24)
+    } else if (hour >= 18 && hour < 24) {
       timeWeightCol = 'evening_count';
-    else if (hour >= 0 && hour < 6) timeWeightCol = 'night_count';
+    }else if (hour >= 0 && hour < 6) {
+      timeWeightCol = 'night_count';
+    }
 
     return await db.query(
       'search_history',

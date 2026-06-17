@@ -525,7 +525,7 @@ class CourseService {
             .toList()
           ..sort((a, b) => a.startTime.compareTo(b.startTime));
         final days = nextDay.difference(todayNormalized).inDays;
-        return {'title': '${days}天后课程', 'courses': nextCourses};
+        return {'title': '$days天后课程', 'courses': nextCourses};
       }
 
       return {'title': '最近无课', 'courses': <CourseItem>[]};

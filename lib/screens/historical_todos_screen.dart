@@ -77,8 +77,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
       _orphanTodos = allTodos.where((t) {
         if (t.isDeleted || t.isDone) return false;
         if (t.groupId != null && t.groupId!.isEmpty) return true;
-        if (t.groupId != null && !activeGroupIds.contains(t.groupId))
+        if (t.groupId != null && !activeGroupIds.contains(t.groupId)) {
           return true;
+        }
         return false;
       }).toList();
       _orphanTodos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

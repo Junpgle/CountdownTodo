@@ -488,7 +488,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   Color _colorFor(CalendarSyncEntryType type) {
     switch (type) {
       case CalendarSyncEntryType.todo:
-        return Colors.blue;
+        return Theme.of(context).colorScheme.primary;
       case CalendarSyncEntryType.course:
         return Colors.indigo;
       case CalendarSyncEntryType.countdown:

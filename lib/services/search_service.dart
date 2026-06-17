@@ -477,12 +477,16 @@ class SearchService {
               if (t.dueDate != null &&
                   t.dueDate!.isAfter(
                       startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                  t.dueDate!.isBefore(endOfDay!)) return true;
+                  t.dueDate!.isBefore(endOfDay!)) {
+                return true;
+              }
               if (t.createdDate != null) {
                 final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
                 if (cd.isAfter(startOfDay!
                         .subtract(const Duration(milliseconds: 1))) &&
-                    cd.isBefore(endOfDay!)) return true;
+                    cd.isBefore(endOfDay!)) {
+                  return true;
+                }
               }
               return false;
             })

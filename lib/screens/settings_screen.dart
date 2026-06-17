@@ -157,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.save),
                 label: const Text("保存配置", style: TextStyle(fontSize: 18)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 15),
                 ),

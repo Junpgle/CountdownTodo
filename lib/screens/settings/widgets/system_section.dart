@@ -99,8 +99,8 @@ class SystemSection extends StatelessWidget {
                   context: context,
                   targetId: 'cache',
                   child: ListTile(
-                    leading: const Icon(Icons.cleaning_services,
-                        color: Colors.blueAccent),
+                    leading: Icon(Icons.cleaning_services,
+                        color: Theme.of(context).colorScheme.secondary),
                     title: const Text('深度清理缓存与冗余'),
                     subtitle: const Text('包含更新残留包与深度图片缓存'),
                     trailing: AnimatedSwitcher(

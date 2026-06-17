@@ -529,7 +529,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
         children: [
           ListTile(
             leading: CircleAvatar(
-              backgroundColor: isOnline ? Colors.blue : Colors.grey,
+              backgroundColor: isOnline ? Theme.of(context).colorScheme.primary : Colors.grey,
               child: const Icon(Icons.devices, color: Colors.white),
             ),
             title: Row(
@@ -579,8 +579,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                     onPressed:
                         !isOnline ? null : () => _pickAndSendFile(device),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      side: const BorderSide(color: Colors.blue),
+                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      side: BorderSide(color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ),
@@ -609,7 +609,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      color: Colors.blue.withValues(alpha: 0.1),
+      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -638,7 +638,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
           LinearProgressIndicator(
             value: _progressValue,
             backgroundColor: Colors.grey[300],
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
           ),
         ],
       ),

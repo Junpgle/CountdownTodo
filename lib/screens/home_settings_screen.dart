@@ -11,9 +11,11 @@ import 'dart:convert';
 import 'dart:isolate';
 import '../services/tai_service.dart';
 import '../storage_service.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/notification_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
-import '../services/notification_service.dart';
 import 'login_screen.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -132,6 +134,8 @@ class _SettingsPageState extends State<SettingsPage> {
   int? _userId;
   int _syncInterval = 0;
   String _themeMode = 'system';
+  String _themeColorMode = 'default';
+  Color? _customThemeColor;
   String _noCourseBehavior = 'keep';
   String _serverChoice = 'aliyun';
   int _llmRetryCount = 3;
@@ -507,6 +511,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     int interval = await StorageService.getSyncInterval();
     String theme = await StorageService.getThemeMode();
+    String themeColorMode = prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
+    int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
     String serverUrlChoice = await StorageService.getServerChoice();
     int llmRetryCount = await StorageService.getLLMRetryCount();
     bool conflictDetectionEnabled =
@@ -547,6 +553,10 @@ class _SettingsPageState extends State<SettingsPage> {
       _userId = prefs.getInt('current_user_id');
       _syncInterval = interval;
       _themeMode = theme;
+      _themeColorMode = themeColorMode;
+      if (customColorVal != null) {
+        _customThemeColor = Color(customColorVal);
+      }
       _serverChoice = serverUrlChoice;
       _llmRetryCount = llmRetryCount;
       _conflictDetectionEnabled = conflictDetectionEnabled;
@@ -1238,8 +1248,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   // ─── 重新调度所有保活提醒 ──────────────────────────────────────
   Future<void> _rescheduleReminders() async {
-    if (_username.isEmpty || _username == "未登录" || _username == "加载中...")
+    if (_username.isEmpty || _username == "未登录" || _username == "加载中...") {
       return;
+    }
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
@@ -1254,6 +1265,71 @@ class _SettingsPageState extends State<SettingsPage> {
       barrierDismissible: false,
       builder: (context) => MigrationDialog(
         onSuccess: () => _fetchAccountStatus(),
+      ),
+    );
+  }
+
+  // ─── Theme Color Methods ──────────────────────────────────────
+  Future<void> _handleThemeColorModeChanged(String? val) async {
+    if (val == null) return;
+    
+    if (val == 'image_extracted') {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        try {
+          final colorScheme = await ColorScheme.fromImageProvider(provider: FileImage(File(image.path)));
+          await StorageService.setCustomThemeColor(colorScheme.primary);
+          setState(() => _customThemeColor = colorScheme.primary);
+          await StorageService.setThemeColorMode(val);
+          setState(() => _themeColorMode = val);
+        } catch (e) {
+          debugPrint('Failed to extract color from image: $e');
+        }
+      }
+    } else if (val == 'custom') {
+      _handlePickCustomThemeColor();
+      await StorageService.setThemeColorMode(val);
+      setState(() => _themeColorMode = val);
+    } else {
+      await StorageService.setThemeColorMode(val);
+      setState(() => _themeColorMode = val);
+    }
+  }
+
+  Future<void> _handlePickCustomThemeColor() async {
+    Color pickerColor = _customThemeColor ?? Theme.of(context).colorScheme.primary;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择自定义颜色'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (Color color) {
+              pickerColor = color;
+            },
+            enableAlpha: false,
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('取消'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          ElevatedButton(
+            child: const Text('确定'),
+            onPressed: () {
+              StorageService.setCustomThemeColor(pickerColor);
+              setState(() {
+                _customThemeColor = pickerColor;
+                _themeColorMode = 'custom';
+              });
+              StorageService.setThemeColorMode('custom');
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1424,6 +1500,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     StorageService.themeNotifier.value = val;
                   }
                 },
+                themeColorMode: _themeColorMode,
+                onThemeColorModeChanged: _handleThemeColorModeChanged,
+                customThemeColor: _customThemeColor,
+                onPickCustomThemeColor: _handlePickCustomThemeColor,
                 taiDbPath: _taiDbPath,
                 onPickTaiDatabase: _pickTaiDatabase,
                 floatWindowStyle: _floatWindowStyle,
@@ -1508,7 +1588,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   leading:
-                      const Icon(Icons.animation_outlined, color: Colors.blue),
+                      Icon(Icons.animation_outlined, color: Theme.of(context).colorScheme.primary),
                   title: const Text('动画设置',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: const Text('页面切换动画、Container Transform、性能选项'),
@@ -1541,8 +1621,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
-                    leading: const Icon(Icons.notifications_outlined,
-                        color: Colors.blueAccent),
+                    leading: Icon(Icons.notifications_outlined,
+                        color: Theme.of(context).colorScheme.secondary),
                     title: const Text('通知管理',
                         style: TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
@@ -1666,7 +1746,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
-                  leading: const Icon(Icons.info_outline, color: Colors.blue),
+                  leading: Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
                   title: const Text('关于此应用'),
                   subtitle: const Text('版本信息、更新日志、联系我们'),
                   trailing: const Icon(Icons.chevron_right),
@@ -1854,6 +1934,10 @@ class _SettingsPageState extends State<SettingsPage> {
                             StorageService.themeNotifier.value = val;
                           }
                         },
+                        themeColorMode: _themeColorMode,
+                        onThemeColorModeChanged: _handleThemeColorModeChanged,
+                        customThemeColor: _customThemeColor,
+                        onPickCustomThemeColor: _handlePickCustomThemeColor,
                         taiDbPath: _taiDbPath,
                         onPickTaiDatabase: _pickTaiDatabase,
                         floatWindowStyle: _floatWindowStyle,
@@ -1937,8 +2021,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          leading: const Icon(Icons.animation_outlined,
-                              color: Colors.blue),
+                          leading: Icon(Icons.animation_outlined,
+                              color: Theme.of(context).colorScheme.primary),
                           title: const Text('动画设置',
                               style: TextStyle(fontWeight: FontWeight.w600)),
                           subtitle:
@@ -1962,8 +2046,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          leading: const Icon(Icons.notifications_outlined,
-                              color: Colors.blueAccent),
+                          leading: Icon(Icons.notifications_outlined,
+                              color: Theme.of(context).colorScheme.secondary),
                           title: const Text('通知管理',
                               style: TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: const Text('管理实时活动通知和普通通知的开启/关闭'),
@@ -2051,8 +2135,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          leading: const Icon(Icons.info_outline,
-                              color: Colors.blue),
+                          leading: Icon(Icons.info_outline,
+                              color: Theme.of(context).colorScheme.primary),
                           title: const Text('关于此应用'),
                           subtitle: const Text('版本信息、更新日志、联系我们'),
                           trailing: const Icon(Icons.chevron_right),

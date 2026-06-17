@@ -338,10 +338,10 @@ class _QuizScreenState extends State<QuizScreen>
               builder: (context, value, child) {
                 return Text(
                   "得分: $value",
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue),
+                      color: Theme.of(context).colorScheme.primary),
                 );
               },
             ),
@@ -487,7 +487,7 @@ class _QuizScreenState extends State<QuizScreen>
                       value: value,
                       backgroundColor: Colors.grey[200],
                       valueColor:
-                          const AlwaysStoppedAnimation<Color>(Colors.blue),
+                          AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
                       minHeight: 8,
                     ),
                     const SizedBox(height: 4),
@@ -535,7 +535,7 @@ class _QuizScreenState extends State<QuizScreen>
                 ElevatedButton(
                   onPressed: _submitAnswer,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white),
                   child: Text(
                       currentIndex == questions.length - 1 ? "提交试卷" : "下一题"),

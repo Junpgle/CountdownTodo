@@ -99,8 +99,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.campaign_rounded, color: Colors.blueAccent),
+                        decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                        child: Icon(Icons.campaign_rounded, color: Theme.of(context).colorScheme.secondary),
                       ),
                       const SizedBox(width: 12),
                       const Text('发布新公告', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -159,7 +159,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                 height: 56,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isPriority ? Colors.orange : Colors.blueAccent,
+                    backgroundColor: isPriority ? Colors.orange : Theme.of(context).colorScheme.secondary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
@@ -263,7 +263,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
   Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.secondary)),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
@@ -299,7 +299,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       floatingActionButton: isAdmin
           ? FloatingActionButton.extended(
               onPressed: _showCreateAnnouncementDialog,
-              backgroundColor: Colors.blueAccent,
+              backgroundColor: Theme.of(context).colorScheme.secondary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
               label: const Text('发布公告'),
@@ -410,7 +410,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     onPressed: () => _showAnnouncementStats(ann),
                     icon: const Icon(Icons.bar_chart_rounded, size: 18),
                     label: const Text('统计'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.blueAccent),
+                    style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.secondary),
                   ),
                   const SizedBox(width: 8),
                   TextButton.icon(
@@ -427,8 +427,8 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                     icon: const Icon(Icons.check_circle_rounded, size: 18),
                     label: const Text('确认已读'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent.withValues(alpha: 0.1),
-                      foregroundColor: Colors.blueAccent,
+                      backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
+                      foregroundColor: Theme.of(context).colorScheme.secondary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

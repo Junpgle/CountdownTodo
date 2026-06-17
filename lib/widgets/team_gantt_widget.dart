@@ -59,7 +59,7 @@ class TeamGanttWidget extends StatelessWidget {
                       alignment: Alignment.center,
                       child: Text(
                         isToday ? "今天" : DateFormat('dd').format(date),
-                        style: TextStyle(fontSize: 9, color: isToday ? Colors.blue : Colors.grey[400], fontWeight: isToday ? FontWeight.bold : null),
+                        style: TextStyle(fontSize: 9, color: isToday ? Theme.of(context).colorScheme.primary : Colors.grey[400], fontWeight: isToday ? FontWeight.bold : null),
                       ),
                     );
                   }),
@@ -78,7 +78,7 @@ class TeamGanttWidget extends StatelessWidget {
                   if (startPos + duration > 1.0) duration = 1.0 - startPos;
                   if (duration < 0.05) duration = 0.05; // 最小可见宽度
 
-                  final color = todo.teamUuid != null ? Colors.blueAccent : Colors.orangeAccent;
+                  final color = todo.teamUuid != null ? Theme.of(context).colorScheme.secondary : Colors.orangeAccent;
 
                   return Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),

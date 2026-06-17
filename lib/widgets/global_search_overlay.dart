@@ -842,7 +842,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       tags.add(_chip('已完成', Colors.green, isDark));
     }
     if (data['team_name'] != null && (data['team_name'] as String).isNotEmpty) {
-      tags.add(_chip('📌 ${data['team_name']}', Colors.blueAccent, isDark));
+      tags.add(_chip('📌 ${data['team_name']}', Theme.of(context).colorScheme.secondary, isDark));
     }
 
     if (tags.isEmpty) return const SizedBox.shrink();

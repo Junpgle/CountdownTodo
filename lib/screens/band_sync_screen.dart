@@ -242,7 +242,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               const Divider(height: 24),
               Row(
                 children: [
-                  const Icon(Icons.devices, color: Colors.blue),
+                  Icon(Icons.devices, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
                   Text(
                     '设备: $_deviceName',
@@ -452,7 +452,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               child: _buildSyncButton(
                 icon: Icons.checklist,
                 label: '同步待办',
-                color: Colors.blue,
+                color: Theme.of(context).colorScheme.primary,
                 onPressed: canSync ? _syncTodos : null,
               ),
             ),

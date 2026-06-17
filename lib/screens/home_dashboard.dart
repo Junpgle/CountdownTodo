@@ -3400,7 +3400,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           return AlertDialog(
             title: Row(
               children: [
-                const Icon(Icons.analytics_outlined, color: Colors.blueAccent),
+                Icon(Icons.analytics_outlined, color: Theme.of(context).colorScheme.secondary),
                 const SizedBox(width: 10),
                 const Text("链路诊断报告",
                     style:
@@ -3627,6 +3627,13 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<String> _randomWallpaperUrls = [];
   bool _isWallpaperLoadingError = false;
 
+  bool _isLocalFilePath(String path) {
+    return !path.startsWith('http://') &&
+        !path.startsWith('https://') &&
+        !path.startsWith('assets/') &&
+        !path.startsWith('data:');
+  }
+
   void _handleWallpaperError() {
     if (!mounted || _isWallpaperLoadingError) return;
     debugPrint(
@@ -3643,6 +3650,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     // Priority: Manifest -> Bing -> Random List -> Asset Fallback -> None
     final prefs = await SharedPreferences.getInstance();
     final provider = prefs.getString('wallpaper_provider') ?? 'bing';
+
+    // 自定义壁纸模式：不执行任何 fallback
+    if (provider == 'custom') return;
 
     if (_wallpaperRetryCount == 1) {
       // If manifest failed (or was first), try provider
@@ -3728,6 +3738,24 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _initManifestWallpaper() async {
+    final provider = await StorageService.getWallpaperProvider();
+
+    // 自定义壁纸模式：直接从本地加载，跳过所有网络逻辑和 manifest 推送
+    if (provider == 'custom') {
+      final customPath = await StorageService.getWallpaperCustomPath();
+      if (customPath != null && customPath.isNotEmpty) {
+        final file = File(customPath);
+        if (await file.exists() && mounted) {
+          setState(() {
+            _wallpaperShow = true;
+            _wallpaperUrl = customPath;
+            _isWallpaperLoadingError = false;
+          });
+        }
+      }
+      return;
+    }
+
     await WallpaperCacheService.cleanupIfNeeded();
     await UpdateService.initWallpaper();
     final manifestShow = UpdateService.wallpaperShowNotifier.value;
@@ -3741,7 +3769,6 @@ class _HomeDashboardState extends State<HomeDashboard>
         _isWallpaperLoadingError = false;
       });
     } else {
-      final provider = await StorageService.getWallpaperProvider();
       if (provider == 'bing') {
         await _fetchBingWallpaper();
       } else {
@@ -3762,7 +3789,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           setState(() {
             _wallpaperShow = true;
             _wallpaperUrl = url;
-            _wallpaperRetryCount = 0; // Reset on manual/auto update
+            _wallpaperRetryCount = 0;
             _isWallpaperLoadingError = false;
           });
         } else if (mounted) {
@@ -3893,15 +3920,22 @@ class _HomeDashboardState extends State<HomeDashboard>
                       _wallpaperUrl!,
                       fit: BoxFit.cover,
                     )
-                  : _WallpaperNetworkImage(
-                      url: _wallpaperUrl!,
-                      onSuccess: () {
-                        _wallpaperRetryCount = 0;
-                      },
-                      onError: () {
-                        _handleWallpaperError();
-                      },
-                    ),
+                  : _isLocalFilePath(_wallpaperUrl!)
+                      ? Image.file(
+                          File(_wallpaperUrl!),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const SizedBox.shrink(),
+                        )
+                      : _WallpaperNetworkImage(
+                          url: _wallpaperUrl!,
+                          onSuccess: () {
+                            _wallpaperRetryCount = 0;
+                          },
+                          onError: () {
+                            _handleWallpaperError();
+                          },
+                        ),
             ),
           if (showWallpaper)
             Positioned.fill(

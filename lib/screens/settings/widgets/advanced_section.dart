@@ -77,7 +77,7 @@ class AdvancedSection extends StatelessWidget {
               //     minLeadingWidth: 36,
               //     leading: const CircleAvatar(
               //         radius: 18,
-              //         backgroundColor: Colors.blueAccent,
+              //         backgroundColor: Theme.of(context).colorScheme.secondary,
               //         child: Icon(Icons.rocket_launch,
               //             size: 18, color: Colors.white)),
               //     title: const Text('从 Cloudflare 后端一键全量迁移',
