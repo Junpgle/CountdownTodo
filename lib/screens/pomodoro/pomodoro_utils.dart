@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/app_color_utils.dart';
+
 Color hexToColor(String hex) {
-  try {
-    final h = hex.replaceAll('#', '');
-    return Color(int.parse('FF$h', radix: 16));
-  } catch (_) {
-    return Colors.blueGrey;
-  }
+  return AppColorUtils.hexToColor(
+    hex,
+    fallback: const Color(0xFF607D8B),
+  );
 }

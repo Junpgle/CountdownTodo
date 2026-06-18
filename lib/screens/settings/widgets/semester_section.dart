@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+
+import '../../../utils/app_time_formats.dart';
+import '../../../widgets/app_settings_widgets.dart';
 
 class SemesterSection extends StatelessWidget {
   final String? highlightTarget;
@@ -28,90 +30,65 @@ class SemesterSection extends StatelessWidget {
     required String targetId,
     required Widget child,
   }) {
-    final bool isHighlighted = highlightTarget == targetId;
-    return Container(
-      key: itemKeys?[targetId],
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: child,
-      ),
+    return AppSettingsHighlightedTile(
+      targetId: targetId,
+      highlightTarget: highlightTarget,
+      itemKeys: itemKeys,
+      child: child,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final colorScheme = Theme.of(context).colorScheme;
+    return AppSettingsSection(
+      title: '学期设置',
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Text('学期设置',
-              style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+        _buildTile(
+          context: context,
+          targetId: 'semester_progress',
+          child: SwitchListTile(
+            secondary: Icon(Icons.linear_scale, color: colorScheme.primary),
+            title: const Text('首页学期进度条'),
+            value: semesterEnabled,
+            onChanged: onSemesterEnabledChanged,
+          ),
         ),
-        Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: [
-              _buildTile(
-                context: context,
-                targetId: 'semester_progress',
-                child: SwitchListTile(
-                  secondary: const Icon(Icons.linear_scale),
-                  title: const Text('首页学期进度条'),
-                  value: semesterEnabled,
-                  onChanged: onSemesterEnabledChanged,
-                ),
-              ),
-              _buildTile(
-                context: context,
-                targetId: 'semester_start',
-                child: ListTile(
-                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                  title: const Text('开学日期'),
-                  trailing: Text(semesterStart == null
-                      ? "未设置"
-                      : DateFormat('yyyy-MM-dd').format(semesterStart!)),
-                  onTap: () => onPickSemesterDate(true),
-                ),
-              ),
-              _buildTile(
-                context: context,
-                targetId: 'semester_end',
-                child: ListTile(
-                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                  title: const Text('放假日期'),
-                  trailing: Text(semesterEnd == null
-                      ? "未设置"
-                      : DateFormat('yyyy-MM-dd').format(semesterEnd!)),
-                  onTap: () => onPickSemesterDate(false),
-                ),
-              ),
-              const Divider(height: 1, indent: 56),
-              _buildTile(
-                context: context,
-                targetId: 'semester_sync',
-                child: ListTile(
-                  leading: const Icon(Icons.cloud_download_outlined,
-                      color: Colors.teal),
-                  title: const Text('从云端同步开学/放假时间'),
-                  subtitle: const Text('将另一设备设置的学期日期同步到本机'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: onFetchFromCloud,
-                ),
-              ),
-            ],
+        _buildTile(
+          context: context,
+          targetId: 'semester_start',
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(left: 56, right: 16),
+            title: const Text('开学日期'),
+            trailing: Text(semesterStart == null
+                ? "未设置"
+                : AppTimeFormats.date(semesterStart!)),
+            onTap: () => onPickSemesterDate(true),
+          ),
+        ),
+        _buildTile(
+          context: context,
+          targetId: 'semester_end',
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(left: 56, right: 16),
+            title: const Text('放假日期'),
+            trailing: Text(semesterEnd == null
+                ? "未设置"
+                : AppTimeFormats.date(semesterEnd!)),
+            onTap: () => onPickSemesterDate(false),
+          ),
+        ),
+        const AppSettingsDivider(),
+        _buildTile(
+          context: context,
+          targetId: 'semester_sync',
+          child: ListTile(
+            leading: Icon(Icons.cloud_download_outlined,
+                color: colorScheme.secondary),
+            title: const Text('从云端同步开学/放假时间'),
+            subtitle: const Text('将另一设备设置的学期日期同步到本机'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onFetchFromCloud,
           ),
         ),
       ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
 import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
@@ -63,20 +64,11 @@ class PreferenceSection extends StatelessWidget {
     required String targetId,
     required Widget child,
   }) {
-    final bool isHighlighted = highlightTarget == targetId;
-    return Container(
-      key: itemKeys?[targetId],
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: child,
-      ),
+    return AppSettingsHighlightedTile(
+      targetId: targetId,
+      highlightTarget: highlightTarget,
+      itemKeys: itemKeys,
+      child: child,
     );
   }
 

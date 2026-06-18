@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../update_service.dart';
+import '../../../utils/app_dialogs.dart';
+import '../../../widgets/app_state_views.dart';
 
 class AboutSection extends StatefulWidget {
   final bool isCheckingUpdate;
@@ -121,9 +123,7 @@ class _AboutSectionState extends State<AboutSection> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法打开链接: $url')),
-        );
+        AppSnackBars.error(context, '无法打开链接: $url');
       }
     }
   }
@@ -180,11 +180,7 @@ class _AboutSectionState extends State<AboutSection> {
                           }
                         },
                   child: _isLoadingChangelogArchive
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const AppLoadingIndicator(size: 16)
                       : const Text('加载更早日志'),
                 ),
               TextButton(
@@ -198,11 +194,7 @@ class _AboutSectionState extends State<AboutSection> {
                         }
                       },
                 child: _isRefreshingChangelog
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const AppLoadingIndicator(size: 16)
                     : const Text('刷新'),
               ),
               TextButton(
@@ -273,7 +265,8 @@ class _AboutSectionState extends State<AboutSection> {
           child: Column(
             children: [
               ListTile(
-                leading: Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
+                leading: Icon(Icons.info_outline,
+                    color: Theme.of(context).colorScheme.primary),
                 title: const Text('软件介绍'),
                 subtitle: const Text('CountDownTodo - 您的个人效率助手'),
                 trailing: const Icon(Icons.chevron_right),
@@ -315,9 +308,7 @@ class _AboutSectionState extends State<AboutSection> {
                   icon: const Icon(Icons.copy, size: 20),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: _version));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('版本号已复制到剪贴板')),
-                    );
+                    AppSnackBars.success(context, '版本号已复制到剪贴板');
                   },
                 ),
               ),
@@ -326,10 +317,7 @@ class _AboutSectionState extends State<AboutSection> {
                 leading: const Icon(Icons.system_update, color: Colors.orange),
                 title: const Text('检查更新'),
                 trailing: widget.isCheckingUpdate
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const AppLoadingIndicator()
                     : const Icon(Icons.chevron_right),
                 onTap: widget.isCheckingUpdate ? null : widget.onCheckUpdates,
               ),

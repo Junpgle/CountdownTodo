@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 
 import '../../../storage_service.dart';
+import '../../../utils/app_dialogs.dart';
+import '../../../utils/app_time_formats.dart';
 import '../../../utils/page_transitions.dart';
-import '../server_choice_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import '../../feature_guide_screen.dart';
@@ -15,6 +15,8 @@ import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../update_service.dart';
 import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_state_views.dart';
 
 class PreferenceSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -69,8 +71,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       },
       showLoading: (msg) => _showLoadingDialog(context, msg),
       closeLoading: () => _closeLoadingDialog(context),
-      showMessage: (msg) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) => AppSnackBars.show(context, msg),
     );
     _storageManagementHandler.calculateCacheSize();
 
@@ -124,25 +125,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   void _showLoadingDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 20),
-            Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
+    AppDialogs.showLoading(context, message);
   }
 
   void _closeLoadingDialog(BuildContext context) {
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
+    AppDialogs.close(context);
   }
 
   Future<void> _showMigrationDialog() async {
@@ -228,19 +215,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildTile({required String targetId, required Widget child}) {
-    final bool isHighlighted = _highlightTarget == targetId;
-    return Container(
-      key: _itemKeys[targetId],
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-        ),
-        child: child,
-      ),
+    return AppSettingsHighlightedTile(
+      targetId: targetId,
+      highlightTarget: _highlightTarget,
+      itemKeys: _itemKeys,
+      borderRadius: BorderRadius.zero,
+      child: child,
     );
   }
 
@@ -248,7 +228,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoadingView());
     }
     return Scaffold(
       appBar: widget.isEmbedded
@@ -260,17 +240,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         children: [
           const SizedBox(height: 16),
           _buildWallpaperSection(),
-          const Divider(height: 1, indent: 56),
+          const AppSettingsDivider(),
           _buildHomeTextSection(),
           _buildAppearanceSection(),
           _buildColorSection(),
-          Padding(
-            padding: const EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('系统与存储',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurfaceVariant)),
+          const AppSettingsSectionHeader(
+            title: '系统与存储',
+            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
             targetId: 'cache',
@@ -285,7 +261,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: _storageManagementHandler.clearCache,
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'storage',
             child: ListTile(
@@ -296,7 +272,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: _storageManagementHandler.showStorageAnalysis,
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'update',
             child: ListTile(
@@ -304,21 +280,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   color: colorScheme.cdtSuccess),
               title: const Text('检查新版本'),
               trailing: _isCheckingUpdate
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const AppLoadingIndicator()
                   : const Icon(Icons.chevron_right),
               onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('其他工具',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurfaceVariant)),
+          const AppSettingsSectionHeader(
+            title: '其他工具',
+            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
             targetId: 'feature_guide',
@@ -338,7 +307,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               },
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'migration',
             child: ListTile(
@@ -471,11 +440,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final dateFormat =
         _homeTextConfig['dateFormat'] as String? ?? 'MM月dd日 EEEE';
     String dateStr;
-    try {
-      dateStr = DateFormat(dateFormat, 'zh_CN').format(now);
-    } catch (_) {
-      dateStr = DateFormat('MM月dd日 EEEE', 'zh_CN').format(now);
-    }
+    dateStr = AppTimeFormats.safeFormat(
+      now,
+      dateFormat,
+      locale: 'zh_CN',
+      fallbackPattern: 'MM月dd日 EEEE',
+    );
 
     final salutationMode =
         _homeTextConfig['salutationMode'] as String? ?? 'timed';

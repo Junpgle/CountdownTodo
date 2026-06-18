@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_state_views.dart';
 import '../server_choice_page.dart';
 
 class SyncSettingsSection extends StatefulWidget {
@@ -55,145 +57,120 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return const Center(
-          child: Padding(
-              padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+      return const AppLoadingView();
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return AppSettingsSection(
+      title: '同步与数据策略',
+      headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 24),
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 24.0),
-          child: Text(
-            '同步与数据策略',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurfaceVariant,
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.sync, color: colorScheme.primary, size: 22),
+                  const SizedBox(width: 12),
+                  const Text('自动同步频率',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _buildFrequencyCard(5, '5 分钟', Icons.timer_outlined),
+                  const SizedBox(width: 8),
+                  _buildFrequencyCard(10, '10 分钟', Icons.timer),
+                  const SizedBox(width: 8),
+                  _buildFrequencyCard(60, '1 小时', Icons.hourglass_bottom),
+                  const SizedBox(width: 8),
+                  _buildFrequencyCard(0, '仅启动时', Icons.power_settings_new),
+                ],
+              ),
+            ],
           ),
         ),
-        Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        const AppSettingsDivider(),
+        ListTile(
+          leading:
+              Icon(Icons.warning_amber_outlined, color: colorScheme.cdtWarning),
+          title: const Text('冲突检测'),
+          subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
+          trailing: Switch(
+            value: _conflictDetectionEnabled,
+            activeThumbColor: colorScheme.cdtWarning,
+            onChanged: _setConflictDetectionEnabled,
+          ),
+        ),
+        const AppSettingsDivider(),
+        ListTile(
+          leading: Icon(Icons.cloud_queue, color: colorScheme.secondary),
+          title: const Text('云端数据接口线路'),
+          subtitle: Text(
+            _serverChoice == 'cloudflare'
+                ? '当前: Cloudflare'
+                : '当前: 阿里云ECS (更快)',
+            style: const TextStyle(fontSize: 12),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              PageTransitions.slideHorizontal(
+                ServerChoicePage(
+                  initialServerChoice: _serverChoice,
+                  isEmbedded: false,
+                ),
+                settings: const RouteSettings(name: '云端数据接口线路'),
+              ),
+            ).then((_) {
+              _loadSettings();
+            });
+          },
+        ),
+        const AppSettingsDivider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              Row(
+                children: [
+                  Icon(Icons.refresh_outlined,
+                      color: colorScheme.primary, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.sync, color: colorScheme.primary, size: 22),
-                        const SizedBox(width: 12),
-                        const Text('自动同步频率',
+                        const Text('图片识别重试次数',
                             style: TextStyle(
                                 fontSize: 15, fontWeight: FontWeight.bold)),
+                        Text('识别超时后自动重试的次数（后台异步执行）',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildFrequencyCard(5, '5 分钟', Icons.timer_outlined),
-                        const SizedBox(width: 8),
-                        _buildFrequencyCard(10, '10 分钟', Icons.timer),
-                        const SizedBox(width: 8),
-                        _buildFrequencyCard(60, '1 小时', Icons.hourglass_bottom),
-                        const SizedBox(width: 8),
-                        _buildFrequencyCard(
-                            0, '仅启动时', Icons.power_settings_new),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: Icon(Icons.warning_amber_outlined,
-                    color: colorScheme.cdtWarning),
-                title: const Text('冲突检测'),
-                subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
-                trailing: Switch(
-                  value: _conflictDetectionEnabled,
-                  activeThumbColor: colorScheme.cdtWarning,
-                  onChanged: _setConflictDetectionEnabled,
-                ),
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: Icon(Icons.cloud_queue, color: colorScheme.secondary),
-                title: const Text('云端数据接口线路'),
-                subtitle: Text(
-                  _serverChoice == 'cloudflare'
-                      ? '当前: Cloudflare'
-                      : '当前: 阿里云ECS (更快)',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      ServerChoicePage(
-                        initialServerChoice: _serverChoice,
-                        isEmbedded: false,
-                      ),
-                      settings: const RouteSettings(name: '云端数据接口线路'),
-                    ),
-                  ).then((_) {
-                    _loadSettings();
-                  });
-                },
-              ),
-              const Divider(height: 1, indent: 56),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.refresh_outlined,
-                            color: colorScheme.primary, size: 22),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('图片识别重试次数',
-                                  style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold)),
-                              Text('识别超时后自动重试的次数（后台异步执行）',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: colorScheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildRetryCard(0, '不重试'),
-                        const SizedBox(width: 8),
-                        _buildRetryCard(1, '1 次'),
-                        const SizedBox(width: 8),
-                        _buildRetryCard(2, '2 次'),
-                        const SizedBox(width: 8),
-                        _buildRetryCard(3, '3 次'),
-                        const SizedBox(width: 8),
-                        _buildRetryCard(5, '5 次'),
-                      ],
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _buildRetryCard(0, '不重试'),
+                  const SizedBox(width: 8),
+                  _buildRetryCard(1, '1 次'),
+                  const SizedBox(width: 8),
+                  _buildRetryCard(2, '2 次'),
+                  const SizedBox(width: 8),
+                  _buildRetryCard(3, '3 次'),
+                  const SizedBox(width: 8),
+                  _buildRetryCard(5, '5 次'),
+                ],
               ),
             ],
           ),
@@ -203,84 +180,32 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   }
 
   Widget _buildFrequencyCard(int value, String title, IconData icon) {
-    final isSelected = _syncInterval == value;
-    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _syncInterval = value);
+      child: AppSettingsChoiceCard<int>(
+        value: value,
+        groupValue: _syncInterval,
+        title: title,
+        icon: icon,
+        onSelected: (selected) {
+          setState(() => _syncInterval = selected);
           StorageService.saveAppSetting(
-              StorageService.KEY_SYNC_INTERVAL, value);
+              StorageService.KEY_SYNC_INTERVAL, selected);
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.1)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  isSelected ? colorScheme.primary : colorScheme.outlineVariant,
-              width: 1.5,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon,
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                  size: 20),
-              const SizedBox(height: 4),
-              Text(title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                  )),
-            ],
-          ),
-        ),
       ),
     );
   }
 
   Widget _buildRetryCard(int value, String title) {
-    final isSelected = _llmRetryCount == value;
-    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _llmRetryCount = value);
-          StorageService.setLLMRetryCount(value);
+      child: AppSettingsChoiceCard<int>(
+        value: value,
+        groupValue: _llmRetryCount,
+        title: title,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        onSelected: (selected) {
+          setState(() => _llmRetryCount = selected);
+          StorageService.setLLMRetryCount(selected);
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.1)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color:
-                  isSelected ? colorScheme.primary : colorScheme.outlineVariant,
-              width: 1.5,
-            ),
-          ),
-          child: Text(title,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              )),
-        ),
       ),
     );
   }

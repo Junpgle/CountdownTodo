@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
+
+import '../utils/app_color_utils.dart';
 import '../services/pomodoro_service.dart';
 
 // ============================================================
@@ -189,48 +191,52 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
           else if (_records.isEmpty)
             RepaintBoundary(
               child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.15)
-                        : Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest
-                            .withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      )
-                    ],
-                    border: Border.all(
-                        color: widget.isLight
-                            ? Colors.white.withValues(alpha: 0.2)
-                            : Theme.of(context).dividerColor.withValues(alpha: 0.5)),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(Icons.timer_outlined,
-                          size: 32, color: subColor.withValues(alpha: 0.5)),
-                      const SizedBox(height: 8),
-                      Text('暂无专注记录，开始你的第一个番茄钟吧！',
-                          style: TextStyle(
-                              color: subColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500)),
-                    ],
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 24, horizontal: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: widget.isLight
+                          ? Colors.white.withValues(alpha: 0.15)
+                          : Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black
+                              .withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+                      border: Border.all(
+                          color: widget.isLight
+                              ? Colors.white.withValues(alpha: 0.2)
+                              : Theme.of(context)
+                                  .dividerColor
+                                  .withValues(alpha: 0.5)),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.timer_outlined,
+                            size: 32, color: subColor.withValues(alpha: 0.5)),
+                        const SizedBox(height: 8),
+                        Text('暂无专注记录，开始你的第一个番茄钟吧！',
+                            style: TextStyle(
+                                color: subColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          )
+            )
           else if (!_collapsed)
             Column(
               children: [
@@ -272,7 +278,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                color:
+                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -325,14 +332,16 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                                                   begin: Alignment.bottomCenter,
                                                   end: Alignment.topCenter,
                                                   colors: [
-                                                      primaryColor.withValues(alpha: 0.5),
+                                                      primaryColor.withValues(
+                                                          alpha: 0.5),
                                                       primaryColor,
                                                     ])
                                               : null,
                                           color: animatedFactor > 0
                                               ? null
                                               : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                         ),
                                       ),
                                     ),
@@ -399,7 +408,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                color:
+                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               )
@@ -517,10 +527,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
 }
 
 Color _hexToColor(String hex) {
-  try {
-    final h = hex.replaceAll('#', '');
-    return Color(int.parse('FF$h', radix: 16));
-  } catch (_) {
-    return Colors.blueGrey;
-  }
+  return AppColorUtils.hexToColor(
+    hex,
+    fallback: const Color(0xFF607D8B),
+  );
 }

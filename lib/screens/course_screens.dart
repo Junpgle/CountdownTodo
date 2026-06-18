@@ -8,6 +8,8 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/app_color_utils.dart';
+import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
@@ -1282,9 +1284,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
+    return AppColorUtils.hexToColor(
+      hex,
+      fallback: Theme.of(context).colorScheme.primary,
+    );
   }
 
   void _showAllDayTodos(
@@ -4188,9 +4191,10 @@ class TimeLogDetailScreen extends StatelessWidget {
   const TimeLogDetailScreen({super.key, required this.log, required this.tags});
 
   Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
+    return AppColorUtils.hexToColor(
+      hex,
+      fallback: const Color(0xFF607D8B),
+    );
   }
 
   @override
@@ -4231,10 +4235,10 @@ class TimeLogDetailScreen extends StatelessWidget {
           _buildDetailRow(context, Icons.access_time, '时长', '$durationMin 分钟'),
           const Divider(),
           _buildDetailRow(context, Icons.play_arrow, '开始时间',
-              DateFormat('yyyy-MM-dd HH:mm').format(start)),
+              AppTimeFormats.fullDateTime(start)),
           const Divider(),
-          _buildDetailRow(context, Icons.stop, '结束时间',
-              DateFormat('yyyy-MM-dd HH:mm').format(end)),
+          _buildDetailRow(
+              context, Icons.stop, '结束时间', AppTimeFormats.fullDateTime(end)),
           if (log.remark != null && log.remark!.isNotEmpty) ...[
             const Divider(),
             _buildDetailRow(context, Icons.note, '备注', log.remark!),
@@ -4244,10 +4248,10 @@ class TimeLogDetailScreen extends StatelessWidget {
               context,
               Icons.update,
               '最近更新',
-              DateFormat('yyyy-MM-dd HH:mm').format(
-                  DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
-                          isUtc: true)
-                      .toLocal())),
+              AppTimeFormats.fullDateTime(DateTime.fromMillisecondsSinceEpoch(
+                      log.updatedAt,
+                      isUtc: true)
+                  .toLocal())),
         ],
       ),
     );
@@ -4286,9 +4290,10 @@ class PomodoroDetailScreen extends StatelessWidget {
       {super.key, required this.record, required this.tags});
 
   Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
+    return AppColorUtils.hexToColor(
+      hex,
+      fallback: const Color(0xFF607D8B),
+    );
   }
 
   @override

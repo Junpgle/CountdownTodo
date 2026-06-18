@@ -8,6 +8,9 @@ import '../services/pomodoro_control_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../utils/app_color_utils.dart';
+import '../utils/app_dialogs.dart';
+import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
 import 'dart:ui' as ui;
@@ -43,8 +46,11 @@ const List<String> kPalette = [
 ];
 
 Color hexColor(String hex, {double opacity = 1.0}) {
-  final c = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-  return c.withValues(alpha: opacity);
+  return AppColorUtils.hexToColor(
+    hex,
+    fallback: const Color(0xFF607D8B),
+    opacity: opacity,
+  );
 }
 
 DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -166,8 +172,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             syncTimeLogs: true, syncTodos: false, syncCountdowns: false);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('同步失败: $e')));
+          AppSnackBars.error(context, '同步失败: $e');
         }
       }
     }
@@ -219,9 +224,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存时间日志失败: $e')),
-      );
+      AppSnackBars.error(context, '保存时间日志失败: $e');
     }
   }
 
@@ -263,7 +266,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           onTap: () => setState(() => _weekStart = _dayStart(DateTime.now())
               .subtract(Duration(days: DateTime.now().weekday - 1))),
           child: Text(
-              '${DateFormat('MM/dd').format(_weekStart)} - ${DateFormat('MM/dd').format(we)}',
+              '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
@@ -292,7 +295,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               lastDate: DateTime.now().add(const Duration(days: 1)));
           if (p != null) setState(() => _focusedDate = p);
         },
-        child: Text(DateFormat('MM月dd日').format(_focusedDate),
+        child: Text(AppTimeFormats.monthDayCn(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       IconButton(
@@ -359,9 +362,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('打开AI助手失败: $e')),
-        );
+        AppSnackBars.error(context, '打开AI助手失败: $e');
       }
     }
   }
@@ -526,14 +527,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       Expanded(
                           child: _InfoCard(
                               label: '开始',
-                              value: DateFormat('HH:mm').format(s),
-                              sub: DateFormat('MM/dd').format(s))),
+                              value: AppTimeFormats.clock(s),
+                              sub: AppTimeFormats.monthDaySlash(s))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
                               label: '结束',
-                              value: DateFormat('HH:mm').format(e),
-                              sub: DateFormat('MM/dd').format(e))),
+                              value: AppTimeFormats.clock(e),
+                              sub: AppTimeFormats.monthDaySlash(e))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
@@ -595,14 +596,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       Expanded(
                           child: _InfoCard(
                               label: '开始',
-                              value: DateFormat('HH:mm').format(s),
-                              sub: DateFormat('MM/dd').format(s))),
+                              value: AppTimeFormats.clock(s),
+                              sub: AppTimeFormats.monthDaySlash(s))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
                               label: '结束',
-                              value: DateFormat('HH:mm').format(e),
-                              sub: DateFormat('MM/dd').format(e))),
+                              value: AppTimeFormats.clock(e),
+                              sub: AppTimeFormats.monthDaySlash(e))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
@@ -914,9 +915,11 @@ class _WeekViewState extends State<_WeekView>
                           syncCountdowns: true,
                           syncTimeLogs: true);
                       if (bCtx.mounted) {
-                        ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
-                            content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
-                            duration: Duration(seconds: 4)));
+                        AppSnackBars.success(
+                          bCtx,
+                          '🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面',
+                          duration: const Duration(seconds: 4),
+                        );
                       }
                     },
                   )),
@@ -945,8 +948,7 @@ class _WeekViewState extends State<_WeekView>
             SizedBox(width: tW),
             ...List.generate(7, (i) {
               final d = days[i];
-              final isToday = DateFormat('yyyyMMdd').format(d) ==
-                  DateFormat('yyyyMMdd').format(DateTime.now());
+              final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
               final dm = dayMin(d);
               return GestureDetector(
                   onTap: () => widget.onDayTap(d),
@@ -1635,8 +1637,7 @@ class _GridCanvas extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final colorScheme = Theme.of(context).colorScheme;
-    final isToday = DateFormat('yyyyMMdd').format(now) ==
-        DateFormat('yyyyMMdd').format(date);
+    final isToday = AppTimeFormats.isSameDay(now, date);
     final nowTotalMin = isToday ? now.hour * 60 + now.minute : -1;
 
     return Stack(children: [

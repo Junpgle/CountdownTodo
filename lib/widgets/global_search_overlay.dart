@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/search_service.dart';
 import '../utils/theme_color_tokens.dart';
+import 'app_state_views.dart';
 import 'dart:async';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -403,7 +404,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   padding: const EdgeInsets.all(14),
                   width: 20,
                   height: 20,
-                  child: const CircularProgressIndicator(strokeWidth: 2),
+                  child: const AppLoadingIndicator(),
                 )
               : IconButton(
                   icon: const Icon(Icons.close_rounded),
@@ -977,28 +978,11 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
       ),
-      child: Column(
-        children: [
-          Icon(Icons.search_off_rounded, size: 50, color: colorScheme.outline),
-          const SizedBox(height: 16),
-          Text(
-            '没找到相关内容',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '旅行者，你将去往何方？',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 14,
-            ),
-          ),
-        ],
+      child: const AppEmptyState(
+        icon: Icons.search_off_rounded,
+        title: '没找到相关内容',
+        message: '旅行者，你将去往何方？',
+        padding: EdgeInsets.zero,
       ),
     );
   }
