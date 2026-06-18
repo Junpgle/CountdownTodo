@@ -108,6 +108,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isSyncing = false;
   String? _wallpaperUrl;
   Color? _wallpaperDominantColor;
+  String? _extractedWallpaperUrl;
   String? _wallpaperCopyright;
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
@@ -157,7 +158,9 @@ class _HomeDashboardState extends State<HomeDashboard>
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
 
-  Future<void> _extractColorFromProvider(ImageProvider provider) async {
+  Future<void> _extractColorFromProvider(ImageProvider provider, String url) async {
+    if (_extractedWallpaperUrl == url) return;
+    _extractedWallpaperUrl = url;
     try {
       final palette = await PaletteGenerator.fromImageProvider(provider);
       if (mounted) {
@@ -3765,6 +3768,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) {
         setState(() {
           _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
           StorageService.setAppWallpaperColor(null);
           _wallpaperUrl = 'assets/images/default_wallpaper.png';
           _isWallpaperLoadingError = false; // Reset to allow this to show
@@ -3789,6 +3793,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) {
         setState(() {
           _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
           StorageService.setAppWallpaperColor(null);
           _wallpaperUrl = nextUrl;
         });
@@ -3852,11 +3857,23 @@ class _HomeDashboardState extends State<HomeDashboard>
           setState(() {
             _wallpaperShow = true;
             _wallpaperDominantColor = null;
+            _extractedWallpaperUrl = null;
             StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = customPath;
             _isWallpaperLoadingError = false;
           });
+          return;
         }
+      }
+      if (mounted) {
+        setState(() {
+          _wallpaperShow = false;
+          _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
+          StorageService.setAppWallpaperColor(null);
+          _wallpaperUrl = null;
+          _isWallpaperLoadingError = true;
+        });
       }
       return;
     }
@@ -4035,7 +4052,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       builder: (context) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (_wallpaperDominantColor == null) {
-                            _extractColorFromProvider(AssetImage(_wallpaperUrl!));
+                            _extractColorFromProvider(AssetImage(_wallpaperUrl!), _wallpaperUrl!);
                           }
                         });
                         return Image.asset(
@@ -4049,7 +4066,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                           builder: (context) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_wallpaperDominantColor == null) {
-                                _extractColorFromProvider(FileImage(File(_wallpaperUrl!)));
+                                _extractColorFromProvider(FileImage(File(_wallpaperUrl!)), _wallpaperUrl!);
                               }
                             });
                             return Image.file(
@@ -4063,7 +4080,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                       : _WallpaperNetworkImage(
                           url: _wallpaperUrl!,
                           onImageProvider: (provider) {
-                            _extractColorFromProvider(provider);
+                            _extractColorFromProvider(provider, _wallpaperUrl!);
                           },
                           onSuccess: () {
                             _wallpaperRetryCount = 0;
