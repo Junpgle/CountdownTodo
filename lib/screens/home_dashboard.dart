@@ -4454,12 +4454,26 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       'timeline': timelineSection,
                                     };
 
-                                    bool hasNoCourse =
-                                        (_dashboardCourseData['courses'] ==
-                                                null ||
-                                            (_dashboardCourseData['courses']
-                                                    as List)
-                                                .isEmpty);
+                                    bool isCourseEmpty = (_dashboardCourseData['courses'] == null ||
+                                            (_dashboardCourseData['courses'] as List).isEmpty) ||
+                                        (_dashboardCourseData['title']?.toString().contains('天后') ?? false) ||
+                                        _dashboardCourseData['title'] == '最近无课' ||
+                                        _dashboardCourseData['title'] == '暂无课表';
+                                        
+                                    bool hasNoCourse = isCourseEmpty;
+                                    if (isCourseEmpty) {
+                                      final nowMs = DateTime.now().millisecondsSinceEpoch;
+                                      final tomorrowEndMs = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day + 2).millisecondsSinceEpoch;
+                                      bool hasActivePlans = _planBlocks.any((b) => !b.isDeleted && b.endTime > nowMs && b.startTime < tomorrowEndMs);
+                                      bool hasActiveTodos = _todos.any((t) {
+                                        if (t.isDeleted || t.dueDate == null || t.isAllDayTask) return false;
+                                        final startMs = t.createdDate ?? t.createdAt;
+                                        return startMs > 0 && t.dueDate!.millisecondsSinceEpoch > nowMs && startMs < tomorrowEndMs;
+                                      });
+                                      if (hasActivePlans || hasActiveTodos) {
+                                        hasNoCourse = false;
+                                      }
+                                    }
 
                                     if (!isTablet) {
                                       List<String> tab1Order = [
