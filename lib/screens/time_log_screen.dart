@@ -13,6 +13,7 @@ import '../utils/app_dialogs.dart';
 import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
+import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 
@@ -664,15 +665,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           shape: BoxShape.circle,
           boxShadow: [BoxShadow(color: c, blurRadius: 6)]));
 
-  Widget _pill(String t, Color c) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.1),
-          border: Border.all(color: c.withValues(alpha: 0.4)),
-          borderRadius: BorderRadius.circular(20)),
-      child: Text(t,
-          style:
-              TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w700)));
+  Widget _pill(String t, Color c) => AppMetricChip(label: t, color: c);
 
   Widget _tagRow(String name, Color c) => Row(children: [
         Container(
