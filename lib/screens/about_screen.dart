@@ -95,7 +95,8 @@ class _AboutScreenState extends State<AboutScreen> {
       _migrationStage = '启动迁移...';
     });
 
-    _migrationSub = LocalMigrationService.performMigration(username).listen((p) {
+    _migrationSub =
+        LocalMigrationService.performMigration(username).listen((p) {
       if (mounted) {
         setState(() {
           _migrationProgress = p.progress;
@@ -288,7 +289,7 @@ class _AboutScreenState extends State<AboutScreen> {
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        PageTransitions.material(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     }
@@ -299,20 +300,26 @@ class _AboutScreenState extends State<AboutScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('课程去重'),
-        content: const Text('系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。'),
+        content: const Text(
+            '系统将扫描数据库中重复的课程记录（名称、时间、周次、地点均相同），并自动清理多余项。此操作将保留最新的一份，并将清理记录同步到云端。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始清理')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('开始清理')),
         ],
       ),
     );
 
     if (confirmed == true) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在执行数据库深度清理...')));
-      
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('正在执行数据库深度清理...')));
+
       final count = await DatabaseHelper.instance.deduplicateCourses();
-      
+
       if (mounted) {
         showDialog(
           context: context,
@@ -320,7 +327,8 @@ class _AboutScreenState extends State<AboutScreen> {
             title: const Text('清理完成'),
             content: Text('成功清理了 $count 条重复课程记录。'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
             ],
           ),
         );
@@ -334,10 +342,12 @@ class _AboutScreenState extends State<AboutScreen> {
     final isWide = screenWidth > 800;
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('关于此应用'),
-        centerTitle: true,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('关于此应用'),
+              centerTitle: true,
+            ),
       body: isWide ? _buildWideLayout(context) : _buildNarrowLayout(context),
     );
   }
@@ -449,7 +459,8 @@ class _AboutScreenState extends State<AboutScreen> {
                               Navigator.push(
                                 context,
                                 PageTransitions.slideHorizontal(
-                                  DeviceVersionDetailPage(isEmbedded: widget.isEmbedded),
+                                  DeviceVersionDetailPage(
+                                      isEmbedded: widget.isEmbedded),
                                   settings: const RouteSettings(name: '设备版本明细'),
                                 ),
                               );
@@ -463,7 +474,9 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                         ],
                       ),
-                      if (_needsMigration || _isMigrating || _migrationCompleted)
+                      if (_needsMigration ||
+                          _isMigrating ||
+                          _migrationCompleted)
                         _buildMigrationPanel(context),
                       if (_syncFailures.isNotEmpty)
                         _buildSyncIssueCenter(context),
@@ -617,7 +630,8 @@ class _AboutScreenState extends State<AboutScreen> {
                   onPressed: () async {
                     final prefs = await SharedPreferences.getInstance();
                     final username = prefs.getString('current_user') ?? '';
-                    await StorageService.syncData(username, forceFullSync: true);
+                    await StorageService.syncData(username,
+                        forceFullSync: true);
                     _loadSyncFailures();
                   },
                   child: const Text('重试全部'),
@@ -678,7 +692,10 @@ class _AboutScreenState extends State<AboutScreen> {
       elevation: compact ? 0 : 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: compact
-          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+          ? Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: 0.3)
           : null,
       child: Padding(
         padding: EdgeInsets.all(compact ? 14 : 16),
@@ -742,7 +759,10 @@ class _AboutScreenState extends State<AboutScreen> {
       elevation: compact ? 0 : 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: compact
-          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)
+          ? Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: 0.3)
           : null,
       child: Padding(
         padding: EdgeInsets.all(compact ? 14 : 16),
@@ -906,8 +926,7 @@ class _AboutScreenState extends State<AboutScreen> {
                                 .map((entry) => _buildChangelogEntry(entry)),
                             if (hasMore)
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(top: 8),
+                                padding: const EdgeInsets.only(top: 8),
                                 child: SizedBox(
                                   width: double.infinity,
                                   child: TextButton.icon(
@@ -929,9 +948,8 @@ class _AboutScreenState extends State<AboutScreen> {
                                         ? const SizedBox(
                                             width: 14,
                                             height: 14,
-                                            child:
-                                                CircularProgressIndicator(
-                                                    strokeWidth: 2),
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
                                           )
                                         : const Icon(
                                             Icons.expand_more,
@@ -1010,7 +1028,6 @@ class _AboutScreenState extends State<AboutScreen> {
       ),
     );
   }
-
 
   Widget _buildMigrationPanel(BuildContext context) {
     final theme = Theme.of(context);
@@ -1191,10 +1208,12 @@ class PrivacyPolicyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: isEmbedded ? null : AppBar(
-        title: const Text('隐私政策'),
-        centerTitle: true,
-      ),
+      appBar: isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('隐私政策'),
+              centerTitle: true,
+            ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : content == null

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/search_service.dart';
+import '../utils/theme_color_tokens.dart';
+import 'app_state_views.dart';
 import 'dart:async';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -13,8 +15,7 @@ import 'dart:async';
 class _TypeMeta {
   final String label;
   final IconData icon;
-  final Color color;
-  const _TypeMeta(this.label, this.icon, this.color);
+  const _TypeMeta(this.label, this.icon);
 }
 
 class _SearchSectionLayoutItem {
@@ -34,28 +35,17 @@ class _TextMatch {
 }
 
 const _typeMeta = <SearchResultType, _TypeMeta>{
-  SearchResultType.todo:
-      _TypeMeta('待办事项', Icons.check_circle_outline, Color(0xFF007AFF)),
-  SearchResultType.todoGroup:
-      _TypeMeta('待办文件夹', Icons.folder_rounded, Color(0xFFFF9500)),
-  SearchResultType.course:
-      _TypeMeta('课程', Icons.school_rounded, Color(0xFF34C759)),
-  SearchResultType.countdown:
-      _TypeMeta('倒计时', Icons.timer_outlined, Color(0xFFFF3B30)),
-  SearchResultType.tag:
-      _TypeMeta('专注标签', Icons.label_rounded, Color(0xFFE84C88)),
-  SearchResultType.app:
-      _TypeMeta('屏幕使用', Icons.smartphone_rounded, Color(0xFF5B6BE8)),
-  SearchResultType.log:
-      _TypeMeta('时间日志', Icons.history_edu_rounded, Color(0xFF00C7BE)),
-  SearchResultType.setting:
-      _TypeMeta('设置', Icons.settings_rounded, Color(0xFFFF9500)),
-  SearchResultType.action:
-      _TypeMeta('快捷操作', Icons.bolt_rounded, Color(0xFFAF52DE)),
-  SearchResultType.recommend:
-      _TypeMeta('猜你想搜', Icons.auto_awesome_outlined, Color(0xFFFF2D55)),
-  SearchResultType.history:
-      _TypeMeta('搜索历史', Icons.history_rounded, Colors.grey),
+  SearchResultType.todo: _TypeMeta('待办事项', Icons.check_circle_outline),
+  SearchResultType.todoGroup: _TypeMeta('待办文件夹', Icons.folder_rounded),
+  SearchResultType.course: _TypeMeta('课程', Icons.school_rounded),
+  SearchResultType.countdown: _TypeMeta('倒计时', Icons.timer_outlined),
+  SearchResultType.tag: _TypeMeta('专注标签', Icons.label_rounded),
+  SearchResultType.app: _TypeMeta('屏幕使用', Icons.smartphone_rounded),
+  SearchResultType.log: _TypeMeta('时间日志', Icons.history_edu_rounded),
+  SearchResultType.setting: _TypeMeta('设置', Icons.settings_rounded),
+  SearchResultType.action: _TypeMeta('快捷操作', Icons.bolt_rounded),
+  SearchResultType.recommend: _TypeMeta('猜你想搜', Icons.auto_awesome_outlined),
+  SearchResultType.history: _TypeMeta('搜索历史', Icons.history_rounded),
 };
 
 // 分组显示顺序
@@ -98,6 +88,22 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
   // 记录每个类型是否已展开（默认只显示前 3 条）
   final Map<SearchResultType, bool> _expanded = {};
+
+  Color _typeColor(SearchResultType type, ColorScheme colorScheme) {
+    return switch (type) {
+      SearchResultType.todo => colorScheme.primary,
+      SearchResultType.todoGroup => colorScheme.secondary,
+      SearchResultType.course => colorScheme.cdtSuccess,
+      SearchResultType.countdown => colorScheme.error,
+      SearchResultType.tag => colorScheme.tertiary,
+      SearchResultType.app => colorScheme.secondary,
+      SearchResultType.log => colorScheme.primary,
+      SearchResultType.setting => colorScheme.onSurfaceVariant,
+      SearchResultType.action => colorScheme.primary,
+      SearchResultType.recommend => colorScheme.secondary,
+      SearchResultType.history => colorScheme.outline,
+    };
+  }
 
   @override
   void initState() {
@@ -234,8 +240,10 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     // 🚀 电脑端（非 Compact）面板使用全不透明色
     final panelColor = isDark
-        ? Color.fromRGBO(28, 28, 30, isCompact ? 0.96 : 1.0)
-        : Color.fromRGBO(255, 255, 255, isCompact ? 0.98 : 1.0);
+        ? colorScheme.surfaceContainerLow.withValues(
+            alpha: isCompact ? 0.96 : 1.0,
+          )
+        : colorScheme.surface.withValues(alpha: isCompact ? 0.98 : 1.0);
 
     // 桌面平台 (Windows/Linux/macOS) 窗口本身是透明的，
     // BackdropFilter 会模糊桌面而非 App 内容，必须改用纯色覆盖方案。
@@ -244,13 +252,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     // 移动端/Web 磨砂遮罩色
     final mobileBackdropColor = isDark
-        ? const Color.fromRGBO(0, 0, 0, 0.26)
-        : const Color.fromRGBO(255, 255, 255, 0.16);
+        ? colorScheme.scrim.withValues(alpha: 0.26)
+        : colorScheme.surface.withValues(alpha: 0.16);
 
     // 桌面端：叠在不透明 Scaffold 背景上的半透明遮罩
-    final desktopOverlayColor = isDark
-        ? Colors.black.withValues(alpha: 0.55)
-        : Colors.black.withValues(alpha: 0.30);
+    final desktopOverlayColor = colorScheme.scrim.withValues(
+      alpha: isDark ? 0.55 : 0.30,
+    );
 
     return Scaffold(
       // 桌面端必须是不透明背景，防止透出操作系统桌面
@@ -313,12 +321,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                             color: panelColor,
                             borderRadius: BorderRadius.circular(28),
                             border: Border.all(
-                              color: isDark ? Colors.white12 : Colors.black12,
+                              color: colorScheme.outlineVariant,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Color.fromRGBO(
-                                    0, 0, 0, isDark ? 0.25 : 0.12),
+                                color: colorScheme.shadow.withValues(
+                                  alpha: isDark ? 0.25 : 0.12,
+                                ),
                                 blurRadius: 36,
                                 offset: const Offset(0, 18),
                               ),
@@ -363,11 +372,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   Widget _buildSearchInput(ColorScheme colorScheme, bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+        color:
+            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color.fromRGBO(0, 0, 0, 0.15),
+            color: colorScheme.shadow.withValues(alpha: 0.15),
             blurRadius: 30,
             offset: const Offset(0, 10),
           )
@@ -380,11 +390,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          color: isDark ? Colors.white : Colors.black87,
+          color: colorScheme.onSurface,
         ),
         decoration: InputDecoration(
           hintText: '多关键词搜全应用',
-          hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
+          hintStyle: TextStyle(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+          ),
           prefixIcon:
               Icon(Icons.search_rounded, color: colorScheme.primary, size: 24),
           suffixIcon: _isSearching
@@ -392,7 +404,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   padding: const EdgeInsets.all(14),
                   width: 20,
                   height: 20,
-                  child: const CircularProgressIndicator(strokeWidth: 2),
+                  child: const AppLoadingIndicator(),
                 )
               : IconButton(
                   icon: const Icon(Icons.close_rounded),
@@ -418,12 +430,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Icon(Icons.tips_and_updates_outlined,
-              size: 15, color: isDark ? Colors.white54 : Colors.black45),
+              size: 15,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72)),
           Text(
             '支持搜索：',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? Colors.white54 : Colors.black54,
+              color: colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -470,8 +483,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     for (var entry in groups.entries) {
       final type = entry.key;
       final items = entry.value;
-      final meta = _typeMeta[type] ??
-          const _TypeMeta('其他', Icons.help_outline, Colors.grey);
+      final meta = _typeMeta[type] ?? const _TypeMeta('其他', Icons.help_outline);
       final isExpanded = _expanded[type] ?? false;
       final displayItems = isExpanded ? items : items.take(3).toList();
       final hasMore = items.length > 3 && !isExpanded;
@@ -506,7 +518,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: isDark
-                        ? const Color(0xFF2C2C2E)
+                        ? colorScheme.surfaceContainerHighest
                         : colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
@@ -519,7 +531,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.white : colorScheme.primary,
+                      color:
+                          isDark ? colorScheme.onSurface : colorScheme.primary,
                     ),
                   ),
                 ),
@@ -610,13 +623,18 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     required ColorScheme colorScheme,
     required bool isDark,
   }) {
+    final typeColor = _typeColor(type, colorScheme);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+        color:
+            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: const Color.fromRGBO(0, 0, 0, 0.08), blurRadius: 16),
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 16,
+          ),
         ],
       ),
       child: ClipRRect(
@@ -628,18 +646,18 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: meta.color.withValues(alpha: isDark ? 0.15 : 0.06),
+                color: typeColor.withValues(alpha: isDark ? 0.15 : 0.06),
               ),
               child: Row(
                 children: [
-                  Icon(meta.icon, color: meta.color, size: 16),
+                  Icon(meta.icon, color: typeColor, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     meta.label,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: meta.color,
+                      color: typeColor,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -648,14 +666,14 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
-                      color: meta.color.withValues(alpha: 0.15),
+                      color: typeColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$totalCount',
                       style: TextStyle(
                           fontSize: 11,
-                          color: meta.color,
+                          color: typeColor,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -674,9 +692,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                       height: 1,
                       indent: 16,
                       endIndent: 16,
-                      color: isDark ? Colors.white10 : const Color(0x0F000000),
+                      color: colorScheme.cdtDivider,
                     ),
-                  _buildResultTile(item, meta.color, colorScheme, isDark),
+                  _buildResultTile(item, typeColor, colorScheme, isDark),
                 ],
               );
             }),
@@ -690,8 +708,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
-                        color:
-                            isDark ? Colors.white10 : const Color(0x0F000000),
+                        color: colorScheme.cdtDivider,
                       ),
                     ),
                   ),
@@ -699,13 +716,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.expand_more_rounded,
-                          size: 16, color: meta.color),
+                          size: 16, color: typeColor),
                       const SizedBox(width: 4),
                       Text(
                         '查看全部 $totalCount 项',
                         style: TextStyle(
                           fontSize: 12,
-                          color: meta.color,
+                          color: typeColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -750,7 +767,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                 ),
                 child: Icon(
                   item.icon,
-                  color: isCompleted ? Colors.grey : typeColor,
+                  color: isCompleted ? colorScheme.cdtDisabled : typeColor,
                   size: 20,
                 ),
               ),
@@ -771,12 +788,13 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                               color: isCompleted
-                                  ? Colors.grey
-                                  : (isDark ? Colors.white : Colors.black87),
+                                  ? colorScheme.cdtDisabled
+                                  : colorScheme.onSurface,
                               decoration: isCompleted
                                   ? TextDecoration.lineThrough
                                   : null,
                             ),
+                            colorScheme.primary,
                           ),
                         ),
                         // 面包屑（设置项）
@@ -809,13 +827,15 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
                           _currentQuery,
                           TextStyle(
                             fontSize: 12,
-                            color: isDark ? Colors.white54 : Colors.black45,
+                            color: colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.78),
                           ),
+                          colorScheme.primary,
                         ),
                       ),
                     // 待办额外信息标签
                     if (item.type == SearchResultType.todo)
-                      _buildTodoTags(item, typeColor, isDark),
+                      _buildTodoTags(item, colorScheme),
                   ],
                 ),
               ),
@@ -824,7 +844,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
               Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 13,
-                color: isDark ? Colors.white24 : Colors.black26,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
               ),
             ],
           ),
@@ -834,15 +854,15 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   }
 
   /// 待办专属的小标签行（已完成、团队、截止等）
-  Widget _buildTodoTags(SearchResult item, Color typeColor, bool isDark) {
+  Widget _buildTodoTags(SearchResult item, ColorScheme colorScheme) {
     final tags = <Widget>[];
     final data = item.extraData ?? {};
 
     if (data['is_completed'] == 1) {
-      tags.add(_chip('已完成', Colors.green, isDark));
+      tags.add(_chip('已完成', colorScheme.cdtSuccess));
     }
     if (data['team_name'] != null && (data['team_name'] as String).isNotEmpty) {
-      tags.add(_chip('📌 ${data['team_name']}', Theme.of(context).colorScheme.secondary, isDark));
+      tags.add(_chip('📌 ${data['team_name']}', colorScheme.secondary));
     }
 
     if (tags.isEmpty) return const SizedBox.shrink();
@@ -852,7 +872,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     );
   }
 
-  Widget _chip(String label, Color color, bool isDark) {
+  Widget _chip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
@@ -875,7 +895,12 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   // 关键词高亮
   // ──────────────────────────────────────────────────────────────────────────
 
-  Widget _highlightText(String text, String query, TextStyle style) {
+  Widget _highlightText(
+    String text,
+    String query,
+    TextStyle style,
+    Color highlightColor,
+  ) {
     final terms = query
         .split(RegExp(r'[\s,，;；]+'))
         .map((s) => s.trim())
@@ -924,9 +949,9 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       spans.add(TextSpan(
         text: text.substring(m.start, m.end),
         style: style.copyWith(
-          color: const Color(0xFF007AFF),
+          color: highlightColor,
           fontWeight: FontWeight.w900,
-          backgroundColor: const Color(0xFF007AFF).withValues(alpha: 0.1),
+          backgroundColor: highlightColor.withValues(alpha: 0.1),
         ),
       ));
       start = m.end;
@@ -949,39 +974,25 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
     return Container(
       padding: const EdgeInsets.all(40),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+        color:
+            isDark ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
       ),
-      child: Column(
-        children: [
-          Icon(Icons.search_off_rounded, size: 50, color: colorScheme.outline),
-          const SizedBox(height: 16),
-          Text(
-            '没找到相关内容',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '旅行者，你将去往何方？',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isDark ? Colors.white54 : Colors.black45,
-              fontSize: 14,
-            ),
-          ),
-        ],
+      child: const AppEmptyState(
+        icon: Icons.search_off_rounded,
+        title: '没找到相关内容',
+        message: '旅行者，你将去往何方？',
+        padding: EdgeInsets.zero,
       ),
     );
   }
 
   // 🚀 搜索结果骨架屏
   Widget _buildSearchSkeleton(bool isDark, Size screenSize) {
-    final baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    final baseColor = Theme.of(context)
+        .colorScheme
+        .surfaceContainerHighest
+        .withValues(alpha: isDark ? 0.42 : 0.55);
 
     return Column(
       children: List.generate(

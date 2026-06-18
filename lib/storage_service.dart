@@ -278,6 +278,7 @@ class StorageService {
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
   static ValueNotifier<String> themeColorModeNotifier = ValueNotifier('default');
   static ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
+  static ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);
   static final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
   static final ValueNotifier<Map<String, dynamic>> conflictScanNotifier =
       ValueNotifier<Map<String, dynamic>>({
@@ -4718,6 +4719,10 @@ class StorageService {
     final prefs = await StorageService.prefs;
     await prefs.setInt(KEY_CUSTOM_THEME_COLOR, color.toARGB32());
     customThemeColorNotifier.value = color;
+  }
+
+  static void setAppWallpaperColor(Color? color) {
+    appWallpaperColorNotifier.value = color;
   }
 
   static Future<void> saveServerChoice(String choice) async {

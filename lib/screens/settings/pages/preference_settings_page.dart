@@ -3,22 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 
 import '../../../storage_service.dart';
+import '../../../utils/app_dialogs.dart';
+import '../../../utils/app_time_formats.dart';
 import '../../../utils/page_transitions.dart';
-import '../server_choice_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import '../../feature_guide_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../update_service.dart';
+import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_state_views.dart';
 
 class PreferenceSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PreferenceSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+  const PreferenceSettingsPage(
+      {super.key, this.initialTarget, this.isEmbedded = false});
 
   @override
   State<PreferenceSettingsPage> createState() => _PreferenceSettingsPageState();
@@ -53,12 +57,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   bool _isCheckingUpdate = false;
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
+  String _updateSource = 'server'; // 更新源偏好
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    
+
     _storageManagementHandler = StorageManagementHandler(
       context: context,
       getUsername: () => _username,
@@ -67,7 +72,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       },
       showLoading: (msg) => _showLoadingDialog(context, msg),
       closeLoading: () => _closeLoadingDialog(context),
-      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) => AppSnackBars.show(context, msg),
     );
     _storageManagementHandler.calculateCacheSize();
 
@@ -81,12 +86,15 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
-    
+
     String theme = await StorageService.getThemeMode();
-    String themeColorMode = prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
+    String themeColorMode =
+        prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
     int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
     String wallpaperProvider = await StorageService.getWallpaperProvider();
-    Map<String, dynamic> homeTextConfig = await StorageService.getHomeTextConfig();
+    Map<String, dynamic> homeTextConfig =
+        await StorageService.getHomeTextConfig();
+    String updateSource = await UpdateService.getUpdateSource();
 
     if (mounted) {
       setState(() {
@@ -94,6 +102,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         _themeColorMode = themeColorMode;
         _wallpaperProvider = wallpaperProvider;
         _homeTextConfig = homeTextConfig;
+        _updateSource = updateSource;
         if (customColorVal != null) {
           _customThemeColor = Color(customColorVal);
         }
@@ -118,28 +127,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     }
   }
 
-
-
   void _showLoadingDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 20),
-            Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
+    AppDialogs.showLoading(context, message);
   }
 
   void _closeLoadingDialog(BuildContext context) {
-    if (Navigator.of(context, rootNavigator: true).canPop()) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
+    AppDialogs.close(context);
   }
 
   Future<void> _showMigrationDialog() async {
@@ -160,13 +153,14 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   Future<void> _handleThemeColorModeChanged(String? val) async {
     if (val == null) return;
-    
+
     if (val == 'image_extracted') {
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       if (image != null) {
         try {
-          final colorScheme = await ColorScheme.fromImageProvider(provider: FileImage(File(image.path)));
+          final colorScheme = await ColorScheme.fromImageProvider(
+              provider: FileImage(File(image.path)));
           await StorageService.setCustomThemeColor(colorScheme.primary);
           setState(() => _customThemeColor = colorScheme.primary);
           await StorageService.setThemeColorMode(val);
@@ -186,7 +180,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Future<void> _handlePickCustomThemeColor() async {
-    Color pickerColor = _customThemeColor ?? Theme.of(context).colorScheme.primary;
+    Color pickerColor =
+        _customThemeColor ?? Theme.of(context).colorScheme.primary;
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -223,109 +218,111 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildTile({required String targetId, required Widget child}) {
-    final bool isHighlighted = _highlightTarget == targetId;
-    return Container(
-      key: _itemKeys[targetId],
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-        ),
-        child: child,
-      ),
+    return AppSettingsHighlightedTile(
+      targetId: targetId,
+      highlightTarget: _highlightTarget,
+      itemKeys: _itemKeys,
+      borderRadius: BorderRadius.zero,
+      child: child,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoadingView());
     }
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('系统与外观'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('系统与外观'),
+            ),
       body: ListView(
         children: [
           const SizedBox(height: 16),
           _buildWallpaperSection(),
-          const Divider(height: 1, indent: 56),
+          const AppSettingsDivider(),
           _buildHomeTextSection(),
           _buildAppearanceSection(),
           _buildColorSection(),
-
-
-          
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('系统与存储', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const AppSettingsSectionHeader(
+            title: '系统与存储',
+            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
             targetId: 'cache',
             child: ListTile(
-              leading: const Icon(Icons.cleaning_services_outlined, color: Colors.brown),
+              leading: Icon(Icons.cleaning_services_outlined,
+                  color: colorScheme.secondary),
               title: const Text('深度清理缓存与冗余'),
               subtitle: const Text('包含更新残留包与深度图片缓存'),
-              trailing: Text(_cacheSizeStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              trailing: Text(_cacheSizeStr,
+                  style: TextStyle(
+                      fontSize: 12, color: colorScheme.onSurfaceVariant)),
               onTap: _storageManagementHandler.clearCache,
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'storage',
             child: ListTile(
-              leading: const Icon(Icons.data_usage, color: Colors.orange),
+              leading: Icon(Icons.data_usage, color: colorScheme.cdtWarning),
               title: const Text('存储空间深度分析'),
               subtitle: const Text('找出占用数百MB的隐藏文件'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _storageManagementHandler.showStorageAnalysis,
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'update',
             child: ListTile(
-              leading: const Icon(Icons.system_update_outlined, color: Colors.green),
+              leading: Icon(Icons.system_update_outlined,
+                  color: colorScheme.cdtSuccess),
               title: const Text('检查新版本'),
-              trailing: _isCheckingUpdate ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_right),
+              trailing: _isCheckingUpdate
+                  ? const AppLoadingIndicator()
+                  : const Icon(Icons.chevron_right),
               onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
             ),
           ),
-
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('其他工具', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const AppSettingsDivider(),
+          _buildUpdateSourceSection(),
+          const AppSettingsSectionHeader(
+            title: '其他工具',
+            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
             targetId: 'feature_guide',
             child: ListTile(
-              leading: const Icon(Icons.school_outlined, color: Colors.indigo),
+              leading: Icon(Icons.school_outlined, color: colorScheme.primary),
               title: const Text('重新查看新版教程与权限设置'),
               subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(
                   context,
-                  PageTransitions.slideHorizontal(const FeatureGuideScreen()),
+                  PageTransitions.slideHorizontal(FeatureGuideScreen(
+                    isManualReview: true,
+                    loggedInUser: _username,
+                  )),
                 );
               },
             ),
           ),
-          const Divider(height: 1, indent: 72),
+          const AppSettingsDivider(indent: 72),
           _buildTile(
             targetId: 'migration',
             child: ListTile(
-              leading: const Icon(Icons.move_to_inbox, color: Colors.teal),
+              leading: Icon(Icons.move_to_inbox, color: colorScheme.secondary),
               title: const Text('旧版本地数据一键迁移'),
               subtitle: const Text('包含待办、课程、课表与习惯数据'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _showMigrationDialog,
             ),
           ),
-
           const SizedBox(height: 32),
         ],
       ),
@@ -343,7 +340,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('首页壁纸', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                Text('首页壁纸',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 GestureDetector(
                   onTap: () => Navigator.push(
                     context,
@@ -354,8 +355,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                   child: Row(
                     children: [
-                      Text('高级设置', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
-                      Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
+                      Text('高级设置',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.primary)),
+                      Icon(Icons.chevron_right,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary),
                     ],
                   ),
                 ),
@@ -365,11 +371,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined, Colors.blue),
+                _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined),
                 const SizedBox(width: 24),
-                _buildWallpaperCard('github', 'GitHub随机', Icons.code, Colors.purple),
+                _buildWallpaperCard('github', 'GitHub随机', Icons.code),
                 const SizedBox(width: 24),
-                _buildWallpaperCard('custom', '自定义图片', Icons.folder_special_outlined, Colors.orange),
+                _buildWallpaperCard(
+                    'custom', '自定义图片', Icons.folder_special_outlined),
               ],
             ),
           ],
@@ -378,7 +385,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildWallpaperCard(String value, String title, IconData icon, Color accentColor) {
+  Widget _buildWallpaperCard(String value, String title, IconData icon) {
     final isSelected = _wallpaperProvider == value;
     final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -398,22 +405,30 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 color: isSelected ? colorScheme.primary : Colors.transparent,
                 width: 2.5,
               ),
-              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade200,
+              color: colorScheme.surfaceContainerHighest,
               boxShadow: [
                 if (isSelected)
-                  BoxShadow(color: colorScheme.primary.withValues(alpha: 0.2), blurRadius: 6, spreadRadius: 1)
+                  BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 1)
               ],
             ),
             child: Center(
-              child: Icon(icon, size: 28, color: isSelected ? colorScheme.primary : Colors.grey.shade600),
+              child: Icon(icon,
+                  size: 28,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant),
             ),
           ),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? colorScheme.primary : null,
-          )),
+          Text(title,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? colorScheme.primary : null,
+              )),
         ],
       ),
     );
@@ -421,85 +436,96 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   Widget _buildHomeTextSection() {
     final now = DateTime.now();
-    
-    final usernameFormat = _homeTextConfig['usernameFormat'] as String? ?? '{name}';
-    final displayName = usernameFormat.replaceAll('{name}', _username.isNotEmpty ? _username : '用户');
 
-    final dateFormat = _homeTextConfig['dateFormat'] as String? ?? 'MM月dd日 EEEE';
+    final usernameFormat =
+        _homeTextConfig['usernameFormat'] as String? ?? '{name}';
+    final displayName = usernameFormat.replaceAll(
+        '{name}', _username.isNotEmpty ? _username : '用户');
+
+    final dateFormat =
+        _homeTextConfig['dateFormat'] as String? ?? 'MM月dd日 EEEE';
     String dateStr;
-    try {
-      dateStr = DateFormat(dateFormat, 'zh_CN').format(now);
-    } catch (_) {
-      dateStr = DateFormat('MM月dd日 EEEE', 'zh_CN').format(now);
-    }
+    dateStr = AppTimeFormats.safeFormat(
+      now,
+      dateFormat,
+      locale: 'zh_CN',
+      fallbackPattern: 'MM月dd日 EEEE',
+    );
 
-    final salutationMode = _homeTextConfig['salutationMode'] as String? ?? 'timed';
+    final salutationMode =
+        _homeTextConfig['salutationMode'] as String? ?? 'timed';
     String salutation = '你好';
     if (salutationMode == 'fixed') {
-       salutation = _homeTextConfig['fixedSalutation'] as String? ?? '你好';
+      salutation = _homeTextConfig['fixedSalutation'] as String? ?? '你好';
     } else {
-       final slots = _homeTextConfig['salutationSlots'] as List<dynamic>?;
-       bool foundSlot = false;
-       if (slots != null && slots.isNotEmpty) {
-         final currentMinutes = now.hour * 60 + now.minute;
-         for (var slot in slots) {
-            final startM = slot['startHour'] * 60 + slot['startMinute'];
-            final endM = slot['endHour'] * 60 + slot['endMinute'];
-            bool inSlot = false;
-            if (startM <= endM) {
-              inSlot = currentMinutes >= startM && currentMinutes < endM;
-            } else {
-              inSlot = currentMinutes >= startM || currentMinutes < endM;
+      final slots = _homeTextConfig['salutationSlots'] as List<dynamic>?;
+      bool foundSlot = false;
+      if (slots != null && slots.isNotEmpty) {
+        final currentMinutes = now.hour * 60 + now.minute;
+        for (var slot in slots) {
+          final startM = slot['startHour'] * 60 + slot['startMinute'];
+          final endM = slot['endHour'] * 60 + slot['endMinute'];
+          bool inSlot = false;
+          if (startM <= endM) {
+            inSlot = currentMinutes >= startM && currentMinutes < endM;
+          } else {
+            inSlot = currentMinutes >= startM || currentMinutes < endM;
+          }
+          if (inSlot) {
+            final txt = slot['text'] as String?;
+            if (txt != null && txt.isNotEmpty) {
+              salutation = txt;
+              foundSlot = true;
+              break;
             }
-            if (inSlot) {
-               final txt = slot['text'] as String?;
-               if (txt != null && txt.isNotEmpty) {
-                  salutation = txt;
-                  foundSlot = true;
-                  break;
-               }
-            }
-         }
-       }
-       if (!foundSlot) {
-         final hour = now.hour;
-         if (hour >= 5 && hour < 12) salutation = '上午好';
-         else if (hour >= 12 && hour < 14) salutation = '中午好';
-         else if (hour >= 14 && hour < 18) salutation = '下午好';
-         else if (hour >= 18 && hour < 23) salutation = '晚上好';
-         else salutation = '夜深了';
-       }
+          }
+        }
+      }
+      if (!foundSlot) {
+        final hour = now.hour;
+        if (hour >= 5 && hour < 12) {
+          salutation = '上午好';
+        } else if (hour >= 12 && hour < 14) {
+          salutation = '中午好';
+        } else if (hour >= 14 && hour < 18) {
+          salutation = '下午好';
+        } else if (hour >= 18 && hour < 23) {
+          salutation = '晚上好';
+        } else {
+          salutation = '夜深了';
+        }
+      }
     }
 
     final greetingMode = _homeTextConfig['greetingMode'] as String? ?? 'timed';
     String greeting = '今天也要元气满满！';
     if (greetingMode == 'fixed') {
-       final fixedList = _homeTextConfig['fixedGreetings'] as List<dynamic>?;
-       if (fixedList != null && fixedList.isNotEmpty) {
-         greeting = fixedList.first.toString();
-       }
+      final fixedList = _homeTextConfig['fixedGreetings'] as List<dynamic>?;
+      if (fixedList != null && fixedList.isNotEmpty) {
+        greeting = fixedList.first.toString();
+      }
     } else {
-       final timeSlots = _homeTextConfig['timeSlots'] as List<dynamic>?;
-       if (timeSlots != null && timeSlots.isNotEmpty) {
-         final currentMinutes = now.hour * 60 + now.minute;
-         for (var slot in timeSlots) {
-            final startM = slot['startHour'] * 60 + slot['startMinute'];
-            final endM = slot['endHour'] * 60 + slot['endMinute'];
-            bool inSlot = false;
-            if (startM <= endM) {
-              inSlot = currentMinutes >= startM && currentMinutes < endM;
-            } else {
-              inSlot = currentMinutes >= startM || currentMinutes < endM;
+      final timeSlots = _homeTextConfig['timeSlots'] as List<dynamic>?;
+      if (timeSlots != null && timeSlots.isNotEmpty) {
+        final currentMinutes = now.hour * 60 + now.minute;
+        for (var slot in timeSlots) {
+          final startM = slot['startHour'] * 60 + slot['startMinute'];
+          final endM = slot['endHour'] * 60 + slot['endMinute'];
+          bool inSlot = false;
+          if (startM <= endM) {
+            inSlot = currentMinutes >= startM && currentMinutes < endM;
+          } else {
+            inSlot = currentMinutes >= startM || currentMinutes < endM;
+          }
+          if (inSlot) {
+            final greetings = slot['greetings'] as List<dynamic>?;
+            if (greetings != null && greetings.isNotEmpty) {
+              greeting = greetings.first.toString();
+              break;
             }
-            if (inSlot) {
-              final greetings = slot['greetings'] as List<dynamic>?;
-              if (greetings != null && greetings.isNotEmpty) {
-                 greeting = greetings.first.toString();
-                 break;
-              }
-            }
-         }
-       }
+          }
+        }
+      }
     }
 
     return _buildTile(
@@ -512,7 +538,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('首页文字', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                Text('首页文字',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 GestureDetector(
                   onTap: () async {
                     final result = await Navigator.push<bool>(
@@ -523,14 +553,20 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                       ),
                     );
                     if (result == true && mounted) {
-                       final newConfig = await StorageService.getHomeTextConfig();
-                       setState(() => _homeTextConfig = newConfig);
+                      final newConfig =
+                          await StorageService.getHomeTextConfig();
+                      setState(() => _homeTextConfig = newConfig);
                     }
                   },
                   child: Row(
                     children: [
-                      Text('高级设置', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
-                      Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.primary),
+                      Text('高级设置',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.primary)),
+                      Icon(Icons.chevron_right,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary),
                     ],
                   ),
                 ),
@@ -539,40 +575,60 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             const SizedBox(height: 16),
             GestureDetector(
               onTap: () async {
-                  final result = await Navigator.push<bool>(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      HomeTextConfigPage(isEmbedded: widget.isEmbedded),
-                      settings: const RouteSettings(name: '首页文字自定义'),
-                    ),
-                  );
-                  if (result == true && mounted) {
-                     final newConfig = await StorageService.getHomeTextConfig();
-                     setState(() => _homeTextConfig = newConfig);
-                  }
+                final result = await Navigator.push<bool>(
+                  context,
+                  PageTransitions.slideHorizontal(
+                    HomeTextConfigPage(isEmbedded: widget.isEmbedded),
+                    settings: const RouteSettings(name: '首页文字自定义'),
+                  ),
+                );
+                if (result == true && mounted) {
+                  final newConfig = await StorageService.getHomeTextConfig();
+                  setState(() => _homeTextConfig = newConfig);
+                }
               },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
-                  border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.2)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$salutation，${displayName.isEmpty ? "访客" : displayName}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+                    Text(
+                        '$salutation，${displayName.isEmpty ? "访客" : displayName}',
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
-                    Text(dateStr, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                    Text(dateStr,
+                        style: TextStyle(
+                            fontSize: 14,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant)),
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text('“ $greeting ”', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary, fontStyle: FontStyle.italic)),
+                      child: Text('“ $greeting ”',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.primary,
+                              fontStyle: FontStyle.italic)),
                     ),
                   ],
                 ),
@@ -580,6 +636,84 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSourceSection() {
+    return _buildTile(
+      targetId: 'update_source',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('更新检查源',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildUpdateSourceCard('github', 'GitHub（最新）', Icons.code),
+                const SizedBox(width: 24),
+                _buildUpdateSourceCard('server', '阿里云服务器（更快）', Icons.cloud_outlined),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSourceCard(String value, String title, IconData icon) {
+    final isSelected = _updateSource == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () async {
+        await UpdateService.setUpdateSource(value);
+        if (mounted) {
+          setState(() => _updateSource = value);
+        }
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 86,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? colorScheme.tertiary : Colors.transparent,
+                width: 2.5,
+              ),
+              color: colorScheme.surfaceContainerHighest,
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                      color: colorScheme.tertiary.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 1)
+              ],
+            ),
+            child: Center(
+              child: Icon(icon,
+                  size: 28,
+                  color: isSelected
+                      ? colorScheme.tertiary
+                      : colorScheme.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? colorScheme.tertiary : null,
+              )),
+        ],
       ),
     );
   }
@@ -592,7 +726,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('外观', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Text('外观',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -630,10 +768,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 color: isSelected ? colorScheme.primary : Colors.transparent,
                 width: 2.5,
               ),
-              color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade200,
+              color: colorScheme.surfaceContainerHighest,
               boxShadow: [
                 if (isSelected)
-                  BoxShadow(color: colorScheme.primary.withValues(alpha: 0.2), blurRadius: 6, spreadRadius: 1)
+                  BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 1)
               ],
             ),
             child: Padding(
@@ -645,31 +786,41 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? colorScheme.primary : null,
-          )),
+          Text(title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? colorScheme.primary : null,
+              )),
         ],
       ),
     );
   }
 
   Widget _buildLightIcon() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: Colors.white,
+      color: colorScheme.surface,
       child: Column(
         children: [
-          Container(height: 14, color: Colors.grey.shade200),
+          Container(height: 14, color: colorScheme.surfaceContainerHighest),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(4.0),
               child: Row(
                 children: [
-                  Expanded(flex: 1, child: Container(color: Colors.grey.shade100, margin: const EdgeInsets.only(right: 4))),
-                  Expanded(flex: 2, child: Container(
-                    decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(2)),
-                  )),
+                  Expanded(
+                      flex: 1,
+                      child: Container(
+                          color: colorScheme.surfaceContainerHigh,
+                          margin: const EdgeInsets.only(right: 4))),
+                  Expanded(
+                      flex: 2,
+                      child: Container(
+                        decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(2)),
+                      )),
                 ],
               ),
             ),
@@ -680,20 +831,32 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildDarkIcon() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFF1E1E1E),
+      color: colorScheme.inverseSurface,
       child: Column(
         children: [
-          Container(height: 14, color: const Color(0xFF2D2D2D)),
+          Container(
+              height: 14,
+              color: colorScheme.inversePrimary.withValues(alpha: 0.28)),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(4.0),
               child: Row(
                 children: [
-                  Expanded(flex: 1, child: Container(color: const Color(0xFF252525), margin: const EdgeInsets.only(right: 4))),
-                  Expanded(flex: 2, child: Container(
-                    decoration: BoxDecoration(color: Colors.blue.shade800, borderRadius: BorderRadius.circular(2)),
-                  )),
+                  Expanded(
+                      flex: 1,
+                      child: Container(
+                          color: colorScheme.onInverseSurface
+                              .withValues(alpha: 0.14),
+                          margin: const EdgeInsets.only(right: 4))),
+                  Expanded(
+                      flex: 2,
+                      child: Container(
+                        decoration: BoxDecoration(
+                            color: colorScheme.inversePrimary,
+                            borderRadius: BorderRadius.circular(2)),
+                      )),
                 ],
               ),
             ),
@@ -717,18 +880,26 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final isMobile = screenWidth < 600;
 
     final allPresetColors = [
-      Colors.blue, Colors.purple, Colors.pink, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.grey
+      Colors.blue,
+      Colors.purple,
+      Colors.pink,
+      Colors.red,
+      Colors.orange,
+      Colors.yellow,
+      Colors.green,
+      Colors.grey
     ];
 
     List<Color> displayColors;
     if (isMobile) {
       displayColors = [Colors.blue, Colors.purple, Colors.orange, Colors.green];
       if (_themeColorMode == 'custom' && _customThemeColor != null) {
-         if (allPresetColors.any((c) => c.value == _customThemeColor!.value)) {
-            if (!displayColors.any((c) => c.value == _customThemeColor!.value)) {
-               displayColors[3] = _customThemeColor!;
-            }
-         }
+        final customArgb = _customThemeColor!.toARGB32();
+        if (allPresetColors.any((c) => c.toARGB32() == customArgb)) {
+          if (!displayColors.any((c) => c.toARGB32() == customArgb)) {
+            displayColors[3] = _customThemeColor!;
+          }
+        }
       }
     } else {
       displayColors = allPresetColors;
@@ -741,7 +912,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('主题颜色', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Text('主题颜色',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 16),
             Center(
               child: SingleChildScrollView(
@@ -750,13 +925,22 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildColorCircle('system_wallpaper', null, '多色/自动', displayColors),
+                    _buildColorCircle(
+                        'system_wallpaper', null, '多色/自动', displayColors),
+                    const SizedBox(width: 12),
+                    _buildColorCircle(
+                        'app_wallpaper', null, '应用壁纸', displayColors),
                     const SizedBox(width: 12),
                     ...displayColors.map((c) => Padding(
-                      padding: const EdgeInsets.only(right: 12.0),
-                      child: _buildColorCircle('custom', c, null, displayColors),
-                    )),
-                    _buildColorCircle('custom_picker', null, '自定义', displayColors),
+                          padding: const EdgeInsets.only(right: 12.0),
+                          child: _buildColorCircle(
+                              'custom', c, null, displayColors),
+                        )),
+                    _buildColorCircle(
+                        'custom_picker', null, '自定义', displayColors),
+                    const SizedBox(width: 12),
+                    _buildColorCircle(
+                        'image_extracted', null, '图片取色', displayColors),
                   ],
                 ),
               ),
@@ -767,15 +951,24 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     );
   }
 
-  Widget _buildColorCircle(String mode, Color? color, String? label, List<Color> displayColors) {
+  Widget _buildColorCircle(
+      String mode, Color? color, String? label, List<Color> displayColors) {
     bool isSelected = false;
 
     if (mode == 'system_wallpaper') {
-      isSelected = _themeColorMode == 'system_wallpaper' || _themeColorMode == 'default';
+      isSelected =
+          _themeColorMode == 'system_wallpaper' || _themeColorMode == 'default';
+    } else if (mode == 'app_wallpaper') {
+      isSelected = _themeColorMode == 'app_wallpaper';
     } else if (mode == 'custom' && color != null) {
-      isSelected = (_themeColorMode == 'custom') && _customThemeColor?.value == color.value;
+      isSelected = (_themeColorMode == 'custom') &&
+          _customThemeColor?.toARGB32() == color.toARGB32();
     } else if (mode == 'custom_picker') {
-      isSelected = (_themeColorMode == 'custom' || _themeColorMode == 'image_extracted') && !displayColors.any((c) => c.value == _customThemeColor?.value);
+      final customArgb = _customThemeColor?.toARGB32();
+      isSelected = (_themeColorMode == 'custom') &&
+          !displayColors.any((c) => c.toARGB32() == customArgb);
+    } else if (mode == 'image_extracted') {
+      isSelected = _themeColorMode == 'image_extracted';
     }
 
     Widget inner;
@@ -784,30 +977,57 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
           gradient: SweepGradient(
-            colors: [Colors.blue, Colors.purple, Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.blue],
+            colors: [
+              Colors.blue,
+              Colors.purple,
+              Colors.red,
+              Colors.orange,
+              Colors.yellow,
+              Colors.green,
+              Colors.blue
+            ],
           ),
         ),
+      );
+    } else if (mode == 'app_wallpaper') {
+      inner = Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+        child: Icon(Icons.wallpaper,
+            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
       );
     } else if (mode == 'custom_picker') {
       inner = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
         ),
-        child: const Icon(Icons.colorize, size: 16, color: Colors.grey),
+        child: Icon(Icons.colorize,
+            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      );
+    } else if (mode == 'image_extracted') {
+      inner = Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+        child: Icon(Icons.image,
+            size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
       );
     } else {
       inner = Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: color ?? Colors.blue,
+          color: color ?? Theme.of(context).colorScheme.primary,
         ),
       );
     }
 
     return GestureDetector(
       onTap: () async {
-        if (mode == 'system_wallpaper') {
+        if (mode == 'system_wallpaper' || mode == 'app_wallpaper') {
           await StorageService.setThemeColorMode(mode);
           setState(() => _themeColorMode = mode);
         } else if (mode == 'custom' && color != null) {
@@ -819,6 +1039,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           });
         } else if (mode == 'custom_picker') {
           await _handlePickCustomThemeColor();
+        } else if (mode == 'image_extracted') {
+          await _handleThemeColorModeChanged('image_extracted');
         }
       },
       child: SizedBox(
@@ -832,7 +1054,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
                   width: 2.5,
                 ),
               ),
@@ -840,7 +1064,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
             if (label != null) ...[
               const SizedBox(height: 6),
-              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey), textAlign: TextAlign.center),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  textAlign: TextAlign.center),
             ]
           ],
         ),

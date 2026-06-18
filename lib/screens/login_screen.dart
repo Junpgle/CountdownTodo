@@ -10,6 +10,7 @@ import '../widgets/privacy_policy_dialog.dart';
 import '../widgets/turnstile_verification_widget.dart';
 import 'home_dashboard.dart';
 import '../utils/page_transitions.dart';
+import '../utils/theme_color_tokens.dart';
 
 // ─────────────────────────────────────────────
 //  Adaptive color tokens
@@ -17,86 +18,89 @@ import '../utils/page_transitions.dart';
 // ─────────────────────────────────────────────
 class _T {
   _T(BuildContext context)
-      : _dark = Theme.of(context).brightness == Brightness.dark;
+      : _scheme = Theme.of(context).colorScheme,
+        _dark = Theme.of(context).brightness == Brightness.dark;
 
+  final ColorScheme _scheme;
   final bool _dark;
 
   // ── Scaffolding ──
-  Color get bg => _dark ? const Color(0xFF0D0D1C) : const Color(0xFFF2F2FA);
-  Color get surface =>
-      _dark ? const Color(0xFF13131F) : const Color(0xFFFFFFFF);
-  Color get card => _dark ? const Color(0xFF1A1A2A) : const Color(0xFFFFFFFF);
+  Color get bg => _scheme.surface;
+  Color get surface => _scheme.surface;
+  Color get card => _scheme.surfaceContainerLow;
 
   // ── Borders ──
-  Color get border => _dark ? const Color(0x1AFFFFFF) : const Color(0x22000000);
-  Color get borderFocus => const Color(0x806C63FF);
+  Color get border => _scheme.outlineVariant.withValues(alpha: 0.75);
+  Color get borderFocus => _scheme.primary.withValues(alpha: 0.62);
 
-  // ── Brand (same in both modes) ──
-  static const primary = Color(0xFF6C63FF);
-  static const primaryLt = Color(0xFF8B85FF);
-  static const accent = Color(0xFFFF6B9D);
-  static const success = Color(0xFF4CAF50);
+  // ── Brand follows global theme ──
+  Color get primary => _scheme.primary;
+  Color get primaryLt => Color.lerp(_scheme.primary, _scheme.secondary, 0.28)!;
+  Color get accent => _scheme.secondary;
+  Color get accentLt => Color.lerp(_scheme.secondary, _scheme.tertiary, 0.35)!;
+  Color get success => _scheme.cdtSuccess;
+  Color get onPrimary => _scheme.onPrimary;
 
   // ── Text ──
-  Color get textPri =>
-      _dark ? const Color(0xFFFFFFFF) : const Color(0xFF1A1A2E);
-  Color get textSec =>
-      _dark ? const Color(0x99FFFFFF) : const Color(0xFF5A5A7A);
-  Color get textHint =>
-      _dark ? const Color(0x55FFFFFF) : const Color(0xFFAAAAAA);
+  Color get textPri => _scheme.onSurface;
+  Color get textSec => _scheme.onSurfaceVariant;
+  Color get textHint => _scheme.onSurfaceVariant.withValues(alpha: 0.68);
 
   // ── Inputs ──
-  Color get inputBg =>
-      _dark ? const Color(0x0DFFFFFF) : const Color(0xFFF8F8FF);
-  Color get inputBgF =>
-      _dark ? const Color(0x126C63FF) : const Color(0xFFEEECFF);
-  Color get inputBd =>
-      _dark ? const Color(0x1AFFFFFF) : const Color(0xFFDDDDEE);
+  Color get inputBg => _scheme.surfaceContainerHighest.withValues(
+        alpha: _dark ? 0.42 : 0.62,
+      );
+  Color get inputBgF => _scheme.primaryContainer.withValues(
+        alpha: _dark ? 0.30 : 0.46,
+      );
+  Color get inputBd => _scheme.outlineVariant.withValues(alpha: 0.72);
 
-  // ── Amber / legacy banner ──
-  Color get amber => _dark ? const Color(0xFFFFB74D) : const Color(0xFF7A5200);
-  Color get amberBg =>
-      _dark ? const Color(0x1AFFB74D) : const Color(0xFFFFF8E1);
-  Color get amberBd =>
-      _dark ? const Color(0x40FFB74D) : const Color(0xFFFFCC80);
-  Color get amberEm =>
-      _dark ? const Color(0xFFFFE082) : const Color(0xFF9A6500);
+  // ── Warning / legacy banner ──
+  Color get amber => _scheme.cdtWarning;
+  Color get amberBg => _scheme.cdtWarningContainer.withValues(
+        alpha: _dark ? 0.22 : 0.45,
+      );
+  Color get amberBd => _scheme.cdtWarning.withValues(alpha: 0.28);
+  Color get amberEm => _scheme.cdtOnWarningContainer;
 
   // ── Wide-left panel ──
-  List<Color> get leftGrad => _dark
-      ? const [Color(0xFF140E38), Color(0xFF0F0A2E)]
-      : const [Color(0xFF6C63FF), Color(0xFF9C8FFF)];
-  Color get leftTextSec =>
-      _dark ? const Color(0x99FFFFFF) : const Color(0xCCFFFFFF);
-  Color get leftFeatureBg =>
-      _dark ? const Color(0x286C63FF) : const Color(0x33FFFFFF);
-  Color get leftFeatureBd =>
-      _dark ? const Color(0x446C63FF) : const Color(0x55FFFFFF);
+  List<Color> get leftGrad => [primary, Color.lerp(primary, accent, 0.65)!];
+  Color get leftText => onPrimary;
+  Color get leftTextSec => onPrimary.withValues(alpha: 0.78);
+  Color get leftFeatureBg => onPrimary.withValues(alpha: 0.14);
+  Color get leftFeatureBd => onPrimary.withValues(alpha: 0.24);
 
   // ── Tab switcher ──
-  Color get tabActiveBg =>
-      _dark ? const Color(0x406C63FF) : const Color(0xFFEEECFF);
-  Color get tabActiveBd =>
-      _dark ? const Color(0x666C63FF) : const Color(0xFF6C63FF);
-  Color get tabActiveText =>
-      _dark ? const Color(0xFFB8B3FF) : const Color(0xFF4A43D4);
+  Color get tabActiveBg => _scheme.primaryContainer.withValues(
+        alpha: _dark ? 0.42 : 0.76,
+      );
+  Color get tabActiveBd => primary.withValues(alpha: 0.46);
+  Color get tabActiveText => _scheme.onPrimaryContainer;
 
   // ── Misc ──
-  Color get otpBg => _dark ? const Color(0x126C63FF) : const Color(0xFFEEECFF);
-  Color get verifyIconBg =>
-      _dark ? const Color(0x286C63FF) : const Color(0xFFEEECFF);
-  Color get verifyIconBd =>
-      _dark ? const Color(0x446C63FF) : const Color(0xFF9C8FFF);
-  Color get dropdownBg =>
-      _dark ? const Color(0xFF1A1A2A) : const Color(0xFFFFFFFF);
+  Color get otpBg => _scheme.primaryContainer.withValues(
+        alpha: _dark ? 0.28 : 0.54,
+      );
+  Color get verifyIconBg => _scheme.primaryContainer.withValues(
+        alpha: _dark ? 0.30 : 0.64,
+      );
+  Color get verifyIconBd => primary.withValues(alpha: 0.35);
+  Color get dropdownBg => card;
 }
 
 // ─────────────────────────────────────────────
 //  Background orb painter  (repaints on theme switch)
 // ─────────────────────────────────────────────
 class _OrbPainter extends CustomPainter {
-  const _OrbPainter({required this.dark});
+  const _OrbPainter({
+    required this.dark,
+    required this.primary,
+    required this.accent,
+  });
+
   final bool dark;
+  final Color primary;
+  final Color accent;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -108,7 +112,7 @@ class _OrbPainter extends CustomPainter {
       240,
       Paint()
         ..shader = RadialGradient(
-          colors: [_T.primary.withValues(alpha: a1), Colors.transparent],
+          colors: [primary.withValues(alpha: a1), Colors.transparent],
         ).createShader(Rect.fromCircle(
             center: Offset(size.width * 0.88, size.height * 0.10),
             radius: 240)),
@@ -119,7 +123,7 @@ class _OrbPainter extends CustomPainter {
       200,
       Paint()
         ..shader = RadialGradient(
-          colors: [_T.accent.withValues(alpha: a2), Colors.transparent],
+          colors: [accent.withValues(alpha: a2), Colors.transparent],
         ).createShader(Rect.fromCircle(
             center: Offset(size.width * 0.08, size.height * 0.80),
             radius: 200)),
@@ -127,7 +131,8 @@ class _OrbPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OrbPainter old) => old.dark != dark;
+  bool shouldRepaint(_OrbPainter old) =>
+      old.dark != dark || old.primary != primary || old.accent != accent;
 }
 
 // ─────────────────────────────────────────────
@@ -234,9 +239,8 @@ class _PrimaryBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = isAccent
-        ? [_T.accent, const Color(0xFFFF8F6B)]
-        : [_T.primary, _T.primaryLt];
+    final t = _T(context);
+    final colors = isAccent ? [t.accent, t.accentLt] : [t.primary, t.primaryLt];
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -266,10 +270,10 @@ class _PrimaryBtn extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: t.onPrimary,
               letterSpacing: 0.3,
             ),
           ),
@@ -288,25 +292,26 @@ class _BrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = _T(context);
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [_T.primary, _T.accent],
+        gradient: LinearGradient(
+          colors: [t.primary, t.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(size * 0.28),
         boxShadow: [
           BoxShadow(
-            color: _T.primary.withValues(alpha: 0.38),
+            color: t.primary.withValues(alpha: 0.38),
             blurRadius: 18,
             offset: const Offset(0, 7),
           ),
         ],
       ),
-      child: Icon(Icons.bolt_rounded, color: Colors.white, size: size * 0.52),
+      child: Icon(Icons.bolt_rounded, color: t.onPrimary, size: size * 0.52),
     );
   }
 }
@@ -381,8 +386,7 @@ class _ServerSelector extends StatelessWidget {
         Container(
           width: 7,
           height: 7,
-          decoration:
-              const BoxDecoration(color: _T.success, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: t.success, shape: BoxShape.circle),
         ),
         const SizedBox(width: 7),
         Text('服务器：', style: TextStyle(fontSize: 12, color: t.textHint)),
@@ -392,8 +396,8 @@ class _ServerSelector extends StatelessWidget {
           dropdownColor: t.dropdownBg,
           icon: Icon(Icons.keyboard_arrow_down_rounded,
               size: 16, color: t.textHint),
-          style: const TextStyle(
-              color: _T.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
+          style: TextStyle(
+              color: t.primaryLt, fontSize: 12, fontWeight: FontWeight.w500),
           items: [
             DropdownMenuItem(
                 value: 'cloudflare',
@@ -543,7 +547,7 @@ class _OtpInputState extends State<_OtpInput> with TickerProviderStateMixin {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: _T.primaryLt, width: 2),
+          borderSide: BorderSide(color: t.primaryLt, width: 2),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
@@ -575,12 +579,12 @@ class _WideLeftPanel extends StatelessWidget {
         children: [
           const _BrandLogo(size: 56),
           const SizedBox(height: 36),
-          const Text(
+          Text(
             '专注你的\n每一天',
             style: TextStyle(
               fontSize: 30,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: t.leftText,
               height: 1.3,
             ),
           ),
@@ -609,7 +613,7 @@ class _WideLeftPanel extends StatelessWidget {
                       borderRadius: BorderRadius.circular(9),
                       border: Border.all(color: t.leftFeatureBd, width: 1),
                     ),
-                    child: Icon(e.$1, size: 16, color: Colors.white),
+                    child: Icon(e.$1, size: 16, color: t.leftText),
                   ),
                   const SizedBox(width: 12),
                   Text(e.$2,
@@ -628,14 +632,16 @@ class _WideLeftPanel extends StatelessWidget {
 class _Spinner extends StatelessWidget {
   const _Spinner();
   @override
-  Widget build(BuildContext context) => const Center(
-        child: SizedBox(
-          width: 32,
-          height: 32,
-          child:
-              CircularProgressIndicator(strokeWidth: 2.5, color: _T.primaryLt),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final t = _T(context);
+    return Center(
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: CircularProgressIndicator(strokeWidth: 2.5, color: t.primaryLt),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -870,8 +876,8 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     setState(() => _isLoading = true);
-    final result = await ApiService.login(email, pass,
-        turnstileToken: _turnstileToken);
+    final result =
+        await ApiService.login(email, pass, turnstileToken: _turnstileToken);
     if (!mounted) return;
 
     if (result['success'] == true) {
@@ -1130,7 +1136,13 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: t.bg,
       body: Stack(children: [
         Positioned.fill(
-          child: CustomPaint(painter: _OrbPainter(dark: t._dark)),
+          child: CustomPaint(
+            painter: _OrbPainter(
+              dark: t._dark,
+              primary: t.primary,
+              accent: t.accent,
+            ),
+          ),
         ),
         SafeArea(
           child: LayoutBuilder(builder: (ctx, constraints) {
@@ -1250,11 +1262,11 @@ class _LoginScreenState extends State<LoginScreen>
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
+              child: Text(
                 '忘记密码？',
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: _T.primaryLt,
+                  color: t.primaryLt,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1288,11 +1300,11 @@ class _LoginScreenState extends State<LoginScreen>
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          child: const Text(
+                          child: Text(
                             '《隐私政策》',
                             style: TextStyle(
                               fontSize: 12.5,
-                              color: _T.primaryLt,
+                              color: t.primaryLt,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -1339,8 +1351,8 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: t.verifyIconBd, width: 1),
           ),
-          child: const Icon(Icons.mark_email_read_outlined,
-              color: _T.primaryLt, size: 26),
+          child: Icon(Icons.mark_email_read_outlined,
+              color: t.primaryLt, size: 26),
         ),
         const SizedBox(height: 20),
         Text(
@@ -1367,11 +1379,11 @@ class _LoginScreenState extends State<LoginScreen>
         Center(
           child: TextButton(
             onPressed: () => setState(() => _awaitingVerification = false),
-            child: const Text(
+            child: Text(
               '← 返回修改邮箱',
               style: TextStyle(
                   fontSize: 13,
-                  color: _T.primaryLt,
+                  color: t.primaryLt,
                   fontWeight: FontWeight.w500),
             ),
           ),
@@ -1395,8 +1407,7 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: t.verifyIconBd, width: 1),
           ),
-          child: const Icon(Icons.lock_reset_outlined,
-              color: _T.primaryLt, size: 26),
+          child: Icon(Icons.lock_reset_outlined, color: t.primaryLt, size: 26),
         ),
         const SizedBox(height: 20),
         Text(
@@ -1490,11 +1501,11 @@ class _LoginScreenState extends State<LoginScreen>
         Center(
           child: TextButton(
             onPressed: () => setState(() => _forgotPasswordStep = 0),
-            child: const Text(
+            child: Text(
               '← 返回登录',
               style: TextStyle(
                   fontSize: 13,
-                  color: _T.primaryLt,
+                  color: t.primaryLt,
                   fontWeight: FontWeight.w500),
             ),
           ),

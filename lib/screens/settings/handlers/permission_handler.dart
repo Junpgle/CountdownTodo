@@ -23,7 +23,6 @@ class PermissionHandler {
       'label': '通知',
       'desc': '课程提醒、待办闹钟、下载进度推送',
       'icon': Icons.notifications_outlined,
-      'color': Colors.blue,
       'critical': true,
     },
     {
@@ -31,7 +30,6 @@ class PermissionHandler {
       'label': '存储读写',
       'desc': '导入课表文件、下载版本更新安装包',
       'icon': Icons.folder_outlined,
-      'color': Colors.orange,
       'critical': false,
     },
     {
@@ -39,7 +37,6 @@ class PermissionHandler {
       'label': '应用使用情况',
       'desc': '屏幕时间统计功能（统计各 App 使用时长）',
       'icon': Icons.bar_chart_outlined,
-      'color': Colors.purple,
       'critical': false,
     },
     {
@@ -47,7 +44,6 @@ class PermissionHandler {
       'label': '安装未知来源应用',
       'desc': '允许应用内直接安装版本更新包',
       'icon': Icons.install_mobile_outlined,
-      'color': Colors.teal,
       'critical': false,
     },
     {
@@ -55,7 +51,6 @@ class PermissionHandler {
       'label': '精确提醒',
       'desc': '保活核心权限：App 被杀后仍能在准确时刻推送待办/课程提醒',
       'icon': Icons.alarm_outlined,
-      'color': Colors.red,
       'critical': true,
     },
   ];

@@ -254,6 +254,8 @@ class _AnnouncementCarouselDialogState
 class UpdateService {
   static const String MANIFEST_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
+  static const String FALLBACK_MANIFEST_URL =
+      "http://101.200.13.100:8082/api/manifest";
   static const String CHANGELOG_ARCHIVE_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
@@ -264,6 +266,24 @@ class UpdateService {
       'changelog_archive_cache_time';
   static const String _updateDialogSnoozeTodayKey =
       'update_dialog_snooze_today';
+
+  // 更新源偏好设置
+  static const String _updateSourceKey = 'update_source_preference';
+  static const String UPDATE_SOURCE_GITHUB = 'github';
+  static const String UPDATE_SOURCE_SERVER = 'server';
+
+  /// 获取用户选择的更新源
+  static Future<String> getUpdateSource() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_updateSourceKey) ?? UPDATE_SOURCE_GITHUB;
+  }
+
+  /// 保存用户选择的更新源
+  static Future<void> setUpdateSource(String source) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_updateSourceKey, source);
+  }
+
   static Future<AppManifest?>? _manifestRefreshFuture;
 
   static bool _isDialogShowing = false;
@@ -545,15 +565,91 @@ class UpdateService {
   }
 
   static Future<AppManifest?> _fetchManifestFromNetwork() async {
+    final updateSource = await getUpdateSource();
+
+    // 根据用户偏好选择数据源
+    if (updateSource == UPDATE_SOURCE_SERVER) {
+      // 用户选择服务器优先
+      return await _fetchFromServerFirst();
+    } else {
+      // 默认：GitHub 优先，失败降级服务器
+      return await _fetchFromGitHubFirst();
+    }
+  }
+
+  /// GitHub 优先，失败降级服务器
+  static Future<AppManifest?> _fetchFromGitHubFirst() async {
+    // 优先从 GitHub 获取
     try {
-      final response = await http.get(Uri.parse(MANIFEST_URL));
+      final response = await http
+          .get(Uri.parse(MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
+        debugPrint('[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}');
         return manifest;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[UpdateService] GitHub manifest 获取失败: $e');
+    }
+
+    // GitHub 失败，降级到服务器获取
+    try {
+      debugPrint('[UpdateService] 降级到服务器获取 manifest...');
+      final response = await http
+          .get(Uri.parse(FALLBACK_MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        final manifest = AppManifest.fromJson(jsonDecode(body));
+        await _writeManifestCache(body);
+        debugPrint('[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
+        return manifest;
+      }
+    } catch (e) {
+      debugPrint('[UpdateService] 服务器 manifest 获取失败: $e');
+    }
+
+    return null;
+  }
+
+  /// 服务器优先，失败降级 GitHub
+  static Future<AppManifest?> _fetchFromServerFirst() async {
+    // 优先从服务器获取
+    try {
+      final response = await http
+          .get(Uri.parse(FALLBACK_MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        final manifest = AppManifest.fromJson(jsonDecode(body));
+        await _writeManifestCache(body);
+        debugPrint('[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
+        return manifest;
+      }
+    } catch (e) {
+      debugPrint('[UpdateService] 服务器 manifest 获取失败: $e');
+    }
+
+    // 服务器失败，降级到 GitHub 获取
+    try {
+      debugPrint('[UpdateService] 降级到 GitHub 获取 manifest...');
+      final response = await http
+          .get(Uri.parse(MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        final manifest = AppManifest.fromJson(jsonDecode(body));
+        await _writeManifestCache(body);
+        debugPrint('[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}');
+        return manifest;
+      }
+    } catch (e) {
+      debugPrint('[UpdateService] GitHub manifest 获取失败: $e');
+    }
+
     return null;
   }
 

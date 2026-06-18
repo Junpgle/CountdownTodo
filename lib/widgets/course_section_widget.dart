@@ -435,7 +435,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   void _openTodoPlanScreen() {
     Navigator.push(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => TodoPlanScreen(username: widget.username),
       ),
     );
@@ -553,7 +553,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         todo: todo,
         isLight: widget.isLight,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
+          PageTransitions.material(
             builder: (_) => TodoDetailScreen(todo: todo),
           ),
         ),
@@ -563,7 +563,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       block: item.block!,
       isLight: widget.isLight,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
+        PageTransitions.material(
           builder: (_) => TodoPlanScreen(username: widget.username),
         ),
       ),

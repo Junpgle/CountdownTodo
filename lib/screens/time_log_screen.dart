@@ -8,6 +8,12 @@ import '../services/pomodoro_control_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
+import '../utils/app_color_utils.dart';
+import '../utils/app_dialogs.dart';
+import '../utils/app_time_formats.dart';
+import '../utils/page_transitions.dart';
+import '../utils/theme_color_tokens.dart';
+import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 
@@ -41,8 +47,11 @@ const List<String> kPalette = [
 ];
 
 Color hexColor(String hex, {double opacity = 1.0}) {
-  final c = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-  return c.withValues(alpha: opacity);
+  return AppColorUtils.hexToColor(
+    hex,
+    fallback: const Color(0xFF607D8B),
+    opacity: opacity,
+  );
 }
 
 DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -60,18 +69,13 @@ class _TC {
   static Color surface(BuildContext c) => Theme.of(c).colorScheme.surface;
 
   static Color card(BuildContext c) => Theme.of(c).brightness == Brightness.dark
-      ? const Color(0xFF1A1A1A)
+      ? Theme.of(c).colorScheme.surfaceContainerLow
       : Theme.of(c).colorScheme.surfaceContainerHighest;
 
-  static Color topBar(BuildContext c) =>
-      Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF0D0D0D)
-          : Theme.of(c).colorScheme.surface;
+  static Color topBar(BuildContext c) => Theme.of(c).colorScheme.surface;
 
   static Color inputFill(BuildContext c) =>
-      Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF181818)
-          : Theme.of(c).colorScheme.surfaceContainerHighest;
+      Theme.of(c).colorScheme.surfaceContainerHighest;
 
   static Color text(BuildContext c) => Theme.of(c).colorScheme.onSurface;
 
@@ -84,22 +88,14 @@ class _TC {
   static Color divider(BuildContext c) => Theme.of(c).dividerColor;
 
   static Color btnBg(BuildContext c) =>
-      Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF222222)
-          : Theme.of(c).colorScheme.surfaceContainerHighest;
+      Theme.of(c).colorScheme.surfaceContainerHighest;
 
   static Color btnBorder(BuildContext c) =>
-      Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF333333)
-          : Theme.of(c).dividerColor;
+      Theme.of(c).colorScheme.outlineVariant;
 
   static Color timeLabel(BuildContext c, {bool major = false}) => major
-      ? (Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF888888)
-          : const Color(0xFF666666))
-      : (Theme.of(c).brightness == Brightness.dark
-          ? const Color(0xFF444444)
-          : const Color(0xFFAAAAAA));
+      ? Theme.of(c).colorScheme.onSurfaceVariant
+      : Theme.of(c).colorScheme.onSurfaceVariant.withValues(alpha: 0.55);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -177,8 +173,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             syncTimeLogs: true, syncTodos: false, syncCountdowns: false);
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('同步失败: $e')));
+          AppSnackBars.error(context, '同步失败: $e');
         }
       }
     }
@@ -230,9 +225,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       await _loadData();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存时间日志失败: $e')),
-      );
+      AppSnackBars.error(context, '保存时间日志失败: $e');
     }
   }
 
@@ -274,7 +267,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           onTap: () => setState(() => _weekStart = _dayStart(DateTime.now())
               .subtract(Duration(days: DateTime.now().weekday - 1))),
           child: Text(
-              '${DateFormat('MM/dd').format(_weekStart)} - ${DateFormat('MM/dd').format(we)}',
+              '${AppTimeFormats.monthDaySlash(_weekStart)} - ${AppTimeFormats.monthDaySlash(we)}',
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
@@ -303,7 +296,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               lastDate: DateTime.now().add(const Duration(days: 1)));
           if (p != null) setState(() => _focusedDate = p);
         },
-        child: Text(DateFormat('MM月dd日').format(_focusedDate),
+        child: Text(AppTimeFormats.monthDayCn(_focusedDate),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
       IconButton(
@@ -370,9 +363,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('打开AI助手失败: $e')),
-        );
+        AppSnackBars.error(context, '打开AI助手失败: $e');
       }
     }
   }
@@ -493,12 +484,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       );
 
   void _showPomodoroDetail(PomodoroRecord pom) {
+    final colorScheme = Theme.of(context).colorScheme;
     final tag = pom.tagUuids.isNotEmpty
         ? _tags.cast<PomodoroTag?>().firstWhere(
             (t) => t?.uuid == pom.tagUuids.first,
             orElse: () => null)
         : null;
-    final tc = tag != null ? hexColor(tag.color) : Colors.redAccent;
+    final tc = tag != null ? hexColor(tag.color) : colorScheme.cdtFocus;
     final endMs = pom.endTime ?? (pom.startTime + pom.effectiveDuration * 1000);
     final dur = (endMs - pom.startTime) ~/ 60000;
     final s = DateTime.fromMillisecondsSinceEpoch(pom.startTime);
@@ -507,13 +499,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _sheet(
-              Colors.redAccent.withValues(alpha: 0.4),
+              tc.withValues(alpha: 0.4),
               Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      _glow(Colors.redAccent),
+                      _glow(tc),
                       const SizedBox(width: 10),
                       Text('专注记录',
                           style: TextStyle(
@@ -521,7 +513,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               fontWeight: FontWeight.w700,
                               color: _TC.text(context))),
                       const Spacer(),
-                      _pill('${dur}min', Colors.redAccent),
+                      _pill('${dur}min', tc),
                       IconButton(
                           icon: Icon(Icons.close,
                               size: 18, color: _TC.textHint(context)),
@@ -536,14 +528,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       Expanded(
                           child: _InfoCard(
                               label: '开始',
-                              value: DateFormat('HH:mm').format(s),
-                              sub: DateFormat('MM/dd').format(s))),
+                              value: AppTimeFormats.clock(s),
+                              sub: AppTimeFormats.monthDaySlash(s))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
                               label: '结束',
-                              value: DateFormat('HH:mm').format(e),
-                              sub: DateFormat('MM/dd').format(e))),
+                              value: AppTimeFormats.clock(e),
+                              sub: AppTimeFormats.monthDaySlash(e))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
@@ -562,7 +554,9 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
             (t) => t?.uuid == log.tagUuids.first,
             orElse: () => null)
         : null;
-    final c = tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
+    final c = tag != null
+        ? hexColor(tag.color)
+        : Theme.of(context).colorScheme.cdtInfo;
     final dur = (log.endTime - log.startTime) ~/ 60000;
     final s = DateTime.fromMillisecondsSinceEpoch(log.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(log.endTime);
@@ -603,14 +597,14 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                       Expanded(
                           child: _InfoCard(
                               label: '开始',
-                              value: DateFormat('HH:mm').format(s),
-                              sub: DateFormat('MM/dd').format(s))),
+                              value: AppTimeFormats.clock(s),
+                              sub: AppTimeFormats.monthDaySlash(s))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
                               label: '结束',
-                              value: DateFormat('HH:mm').format(e),
-                              sub: DateFormat('MM/dd').format(e))),
+                              value: AppTimeFormats.clock(e),
+                              sub: AppTimeFormats.monthDaySlash(e))),
                       const SizedBox(width: 10),
                       Expanded(
                           child: _InfoCard(
@@ -647,9 +641,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                               style: TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.w600)),
                           style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.error,
                               side: BorderSide(
-                                  color: Colors.red.withValues(alpha: 0.4)),
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .error
+                                      .withValues(alpha: 0.4)),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12))),
                         ),
@@ -667,15 +665,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
           shape: BoxShape.circle,
           boxShadow: [BoxShadow(color: c, blurRadius: 6)]));
 
-  Widget _pill(String t, Color c) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.1),
-          border: Border.all(color: c.withValues(alpha: 0.4)),
-          borderRadius: BorderRadius.circular(20)),
-      child: Text(t,
-          style:
-              TextStyle(fontSize: 12, color: c, fontWeight: FontWeight.w700)));
+  Widget _pill(String t, Color c) => AppMetricChip(label: t, color: c);
 
   Widget _tagRow(String name, Color c) => Row(children: [
         Container(
@@ -883,7 +873,7 @@ class _WeekViewState extends State<_WeekView>
           // 今日统计
           _TopBarChip(
             label: '今日 ${todayMin}min',
-            color: const Color(0xFF22C55E),
+            color: Theme.of(ctx).colorScheme.cdtSuccess,
             ctx: ctx,
           ),
           const Spacer(),
@@ -908,7 +898,7 @@ class _WeekViewState extends State<_WeekView>
               builder: (bCtx) => _TopBarChip(
                     label: '恢复',
                     icon: Icons.cloud_download_outlined,
-                    color: const Color(0xFF22C55E),
+                    color: Theme.of(ctx).colorScheme.cdtSuccess,
                     ctx: ctx,
                     onTap: () async {
                       await StorageService.resetSyncTime(widget.username);
@@ -918,9 +908,11 @@ class _WeekViewState extends State<_WeekView>
                           syncCountdowns: true,
                           syncTimeLogs: true);
                       if (bCtx.mounted) {
-                        ScaffoldMessenger.of(bCtx).showSnackBar(const SnackBar(
-                            content: Text('🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面'),
-                            duration: Duration(seconds: 4)));
+                        AppSnackBars.success(
+                          bCtx,
+                          '🎉 数据强拉成功！请点击右上角的【刷新图标 ↻】查看界面',
+                          duration: const Duration(seconds: 4),
+                        );
                       }
                     },
                   )),
@@ -932,7 +924,8 @@ class _WeekViewState extends State<_WeekView>
     final scale = availW / totalW;
     final tW = kWeekTimeW * scale;
     final dW = kWeekDayW * scale;
-    final accent = Theme.of(ctx).colorScheme.primary;
+    final colorScheme = Theme.of(ctx).colorScheme;
+    final accent = colorScheme.primary;
     final isDark = Theme.of(ctx).brightness == Brightness.dark;
 
     int dayMin(DateTime d) {
@@ -948,8 +941,7 @@ class _WeekViewState extends State<_WeekView>
             SizedBox(width: tW),
             ...List.generate(7, (i) {
               final d = days[i];
-              final isToday = DateFormat('yyyyMMdd').format(d) ==
-                  DateFormat('yyyyMMdd').format(DateTime.now());
+              final isToday = AppTimeFormats.isSameDay(d, DateTime.now());
               final dm = dayMin(d);
               return GestureDetector(
                   onTap: () => widget.onDayTap(d),
@@ -1052,6 +1044,11 @@ class _WeekViewState extends State<_WeekView>
                               dayStartMs: ds,
                               isDark: isDark,
                               hourH: hourH,
+                              focusColor: colorScheme.cdtFocus,
+                              logColor: colorScheme.cdtInfo,
+                              majorLineColor: colorScheme.outlineVariant,
+                              minorLineColor: colorScheme.outlineVariant
+                                  .withValues(alpha: isDark ? 0.28 : 0.45),
                               animationProgress: _heatAnim.value)),
                       ...dPoms.map((pom) {
                         final pe = pom.endTime ??
@@ -1228,6 +1225,10 @@ class _WeekColPainter extends CustomPainter {
   final bool isDark;
   final double hourH;
   final double animationProgress;
+  final Color focusColor;
+  final Color logColor;
+  final Color majorLineColor;
+  final Color minorLineColor;
 
   const _WeekColPainter(
       {required this.dayLogs,
@@ -1236,6 +1237,10 @@ class _WeekColPainter extends CustomPainter {
       required this.dayStartMs,
       required this.isDark,
       required this.hourH,
+      required this.focusColor,
+      required this.logColor,
+      required this.majorLineColor,
+      required this.minorLineColor,
       this.animationProgress = 1.0});
 
   @override
@@ -1247,16 +1252,14 @@ class _WeekColPainter extends CustomPainter {
           Offset(0, y),
           Offset(size.width, y),
           Paint()
-            ..color = h % 6 == 0
-                ? (isDark ? const Color(0xFF2A2A2A) : const Color(0xFFDDDDDD))
-                : (isDark ? const Color(0xFF111111) : const Color(0xFFF2F2F2))
+            ..color = h % 6 == 0 ? majorLineColor : minorLineColor
             ..strokeWidth = 0.5);
     }
     canvas.drawLine(
         Offset(size.width - 0.5, 0),
         Offset(size.width - 0.5, size.height),
         Paint()
-          ..color = isDark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E5E5)
+          ..color = majorLineColor
           ..strokeWidth = 0.5);
 
     final totalBlocks = dayPoms.length + dayLogs.length;
@@ -1341,7 +1344,7 @@ class _WeekColPainter extends CustomPainter {
     // 画番茄钟（★ 传入 title）
     for (final p in dayPoms) {
       final pe = p.endTime ?? (p.startTime + p.effectiveDuration * 1000);
-      Color c = Colors.redAccent.withValues(alpha: 0.45);
+      Color c = focusColor.withValues(alpha: 0.45);
       String title = '专注';
       if (p.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
@@ -1357,7 +1360,7 @@ class _WeekColPainter extends CustomPainter {
 
     // 画补录日志（★ 传入 title）
     for (final l in dayLogs) {
-      Color c = const Color(0xFF3B82F6).withValues(alpha: 0.45);
+      Color c = logColor.withValues(alpha: 0.45);
       String title = l.title.isNotEmpty ? l.title : '补录';
       if (l.tagUuids.isNotEmpty) {
         final t = tags.cast<PomodoroTag?>().firstWhere(
@@ -1378,7 +1381,11 @@ class _WeekColPainter extends CustomPainter {
       o.hourH != hourH ||
       o.dayLogs.length != dayLogs.length ||
       o.dayPoms.length != dayPoms.length ||
-      o.animationProgress != animationProgress;
+      o.animationProgress != animationProgress ||
+      o.focusColor != focusColor ||
+      o.logColor != logColor ||
+      o.majorLineColor != majorLineColor ||
+      o.minorLineColor != minorLineColor;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1412,6 +1419,7 @@ class _DayGridViewState extends State<_DayGridView> {
     final ds = _dayStart(widget.date).millisecondsSinceEpoch;
     final de = ds + 86400000;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     final dLogs =
         widget.logs.where((l) => l.endTime > ds && l.startTime < de).toList();
@@ -1426,15 +1434,17 @@ class _DayGridViewState extends State<_DayGridView> {
     final totalMin = logMin + pomMin;
 
     final Map<String, int> tagMinMap = {};
-    for (final l in dLogs)
+    for (final l in dLogs) {
       for (final uid in l.tagUuids) {
         tagMinMap[uid] =
             (tagMinMap[uid] ?? 0) + (l.endTime - l.startTime) ~/ 60000;
       }
-    for (final p in dPoms)
+    }
+    for (final p in dPoms) {
       for (final uid in p.tagUuids) {
         tagMinMap[uid] = (tagMinMap[uid] ?? 0) + p.effectiveDuration ~/ 60;
       }
+    }
 
     return Column(children: [
       _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
@@ -1463,6 +1473,8 @@ class _DayGridViewState extends State<_DayGridView> {
                 dPoms: dPoms,
                 tags: widget.tags,
                 isDark: isDark,
+                focusColor: colorScheme.cdtFocus,
+                logColor: colorScheme.cdtInfo,
                 onPomodoroTap: widget.onPomodoroTap,
                 onTimeLogTap: widget.onTimeLogTap,
                 date: widget.date,
@@ -1494,10 +1506,11 @@ class _DayGridViewState extends State<_DayGridView> {
                       color: accent,
                       fontWeight: FontWeight.w700))),
           const SizedBox(width: 8),
-          if (pomMin > 0) _miniPill(ctx, '专注 ${pomMin}m', Colors.redAccent),
+          if (pomMin > 0)
+            _miniPill(ctx, '专注 ${pomMin}m', Theme.of(ctx).colorScheme.cdtFocus),
           if (logMin > 0) ...[
             const SizedBox(width: 6),
-            _miniPill(ctx, '补录 ${logMin}m', const Color(0xFF3B82F6)),
+            _miniPill(ctx, '补录 ${logMin}m', Theme.of(ctx).colorScheme.cdtInfo),
           ],
           const Spacer(),
           GestureDetector(
@@ -1594,6 +1607,8 @@ class _GridCanvas extends StatelessWidget {
   final List<PomodoroRecord> dPoms;
   final List<PomodoroTag> tags;
   final bool isDark;
+  final Color focusColor;
+  final Color logColor;
   final DateTime date;
   final void Function(PomodoroRecord) onPomodoroTap;
   final void Function(TimeLogItem) onTimeLogTap;
@@ -1607,6 +1622,8 @@ class _GridCanvas extends StatelessWidget {
       required this.dPoms,
       required this.tags,
       required this.isDark,
+      required this.focusColor,
+      required this.logColor,
       required this.date,
       required this.onPomodoroTap,
       required this.onTimeLogTap});
@@ -1614,14 +1631,28 @@ class _GridCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final isToday = DateFormat('yyyyMMdd').format(now) ==
-        DateFormat('yyyyMMdd').format(date);
+    final colorScheme = Theme.of(context).colorScheme;
+    final isToday = AppTimeFormats.isSameDay(now, date);
     final nowTotalMin = isToday ? now.hour * 60 + now.minute : -1;
 
     return Stack(children: [
       CustomPaint(
         size: Size(rowW, rowH * kTotalRows),
-        painter: _GridBgPainter(colW: colW, rowH: rowH, isDark: isDark),
+        painter: _GridBgPainter(
+          colW: colW,
+          rowH: rowH,
+          rowMajorColor: colorScheme.outlineVariant,
+          rowNormalColor: colorScheme.outlineVariant.withValues(
+            alpha: isDark ? 0.38 : 0.58,
+          ),
+          colHourColor: colorScheme.outline,
+          colHalfColor: colorScheme.outlineVariant,
+          colCellColor: colorScheme.outlineVariant.withValues(
+            alpha: isDark ? 0.26 : 0.42,
+          ),
+          labelMajorColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.48),
+          labelMinorColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.34),
+        ),
       ),
       if (nowTotalMin >= 0) _buildNowLine(nowTotalMin),
       // 番茄钟
@@ -1634,7 +1665,7 @@ class _GridCanvas extends StatelessWidget {
               (t) => pom.tagUuids.contains(t?.uuid),
               orElse: () => null);
         }
-        final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
+        final base = tag != null ? hexColor(tag.color) : focusColor;
         final title = tag?.name ?? '专注';
         return _buildEventBlocks(
           startMs: max(pom.startTime, dayStartMs),
@@ -1658,8 +1689,7 @@ class _GridCanvas extends StatelessWidget {
               (t) => log.tagUuids.contains(t?.uuid),
               orElse: () => null);
         }
-        final base =
-            tag != null ? hexColor(tag.color) : const Color(0xFF3B82F6);
+        final base = tag != null ? hexColor(tag.color) : logColor;
         final title = log.title.isNotEmpty ? log.title : (tag?.name ?? '补录');
         return _buildEventBlocks(
           startMs: max(log.startTime, dayStartMs),
@@ -1689,14 +1719,14 @@ class _GridCanvas extends StatelessWidget {
         left: 0,
         right: 0,
         height: 1.0,
-        child: Container(color: Colors.redAccent.withValues(alpha: 0.20)),
+        child: Container(color: focusColor.withValues(alpha: 0.20)),
       ),
       Positioned(
         top: y,
         left: x,
         width: 1.5,
         height: rowH,
-        child: Container(color: Colors.redAccent.withValues(alpha: 0.80)),
+        child: Container(color: focusColor.withValues(alpha: 0.80)),
       ),
       Positioned(
         top: y + rowH / 2 - 3,
@@ -1705,11 +1735,10 @@ class _GridCanvas extends StatelessWidget {
           width: 6,
           height: 6,
           decoration: BoxDecoration(
-            color: Colors.redAccent,
+            color: focusColor,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(
-                  color: Colors.redAccent.withValues(alpha: 0.5), blurRadius: 4)
+              BoxShadow(color: focusColor.withValues(alpha: 0.5), blurRadius: 4)
             ],
           ),
         ),
@@ -1839,18 +1868,33 @@ class _GridCanvas extends StatelessWidget {
 class _GridBgPainter extends CustomPainter {
   final double colW;
   final double rowH;
-  final bool isDark;
+  final Color rowMajorColor;
+  final Color rowNormalColor;
+  final Color colHourColor;
+  final Color colHalfColor;
+  final Color colCellColor;
+  final Color labelMajorColor;
+  final Color labelMinorColor;
 
-  const _GridBgPainter(
-      {required this.colW, required this.rowH, required this.isDark});
+  const _GridBgPainter({
+    required this.colW,
+    required this.rowH,
+    required this.rowMajorColor,
+    required this.rowNormalColor,
+    required this.colHourColor,
+    required this.colHalfColor,
+    required this.colCellColor,
+    required this.labelMajorColor,
+    required this.labelMinorColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final rowMajor = Paint()
-      ..color = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFCCCCCC)
+      ..color = rowMajorColor
       ..strokeWidth = 0.9;
     final rowNormal = Paint()
-      ..color = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE8E8E8)
+      ..color = rowNormalColor
       ..strokeWidth = 0.5;
 
     for (int r = 0; r <= kTotalRows; r++) {
@@ -1863,13 +1907,13 @@ class _GridBgPainter extends CustomPainter {
     }
 
     final colHour = Paint()
-      ..color = isDark ? const Color(0xFF383838) : const Color(0xFFBBBBBB)
+      ..color = colHourColor
       ..strokeWidth = 0.9;
     final colHalf = Paint()
-      ..color = isDark ? const Color(0xFF252525) : const Color(0xFFDCDCDC)
+      ..color = colHalfColor
       ..strokeWidth = 0.5;
     final colCell = Paint()
-      ..color = isDark ? const Color(0xFF181818) : const Color(0xFFF0F0F0)
+      ..color = colCellColor
       ..strokeWidth = 0.3;
 
     for (int c = 0; c <= kTotalCols; c++) {
@@ -1877,10 +1921,11 @@ class _GridBgPainter extends CustomPainter {
       final Paint p;
       if (c % kColsPerH == 0) {
         p = colHour;
-      } else if (c % 5 == 0)
+      } else if (c % 5 == 0) {
         p = colHalf;
-      else
+      } else {
         p = colCell;
+      }
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
 
@@ -1892,7 +1937,7 @@ class _GridBgPainter extends CustomPainter {
         '${h.toString().padLeft(2, '0')}:00',
         Offset(h * kColsPerH * colW + 3, rowTop + 2),
         fontSize: 8.0,
-        color: isDark ? const Color(0xFF3A3A3A) : const Color(0xFFBBBBBB),
+        color: labelMajorColor,
         bold: true,
       );
 
@@ -1902,7 +1947,7 @@ class _GridBgPainter extends CustomPainter {
           '${h.toString().padLeft(2, '0')}:30',
           Offset((h * kColsPerH + 5) * colW + 3, rowTop + 2),
           fontSize: 7.0,
-          color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFCCCCCC),
+          color: labelMinorColor,
           bold: false,
         );
       }
@@ -1927,7 +1972,15 @@ class _GridBgPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GridBgPainter o) =>
-      o.isDark != isDark || o.colW != colW || o.rowH != rowH;
+      o.colW != colW ||
+      o.rowH != rowH ||
+      o.rowMajorColor != rowMajorColor ||
+      o.rowNormalColor != rowNormalColor ||
+      o.colHourColor != colHourColor ||
+      o.colHalfColor != colHalfColor ||
+      o.colCellColor != colCellColor ||
+      o.labelMajorColor != labelMajorColor ||
+      o.labelMinorColor != labelMinorColor;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1956,8 +2009,9 @@ class _TagProgressBar extends StatelessWidget {
                 final t = tags
                     .cast<PomodoroTag?>()
                     .firstWhere((t) => t?.uuid == e.key, orElse: () => null);
-                final c =
-                    t != null ? hexColor(t.color) : const Color(0xFF3B82F6);
+                final c = t != null
+                    ? hexColor(t.color)
+                    : Theme.of(context).colorScheme.cdtInfo;
                 return Expanded(flex: e.value, child: Container(color: c));
               }).toList()))),
       const SizedBox(height: 5),

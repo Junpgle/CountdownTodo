@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
@@ -106,6 +107,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasUsagePermission = true;
   bool _isSyncing = false;
   String? _wallpaperUrl;
+  Color? _wallpaperDominantColor;
+  String? _extractedWallpaperUrl;
   String? _wallpaperCopyright;
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
@@ -154,6 +157,34 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 每次自增触发首页专注记录卡片与时间轴刷新
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
+
+  Future<void> _extractColorFromProvider(ImageProvider provider, String url) async {
+    if (_extractedWallpaperUrl == url) return;
+    _extractedWallpaperUrl = url;
+    try {
+      // 缩小图片尺寸可大幅提升解析速度，防止卡顿和 OOM 取色失败
+      final resizedProvider = ResizeImage(provider, width: 256);
+      final palette = await PaletteGenerator.fromImageProvider(
+        resizedProvider,
+        maximumColorCount: 16,
+      );
+      if (mounted) {
+        setState(() {
+          // 增加多级降级策略，确保一定能取到颜色
+          _wallpaperDominantColor = palette.dominantColor?.color ??
+              palette.vibrantColor?.color ??
+              palette.mutedColor?.color ??
+              palette.lightVibrantColor?.color ??
+              palette.darkVibrantColor?.color ??
+              (palette.colors.isNotEmpty ? palette.colors.first : null);
+              
+          StorageService.setAppWallpaperColor(_wallpaperDominantColor);
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to extract color: $e");
+    }
+  }
 
   int _selectedTabIndex = 0;
 
@@ -658,7 +689,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 显示全屏图片预览（针对分析产生的图片）
   void _showAnalysisImage(String imagePath) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
           appBar: AppBar(
@@ -737,7 +768,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     // push 新的番茄钟页
     _navigatingToPomodoro = true;
-    final route = MaterialPageRoute(
+    final route = PageTransitions.material(
       builder: (_) => PomodoroScreen(username: widget.username),
       settings: const RouteSettings(name: 'pomodoro'),
     );
@@ -815,7 +846,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // 导航到规划页面，由用户手动决定是否开始专注
       if (!mounted) return;
       Navigator.of(context).push(
-        MaterialPageRoute(
+        PageTransitions.material(
           builder: (_) => TodoPlanScreen(
             username: widget.username,
             initialDate: DateTime.now(),
@@ -826,7 +857,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => TodoPlanScreen(
           username: widget.username,
           initialDate: DateTime.now(),
@@ -1789,7 +1820,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           actionIcon: Icons.play_arrow_rounded,
           onTap: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(
+              PageTransitions.material(
                 builder: (_) => TodoPlanScreen(
                   username: widget.username,
                   initialDate: DateTime.now(),
@@ -2008,7 +2039,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (!mounted) return;
       await Navigator.push(
         context,
-        MaterialPageRoute(
+        PageTransitions.material(
           builder: (_) => PomodoroScreen(username: widget.username),
         ),
       );
@@ -2045,7 +2076,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   void _openTodoEditor(TodoItem todo) {
     Navigator.push(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => TodoEditScreen(
           todo: todo,
           todos: _todos,
@@ -2714,8 +2745,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     if (salutationMode == 'fixed') {
       // 固定模式：返回固定的问候语
-      final fixedSalutation =
-          _homeTextConfig['fixedSalutation'] as String?;
+      final fixedSalutation = _homeTextConfig['fixedSalutation'] as String?;
       if (fixedSalutation != null && fixedSalutation.isNotEmpty) {
         return fixedSalutation;
       }
@@ -2781,8 +2811,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     } else {
       // 分时段模式：根据当前时间匹配时段
-      final timeSlots =
-          _homeTextConfig['timeSlots'] as List<dynamic>?;
+      final timeSlots = _homeTextConfig['timeSlots'] as List<dynamic>?;
       if (timeSlots != null) {
         for (var slot in timeSlots) {
           final slotMap = slot as Map<String, dynamic>;
@@ -3311,10 +3340,11 @@ class _HomeDashboardState extends State<HomeDashboard>
       _todoPersistDebounce?.cancel();
       final changedDesc = pendingSnapshotBeforeSync
           .where((t) => !t.isDeleted)
-          .map((t) => '${t.id.substring(0,8)} isDone=${t.isDone}')
+          .map((t) => '${t.id.substring(0, 8)} isDone=${t.isDone}')
           .join(', ');
       //debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
-      await StorageService.saveTodos(widget.username, pendingSnapshotBeforeSync);
+      await StorageService.saveTodos(
+          widget.username, pendingSnapshotBeforeSync);
       // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
       StorageService.setForceFlushProtectedUuids(
           pendingSnapshotBeforeSync.map((t) => t.id).toSet());
@@ -3383,7 +3413,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (shouldOpenConflictCenter == true && mounted) {
             await Navigator.push(
               context,
-              MaterialPageRoute(
+              PageTransitions.material(
                 builder: (_) => ConflictInboxScreen(
                   username: widget.username,
                   syncConflicts: conflicts,
@@ -3472,7 +3502,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           return AlertDialog(
             title: Row(
               children: [
-                Icon(Icons.analytics_outlined, color: Theme.of(context).colorScheme.secondary),
+                Icon(Icons.analytics_outlined,
+                    color: Theme.of(context).colorScheme.secondary),
                 const SizedBox(width: 10),
                 const Text("链路诊断报告",
                     style:
@@ -3748,6 +3779,9 @@ class _HomeDashboardState extends State<HomeDashboard>
       debugPrint("[Wallpaper] Using local asset fallback.");
       if (mounted) {
         setState(() {
+          _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
+          StorageService.setAppWallpaperColor(null);
           _wallpaperUrl = 'assets/images/default_wallpaper.png';
           _isWallpaperLoadingError = false; // Reset to allow this to show
         });
@@ -3770,6 +3804,9 @@ class _HomeDashboardState extends State<HomeDashboard>
           _randomWallpaperUrls[Random().nextInt(_randomWallpaperUrls.length)];
       if (mounted) {
         setState(() {
+          _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
+          StorageService.setAppWallpaperColor(null);
           _wallpaperUrl = nextUrl;
         });
       }
@@ -3795,6 +3832,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (url != null && url.isNotEmpty && mounted) {
           setState(() {
             _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = url;
             _wallpaperCopyright = copyright;
           });
@@ -3829,10 +3868,24 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (await file.exists() && mounted) {
           setState(() {
             _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            _extractedWallpaperUrl = null;
+            StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = customPath;
             _isWallpaperLoadingError = false;
           });
+          return;
         }
+      }
+      if (mounted) {
+        setState(() {
+          _wallpaperShow = false;
+          _wallpaperDominantColor = null;
+          _extractedWallpaperUrl = null;
+          StorageService.setAppWallpaperColor(null);
+          _wallpaperUrl = null;
+          _isWallpaperLoadingError = true;
+        });
       }
       return;
     }
@@ -3845,6 +3898,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (manifestShow && manifestUrl != null && manifestUrl.isNotEmpty) {
       setState(() {
         _wallpaperShow = true;
+        _wallpaperDominantColor = null;
+        StorageService.setAppWallpaperColor(null);
         _wallpaperUrl = manifestUrl;
         _wallpaperRetryCount = 0;
         _isWallpaperLoadingError = false;
@@ -3871,6 +3926,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (show && url != null && url.isNotEmpty) {
           setState(() {
             _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = url;
             _wallpaperRetryCount = 0;
             _isWallpaperLoadingError = false;
@@ -3893,6 +3950,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (show && url != null && url.isNotEmpty) {
           setState(() {
             _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = url;
           });
         }
@@ -3917,6 +3976,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           _randomWallpaperUrls = urls;
           setState(() {
             _wallpaperShow = true;
+            _wallpaperDominantColor = null;
+            StorageService.setAppWallpaperColor(null);
             _wallpaperUrl = urls[Random().nextInt(urls.length)];
           });
         }
@@ -3999,19 +4060,40 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (showWallpaper)
             Positioned.fill(
               child: _wallpaperUrl!.startsWith('assets/')
-                  ? Image.asset(
-                      _wallpaperUrl!,
-                      fit: BoxFit.cover,
+                  ? Builder(
+                      builder: (context) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (_wallpaperDominantColor == null) {
+                            _extractColorFromProvider(AssetImage(_wallpaperUrl!), _wallpaperUrl!);
+                          }
+                        });
+                        return Image.asset(
+                          _wallpaperUrl!,
+                          fit: BoxFit.cover,
+                        );
+                      },
                     )
                   : _isLocalFilePath(_wallpaperUrl!)
-                      ? Image.file(
-                          File(_wallpaperUrl!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const SizedBox.shrink(),
+                      ? Builder(
+                          builder: (context) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (_wallpaperDominantColor == null) {
+                                _extractColorFromProvider(FileImage(File(_wallpaperUrl!)), _wallpaperUrl!);
+                              }
+                            });
+                            return Image.file(
+                              File(_wallpaperUrl!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const SizedBox.shrink(),
+                            );
+                          },
                         )
                       : _WallpaperNetworkImage(
                           url: _wallpaperUrl!,
+                          onImageProvider: (provider) {
+                            _extractColorFromProvider(provider, _wallpaperUrl!);
+                          },
                           onSuccess: () {
                             _wallpaperRetryCount = 0;
                           },
@@ -4034,9 +4116,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                     timeSalutation: _timeSalutation,
                     currentGreeting: _currentGreeting,
                     textConfig: HomeTextConfig(
-                      customTimeSalutation: _homeTextConfig['customTimeSalutation'] as String?,
+                      customTimeSalutation:
+                          _homeTextConfig['customTimeSalutation'] as String?,
                       dateFormat: _homeTextConfig['dateFormat'] as String?,
-                      usernameFormat: _homeTextConfig['usernameFormat'] as String?,
+                      usernameFormat:
+                          _homeTextConfig['usernameFormat'] as String?,
                     ),
                     isLight: isLight,
                     isSyncing: _isSyncing,
@@ -4338,7 +4422,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             refreshTrigger: trigger,
                                             onTap: () async {
                                               await Navigator.of(context).push(
-                                                MaterialPageRoute(
+                                                PageTransitions.material(
                                                   builder: (_) =>
                                                       TodoPlanScreen(
                                                           username:
@@ -4357,7 +4441,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Map<String, Widget> sectionsMap = {
                                       'banners': ValueListenableBuilder<int>(
                                         valueListenable: _pomodoroTickNotifier,
-                                        builder: (_, __, ___) => _buildUniversalBanner(isLight),
+                                        builder: (_, __, ___) =>
+                                            _buildUniversalBanner(isLight),
                                       ),
                                       'courses': courseSection,
                                       'countdowns': countdownSection,
@@ -4369,12 +4454,26 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       'timeline': timelineSection,
                                     };
 
-                                    bool hasNoCourse =
-                                        (_dashboardCourseData['courses'] ==
-                                                null ||
-                                            (_dashboardCourseData['courses']
-                                                    as List)
-                                                .isEmpty);
+                                    bool isCourseEmpty = (_dashboardCourseData['courses'] == null ||
+                                            (_dashboardCourseData['courses'] as List).isEmpty) ||
+                                        (_dashboardCourseData['title']?.toString().contains('天后') ?? false) ||
+                                        _dashboardCourseData['title'] == '最近无课' ||
+                                        _dashboardCourseData['title'] == '暂无课表';
+                                        
+                                    bool hasNoCourse = isCourseEmpty;
+                                    if (isCourseEmpty) {
+                                      final nowMs = DateTime.now().millisecondsSinceEpoch;
+                                      final tomorrowEndMs = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day + 2).millisecondsSinceEpoch;
+                                      bool hasActivePlans = _planBlocks.any((b) => !b.isDeleted && b.endTime > nowMs && b.startTime < tomorrowEndMs);
+                                      bool hasActiveTodos = _todos.any((t) {
+                                        if (t.isDeleted || t.dueDate == null || t.isAllDayTask) return false;
+                                        final startMs = t.createdDate ?? t.createdAt;
+                                        return startMs > 0 && t.dueDate!.millisecondsSinceEpoch > nowMs && startMs < tomorrowEndMs;
+                                      });
+                                      if (hasActivePlans || hasActiveTodos) {
+                                        hasNoCourse = false;
+                                      }
+                                    }
 
                                     if (!isTablet) {
                                       List<String> tab1Order = [
@@ -4653,11 +4752,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                 initialTeamUuid: _currentSelectedTeamUuid,
                 initialTeamName: _currentSelectedTeamName,
                 onTodoAdded: (todo) async {
-                  final allTodos = await StorageService.getTodos(widget.username);
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
                   allTodos.add(todo);
                   await StorageService.saveTodos(widget.username, allTodos);
                   if (todo.teamUuid != null) {
-                    PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid!);
+                    PomodoroSyncService.instance
+                        .sendTeamUpdateSignal(todo.teamUuid!);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -4671,12 +4772,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                   }
                 },
                 onTodosBatchAdded: (todos) async {
-                  final allTodos = await StorageService.getTodos(widget.username);
+                  final allTodos =
+                      await StorageService.getTodos(widget.username);
                   allTodos.addAll(todos);
                   await StorageService.saveTodos(widget.username, allTodos);
-                  final updatedTeamUuid = todos.firstWhere((t) => t.teamUuid != null, orElse: () => todos.first).teamUuid;
+                  final updatedTeamUuid = todos
+                      .firstWhere((t) => t.teamUuid != null,
+                          orElse: () => todos.first)
+                      .teamUuid;
                   if (updatedTeamUuid != null) {
-                    PomodoroSyncService.instance.sendTeamUpdateSignal(updatedTeamUuid);
+                    PomodoroSyncService.instance
+                        .sendTeamUpdateSignal(updatedTeamUuid);
                   }
                   await _saveTodosToSharedFile(allTodos);
                   FloatWindowService.triggerReminderCheck();
@@ -4686,9 +4792,11 @@ class _HomeDashboardState extends State<HomeDashboard>
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) await _loadAllData(deferred: true);
                 },
-                onLLMResultsParsed: (results, imagePath, originalText, tUuid, tName) {
+                onLLMResultsParsed:
+                    (results, imagePath, originalText, tUuid, tName) {
                   Navigator.pop(context);
-                  _navigateToTodoConfirm(results, imagePath, originalText, tUuid, tName);
+                  _navigateToTodoConfirm(
+                      results, imagePath, originalText, tUuid, tName);
                 },
               ),
               sourceKey: _fabTodoKey,
@@ -4711,7 +4819,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         username: widget.username,
         timeSalutation: _timeSalutation,
         onSettings: () {
-          Future.delayed(const Duration(milliseconds: 300), () async {
+          Future.delayed(const Duration(milliseconds: 350), () async {
             if (!mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
@@ -4788,11 +4896,10 @@ class _HomeDashboardState extends State<HomeDashboard>
           });
         },
         onGuide: () {
-          Future.delayed(const Duration(milliseconds: 300), () {
+          Future.delayed(const Duration(milliseconds: 350), () {
             if (!mounted) return;
-            Navigator.push(
-              context,
-              MaterialPageRoute(
+            Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.material(
                 builder: (context) => FeatureGuideScreen(
                   isManualReview: true,
                   loggedInUser: widget.username,
@@ -4837,7 +4944,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
-    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color primaryColor = _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
         (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -4873,14 +4980,16 @@ class _HomeDashboardState extends State<HomeDashboard>
             child: Row(
               children: [
                 Expanded(
-                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
+                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页',
+                      primaryColor, inactiveColor),
                 ),
                 SizedBox(
                   width: 64,
                   child: Center(child: _buildCourseCenterButton(primaryColor)),
                 ),
                 Expanded(
-                  child: _buildTabItem(2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
+                  child: _buildTabItem(2, Icons.adjust_rounded, '专注',
+                      primaryColor, inactiveColor),
                 ),
               ],
             ),
@@ -4890,7 +4999,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  Widget _buildTabItem(int index, IconData icon, String label, Color primary, Color inactive) {
+  Widget _buildTabItem(
+      int index, IconData icon, String label, Color primary, Color inactive) {
     bool isSelected = _selectedTabIndex == index;
     return InkWell(
       onTap: () => setState(() => _selectedTabIndex = index),
@@ -5045,11 +5155,13 @@ class _WallpaperNetworkImage extends StatefulWidget {
   final String url;
   final VoidCallback onSuccess;
   final VoidCallback onError;
+  final void Function(ImageProvider)? onImageProvider;
 
   const _WallpaperNetworkImage({
     required this.url,
     required this.onSuccess,
     required this.onError,
+    this.onImageProvider,
   });
 
   @override
@@ -5112,6 +5224,9 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         });
         _fadeController.forward();
         widget.onSuccess();
+        if (_imageBytes != null) {
+          widget.onImageProvider?.call(MemoryImage(_imageBytes!));
+        }
       } else {
         _fail();
       }
@@ -5127,6 +5242,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         _reported = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
+          widget.onImageProvider?.call(const AssetImage('assets/images/default_wallpaper.png'));
         });
       }
     }

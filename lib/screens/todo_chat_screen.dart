@@ -21,6 +21,7 @@ import '../services/pomodoro_service.dart';
 import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
+import '../utils/page_transitions.dart';
 
 class TodoChatScreen extends StatefulWidget {
   final String username;
@@ -504,7 +505,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
   Future<void> _openTutorialPage() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => const AiAssistantTutorialScreen(),
       ),
     );
@@ -2094,7 +2095,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final inheritedProvider = _globalProvider.isNotEmpty
         ? providerLabels[_globalProvider] ?? _globalProvider
         : '';
-    final labelSuffix = inheritedProvider.isNotEmpty ? ' ($inheritedProvider)' : '';
+    final labelSuffix =
+        inheritedProvider.isNotEmpty ? ' ($inheritedProvider)' : '';
     final labelPrefix = _chatModel.isNotEmpty ? '' : '继承: ';
     String label = _chatModel.isNotEmpty
         ? _chatModel
@@ -2227,7 +2229,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   Future<void> _openLlmConfigPage() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LLMConfigPage()),
+      PageTransitions.material(builder: (_) => const LLMConfigPage()),
     );
     if (!mounted) return;
     await _loadChatConfig();
@@ -2248,9 +2250,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               'https://open.bigmodel.cn/api/paas/v4/chat/completions'
           : _chatApiUrl,
     );
-    String customProvider = _chatProvider.isNotEmpty
-        ? _chatProvider
-        : globalConfig?.provider ?? '';
+    String customProvider =
+        _chatProvider.isNotEmpty ? _chatProvider : globalConfig?.provider ?? '';
     bool useCustom = _chatModel.isNotEmpty;
 
     await showDialog(
@@ -3149,23 +3150,29 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (kws.isEmpty) return;
     if (action.groupId != null) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: action.groupId!, accepted: false,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: action.groupId!,
+        accepted: false,
       );
     }
     final priority = action.metadata['priority'];
     if (priority != null) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'priority',
-        suggestedValue: '$priority', accepted: false,
+        keywords: kws,
+        suggestionType: 'priority',
+        suggestedValue: '$priority',
+        accepted: false,
       );
     }
     final tags = action.metadata['tags'];
     if (tags is List) {
       for (final tag in tags) {
         SuggestionFeedbackService.record(
-          keywords: kws, suggestionType: 'tag',
-          suggestedValue: tag.toString(), accepted: false,
+          keywords: kws,
+          suggestionType: 'tag',
+          suggestedValue: tag.toString(),
+          accepted: false,
         );
       }
     }

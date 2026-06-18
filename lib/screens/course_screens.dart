@@ -8,12 +8,14 @@ import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/app_color_utils.dart';
+import '../utils/app_dialogs.dart';
+import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
-import '../widgets/team_heatmap_widget.dart';
-import '../widgets/team_gantt_widget.dart';
-import '../utils/timezone_utils.dart';
+import '../widgets/app_detail_widgets.dart';
+import '../utils/theme_color_tokens.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -76,8 +78,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
   DateTime _selectedMonth = DateTime.now();
   List<CourseItem> _allCourses = [];
-  final double _baseScale = 1.0;
-  final double _currentScale = 1.0;
   bool _isNextSlide = true;
   double _dragOffset = 0.0; // 实时跟踪滑动位移
   DateTime? _selectedMonthDay; // 平板模式下月视图选中的日期
@@ -149,7 +149,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   DateTime? _lastModeSwitch;
-  final double _lastScale = 1.0;
 
   @override
   void dispose() {
@@ -604,7 +603,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               const SizedBox(height: 8),
               Text(
                 '有课周次：${_availableWeeks.first}-${_availableWeeks.last}周',
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12),
               ),
             ],
             const SizedBox(height: 12),
@@ -839,20 +840,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             style: const TextStyle(fontSize: 12)),
         onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(
+            PageTransitions.material(
                 builder: (_) => CourseDetailScreen(course: item))),
       );
     } else if (item is TodoItem) {
+      final colorScheme = Theme.of(context).colorScheme;
+      final statusColor =
+          item.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: (item.isDone ? Colors.green : Colors.amber)
-                .withValues(alpha: 0.1),
+            color: statusColor.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(item.isDone ? Icons.check_circle : Icons.task_alt,
-              color: item.isDone ? Colors.green : Colors.amber, size: 20),
+              color: statusColor, size: 20),
         ),
         title: Row(
           children: [
@@ -861,7 +864,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   style: TextStyle(
                     fontSize: 15,
                     decoration: item.isDone ? TextDecoration.lineThrough : null,
-                    color: item.isDone ? Colors.grey : null,
+                    color: item.isDone ? colorScheme.cdtDisabled : null,
                   )),
             ),
             if (item.teamUuid != null)
@@ -869,11 +872,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 margin: const EdgeInsets.only(left: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.3)),
                 ),
-                child: Icon(Icons.group, size: 12, color: Theme.of(context).colorScheme.primary),
+                child: Icon(Icons.group,
+                    size: 12, color: Theme.of(context).colorScheme.primary),
               ),
           ],
         ),
@@ -888,8 +899,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             style: const TextStyle(fontSize: 12),
             maxLines: 2,
             overflow: TextOverflow.ellipsis),
-        onTap: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: item))),
+        onTap: () => Navigator.push(
+            context,
+            PageTransitions.material(
+                builder: (_) => TodoDetailScreen(todo: item))),
       );
     } else if (item is TimeLogItem) {
       final color = Theme.of(context).colorScheme.primary;
@@ -907,7 +920,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             style: const TextStyle(fontSize: 12)),
       );
     } else if (item is TodoPlanBlock) {
-      const color = Colors.deepPurple;
+      final color = Theme.of(context).colorScheme.secondary;
       final start =
           DateTime.fromMillisecondsSinceEpoch(item.startTime).toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(item.endTime).toLocal();
@@ -930,13 +943,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             style: const TextStyle(fontSize: 12)),
       );
     } else if (item is PomodoroRecord) {
-      const color = Colors.redAccent;
+      final color = Theme.of(context).colorScheme.cdtFocus;
       return ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
               color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-          child: const Icon(Icons.timer, color: color, size: 20),
+          child: Icon(Icons.timer, color: color, size: 20),
         ),
         title: const Text('番茄专注', style: TextStyle(fontSize: 15)),
         subtitle: Text('时长: ${item.effectiveDuration ~/ 60} 分钟',
@@ -1251,24 +1264,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   Color _getCourseColor(String courseName) {
+    final colorScheme = Theme.of(context).colorScheme;
     final List<Color> colors = [
-      Theme.of(context).colorScheme.secondary,
-      Colors.orangeAccent,
-      Colors.purpleAccent,
-      Colors.teal,
-      Colors.pinkAccent,
-      Colors.indigoAccent,
-      Colors.green,
-      Colors.deepOrange,
+      colorScheme.secondary,
+      colorScheme.tertiary,
+      colorScheme.primary,
+      colorScheme.cdtWarning,
+      colorScheme.cdtSuccess,
+      colorScheme.error,
+      colorScheme.secondaryContainer,
+      colorScheme.tertiaryContainer,
     ];
     int hash = courseName.hashCode;
     return colors[hash % colors.length];
-  }
-
-  Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
   }
 
   void _showAllDayTodos(
@@ -1278,6 +1286,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
         builder: (ctx) {
+          final colorScheme = Theme.of(ctx).colorScheme;
           return SafeArea(
             child: Container(
                 padding: const EdgeInsets.all(16),
@@ -1292,7 +1301,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             width: 40,
                             height: 4,
                             decoration: BoxDecoration(
-                                color: Colors.grey,
+                                color: colorScheme.outlineVariant,
                                 borderRadius: BorderRadius.circular(2))),
                       ),
                       const SizedBox(height: 16),
@@ -1311,8 +1320,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                           ? Icons.check_circle
                                           : Icons.task_alt,
                                       color: todo.isDone
-                                          ? Colors.green
-                                          : Colors.amber),
+                                          ? colorScheme.cdtSuccess
+                                          : colorScheme.cdtWarning),
                                   title: Text(todo.title,
                                       style: TextStyle(
                                           decoration: todo.isDone
@@ -1329,13 +1338,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                           child: Row(
                                             children: [
                                               Icon(Icons.group,
-                                                  size: 12, color: Theme.of(context).colorScheme.primary),
+                                                  size: 12,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary),
                                               const SizedBox(width: 4),
                                               Text(
                                                   "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
                                                   style: TextStyle(
                                                       fontSize: 11,
-                                                      color: Theme.of(context).colorScheme.primary,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary,
                                                       fontWeight:
                                                           FontWeight.bold)),
                                             ],
@@ -1385,6 +1399,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               ? dayTodos.first.title
               : "${dayTodos.length}项全天待办";
           bool allDone = dayTodos.every((t) => t.isDone);
+          final colorScheme = Theme.of(context).colorScheme;
+          final todoColor =
+              allDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+          final onTodoColor =
+              allDone ? colorScheme.onTertiary : colorScheme.onSecondary;
 
           return Expanded(
             child: GestureDetector(
@@ -1397,9 +1416,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                 decoration: BoxDecoration(
-                  color: allDone
-                      ? Colors.green.withValues(alpha: 0.5)
-                      : Colors.amber.withValues(alpha: 0.85),
+                  color: todoColor.withValues(alpha: allDone ? 0.5 : 0.85),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -1407,16 +1424,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (dayTodos.any((t) => t.teamUuid != null))
-                      const Padding(
-                        padding: EdgeInsets.only(right: 2),
-                        child: Icon(Icons.group, size: 10, color: Colors.white),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: Icon(Icons.group, size: 10, color: onTodoColor),
                       ),
                     Flexible(
                       child: Text(
                         text,
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.white,
+                          color: onTodoColor,
                           decoration:
                               allDone ? TextDecoration.lineThrough : null,
                         ),
@@ -1545,7 +1562,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                   Text(
                     dateStr,
                     style: TextStyle(
-                      color: isToday ? Theme.of(context).colorScheme.primary : Colors.grey,
+                      color: isToday
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -1748,9 +1767,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             finalWidth -= 4.0 * stackIndex;
           }
 
-          Color todoColor = todo.isDone
-              ? Colors.green.withValues(alpha: 0.5)
-              : Colors.amber.withValues(alpha: 0.85);
+          final colorScheme = Theme.of(context).colorScheme;
+          Color todoColor =
+              (todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning)
+                  .withValues(alpha: todo.isDone ? 0.5 : 0.85);
           final todoCardKey = _getTodoCardKey(todo.id);
           final todoIndex = _intraDayTodosPerDay.values
               .expand((e) => e)
@@ -1904,7 +1924,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   child: Text(
                                     todo.remark!,
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.75),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.75),
                                       fontSize: 8,
                                       height: 1.2,
                                     ),
@@ -1943,14 +1964,19 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           double finalWidth = cellWidth - 2;
           double finalLeft = leftOffset + 1;
 
-          Color logColor = const Color(0xFF3B82F6).withValues(alpha: 0.7);
+          Color logColor =
+              Theme.of(context).colorScheme.cdtInfo.withValues(alpha: 0.7);
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
           if (log.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => log.tagUuids.contains(t?.uuid),
                 orElse: () => null);
             if (tag != null) {
-              logColor = _hexToColor(tag.color).withValues(alpha: 0.7);
+              logColor = AppColorUtils.hexToColor(
+                tag.color,
+                fallback: Theme.of(context).colorScheme.cdtInfo,
+                opacity: 0.7,
+              );
               if (logTitle == '时间日志') logTitle = tag.name;
             }
           }
@@ -2089,9 +2115,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           if (height < 18.0) height = 18.0;
 
           final leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+          final colorScheme = Theme.of(context).colorScheme;
           final planColor = plan.status == TodoPlanStatus.finished
-              ? Colors.green.withValues(alpha: 0.58)
-              : Colors.deepPurple.withValues(alpha: 0.58);
+              ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
+              : colorScheme.secondary.withValues(alpha: 0.58);
           final title = plan.titleSnapshot ?? '规划任务';
           final planIndex =
               _planBlocksPerDay.values.expand((e) => e).toList().indexOf(plan);
@@ -2302,7 +2329,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           double finalWidth = cellWidth - 2;
           double finalLeft = leftOffset + 1;
 
-          Color pomColor = Colors.redAccent.withValues(alpha: 0.6);
+          Color pomColor =
+              Theme.of(context).colorScheme.cdtFocus.withValues(alpha: 0.6);
           String pomTitle = '专注';
 
           // 优先显示任务名，其次显示标签名
@@ -2313,7 +2341,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 (t) => record.tagUuids.contains(t?.uuid),
                 orElse: () => null);
             if (tag != null) {
-              pomColor = _hexToColor(tag.color).withValues(alpha: 0.6);
+              pomColor = AppColorUtils.hexToColor(
+                tag.color,
+                fallback: Theme.of(context).colorScheme.cdtFocus,
+                opacity: 0.6,
+              );
               pomTitle = tag.name;
             }
           }
@@ -2591,7 +2623,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               animation: _pulseAnimation,
               builder: (context, child) {
                 return Container(
-                  color: Colors.redAccent
+                  color: Theme.of(context)
+                      .colorScheme
+                      .cdtFocus
                       .withValues(alpha: 0.3 + 0.2 * _pulseAnimation.value),
                 );
               },
@@ -2607,7 +2641,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               builder: (context, child) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.redAccent
+                    color: Theme.of(context)
+                        .colorScheme
+                        .cdtFocus
                         .withValues(alpha: _pulseAnimation.value),
                     shape: BoxShape.circle,
                   ),
@@ -2748,16 +2784,34 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             decoration: BoxDecoration(
                               color: todo.isDone
                                   ? (isDark
-                                      ? Colors.green.withValues(alpha: 0.1)
-                                      : Colors.green.withValues(alpha: 0.05))
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .cdtSuccess
+                                          .withValues(alpha: 0.1)
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .cdtSuccess
+                                          .withValues(alpha: 0.05))
                                   : (isDark
-                                      ? Colors.amber.withValues(alpha: 0.1)
-                                      : Colors.amber.withValues(alpha: 0.05)),
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .cdtWarning
+                                          .withValues(alpha: 0.1)
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .cdtWarning
+                                          .withValues(alpha: 0.05)),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: todo.isDone
-                                    ? Colors.green.withValues(alpha: 0.3)
-                                    : Colors.amber.withValues(alpha: 0.3),
+                                    ? Theme.of(context)
+                                        .colorScheme
+                                        .cdtSuccess
+                                        .withValues(alpha: 0.3)
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .cdtWarning
+                                        .withValues(alpha: 0.3),
                               ),
                             ),
                             child: Row(
@@ -2767,8 +2821,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                       ? Icons.check_circle
                                       : Icons.task_alt,
                                   size: 20,
-                                  color:
-                                      todo.isDone ? Colors.green : Colors.amber,
+                                  color: todo.isDone
+                                      ? Theme.of(context).colorScheme.cdtSuccess
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .cdtWarning,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -2783,12 +2840,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                           child: Row(
                                             children: [
                                               Icon(Icons.group,
-                                                  size: 10, color: Theme.of(context).colorScheme.primary),
+                                                  size: 10,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary),
                                               const SizedBox(width: 4),
                                               Text(todo.teamName ?? '团队',
                                                   style: TextStyle(
                                                       fontSize: 10,
-                                                      color: Theme.of(context).colorScheme.primary,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primary,
                                                       fontWeight:
                                                           FontWeight.bold)),
                                             ],
@@ -2918,7 +2980,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             onPressed: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(
+                PageTransitions.material(
                   builder: (context) =>
                       TimeLogScreen(username: widget.username),
                 ),
@@ -2949,7 +3011,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 'clearAll',
                 '一键清除',
                 Icons.clear_all,
-                Colors.redAccent,
+                Theme.of(context).colorScheme.error,
               ),
             ],
             builder: (context, controller, child) {
@@ -3316,14 +3378,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
-  String _safeStr(String? s) {
-    if (s == null) return '';
-    return s.replaceAll(
-        RegExp(
-            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
-        '');
-  }
-
   void _showDayDetailSheet(DateTime day) {
     showModalBottomSheet(
       context: context,
@@ -3342,298 +3396,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       ),
     );
   }
-
-  void _showTodoDetails(TodoItem todo) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 20,
-                offset: const Offset(0, -5))
-          ],
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white10 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  Container(
-                      width: 4,
-                      height: 24,
-                      decoration: BoxDecoration(
-                          color: todo.isDone ? Colors.green : Colors.amber,
-                          borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(width: 12),
-                  const Text("任务详情",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                          context,
-                          PageTransitions.slideHorizontal(
-                              TodoDetailScreen(todo: todo)));
-                    },
-                    tooltip: '详情页',
-                  ),
-                  IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(_safeStr(todo.title),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                    color: todo.isDone ? Colors.grey : null,
-                  )),
-              const SizedBox(height: 16),
-              if (todo.remark != null && todo.remark!.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: (isDark ? Colors.white : Colors.black)
-                        .withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: (isDark ? Colors.white : Colors.black)
-                            .withValues(alpha: 0.05)),
-                  ),
-                  child: Text(_safeStr(todo.remark!),
-                      style: TextStyle(
-                          fontSize: 15,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                          height: 1.5)),
-                ),
-              Wrap(
-                spacing: 16,
-                runSpacing: 20,
-                children: [
-                  _buildDetailItem(
-                      Icons.flag_rounded, "任务状态", todo.isDone ? "已完成" : "进行中",
-                      color: todo.isDone ? Colors.green : Colors.amber),
-                  _buildDetailItem(
-                      Icons.calendar_today_rounded,
-                      "截止日期",
-                      todo.dueDate != null
-                          ? TimezoneUtils.getRelativeTime(
-                              todo.dueDate!.millisecondsSinceEpoch)
-                          : "未设置",
-                      color: (todo.dueDate != null &&
-                              !todo.isDone &&
-                              todo.dueDate!.isBefore(DateTime.now()))
-                          ? Colors.red
-                          : null),
-                  _buildDetailItem(Icons.schedule_rounded, "开始时间",
-                      DateFormat('MM-dd HH:mm').format(startTime)),
-                  if (todo.recurrence != RecurrenceType.none)
-                    _buildDetailItem(Icons.repeat_rounded, "重复模式",
-                        _getRecurrenceLabel(todo.recurrence)),
-                  _buildDetailItem(
-                      Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务",
-                      color: todo.teamUuid != null ? Theme.of(context).colorScheme.primary : null),
-                  if (todo.creatorName != null)
-                    _buildDetailItem(
-                        Icons.person_outline_rounded, "创建人", todo.creatorName!),
-                  if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                    _buildDetailItem(Icons.notifications_active_rounded, "提醒设置",
-                        "提前 ${todo.reminderMinutes} 分钟"),
-                ],
-              ),
-              if (todo.imagePath != null && todo.imagePath!.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                const Text("附件图片",
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey)),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.file(
-                    File(todo.imagePath!),
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (ctx, err, stack) => const SizedBox.shrink(),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getRecurrenceLabel(RecurrenceType type) {
-    switch (type) {
-      case RecurrenceType.daily:
-        return "每天";
-      case RecurrenceType.weekly:
-        return "每周";
-      case RecurrenceType.monthly:
-        return "每月";
-      case RecurrenceType.yearly:
-        return "每年";
-      case RecurrenceType.weekdays:
-        return "工作日";
-      case RecurrenceType.customDays:
-        return "自定义天数";
-      default:
-        return "不重复";
-    }
-  }
-
-  Widget _buildDetailItem(IconData icon, String label, String value,
-      {Color? color}) {
-    return SizedBox(
-      width: 140,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: Colors.grey),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPanoramaContent() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF2F4F7),
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10))
-                ],
-              ),
-              child: Column(
-                children: [
-                  TeamHeatmapWidget(todos: _allTodos, viewDays: 35),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Divider(indent: 16, endIndent: 16)),
-                  TeamGanttWidget(
-                    todos: _allTodos,
-                    viewDays: 30,
-                    onTodoTap: _showTodoDetails,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _buildPanoStatStat(
-                      "全量待办", "${_allTodos.length}", Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 12),
-                  _buildPanoStatStat(
-                      "团队协作",
-                      "${_allTodos.where((t) => t.teamUuid != null).length}",
-                      Colors.purple),
-                ],
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPanoStatStat(String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11, color: color, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // --- Detail Screens ---
@@ -3644,58 +3406,56 @@ class CourseDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('课程详情')),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Icon(Icons.class_, size: 80, color: Theme.of(context).colorScheme.secondary),
-          const SizedBox(height: 16),
-          Text(course.courseName,
-              textAlign: TextAlign.center,
-              style:
-                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 32),
-          _buildDetailRow(Icons.person, '授课教师', course.teacherName),
-          const Divider(),
-          _buildDetailRow(Icons.location_on, '上课地点', course.roomName),
-          const Divider(),
-          _buildDetailRow(Icons.calendar_today, '日期',
-              '${course.date} (第${course.weekIndex}周 周${course.weekday})'),
-          const Divider(),
-          _buildDetailRow(Icons.access_time, '时间',
-              '${course.formattedStartTime} - ${course.formattedEndTime}'),
-          if (course.lessonType != null && course.lessonType!.isNotEmpty) ...[
-            const Divider(),
-            _buildDetailRow(
-                Icons.category,
-                '类型/备注',
-                course.lessonType == 'EXPERIMENT'
-                    ? '实验课'
-                    : (course.lessonType == 'THEORY'
-                        ? '理论课'
-                        : course.lessonType!)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey),
-          const SizedBox(width: 16),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
-          const Spacer(),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.right,
-            ),
+          AppDetailHeader(
+            icon: Icons.class_,
+            title: course.courseName,
+            color: colorScheme.secondary,
+          ),
+          const SizedBox(height: 20),
+          AppDetailSection(
+            title: '课程信息',
+            children: [
+              AppDetailRow(
+                  icon: Icons.person, label: '授课教师', value: course.teacherName),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.location_on,
+                  label: '上课地点',
+                  value: course.roomName),
+              const AppDetailDivider(),
+              AppDetailRow(
+                icon: Icons.calendar_today,
+                label: '日期',
+                value:
+                    '${course.date} (第${course.weekIndex}周 周${course.weekday})',
+              ),
+              const AppDetailDivider(),
+              AppDetailRow(
+                icon: Icons.access_time,
+                label: '时间',
+                value:
+                    '${course.formattedStartTime} - ${course.formattedEndTime}',
+              ),
+              if (course.lessonType != null &&
+                  course.lessonType!.isNotEmpty) ...[
+                const AppDetailDivider(),
+                AppDetailRow(
+                  icon: Icons.category,
+                  label: '类型/备注',
+                  value: course.lessonType == 'EXPERIMENT'
+                      ? '实验课'
+                      : (course.lessonType == 'THEORY'
+                          ? '理论课'
+                          : course.lessonType!),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -3748,15 +3508,12 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
         return '工作日';
       case RecurrenceType.customDays:
         return '每 ${todo.customIntervalDays} 天';
-      default:
-        return '未知';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final todo = widget.todo;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
     DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
@@ -3767,14 +3524,14 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
     DateTime? endTime = todo.dueDate;
 
     String startTimeStr = todo.isAllDay
-        ? DateFormat('yyyy-MM-dd (全天)').format(startTime)
-        : DateFormat('yyyy-MM-dd HH:mm').format(startTime);
+        ? '${AppTimeFormats.date(startTime)} (全天)'
+        : AppTimeFormats.fullDateTime(startTime);
 
     String endTimeStr = endTime == null
         ? '无截止时间'
         : (todo.isAllDay
-            ? DateFormat('yyyy-MM-dd (全天)').format(endTime)
-            : DateFormat('yyyy-MM-dd HH:mm').format(endTime));
+            ? '${AppTimeFormats.date(endTime)} (全天)'
+            : AppTimeFormats.fullDateTime(endTime));
 
     double progress = 0.0;
     if (todo.isDone) {
@@ -3789,8 +3546,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
     }
 
     return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF121212) : const Color(0xFFF8F9FA),
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('任务详情'),
         backgroundColor: Colors.transparent,
@@ -3802,122 +3558,85 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Column(
           children: [
-            // Header Card
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey : Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    todo.isDone
-                        ? Icons.check_circle_rounded
-                        : Icons.pending_rounded,
-                    size: 64,
-                    color: todo.isDone ? Colors.green : Colors.amber,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    todo.title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      decoration:
-                          todo.isDone ? TextDecoration.lineThrough : null,
-                      color: todo.isDone ? Colors.grey : null,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            minHeight: 8,
-                            backgroundColor:
-                                colorScheme.primary.withValues(alpha: 0.1),
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                                todo.isDone
-                                    ? Colors.green
-                                    : colorScheme.primary),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        "${(progress * 100).toInt()}%",
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color:
-                              todo.isDone ? Colors.green : colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            AppDetailHeader(
+              icon: todo.isDone
+                  ? Icons.check_circle_rounded
+                  : Icons.pending_rounded,
+              title: todo.title,
+              titleSize: 22,
+              titleDecoration: todo.isDone ? TextDecoration.lineThrough : null,
+              titleColor: todo.isDone ? colorScheme.cdtDisabled : null,
+              color:
+                  todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning,
+              iconSize: 64,
+              progress: progress,
+              progressColor:
+                  todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
             ),
             const SizedBox(height: 20),
-
-            _buildSection(context, "基本信息", [
-              _buildModernRow(
-                  Icons.flag_rounded, "当前状态", todo.isDone ? "已完成" : "进行中",
-                  valueColor: todo.isDone ? Colors.green : Colors.amber),
-              _buildModernRow(Icons.schedule_rounded, "开始时间", startTimeStr),
-              _buildModernRow(Icons.event_busy_rounded, "截止时间", endTimeStr,
+            AppDetailSection(title: "基本信息", children: [
+              AppDetailRow(
+                  icon: Icons.flag_rounded,
+                  label: "当前状态",
+                  value: todo.isDone ? "已完成" : "进行中",
+                  valueColor: todo.isDone
+                      ? colorScheme.cdtSuccess
+                      : colorScheme.cdtWarning),
+              AppDetailRow(
+                  icon: Icons.schedule_rounded,
+                  label: "开始时间",
+                  value: startTimeStr),
+              AppDetailRow(
+                  icon: Icons.event_busy_rounded,
+                  label: "截止时间",
+                  value: endTimeStr,
                   valueColor: (endTime != null &&
                           !todo.isDone &&
                           endTime.isBefore(DateTime.now()))
-                      ? Colors.red
+                      ? colorScheme.error
                       : null),
               if (todo.recurrence != RecurrenceType.none)
-                _buildModernRow(
-                    Icons.repeat_rounded, "重复周期", _getRecurrenceText()),
+                AppDetailRow(
+                    icon: Icons.repeat_rounded,
+                    label: "重复周期",
+                    value: _getRecurrenceText()),
               if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                _buildModernRow(Icons.notifications_active_rounded, "提醒设置",
-                    "提前 ${todo.reminderMinutes} 分钟"),
+                AppDetailRow(
+                    icon: Icons.notifications_active_rounded,
+                    label: "提醒设置",
+                    value: "提前 ${todo.reminderMinutes} 分钟"),
             ]),
-
             if (todo.teamUuid != null)
-              _buildSection(context, "协作信息", [
-                _buildModernRow(
-                    Icons.group_rounded, "所属团队", todo.teamName ?? "未知团队"),
-                _buildModernRow(
-                    Icons.person_rounded, "创建者", todo.creatorName ?? "未知用户"),
-                _buildModernRow(Icons.handshake_rounded, "协作模式",
-                    todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
+              AppDetailSection(title: "协作信息", children: [
+                AppDetailRow(
+                    icon: Icons.group_rounded,
+                    label: "所属团队",
+                    value: todo.teamName ?? "未知团队"),
+                AppDetailRow(
+                    icon: Icons.person_rounded,
+                    label: "创建者",
+                    value: todo.creatorName ?? "未知用户"),
+                AppDetailRow(
+                    icon: Icons.handshake_rounded,
+                    label: "协作模式",
+                    value: todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
               ]),
-
             if (todo.remark != null && todo.remark!.isNotEmpty)
-              _buildSection(context, "备注详情", [
+              AppDetailSection(title: "备注详情", children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     todo.remark!,
                     style: TextStyle(
                       fontSize: 14,
-                      color: isDark ? Colors.white70 : Colors.black87,
+                      color: colorScheme.onSurface,
                       height: 1.5,
                     ),
                   ),
                 ),
               ]),
-
             if (todo.originalText != null && todo.originalText!.isNotEmpty)
-              _buildSection(context, "原始识别文本", [
+              AppDetailSection(title: "原始识别文本", children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
@@ -3925,14 +3644,13 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
-                      color: Colors.grey,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
               ]),
-
             if (todo.imagePath != null && todo.imagePath!.isNotEmpty)
-              _buildSection(context, "附件图片", [
+              AppDetailSection(title: "附件图片", children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: ClipRRect(
@@ -3940,48 +3658,50 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                     child: Image.file(
                       File(todo.imagePath!),
                       errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片",
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          style: TextStyle(fontSize: 12)),
                     ),
                   ),
                 ),
               ]),
-
-            _buildSection(context, "系统信息", [
-              _buildModernRow(
-                  Icons.update_rounded,
-                  "最近更新",
-                  DateFormat('yyyy-MM-dd HH:mm:ss').format(
+            AppDetailSection(title: "系统信息", children: [
+              AppDetailRow(
+                  icon: Icons.update_rounded,
+                  label: "最近更新",
+                  value: AppTimeFormats.format(
                       DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
                               isUtc: true)
-                          .toLocal())),
-              _buildModernRow(
-                  Icons.fingerprint_rounded,
-                  "任务 ID",
-                  todo.id.length > 8
+                          .toLocal(),
+                      'yyyy-MM-dd HH:mm:ss')),
+              AppDetailRow(
+                  icon: Icons.fingerprint_rounded,
+                  label: "任务 ID",
+                  value: todo.id.length > 8
                       ? "${todo.id.substring(0, 8)}..."
-                      : todo.id, onTap: () {
-                Clipboard.setData(ClipboardData(text: todo.id));
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(content: Text("ID 已复制到剪贴板")));
-              }),
+                      : todo.id,
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: todo.id));
+                    AppSnackBars.success(context, "ID 已复制到剪贴板");
+                  }),
             ]),
-
             if (!_loadingRecords && _focusRecords.isNotEmpty)
-              _buildSection(context, "专注记录 (${_focusRecords.length})", [
-                ..._focusRecords.take(20).map((r) => _buildFocusRecordRow(r)),
-                if (_focusRecords.length > 20)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '仅显示最近 20 条',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
+              AppDetailSection(
+                  title: "专注记录 (${_focusRecords.length})",
+                  children: [
+                    ..._focusRecords
+                        .take(20)
+                        .map((r) => _buildFocusRecordRow(r)),
+                    if (_focusRecords.length > 20)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '仅显示最近 20 条',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ]),
-
+                  ]),
             const SizedBox(height: 40),
           ],
         ),
@@ -3990,12 +3710,14 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
   }
 
   Widget _buildFocusRecordRow(PomodoroRecord r) {
+    final colorScheme = Theme.of(context).colorScheme;
     final startLocal =
         DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
     final durationMin = r.effectiveDuration ~/ 60;
     final statusIcon =
         r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
-    final statusColor = r.isCompleted ? Colors.green : Colors.orange;
+    final statusColor =
+        r.isCompleted ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: InkWell(
@@ -4003,7 +3725,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(
+            PageTransitions.material(
               builder: (_) => PomodoroDetailScreen(
                 record: r,
                 tags: [],
@@ -4021,7 +3743,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${DateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
+                    '${AppTimeFormats.compactDateTime(startLocal)} · $durationMin 分钟',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -4035,64 +3757,13 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection(
-      BuildContext context, String title, List<Widget> children) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.2)),
-          const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernRow(IconData icon, String label, String value,
-      {Color? valueColor, VoidCallback? onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: Colors.grey),
-            const SizedBox(width: 12),
-            Text(label,
-                style: const TextStyle(fontSize: 14, color: Colors.grey)),
-            const Spacer(),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: valueColor)),
           ],
         ),
       ),
@@ -4105,14 +3776,9 @@ class TimeLogDetailScreen extends StatelessWidget {
   final List<PomodoroTag> tags;
   const TimeLogDetailScreen({super.key, required this.log, required this.tags});
 
-  Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
-  }
-
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     DateTime start =
         DateTime.fromMillisecondsSinceEpoch(log.startTime, isUtc: true)
             .toLocal();
@@ -4120,14 +3786,17 @@ class TimeLogDetailScreen extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(log.endTime, isUtc: true).toLocal();
     int durationMin = (log.endTime - log.startTime) ~/ 60000;
 
-    Color logColor = const Color(0xFF3B82F6);
+    Color logColor = colorScheme.primary;
     String tagInfo = '无标签';
     if (log.tagUuids.isNotEmpty) {
       final tag = tags.cast<PomodoroTag?>().firstWhere(
           (t) => log.tagUuids.contains(t?.uuid),
           orElse: () => null);
       if (tag != null) {
-        logColor = _hexToColor(tag.color);
+        logColor = AppColorUtils.hexToColor(
+          tag.color,
+          fallback: colorScheme.primary,
+        );
         tagInfo = tag.name;
       }
     }
@@ -4137,54 +3806,50 @@ class TimeLogDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Icon(Icons.edit_calendar, size: 80, color: logColor),
-          const SizedBox(height: 16),
-          Text(log.title.isNotEmpty ? log.title : '时间日志',
-              textAlign: TextAlign.center,
-              style:
-                  const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 32),
-          _buildDetailRow(Icons.label, '标签', tagInfo),
-          const Divider(),
-          _buildDetailRow(Icons.access_time, '时长', '$durationMin 分钟'),
-          const Divider(),
-          _buildDetailRow(Icons.play_arrow, '开始时间',
-              DateFormat('yyyy-MM-dd HH:mm').format(start)),
-          const Divider(),
-          _buildDetailRow(
-              Icons.stop, '结束时间', DateFormat('yyyy-MM-dd HH:mm').format(end)),
-          if (log.remark != null && log.remark!.isNotEmpty) ...[
-            const Divider(),
-            _buildDetailRow(Icons.note, '备注', log.remark!),
-          ],
-          const Divider(),
-          _buildDetailRow(
-              Icons.update,
-              '最近更新',
-              DateFormat('yyyy-MM-dd HH:mm').format(
+          AppDetailHeader(
+            icon: Icons.edit_calendar,
+            title: log.title.isNotEmpty ? log.title : '时间日志',
+            color: logColor,
+          ),
+          const SizedBox(height: 20),
+          AppDetailSection(
+            title: '记录信息',
+            children: [
+              AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.access_time,
+                  label: '时长',
+                  value: '$durationMin 分钟'),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.play_arrow,
+                  label: '开始时间',
+                  value: AppTimeFormats.fullDateTime(start)),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.stop,
+                  label: '结束时间',
+                  value: AppTimeFormats.fullDateTime(end)),
+              if (log.remark != null && log.remark!.isNotEmpty) ...[
+                const AppDetailDivider(),
+                AppDetailRow(
+                    icon: Icons.note,
+                    label: '备注',
+                    value: log.remark!,
+                    valueMaxLines: 4),
+              ],
+              const AppDetailDivider(),
+              AppDetailRow(
+                icon: Icons.update,
+                label: '最近更新',
+                value: AppTimeFormats.fullDateTime(
                   DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
                           isUtc: true)
-                      .toLocal())),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey),
-          const SizedBox(width: 16),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
-          const Spacer(),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.right,
-            ),
+                      .toLocal(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -4198,14 +3863,9 @@ class PomodoroDetailScreen extends StatelessWidget {
   const PomodoroDetailScreen(
       {super.key, required this.record, required this.tags});
 
-  Color _hexToColor(String hex) {
-    String clean = hex.replaceAll('#', '');
-    if (clean.length == 6) clean = 'FF$clean';
-    return Color(int.parse(clean, radix: 16));
-  }
-
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     DateTime start =
         DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
             .toLocal();
@@ -4215,14 +3875,17 @@ class PomodoroDetailScreen extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
     int durationMin = record.effectiveDuration ~/ 60;
 
-    Color pomColor = Colors.redAccent;
+    Color pomColor = colorScheme.cdtFocus;
     String tagInfo = '无标签';
     if (record.tagUuids.isNotEmpty) {
       final tag = tags.cast<PomodoroTag?>().firstWhere(
           (t) => record.tagUuids.contains(t?.uuid),
           orElse: () => null);
       if (tag != null) {
-        pomColor = _hexToColor(tag.color);
+        pomColor = AppColorUtils.hexToColor(
+          tag.color,
+          fallback: colorScheme.cdtFocus,
+        );
         tagInfo = tag.name;
       }
     }
@@ -4234,79 +3897,66 @@ class PomodoroDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Icon(Icons.local_fire_department, size: 80, color: pomColor),
-          const SizedBox(height: 16),
-          const Text('专注记录',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 32),
-          _buildDetailRow(Icons.label, '标签', tagInfo),
-          const Divider(),
-          _buildDetailRow(Icons.access_time, '时长', '$durationMin 分钟'),
-          const Divider(),
-          _buildDetailRow(Icons.play_arrow, '开始时间',
-              DateFormat('yyyy-MM-dd HH:mm').format(start)),
-          const Divider(),
-          _buildDetailRow(
-              Icons.stop, '结束时间', DateFormat('yyyy-MM-dd HH:mm').format(end)),
-          const Divider(),
-          _buildDetailRow(Icons.info_outline, '状态', statusText),
-          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
-            const Divider(),
-            _buildDetailRow(Icons.task_alt, '关联待办', record.todoTitle!),
-          ],
-          if (record.note != null && record.note!.isNotEmpty) ...[
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.note_rounded, color: Colors.grey),
-                  const SizedBox(width: 16),
-                  const Text('备注',
-                      style: TextStyle(color: Colors.grey, fontSize: 16)),
-                  const Spacer(),
-                  Flexible(
-                    child: Text(
-                      record.note!,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const Divider(),
-          _buildDetailRow(
-              Icons.update,
-              '最近更新',
-              DateFormat('yyyy-MM-dd HH:mm').format(
+          AppDetailHeader(
+            icon: Icons.local_fire_department,
+            title: '专注记录',
+            color: pomColor,
+          ),
+          const SizedBox(height: 20),
+          AppDetailSection(
+            title: '专注信息',
+            children: [
+              AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.access_time,
+                  label: '时长',
+                  value: '$durationMin 分钟'),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.play_arrow,
+                  label: '开始时间',
+                  value: AppTimeFormats.fullDateTime(start)),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.stop,
+                  label: '结束时间',
+                  value: AppTimeFormats.fullDateTime(end)),
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.info_outline,
+                  label: '状态',
+                  value: statusText,
+                  valueColor: record.isCompleted
+                      ? colorScheme.cdtSuccess
+                      : colorScheme.cdtWarning),
+              if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
+                const AppDetailDivider(),
+                AppDetailRow(
+                    icon: Icons.task_alt,
+                    label: '关联待办',
+                    value: record.todoTitle!,
+                    valueMaxLines: 3),
+              ],
+              if (record.note != null && record.note!.isNotEmpty) ...[
+                const AppDetailDivider(),
+                AppDetailRow(
+                    icon: Icons.note_rounded,
+                    label: '备注',
+                    value: record.note!,
+                    valueMaxLines: 4),
+              ],
+              const AppDetailDivider(),
+              AppDetailRow(
+                icon: Icons.update,
+                label: '最近更新',
+                value: AppTimeFormats.fullDateTime(
                   DateTime.fromMillisecondsSinceEpoch(record.updatedAt,
                           isUtc: true)
-                      .toLocal())),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey),
-          const SizedBox(width: 16),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 16)),
-          const Spacer(),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.right,
-            ),
+                      .toLocal(),
+                ),
+              ),
+            ],
           ),
         ],
       ),

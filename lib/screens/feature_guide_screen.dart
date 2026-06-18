@@ -67,15 +67,21 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   // 🚀 最近更新功能数据 —— 每次发版只改这里
   List<_RecentFeature> get _recentFeatures => [
-    _RecentFeature(Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
-        destinationBuilder: () => const SettingsPage(initialTarget: 'theme_color')),
-    _RecentFeature(Icons.view_week_rounded, Theme.of(context).colorScheme.primary, '周视图午休折叠', '课程->周视图',
-        destinationBuilder: () => WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
-    _RecentFeature(Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
-        destinationBuilder: () => PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
-    _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
-        destinationBuilder: () => const GlobalSearchOverlay()),
-  ];
+        _RecentFeature(
+            Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
+            destinationBuilder: () =>
+                const SettingsPage(initialTarget: 'theme_color')),
+        _RecentFeature(Icons.view_week_rounded,
+            Theme.of(context).colorScheme.primary, '周视图午休折叠', '课程->周视图',
+            destinationBuilder: () =>
+                WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
+        _RecentFeature(
+            Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
+            destinationBuilder: () =>
+                PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
+        _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
+            destinationBuilder: () => const GlobalSearchOverlay()),
+      ];
 
   // 权限状态
   PermissionStatus? _notificationStatus;
@@ -98,13 +104,38 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   @override
   void initState() {
     super.initState();
-    // 默认只放第一页（更新日志），防止异步加载前数组越界
-    _pagesBuilder = [_buildChangelogPage];
 
-    _loadInfo();
-    _checkPermissions();
-    _loadGlobalSettings();
-    _setupPages(); // 🚀 核心逻辑：判断是首次启动还是仅仅更新
+    if (widget.isManualReview) {
+      // 从设置页面手动查看：直接同步设置所有页面，跳过异步逻辑
+      _isFirstLaunch = false;
+      _pagesBuilder = [
+        _buildChangelogPage,
+        if (Platform.isWindows) ...[
+          _buildWinFeaturePage1,
+          _buildWinFeaturePage2,
+          _buildTaiSetupPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ] else ...[
+          _buildAndroidFeaturePage1,
+          _buildAndroidFeaturePage2,
+          _buildAndroidFeaturePage3,
+          _buildAndroidWidgetGuidePage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ],
+      ];
+      _loadInfo();
+      _checkPermissions();
+      _loadGlobalSettings();
+    } else {
+      // 默认只放第一页（更新日志），防止异步加载前数组越界
+      _pagesBuilder = [_buildChangelogPage];
+      _loadInfo();
+      _checkPermissions();
+      _loadGlobalSettings();
+      _setupPages();
+    }
   }
 
   Future<void> _setupPages() async {
@@ -201,7 +232,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _loadingChangelog = false;
           _changelogNotice = null;
         });
-        await _setupPages();
+        if (!widget.isManualReview) await _setupPages();
         return;
       }
 
@@ -225,7 +256,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             _loadingChangelog = false;
             _changelogNotice = '当前显示离线缓存更新日志，网络恢复后会自动刷新。';
           });
-          await _setupPages();
+          if (!widget.isManualReview) await _setupPages();
           return;
         }
       }
@@ -239,7 +270,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _changelogFetchFailed = true; // 🚀 标记为获取失败（通常是无网络）
         _changelogNotice = null;
       });
-      await _setupPages();
+      if (!widget.isManualReview) await _setupPages();
     }
   }
 
@@ -684,11 +715,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     Color dotColor = scheme.onSurface.withValues(alpha: 0.4);
     if (item.startsWith('【新增】')) {
       dotColor = Colors.green;
-    } else if (item.startsWith('【优化】')){
+    } else if (item.startsWith('【优化】')) {
       dotColor = Theme.of(context).colorScheme.primary;
-    } else if (item.startsWith('【修复】')){
+    } else if (item.startsWith('【修复】')) {
       dotColor = Colors.orange;
-    } else if (item.startsWith('【重构】')){
+    } else if (item.startsWith('【重构】')) {
       dotColor = Colors.purple;
     } else if (item.startsWith('⚠️')) {
       dotColor = Colors.red;
@@ -816,7 +847,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           children: [
             for (int i = 0; i < _recentFeatures.length; i++) ...[
               if (i > 0) const SizedBox(width: 10),
-              Expanded(child: _buildRecentFeatureCard(_recentFeatures[i], scheme)),
+              Expanded(
+                  child: _buildRecentFeatureCard(_recentFeatures[i], scheme)),
             ],
           ],
         ),
@@ -831,7 +863,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         if (canNavigate) {
           // 更新后查看：直接跳转
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => feature.destinationBuilder!()),
+            PageTransitions.material(
+                builder: (_) => feature.destinationBuilder!()),
           );
         } else {
           // 首次使用：仅提示位置
@@ -1188,7 +1221,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               Text(
                 _taiDbPath.isNotEmpty ? _taiDbPath : '未设置，功能无法生效',
                 style: TextStyle(
-                    color: _taiDbPath.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.red,
+                    color: _taiDbPath.isNotEmpty
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.red,
                     fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -1657,7 +1692,8 @@ class _RecentFeature {
   final String title;
   final String subtitle;
   final Widget Function()? destinationBuilder; // null = 不支持跳转（首次引导）
-  const _RecentFeature(this.icon, this.color, this.title, this.subtitle, {this.destinationBuilder});
+  const _RecentFeature(this.icon, this.color, this.title, this.subtitle,
+      {this.destinationBuilder});
 }
 
 class AssetVideoPlayer extends StatefulWidget {

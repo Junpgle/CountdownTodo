@@ -232,9 +232,22 @@ class CourseImportHandler {
 
     if (selectedUrl == null) return;
 
+    // 修复电脑端返回时因为复杂动画导致的 WebView 进程卡死问题
+    final bool isDesktop = Theme.of(context).platform == TargetPlatform.windows || 
+                           Theme.of(context).platform == TargetPlatform.macOS || 
+                           Theme.of(context).platform == TargetPlatform.linux;
+                           
+    final Route<String> route = isDesktop
+        ? PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => CourseWebViewScreen(initialUrl: selectedUrl),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          )
+        : PageTransitions.slideHorizontal(CourseWebViewScreen(initialUrl: selectedUrl));
+
     final String? htmlContent = await Navigator.push<String>(
       context,
-      PageTransitions.slideHorizontal(CourseWebViewScreen(initialUrl: selectedUrl)),
+      route,
     );
 
     if (htmlContent == null || htmlContent.isEmpty) return;

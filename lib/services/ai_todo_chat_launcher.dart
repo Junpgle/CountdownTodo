@@ -59,7 +59,7 @@ class AiTodoChatLauncher {
     }
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => page),
+      PageTransitions.material(builder: (_) => page),
     );
   }
 

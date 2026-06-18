@@ -3,6 +3,7 @@ import '../storage_service.dart';
 import '../models.dart';
 import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
+import '../utils/page_transitions.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -85,7 +86,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   }
 
   void _showCreateOrEditDialog([TodoGroup? existing]) {
-    final TextEditingController ctrl = TextEditingController(text: existing?.name ?? "");
+    final TextEditingController ctrl =
+        TextEditingController(text: existing?.name ?? "");
     showDialog(
       context: context,
       builder: (ctx) {
@@ -140,7 +142,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
         title: const Text('解散文件夹？'),
         content: Text('要删除文件夹 "${g.name}" 吗？其内部的待办会恢复成独立待办。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx);
@@ -159,7 +162,8 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                   }
                 }
               });
-              await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
+              await StorageService.deleteTodoGroupGlobally(
+                  widget.username, g.id);
               widget.onGroupsChanged(_groups);
               widget.onTodosChanged(_todos);
             },
@@ -172,10 +176,12 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
 
   void _showAddTodoToFolderDialog(TodoGroup g) {
     // 找出所有未分类的待办
-    final unassigned = _todos.where((t) => t.groupId == null && !t.isDeleted).toList();
-    
+    final unassigned =
+        _todos.where((t) => t.groupId == null && !t.isDeleted).toList();
+
     if (unassigned.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('没有待分配的独立待办')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('没有待分配的独立待办')));
       return;
     }
 
@@ -183,7 +189,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
     unassigned.sort((a, b) {
       // 1. 未完成优先
       if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-      
+
       // 2. 进度比较
       double getProgress(TodoItem t) {
         if (t.isDone) return 0.0;
@@ -195,12 +201,14 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
         if (now <= start) return 0.0;
         return (now - start) / (end - start);
       }
+
       final progressA = getProgress(a);
       final progressB = getProgress(b);
       if (progressA != progressB) return progressB.compareTo(progressA);
-      
+
       // 3. 截止日期比较
-      if (a.dueDate != null && b.dueDate != null) return a.dueDate!.compareTo(b.dueDate!);
+      if (a.dueDate != null && b.dueDate != null)
+        return a.dueDate!.compareTo(b.dueDate!);
       if (a.dueDate != null) return -1;
       if (b.dueDate != null) return 1;
       return 0;
@@ -221,10 +229,17 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
           child: Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2))),
               const Padding(
                 padding: EdgeInsets.all(20.0),
-                child: Text('移动至此文件夹', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                child: Text('移动至此文件夹',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               ),
               Expanded(
                 child: ListView.builder(
@@ -232,33 +247,55 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                   itemCount: unassigned.length,
                   itemBuilder: (context, index) {
                     final t = unassigned[index];
-                    final startStr = t.createdDate != null ? DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(t.createdDate!)) : null;
-                    final dueStr = t.dueDate != null ? DateFormat('MM-dd HH:mm').format(t.dueDate!) : null;
-                    
+                    final startStr = t.createdDate != null
+                        ? DateFormat('MM-dd HH:mm').format(
+                            DateTime.fromMillisecondsSinceEpoch(t.createdDate!))
+                        : null;
+                    final dueStr = t.dueDate != null
+                        ? DateFormat('MM-dd HH:mm').format(t.dueDate!)
+                        : null;
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.black.withValues(alpha: 0.03),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        leading: Icon(t.isDone ? Icons.check_circle : Icons.circle_outlined, 
-                          color: t.isDone ? Colors.green : Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
-                        title: Text(t.title, style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: t.isDone ? Colors.grey : null,
-                          decoration: t.isDone ? TextDecoration.lineThrough : null,
-                        )),
-                        subtitle: (startStr != null || dueStr != null) 
-                          ? Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
-                                style: TextStyle(fontSize: 11, color: t.isDone ? Colors.grey : Colors.blueGrey),
-                              ),
-                            )
-                          : null,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        leading: Icon(
+                            t.isDone
+                                ? Icons.check_circle
+                                : Icons.circle_outlined,
+                            color: t.isDone
+                                ? Colors.green
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.5)),
+                        title: Text(t.title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: t.isDone ? Colors.grey : null,
+                              decoration:
+                                  t.isDone ? TextDecoration.lineThrough : null,
+                            )),
+                        subtitle: (startStr != null || dueStr != null)
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  "${startStr ?? '开始?'} → ${dueStr ?? '截止?'}",
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: t.isDone
+                                          ? Colors.grey
+                                          : Colors.blueGrey),
+                                ),
+                              )
+                            : null,
                         onTap: () {
                           setState(() {
                             t.groupId = g.id;
@@ -282,7 +319,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
 
   void _showCreateTodoInFolderScreen(TodoGroup g) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (ctx) => AddTodoScreen(
           todoGroups: _groups,
           initialGroupId: g.id,
@@ -315,7 +352,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('文件夹管理'),
@@ -329,17 +366,21 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       body: ListView(
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: Container(
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.black.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: const [
                   ListTile(
                     dense: true,
-                    title: Text('文件夹展示模式', style: TextStyle(fontWeight: FontWeight.w700)),
+                    title: Text('文件夹展示模式',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -349,11 +390,14 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Container(
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.03),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
-                children: ['inline', 'separate', 'urgentFirst', 'hidden'].map((mode) {
+                children:
+                    ['inline', 'separate', 'urgentFirst', 'hidden'].map((mode) {
                   return RadioListTile<String>(
                     value: mode,
                     groupValue: _folderDisplayMode,
@@ -361,58 +405,78 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                       if (value == null) return;
                       _setFolderDisplayMode(value);
                     },
-                    title: Text(_folderModeLabel(mode), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(_folderModeLabel(mode),
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(_folderModeSubtitle(mode)),
                   );
                 }).toList(),
               ),
             ),
           ),
-          
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 18.0, vertical: 8.0),
-            child: Text('所有文件夹', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+            child: Text('所有文件夹',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.grey)),
           ),
-          
           if (_groups.where((g) => !g.isDeleted).isEmpty)
-             const Padding(
-               padding: EdgeInsets.all(32.0),
-               child: Center(child: Text("暂无文件夹")),
-             ),
-
+            const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: Text("暂无文件夹")),
+            ),
           ..._groups.where((g) => !g.isDeleted).map((g) {
-            final gTodos = _todos.where((t) => t.groupId == g.id && !t.isDeleted).toList();
+            final gTodos =
+                _todos.where((t) => t.groupId == g.id && !t.isDeleted).toList();
             return Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              data:
+                  Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 leading: const Icon(Icons.folder, color: Colors.amber),
-                title: Text(g.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("${gTodos.length} 条待办 · 创建于 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(g.createdAt))}"),
+                title: Text(g.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                    "${gTodos.length} 条待办 · 创建于 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(g.createdAt))}"),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: () => _showCreateOrEditDialog(g)),
-                    IconButton(icon: const Icon(Icons.delete, size: 20, color: Colors.redAccent), onPressed: () => _deleteGroup(g)),
+                    IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        onPressed: () => _showCreateOrEditDialog(g)),
+                    IconButton(
+                        icon: const Icon(Icons.delete,
+                            size: 20, color: Colors.redAccent),
+                        onPressed: () => _deleteGroup(g)),
                   ],
                 ),
                 children: [
                   ...gTodos.map((t) => ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.only(left: 48, right: 16),
-                    leading: Icon(t.isDone ? Icons.check_circle : Icons.circle_outlined, size: 18, 
-                      color: t.isDone ? Colors.green : Colors.grey),
-                    title: Text(t.title, style: TextStyle(
-                      color: t.isDone ? Colors.grey : null,
-                      decoration: t.isDone ? TextDecoration.lineThrough : null,
-                    )),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.orange),
-                      onPressed: () => _removeTodoFromFolder(t),
-                      tooltip: '移出文件夹',
-                    ),
-                  )),
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.only(left: 48, right: 16),
+                        leading: Icon(
+                            t.isDone
+                                ? Icons.check_circle
+                                : Icons.circle_outlined,
+                            size: 18,
+                            color: t.isDone ? Colors.green : Colors.grey),
+                        title: Text(t.title,
+                            style: TextStyle(
+                              color: t.isDone ? Colors.grey : null,
+                              decoration:
+                                  t.isDone ? TextDecoration.lineThrough : null,
+                            )),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.remove_circle_outline,
+                              size: 18, color: Colors.orange),
+                          onPressed: () => _removeTodoFromFolder(t),
+                          tooltip: '移出文件夹',
+                        ),
+                      )),
                   Padding(
-                    padding: const EdgeInsets.only(left: 48, bottom: 12, top: 4),
+                    padding:
+                        const EdgeInsets.only(left: 48, bottom: 12, top: 4),
                     child: Wrap(
                       spacing: 12,
                       runSpacing: 8,
@@ -422,17 +486,23 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                           onTap: () => _showCreateTodoInFolderScreen(g),
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.add, size: 16, color: Theme.of(context).colorScheme.primary),
+                                Icon(Icons.add,
+                                    size: 16,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
                                 const SizedBox(width: 4),
-                                Text('创建新待办', style: TextStyle(
-                                  fontSize: 13, 
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                )),
+                                Text('创建新待办',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    )),
                               ],
                             ),
                           ),
@@ -442,17 +512,23 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                           onTap: () => _showAddTodoToFolderDialog(g),
                           borderRadius: BorderRadius.circular(8),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.drive_file_move_outlined, size: 16, color: Theme.of(context).colorScheme.primary),
+                                Icon(Icons.drive_file_move_outlined,
+                                    size: 16,
+                                    color:
+                                        Theme.of(context).colorScheme.primary),
                                 const SizedBox(width: 4),
-                                Text('添加独立待办至此', style: TextStyle(
-                                  fontSize: 13, 
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                )),
+                                Text('添加独立待办至此',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    )),
                               ],
                             ),
                           ),

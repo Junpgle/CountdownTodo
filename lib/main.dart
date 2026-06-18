@@ -730,23 +730,29 @@ class _MyAppState extends State<MyApp> {
             return ValueListenableBuilder<Color?>(
               valueListenable: StorageService.customThemeColorNotifier,
               builder: (context, customColor, _) {
-                return DynamicColorBuilder(
-                  builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-                    ColorScheme lightScheme;
-                    ColorScheme darkScheme;
+                return ValueListenableBuilder<Color?>(
+                  valueListenable: StorageService.appWallpaperColorNotifier,
+                  builder: (context, appWallpaperColor, _) {
+                    return DynamicColorBuilder(
+                      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+                        ColorScheme lightScheme;
+                        ColorScheme darkScheme;
 
-                    if (colorMode == 'system_wallpaper' && lightDynamic != null && darkDynamic != null) {
-                      lightScheme = lightDynamic.harmonized();
-                      darkScheme = darkDynamic.harmonized();
-                    } else if ((colorMode == 'custom' || colorMode == 'image_extracted') && customColor != null) {
-                      lightScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.light);
-                      darkScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.dark);
-                    } else {
-                      lightScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.light);
-                      darkScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.dark);
-                    }
+                        if (colorMode == 'system_wallpaper' && lightDynamic != null && darkDynamic != null) {
+                          lightScheme = lightDynamic.harmonized();
+                          darkScheme = darkDynamic.harmonized();
+                        } else if ((colorMode == 'custom' || colorMode == 'image_extracted') && customColor != null) {
+                          lightScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.dark);
+                        } else if (colorMode == 'app_wallpaper' && appWallpaperColor != null) {
+                          lightScheme = ColorScheme.fromSeed(seedColor: appWallpaperColor, brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(seedColor: appWallpaperColor, brightness: Brightness.dark);
+                        } else {
+                          lightScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.dark);
+                        }
 
-                    return MacosMenuBar(
+                        return MacosMenuBar(
                       child: MaterialApp(
                         title: 'CountDownTodo',
                         debugShowCheckedModeBanner: false,
@@ -852,6 +858,8 @@ class _MyAppState extends State<MyApp> {
             );
           },
         );
+      },
+    );
       },
     );
   }

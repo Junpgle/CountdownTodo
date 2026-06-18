@@ -7,6 +7,7 @@ import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
+import '../utils/page_transitions.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 
@@ -412,7 +413,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data: localJson,
       );
     } catch (e) {
-      debugPrint('resolve_conflict keep_local API failed (will retry via oplog): $e');
+      debugPrint(
+          'resolve_conflict keep_local API failed (will retry via oplog): $e');
     }
 
     if (syncNow) {
@@ -857,7 +859,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 32),
+          child: Icon(icon,
+              color: Theme.of(context).colorScheme.primary, size: 32),
         ),
         const SizedBox(height: 20),
         Text(
@@ -913,9 +916,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     String title = "";
     if (item is TodoItem) {
       title = item.title;
-    } else if (item is TodoGroup){
+    } else if (item is TodoGroup) {
       title = item.name;
-     }else if (item is CountdownItem) {
+    } else if (item is CountdownItem) {
       title = item.title;
     }
 
@@ -1031,8 +1034,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                             _conflictLabel(item),
                             conflictColor.withValues(alpha: 0.1),
                             conflictColor),
-                        _buildMiniBadge(_relationLabel(item),
-                            Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), Theme.of(context).colorScheme.primary),
+                        _buildMiniBadge(
+                            _relationLabel(item),
+                            Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.1),
+                            Theme.of(context).colorScheme.primary),
                       ],
                     ),
                   ],
@@ -1091,7 +1099,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                    side: BorderSide(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.3)),
                   ),
                 ),
               ),
@@ -1172,7 +1184,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                  side: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.3)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1610,7 +1626,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       child: Row(
         children: [
           Icon(isMain ? Icons.warning_amber_rounded : Icons.event_note_rounded,
-              color: isMain ? Colors.orangeAccent : Theme.of(context).colorScheme.primary, size: 20),
+              color: isMain
+                  ? Colors.orangeAccent
+                  : Theme.of(context).colorScheme.primary,
+              size: 20),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -1823,7 +1842,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(6)),
                     child: Text(relationLabel,
                         style: TextStyle(
@@ -1844,8 +1866,12 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 children: [
                   CircleAvatar(
                     radius: 18,
-                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    child: Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
+                    child: Icon(icon,
+                        size: 18, color: Theme.of(context).colorScheme.primary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -2152,7 +2178,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             resolution: 'accept_server',
           );
           if (apiResult['success'] != true) {
-            debugPrint('batch accept_server API failed for $uuid: ${apiResult['error']}');
+            debugPrint(
+                'batch accept_server API failed for $uuid: ${apiResult['error']}');
             await StorageService.resolveConflictLocally(
               uuid: uuid,
               table: table,
@@ -2239,9 +2266,16 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -2251,8 +2285,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   Expanded(
                     child: Text(
                       '批量推荐只处理版本冲突；时间冲突需要进入单条详情查看预览后确认。',
-                      style:
-                          TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ],
@@ -2345,7 +2380,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   data: localJson,
                 );
               } catch (e) {
-                debugPrint('batch resolve_conflict keep_local API failed for $uuid: $e');
+                debugPrint(
+                    'batch resolve_conflict keep_local API failed for $uuid: $e');
               }
 
               successCount++;
@@ -2561,7 +2597,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                             onPressed: _isApplyingScheduleFix
                                 ? null
                                 : () async {
-                                    final messenger = ScaffoldMessenger.of(context);
+                                    final messenger =
+                                        ScaffoldMessenger.of(context);
                                     Navigator.pop(sheetContext);
                                     await StorageService
                                         .ignoreLocalScheduleConflict(
@@ -2793,7 +2830,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text("待调",
@@ -2813,8 +2853,11 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             const Spacer(),
-            _buildMiniInfoChip(_scheduleScopeLabel(data),
-                isPrimary ? Colors.orangeAccent : Theme.of(context).colorScheme.primary),
+            _buildMiniInfoChip(
+                _scheduleScopeLabel(data),
+                isPrimary
+                    ? Colors.orangeAccent
+                    : Theme.of(context).colorScheme.primary),
             const SizedBox(height: 6),
             if (update == null)
               Text(
@@ -2846,7 +2889,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   Row(
                     children: [
                       Icon(Icons.arrow_right_alt_rounded,
-                          size: 14, color: Theme.of(context).colorScheme.primary),
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 2),
                       Text(
                         '${sf.format(update.start)}~${sf.format(update.end)}',
@@ -2919,8 +2963,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     required bool enabled,
     required VoidCallback onTap,
   }) {
-    final color =
-        selected ? Theme.of(context).colorScheme.primary : (enabled ? Colors.grey : Colors.grey.shade300);
+    final color = selected
+        ? Theme.of(context).colorScheme.primary
+        : (enabled ? Colors.grey : Colors.grey.shade300);
     return Expanded(
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -2933,8 +2978,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color:
-                  selected ? Theme.of(context).colorScheme.primary : Colors.grey.withValues(alpha: 0.2),
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.grey.withValues(alpha: 0.2),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -3189,7 +3235,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
     final changed = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => TodoEditScreen(
           todo: target,
           todos: allTodos,
@@ -3879,7 +3925,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           data: widget.localItem,
         );
       } catch (e) {
-        debugPrint('resolve_conflict keep_local API failed (will retry via oplog): $e');
+        debugPrint(
+            'resolve_conflict keep_local API failed (will retry via oplog): $e');
       }
 
       if (mounted) {
@@ -3938,7 +3985,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       );
       if (apiResult['success'] != true) {
         // API failed — create fallback oplog so resolution survives next sync
-        debugPrint('accept_server API failed, creating fallback oplog: ${apiResult['error']}');
+        debugPrint(
+            'accept_server API failed, creating fallback oplog: ${apiResult['error']}');
         await StorageService.resolveConflictLocally(
           uuid: uuid,
           table: widget.table,

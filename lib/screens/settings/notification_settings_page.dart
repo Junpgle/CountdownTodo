@@ -4,7 +4,10 @@ import '../../models.dart';
 import '../../services/course_service.dart';
 import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
-import 'package:intl/intl.dart';
+import '../../utils/app_dialogs.dart';
+import '../../utils/app_time_formats.dart';
+import '../../widgets/app_sheet_widgets.dart';
+import '../../widgets/app_state_views.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -164,10 +167,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('通知与提醒设置'),
-        centerTitle: true,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('通知与提醒设置'),
+              centerTitle: true,
+            ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -340,7 +345,9 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           Card(
             elevation: 0,
             margin: EdgeInsets.zero,
-            color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100,
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey.shade900
+                : Colors.grey.shade100,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: const BorderSide(color: Colors.transparent, width: 1.5),
@@ -349,7 +356,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               borderRadius: BorderRadius.circular(16),
               onTap: _showScheduledReminders,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 16.0),
                 child: Row(
                   children: [
                     Container(
@@ -358,7 +366,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         color: Colors.teal.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.manage_search, color: Colors.teal, size: 28),
+                      child: const Icon(Icons.manage_search,
+                          color: Colors.teal, size: 28),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -367,12 +376,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         children: [
                           const Text(
                             '定时闹钟管理',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '查看当前已注册到系统的精确闹钟提醒',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600]),
                           ),
                         ],
                       ),
@@ -404,7 +415,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: value ? color.withValues(alpha: 0.1) : (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+      color: value
+          ? color.withValues(alpha: 0.1)
+          : (Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey.shade900
+              : Colors.grey.shade100),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
@@ -434,7 +449,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -448,7 +464,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Switch(
                 value: value,
                 onChanged: onChanged,
-                activeColor: color,
+                activeThumbColor: color,
               ),
             ],
           ),
@@ -491,18 +507,17 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: Theme.of(context).brightness == Brightness.dark 
-          ? Colors.grey.shade900 
+      color: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey.shade900
           : Colors.grey.shade100,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: value 
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5) 
-              : Colors.transparent,
-          width: 1.5,
-        )
-      ),
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: value
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
+                : Colors.transparent,
+            width: 1.5,
+          )),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => onChanged(!value),
@@ -518,12 +533,19 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: value 
-                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) 
+                      color: value
+                          ? Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withValues(alpha: 0.1)
                           : Colors.grey.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, color: value ? Theme.of(context).colorScheme.primary : Colors.grey, size: 24),
+                    child: Icon(icon,
+                        color: value
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey,
+                        size: 24),
                   ),
                   Switch(
                     value: value,
@@ -535,7 +557,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               const SizedBox(height: 8),
               Text(
                 title,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -543,7 +566,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Expanded(
                 child: Text(
                   subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                  style: TextStyle(
+                      fontSize: 11, color: Colors.grey[600], height: 1.2),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -559,13 +583,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: Theme.of(context).brightness == Brightness.dark 
-          ? Colors.grey.shade900 
+      color: Theme.of(context).brightness == Brightness.dark
+          ? Colors.grey.shade900
           : Colors.grey.shade100,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Colors.transparent, width: 1.5)
-      ),
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Colors.transparent, width: 1.5)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: _showReminderTimePicker,
@@ -584,17 +607,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.timer, color: Colors.blue, size: 24),
+                    child:
+                        const Icon(Icons.timer, color: Colors.blue, size: 24),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$_courseReminderMinutes 分钟',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ],
@@ -610,7 +641,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               Expanded(
                 child: Text(
                   '距上课提前 $_courseReminderMinutes 分钟提醒',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                  style: TextStyle(
+                      fontSize: 11, color: Colors.grey[600], height: 1.2),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -624,40 +656,43 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   void _showReminderTimePicker() {
     final options = [0, 5, 10, 15, 20, 30, 45, 60];
-    showModalBottomSheet(
+    AppDialogs.showAppBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+      isScrollControlled: false,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                '选择课程提醒时间',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              const AppSheetDragHandle(),
+              const AppSheetHeader(
+                icon: Icons.timer_outlined,
+                title: '选择课程提醒时间',
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
               ),
-              const SizedBox(height: 8),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: options.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (listContext, index) {
                     final mins = options[index];
                     return ListTile(
                       title: Text(mins == 0 ? '准时提醒' : '提前 $mins 分钟'),
                       trailing: _courseReminderMinutes == mins
-                          ? const Icon(Icons.check, color: Colors.blue)
+                          ? Icon(Icons.check, color: colorScheme.primary)
                           : null,
                       onTap: () async {
                         await StorageService.setCourseReminderMinutes(mins);
+                        if (!mounted) return;
                         setState(() {
                           _courseReminderMinutes = mins;
                         });
                         _triggerReschedule();
-                        Navigator.pop(context);
+                        if (sheetContext.mounted) {
+                          Navigator.pop(sheetContext);
+                        }
                       },
                     );
                   },
@@ -675,61 +710,49 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
     if (!mounted) return;
 
-    showModalBottomSheet(
+    AppDialogs.showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
         return DraggableScrollableSheet(
           initialChildSize: 0.6,
           minChildSize: 0.4,
           maxChildSize: 0.9,
           expand: false,
-          builder: (context, scrollController) {
+          builder: (sheetContext, scrollController) {
             return Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        '已注册的提醒',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      TextButton.icon(
-                        onPressed: () async {
-                          await NotificationService.scheduleReminders([],
-                              clearFirst: true);
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(this.context).showSnackBar(
-                            const SnackBar(content: Text('已清除所有系统闹钟')),
-                          );
-                        },
-                        icon: const Icon(Icons.delete_sweep, color: Colors.red),
-                        label:
-                            const Text('清除全部', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
+                const AppSheetDragHandle(),
+                AppSheetHeader(
+                  icon: Icons.alarm_outlined,
+                  title: '已注册的提醒',
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  trailing: TextButton.icon(
+                    onPressed: () async {
+                      await NotificationService.scheduleReminders([],
+                          clearFirst: true);
+                      if (!mounted) return;
+                      if (sheetContext.mounted) {
+                        Navigator.pop(sheetContext);
+                      }
+                      if (mounted) {
+                        AppSnackBars.success(context, '已清除所有系统闹钟');
+                      }
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                    ),
+                    icon: const Icon(Icons.delete_sweep),
+                    label: const Text('清除全部'),
                   ),
                 ),
                 const Divider(height: 1),
                 Expanded(
                   child: reminders.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.alarm_off,
-                                  size: 48, color: Colors.grey[400]),
-                              const SizedBox(height: 16),
-                              Text('暂无预约的提醒',
-                                  style: TextStyle(color: Colors.grey[500])),
-                            ],
-                          ),
+                      ? const AppEmptyState(
+                          icon: Icons.alarm_off,
+                          title: '暂无预约的提醒',
                         )
                       : ListView.separated(
                           controller: scrollController,
@@ -738,18 +761,22 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                               const Divider(height: 1, indent: 72),
                           itemBuilder: (context, index) {
                             final r = reminders[index];
-                            final triggerAt = DateTime.fromMillisecondsSinceEpoch(
-                                r['triggerAtMs']);
+                            final triggerAt =
+                                DateTime.fromMillisecondsSinceEpoch(
+                                    r['triggerAtMs']);
                             final isPast = triggerAt.isBefore(DateTime.now());
 
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: isPast
-                                    ? Colors.grey[200]
-                                    : Colors.blue[50],
+                                    ? colorScheme.surfaceContainerHighest
+                                    : colorScheme.primaryContainer
+                                        .withValues(alpha: 0.7),
                                 child: Icon(
                                   isPast ? Icons.history : Icons.alarm,
-                                  color: isPast ? Colors.grey : Colors.blue,
+                                  color: isPast
+                                      ? colorScheme.onSurfaceVariant
+                                      : colorScheme.primary,
                                 ),
                               ),
                               title: Text(r['title'] ?? '未命名提醒'),
@@ -758,12 +785,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 children: [
                                   Text(r['text'] ?? ''),
                                   Text(
-                                    DateFormat('MM-dd HH:mm').format(triggerAt),
+                                    AppTimeFormats.compactDateTime(triggerAt),
                                     style: TextStyle(
                                       fontSize: 11,
-                                      color:
-                                          isPast ? Colors.red : Colors.grey[600],
-                                      fontWeight: isPast ? FontWeight.bold : null,
+                                      color: isPast
+                                          ? colorScheme.error
+                                          : colorScheme.onSurfaceVariant,
+                                      fontWeight:
+                                          isPast ? FontWeight.bold : null,
                                     ),
                                   ),
                                 ],
@@ -773,7 +802,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                                 onPressed: () async {
                                   await NotificationService.cancelReminder(
                                       r['notifId']);
-                                  Navigator.pop(context);
+                                  if (!mounted) return;
+                                  if (sheetContext.mounted) {
+                                    Navigator.pop(sheetContext);
+                                  }
                                   _showScheduledReminders();
                                 },
                               ),
@@ -812,13 +844,13 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             return Card(
               elevation: 0,
               margin: EdgeInsets.zero,
-              color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.grey.shade900 
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey.shade900
                   : Colors.grey.shade100,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: Colors.transparent, width: 1.5)
-              ),
+                  borderRadius: BorderRadius.circular(16),
+                  side:
+                      const BorderSide(color: Colors.transparent, width: 1.5)),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () => _showCategoryReminderPicker(group),
@@ -837,17 +869,25 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                               color: Colors.teal.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(Icons.folder, color: Colors.teal, size: 24),
+                            child: const Icon(Icons.folder,
+                                color: Colors.teal, size: 24),
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               mins == 0 ? '准时' : '提前 $mins分',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary),
                             ),
                           ),
                         ],
@@ -855,7 +895,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       const SizedBox(height: 8),
                       Text(
                         group.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -863,7 +904,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       Expanded(
                         child: Text(
                           '点击设置该分类下的待办默认提前提醒时间',
-                          style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.2),
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              height: 1.2),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -881,49 +925,57 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   void _showCategoryReminderPicker(TodoGroup group) {
     final options = [0, 5, 10, 15, 20, 30, 45, 60, 120, 1440];
-    showModalBottomSheet(
+    AppDialogs.showAppBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+      isScrollControlled: false,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '设置 "${group.name}" 的默认提醒',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              const AppSheetDragHandle(),
+              AppSheetHeader(
+                icon: Icons.folder_outlined,
+                title: '设置默认提醒',
+                subtitle: group.name,
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               ),
-              const SizedBox(height: 8),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: options.length,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (listContext, index) {
                     final mins = options[index];
                     final currentMins = _categoryReminderMinutes[group.id] ?? 5;
                     return ListTile(
                       title: Text(mins == 0
                           ? '准时提醒'
                           : mins >= 60
-                              ? (mins >= 1440 ? '提前 1 天' : '提前 ${mins ~/ 60} 小时')
+                              ? (mins >= 1440
+                                  ? '提前 1 天'
+                                  : '提前 ${mins ~/ 60} 小时')
                               : '提前 $mins 分钟'),
                       trailing: currentMins == mins
-                          ? const Icon(Icons.check, color: Colors.blue)
+                          ? Icon(Icons.check, color: colorScheme.primary)
                           : null,
                       onTap: () async {
                         if (_username != null) {
-                          final newData = Map<String, int>.from(_categoryReminderMinutes);
+                          final newData =
+                              Map<String, int>.from(_categoryReminderMinutes);
                           newData[group.id] = mins;
                           await StorageService.saveCategoryReminderMinutes(
                               _username!, newData);
+                          if (!mounted) return;
                           setState(() {
                             _categoryReminderMinutes = newData;
                           });
                         }
-                        Navigator.pop(context);
+                        if (!mounted) return;
+                        if (sheetContext.mounted) {
+                          Navigator.pop(sheetContext);
+                        }
                       },
                     );
                   },
