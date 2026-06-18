@@ -122,6 +122,7 @@ class _DayViewState extends State<_DayView> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(builder: (ctx, setModal) {
+        final colorScheme = Theme.of(ctx).colorScheme;
         final dayLogs = widget.logs
             .where((l) => l.endTime > gsMs && l.startTime < geMs)
             .toList()
@@ -154,13 +155,12 @@ class _DayViewState extends State<_DayView> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
-                          color:
-                              const Color(0xFF3B82F6).withValues(alpha: 0.12),
+                          color: colorScheme.cdtInfo.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(20)),
                       child: Text('${dayLogs.length}条',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF60A5FA),
+                              color: colorScheme.cdtInfo,
                               fontWeight: FontWeight.w600))),
                   const Spacer(),
                   IconButton(
@@ -190,7 +190,7 @@ class _DayViewState extends State<_DayView> {
                           : null;
                       final c = tag != null
                           ? hexColor(tag.color)
-                          : const Color(0xFF3B82F6);
+                          : colorScheme.cdtInfo;
                       final dur = (log.endTime - log.startTime) ~/ 60000;
                       final s =
                           DateTime.fromMillisecondsSinceEpoch(log.startTime);
@@ -250,7 +250,8 @@ class _DayViewState extends State<_DayView> {
                           IconButton(
                             icon: Icon(Icons.delete_outline,
                                 size: 20,
-                                color: Colors.red.withValues(alpha: 0.6)),
+                                color:
+                                    colorScheme.error.withValues(alpha: 0.6)),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
                                 minWidth: 36, minHeight: 36),
@@ -286,9 +287,9 @@ class _DayViewState extends State<_DayView> {
                                                   setModal(() {});
                                                 }
                                               },
-                                              child: const Text('删除',
+                                              child: Text('删除',
                                                   style: TextStyle(
-                                                      color: Colors.red,
+                                                      color: colorScheme.error,
                                                       fontWeight:
                                                           FontWeight.w700))),
                                         ],
@@ -348,97 +349,99 @@ class _DayViewState extends State<_DayView> {
     ]);
   }
 
-  Widget _buildCrossDayBar(int dLogN, int dPlanN) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        color: _TC.topBar(context),
-        child: Row(children: [
-          const SizedBox(width: 8),
-          _EntryModeToggle(
-            mode: widget.entryMode,
-            onChanged: widget.onEntryModeChanged,
-          ),
-          const SizedBox(width: 8),
-          // 已补录数量
-          if (widget.entryMode == _EntryMode.log && dLogN > 0)
-            GestureDetector(
-                onTap: _showDayLogList,
-                child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                        color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
-                        border: Border.all(
-                            color: const Color(0xFF3B82F6)
-                                .withValues(alpha: 0.35)),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.list_alt_outlined,
-                          size: 12, color: Color(0xFF60A5FA)),
-                      const SizedBox(width: 4),
-                      Text('已补录 $dLogN',
-                          style: const TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF60A5FA),
-                              fontWeight: FontWeight.w600)),
-                    ]))),
-          if (widget.entryMode == _EntryMode.plan && dPlanN > 0)
-            Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                    color: Colors.deepPurple.withValues(alpha: 0.1),
-                    border: Border.all(
-                        color: Colors.deepPurple.withValues(alpha: 0.35)),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.event_note,
-                      size: 12, color: Colors.deepPurple),
-                  const SizedBox(width: 4),
-                  Text('已规划 $dPlanN',
-                      style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.deepPurple,
-                          fontWeight: FontWeight.w600)),
-                ])),
-          // 退出补录
+  Widget _buildCrossDayBar(int dLogN, int dPlanN) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      color: _TC.topBar(context),
+      child: Row(children: [
+        const SizedBox(width: 8),
+        _EntryModeToggle(
+          mode: widget.entryMode,
+          onChanged: widget.onEntryModeChanged,
+        ),
+        const SizedBox(width: 8),
+        // 已补录数量
+        if (widget.entryMode == _EntryMode.log && dLogN > 0)
           GestureDetector(
-            onTap: widget.onBack,
-            child: Container(
+              onTap: _showDayLogList,
+              child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                      color: colorScheme.cdtInfo.withValues(alpha: 0.1),
+                      border: Border.all(
+                          color: colorScheme.cdtInfo.withValues(alpha: 0.35)),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.list_alt_outlined,
+                        size: 12, color: colorScheme.cdtInfo),
+                    const SizedBox(width: 4),
+                    Text('已补录 $dLogN',
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: colorScheme.cdtInfo,
+                            fontWeight: FontWeight.w600)),
+                  ]))),
+        if (widget.entryMode == _EntryMode.plan && dPlanN > 0)
+          Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.08),
-                border: Border.all(color: Colors.red.withValues(alpha: 0.30)),
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  color: colorScheme.secondary.withValues(alpha: 0.1),
+                  border: Border.all(
+                      color: colorScheme.secondary.withValues(alpha: 0.35)),
+                  borderRadius: BorderRadius.circular(8)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.close,
-                    size: 12, color: Colors.red.withValues(alpha: 0.8)),
+                Icon(Icons.event_note, size: 12, color: colorScheme.secondary),
                 const SizedBox(width: 4),
-                Text(widget.entryMode == _EntryMode.plan ? '退出规划' : '退出补录',
+                Text('已规划 $dPlanN',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.red.withValues(alpha: 0.8),
+                        fontSize: 10,
+                        color: colorScheme.secondary,
                         fontWeight: FontWeight.w600)),
-              ]),
+              ])),
+        // 退出补录
+        GestureDetector(
+          onTap: widget.onBack,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: colorScheme.error.withValues(alpha: 0.08),
+              border:
+                  Border.all(color: colorScheme.error.withValues(alpha: 0.30)),
+              borderRadius: BorderRadius.circular(8),
             ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.close,
+                  size: 12, color: colorScheme.error.withValues(alpha: 0.8)),
+              const SizedBox(width: 4),
+              Text(widget.entryMode == _EntryMode.plan ? '退出规划' : '退出补录',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.error.withValues(alpha: 0.8),
+                      fontWeight: FontWeight.w600)),
+            ]),
           ),
-          const Spacer(),
-          // 分钟下拉选择器
-          _MinuteDropdown(
-            value: _minutesPerBlock,
-            onChanged: (m) => setState(() {
-              _minutesPerBlock = m;
-              _dragStart = null;
-            }),
-          ),
-        ]),
-      );
+        ),
+        const Spacer(),
+        // 分钟下拉选择器
+        _MinuteDropdown(
+          value: _minutesPerBlock,
+          onChanged: (m) => setState(() {
+            _minutesPerBlock = m;
+            _dragStart = null;
+          }),
+        ),
+      ]),
+    );
+  }
 
   Widget _buildGrid(double hourH, double totalH) {
     return LayoutBuilder(builder: (ctx, c) {
       final w = c.maxWidth;
+      final colorScheme = Theme.of(ctx).colorScheme;
       final isDark = Theme.of(ctx).brightness == Brightness.dark;
-      final accent = Theme.of(ctx).colorScheme.primary;
+      final accent = colorScheme.primary;
       final selTag = widget.tags
           .cast<PomodoroTag?>()
           .firstWhere((t) => t?.uuid == _selectedTagId, orElse: () => null);
@@ -483,6 +486,12 @@ class _DayViewState extends State<_DayView> {
                       selColor: selTag != null
                           ? hexColor(selTag.color, opacity: 0.48)
                           : accent.withValues(alpha: 0.45),
+                      gridMajorColor: colorScheme.outlineVariant,
+                      gridMinorColor: colorScheme.outlineVariant
+                          .withValues(alpha: isDark ? 0.28 : 0.48),
+                      successColor: colorScheme.cdtSuccess,
+                      planColor: colorScheme.secondary,
+                      nowColor: colorScheme.cdtFocus,
                       isDark: isDark,
                       hourH: hourH))),
           ..._pomodoroTapTargets(w, hourH),
@@ -512,7 +521,9 @@ class _DayViewState extends State<_DayView> {
             orElse: () => null);
       }
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      final base = tag != null ? hexColor(tag.color) : Colors.redAccent;
+      final base = tag != null
+          ? hexColor(tag.color)
+          : Theme.of(context).colorScheme.cdtFocus;
       final fill = base.withValues(alpha: isDark ? 0.35 : 0.45);
       final mark = base.withValues(alpha: 0.85);
       for (int h = sH; h <= eH; h++) {
@@ -673,6 +684,11 @@ class _DayGridPainter extends CustomPainter {
   final List<PomodoroTag> tags;
   final DateTime gridStart;
   final Color selColor;
+  final Color gridMajorColor;
+  final Color gridMinorColor;
+  final Color successColor;
+  final Color planColor;
+  final Color nowColor;
   final bool isDark;
   final double hourH;
 
@@ -686,6 +702,11 @@ class _DayGridPainter extends CustomPainter {
       required this.tags,
       required this.gridStart,
       required this.selColor,
+      required this.gridMajorColor,
+      required this.gridMinorColor,
+      required this.successColor,
+      required this.planColor,
+      required this.nowColor,
       required this.isDark,
       required this.hourH});
 
@@ -697,10 +718,10 @@ class _DayGridPainter extends CustomPainter {
     final geMs = gsMs + 86400000;
 
     final mj = Paint()
-      ..color = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFDDDDDD)
+      ..color = gridMajorColor
       ..strokeWidth = 0.5;
     final mn = Paint()
-      ..color = isDark ? const Color(0xFF0E0E0E) : const Color(0xFFF2F2F2)
+      ..color = gridMinorColor
       ..strokeWidth = 0.5;
 
     for (int h = 0; h <= 24; h++) {
@@ -759,9 +780,8 @@ class _DayGridPainter extends CustomPainter {
         final sIdx = (sMs - gsMs) ~/ (60000 * minutesPerBlock);
         final eIdx = ((eMs - gsMs - 1) ~/ (60000 * minutesPerBlock))
             .clamp(0, 24 * bpr - 1);
-        final base = plan.status == TodoPlanStatus.finished
-            ? const Color(0xFF22C55E)
-            : const Color(0xFF7C3AED);
+        final base =
+            plan.status == TodoPlanStatus.finished ? successColor : planColor;
         final fill = base.withValues(alpha: isDark ? 0.18 : 0.12);
         final bar = base.withValues(alpha: 0.58);
         for (int i = sIdx; i <= eIdx; i++) {
@@ -816,10 +836,9 @@ class _DayGridPainter extends CustomPainter {
           Offset(x, h * hourH),
           Offset(x, (h + 1) * hourH),
           Paint()
-            ..color = Colors.redAccent.withValues(alpha: 0.7)
+            ..color = nowColor.withValues(alpha: 0.7)
             ..strokeWidth = 1.5);
-      canvas.drawCircle(
-          Offset(x, h * hourH), 3, Paint()..color = Colors.redAccent);
+      canvas.drawCircle(Offset(x, h * hourH), 3, Paint()..color = nowColor);
     }
   }
 
@@ -834,6 +853,11 @@ class _DayGridPainter extends CustomPainter {
       !identical(o.tags, tags) ||
       o.gridStart != gridStart ||
       o.selColor != selColor ||
+      o.gridMajorColor != gridMajorColor ||
+      o.gridMinorColor != gridMinorColor ||
+      o.successColor != successColor ||
+      o.planColor != planColor ||
+      o.nowColor != nowColor ||
       o.isDark != isDark ||
       o.hourH != hourH;
 }
@@ -849,7 +873,7 @@ class _EntryModeToggle extends StatelessWidget {
     Widget item(_EntryMode value, String label, IconData icon) {
       final selected = mode == value;
       final color = value == _EntryMode.plan
-          ? Colors.deepPurple
+          ? Theme.of(context).colorScheme.secondary
           : Theme.of(context).colorScheme.primary;
       return GestureDetector(
         onTap: () => onChanged(value),
@@ -1031,7 +1055,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     Navigator.pop(context);
     Navigator.push(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => PomodoroScreen(username: widget.username),
       ),
     );
@@ -1039,7 +1063,7 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Colors.deepPurple;
+    final accent = Theme.of(context).colorScheme.secondary;
     final duration = _end.difference(_start).inMinutes;
     return Container(
       padding: EdgeInsets.only(
@@ -1324,15 +1348,20 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.12),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .cdtSuccess
+                          .withValues(alpha: 0.12),
                       border: Border.all(
-                          color:
-                              const Color(0xFF22C55E).withValues(alpha: 0.35)),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .cdtSuccess
+                              .withValues(alpha: 0.35)),
                       borderRadius: BorderRadius.circular(20)),
                   child: Text(_durLabel(),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF4ADE80),
+                          color: Theme.of(context).colorScheme.cdtSuccess,
                           fontWeight: FontWeight.w600))),
             ]),
             const SizedBox(height: 16),
@@ -1762,6 +1791,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                     separatorBuilder: (_, __) => const SizedBox(height: 6),
                     itemBuilder: (ctx, i) {
                       final r = allRecs.reversed.elementAt(i);
+                      final colorScheme = Theme.of(ctx).colorScheme;
                       final s =
                           DateTime.fromMillisecondsSinceEpoch(r.startTime);
                       final e = DateTime.fromMillisecondsSinceEpoch(r.endTime);
@@ -1772,14 +1802,16 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                             color: _TC.inputFill(ctx),
                             border: Border(
                                 left: BorderSide(
-                                    color: r.isPomodoro ? Colors.redAccent : c,
+                                    color:
+                                        r.isPomodoro ? colorScheme.cdtFocus : c,
                                     width: 3)),
                             borderRadius: BorderRadius.circular(8)),
                         child: Row(children: [
                           if (r.isPomodoro) ...[
                             Icon(Icons.timer_outlined,
                                 size: 12,
-                                color: Colors.redAccent.withValues(alpha: 0.6)),
+                                color: colorScheme.cdtFocus
+                                    .withValues(alpha: 0.6)),
                             const SizedBox(width: 4),
                           ],
                           Expanded(
@@ -1801,12 +1833,14 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
                           Text('${r.durationMin}min',
                               style: TextStyle(
                                   fontSize: 13,
-                                  color: r.isPomodoro ? Colors.redAccent : c,
+                                  color:
+                                      r.isPomodoro ? colorScheme.cdtFocus : c,
                                   fontWeight: FontWeight.w700)),
                           if (!r.isPomodoro)
                             IconButton(
                                 icon: Icon(Icons.delete_outline,
-                                    color: Colors.red.withValues(alpha: 0.55),
+                                    color: colorScheme.error
+                                        .withValues(alpha: 0.55),
                                     size: 18),
                                 onPressed: () => widget.onDelete(r.id),
                                 padding: EdgeInsets.zero,
@@ -2267,7 +2301,10 @@ class _TagManagerSheetState extends State<_TagManagerSheet> {
                             GestureDetector(
                                 onTap: () => setState(() => _list.removeAt(i)),
                                 child: Icon(Icons.delete_outline,
-                                    color: Colors.red.withValues(alpha: 0.55),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .error
+                                        .withValues(alpha: 0.55),
                                     size: 18)),
                           ]));
                     })),
@@ -2420,7 +2457,6 @@ class _MinuteDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -2434,7 +2470,7 @@ class _MinuteDropdown extends StatelessWidget {
           value: value,
           isDense: true,
           icon: Icon(Icons.expand_more, size: 14, color: accent),
-          dropdownColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          dropdownColor: Theme.of(context).colorScheme.surfaceContainerHighest,
           style: TextStyle(
             fontSize: 11,
             color: accent,

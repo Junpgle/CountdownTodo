@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../utils/theme_color_tokens.dart';
 
 class SystemSection extends StatelessWidget {
   final String? highlightTarget;
@@ -49,16 +50,17 @@ class SystemSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Text('系统与关于',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+                  color: colorScheme.onSurfaceVariant)),
         ),
         Card(
           elevation: 2,
@@ -71,7 +73,7 @@ class SystemSection extends StatelessWidget {
                 targetId: 'feature_guide',
                 child: ListTile(
                   leading:
-                      const Icon(Icons.school_rounded, color: Colors.indigo),
+                      Icon(Icons.school_rounded, color: colorScheme.primary),
                   title: const Text('重新查看新版教程与权限设置'),
                   subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
                   trailing: const Icon(Icons.chevron_right),
@@ -84,8 +86,8 @@ class SystemSection extends StatelessWidget {
                   context: context,
                   targetId: 'calendar_sync',
                   child: ListTile(
-                    leading: const Icon(Icons.event_available_outlined,
-                        color: Colors.deepPurple),
+                    leading: Icon(Icons.event_available_outlined,
+                        color: colorScheme.secondary),
                     title: const Text('写入手机系统日历'),
                     subtitle: const Text('选择待办、课程、倒数日写入或清除'),
                     trailing: const Icon(Icons.chevron_right),
@@ -108,8 +110,9 @@ class SystemSection extends StatelessWidget {
                       child: Text(
                         cacheSizeStr,
                         key: ValueKey(cacheSizeStr),
-                        style: const TextStyle(
-                            color: Colors.grey, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.bold),
                       ),
                     ),
                     onTap: onClearCache,
@@ -120,7 +123,8 @@ class SystemSection extends StatelessWidget {
                   context: context,
                   targetId: 'storage',
                   child: ListTile(
-                    leading: const Icon(Icons.data_usage, color: Colors.orange),
+                    leading:
+                        Icon(Icons.data_usage, color: colorScheme.cdtWarning),
                     title: const Text('存储空间深度分析'),
                     subtitle: const Text('找出占用数百MB的隐藏文件'),
                     trailing: const Icon(Icons.chevron_right),
@@ -133,7 +137,8 @@ class SystemSection extends StatelessWidget {
                 context: context,
                 targetId: 'about',
                 child: ListTile(
-                  leading: const Icon(Icons.system_update, color: Colors.green),
+                  leading:
+                      Icon(Icons.system_update, color: colorScheme.cdtSuccess),
                   title: const Text('检查新版本'),
                   trailing: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),

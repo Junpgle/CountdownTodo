@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../utils/theme_color_tokens.dart';
 
 class AccountSection extends StatelessWidget {
   final String username;
@@ -24,31 +25,32 @@ class AccountSection extends StatelessWidget {
     required this.onChangePassword,
   });
 
-  Color getTierColor(String tier) {
+  Color getTierColor(String tier, ColorScheme colorScheme) {
     switch (tier.toLowerCase()) {
       case 'admin':
-        return Colors.redAccent;
+        return colorScheme.error;
       case 'promax':
-        return Colors.purpleAccent; // 或金色 #FFD700
+        return colorScheme.primary;
       case 'pro':
-        return Colors.orangeAccent;
+        return colorScheme.cdtWarning;
       default:
-        return Colors.grey;
+        return colorScheme.onSurfaceVariant;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Text('账户管理',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+                  color: colorScheme.onSurfaceVariant)),
         ),
         Card(
           elevation: 2,
@@ -59,8 +61,8 @@ class AccountSection extends StatelessWidget {
               InkWell(
                 onTap: onChangePassword,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Row(
                     children: [
                       CircleAvatar(
@@ -76,13 +78,14 @@ class AccountSection extends StatelessWidget {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold)),
                             Text(userId != null ? "UID: $userId" : "离线模式",
-                                style: const TextStyle(
-                                    fontSize: 13, color: Colors.grey)),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: colorScheme.onSurfaceVariant)),
                           ],
                         ),
                       ),
-                      const Icon(Icons.edit_square,
-                          size: 20, color: Colors.grey),
+                      Icon(Icons.edit_square,
+                          size: 20, color: colorScheme.onSurfaceVariant),
                     ],
                   ),
                 ),
@@ -112,15 +115,16 @@ class AccountSection extends StatelessWidget {
                                   key: ValueKey(userTier),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: getTierColor(userTier),
+                                    color: getTierColor(userTier, colorScheme),
                                   ),
                                 ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Text("今日同步额度",
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    Text("今日同步额度",
+                        style: TextStyle(
+                            fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 6),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
@@ -132,7 +136,7 @@ class AccountSection extends StatelessWidget {
                             .surfaceContainerHighest,
                         valueColor: AlwaysStoppedAnimation<Color>(
                             syncProgress > 0.9
-                                ? Colors.redAccent
+                                ? colorScheme.error
                                 : Theme.of(context).colorScheme.primary),
                       ),
                     ),
@@ -141,7 +145,7 @@ class AccountSection extends StatelessWidget {
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
-                leading: const Icon(Icons.cloud_sync, color: Colors.deepPurple),
+                leading: Icon(Icons.cloud_sync, color: colorScheme.primary),
                 title: const Text('强制全量同步'),
                 subtitle: const Text('重置同步水位，从云端拉取所有最新数据'),
                 trailing: const Icon(Icons.chevron_right),
@@ -149,10 +153,10 @@ class AccountSection extends StatelessWidget {
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
-                leading: const Icon(Icons.logout, color: Colors.redAccent),
-                title: const Text('退出当前账号',
+                leading: Icon(Icons.logout, color: colorScheme.error),
+                title: Text('退出当前账号',
                     style: TextStyle(
-                        color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                        color: colorScheme.error, fontWeight: FontWeight.w600)),
                 onTap: onLogout,
               ),
             ],

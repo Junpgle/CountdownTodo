@@ -10,6 +10,7 @@ import 'course_screens.dart';
 import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
 import '../services/time_estimation_service.dart';
+import '../utils/page_transitions.dart';
 import 'todo_chat_screen.dart';
 
 // 复用 TimeLog 的颜色和基础常量
@@ -272,7 +273,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
             icon: const Icon(Icons.bar_chart_rounded),
             tooltip: '规划统计',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
+              PageTransitions.material(
                 builder: (_) => PlanBlockStatsScreen(username: widget.username),
               ),
             ),
@@ -1010,7 +1011,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
           );
       if (course != null) {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => CourseDetailScreen(course: course)),
+          PageTransitions.material(
+              builder: (_) => CourseDetailScreen(course: course)),
         );
       }
       return;
@@ -1024,7 +1026,8 @@ class _PlanGridViewState extends State<_PlanGridView> {
           );
       if (todo != null) {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => TodoDetailScreen(todo: todo)),
+          PageTransitions.material(
+              builder: (_) => TodoDetailScreen(todo: todo)),
         );
       }
     }
@@ -1354,7 +1357,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     Navigator.pop(context);
     Navigator.push(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => PomodoroScreen(username: widget.username),
       ),
     );
@@ -1380,7 +1383,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
 
   Future<void> _openAiPlanner() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => TodoChatScreen(
           username: widget.username,
           todos: widget.todos.map((todo) => todo.toJson()).toList(),

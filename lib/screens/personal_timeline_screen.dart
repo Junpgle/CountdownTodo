@@ -18,6 +18,7 @@ import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
+import '../utils/page_transitions.dart';
 import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
@@ -464,7 +465,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     Navigator.push(
       context,
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (context) => MedalWallPage(
           recommendation: _allTimeRecommendation!,
           earnedThisSession: _earnedThisSession,

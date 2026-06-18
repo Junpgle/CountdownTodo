@@ -91,8 +91,8 @@ class MacosMenuBar extends StatelessWidget {
             ),
             PlatformMenuItem(
               label: '刷新',
-              shortcut: const SingleActivator(
-                  LogicalKeyboardKey.keyR, meta: true),
+              shortcut:
+                  const SingleActivator(LogicalKeyboardKey.keyR, meta: true),
               onSelected: _onRefresh,
             ),
             const PlatformMenuItemGroup(
@@ -141,8 +141,8 @@ class MacosMenuBar extends StatelessWidget {
                 ),
                 PlatformMenuItem(
                   label: '进入/退出全屏',
-                  shortcut: SingleActivator(
-                      LogicalKeyboardKey.keyF, meta: true, control: true),
+                  shortcut: SingleActivator(LogicalKeyboardKey.keyF,
+                      meta: true, control: true),
                   onSelected: _onToggleFullScreen,
                 ),
               ],
@@ -194,15 +194,14 @@ class MacosMenuBar extends StatelessWidget {
     }
     if (!context.mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => AddTodoScreen(
           onTodoAdded: (todo) async {
             final allTodos = await StorageService.getTodos(username);
             allTodos.add(todo);
             await StorageService.saveTodos(username, allTodos);
             if (todo.teamUuid != null) {
-              PomodoroSyncService.instance
-                  .sendTeamUpdateSignal(todo.teamUuid);
+              PomodoroSyncService.instance.sendTeamUpdateSignal(todo.teamUuid);
             }
           },
           onTodosBatchAdded: (todos) async {
@@ -293,8 +292,7 @@ class MacosMenuBar extends StatelessWidget {
                     prefixIcon: const Icon(Icons.groups_rounded),
                   ),
                   items: [
-                    const DropdownMenuItem(
-                        value: null, child: Text('仅自己可见')),
+                    const DropdownMenuItem(value: null, child: Text('仅自己可见')),
                     ...teams.map((t) => DropdownMenuItem(
                           value: t.uuid,
                           child: Text(t.name),
@@ -304,10 +302,7 @@ class MacosMenuBar extends StatelessWidget {
                     setDialogState(() {
                       selectedTeamUuid = val;
                       selectedTeamName = val != null
-                          ? teams
-                              .where((t) => t.uuid == val)
-                              .firstOrNull
-                              ?.name
+                          ? teams.where((t) => t.uuid == val).firstOrNull?.name
                           : null;
                     });
                   },

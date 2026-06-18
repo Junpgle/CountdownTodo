@@ -18,6 +18,7 @@ class _AnimSettings {
   static bool lazyLoad = true;
   static bool screenRadius = true;
   static bool layerBlur = false;
+  static bool motionBlur = false;
   static bool predictiveBack = true;
   static int duration = 500;
   static int pageLayerDepth = 60;
@@ -30,6 +31,7 @@ class _AnimSettings {
       lazyLoad = prefs.getBool('enable_lazy_load') ?? true;
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
       layerBlur = prefs.getBool('enable_layer_blur') ?? false;
+      motionBlur = prefs.getBool('enable_motion_blur') ?? false;
       predictiveBack = prefs.getBool('enable_predictive_back') ?? true;
       duration = prefs.getInt('animation_duration') ?? 500;
       pageLayerDepth = prefs.getInt('page_layer_depth') ?? 60;
@@ -54,6 +56,13 @@ class _AnimSettings {
 
   static double get backgroundBlur =>
       layerBlur ? _defaultPageLayerMaxBlur * depthFactor : 0.0;
+
+  static double motionBlurFor(double progress) {
+    if (!motionBlur) return 0.0;
+    final clamped = progress.clamp(0.0, 1.0);
+    final peak = 1.0 - ((clamped - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+    return 7.0 * peak;
+  }
 
   static double get contentStart {
     final value = containerContentStart / 100;
@@ -90,7 +99,7 @@ class PageTransitions {
       return null;
     }
     if (!_AnimSettings.enabled) {
-      return Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+      return Navigator.push(context, material(builder: (_) => page));
     }
 
     await Future.delayed(const Duration(milliseconds: 16));
@@ -101,7 +110,7 @@ class PageTransitions {
         sourceKey.currentContext?.findRenderObject() as RenderBox?;
 
     if (renderBox == null || renderBox.size.isEmpty) {
-      return Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+      return Navigator.push(context, material(builder: (_) => page));
     }
 
     final position = renderBox.localToGlobal(Offset.zero);
@@ -122,17 +131,55 @@ class PageTransitions {
     );
   }
 
+  static MaterialPageRoute<T> material<T>({
+    required WidgetBuilder builder,
+    RouteSettings? settings,
+    bool maintainState = true,
+    bool fullscreenDialog = false,
+    bool allowSnapshotting = true,
+  }) {
+    return _ConfiguredMaterialPageRoute<T>(
+      builder: builder,
+      settings: settings,
+      maintainState: maintainState,
+      fullscreenDialog: fullscreenDialog,
+      allowSnapshotting: allowSnapshotting,
+    );
+  }
+
   static Route<T> slideHorizontal<T>(Widget page, {RouteSettings? settings}) {
-    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideEnd, settings: settings);
+    return _SlideRoute<T>(
+        page: page, mode: _PageLayerRouteMode.slideEnd, settings: settings);
   }
 
   static Route<T> slideUp<T>(Widget page, {RouteSettings? settings}) {
-    return _SlideRoute<T>(page: page, mode: _PageLayerRouteMode.slideBottom, settings: settings);
+    return _SlideRoute<T>(
+        page: page, mode: _PageLayerRouteMode.slideBottom, settings: settings);
   }
 
   static Route<T> fadeThrough<T>(Widget page, {RouteSettings? settings}) {
     return _FadeRoute<T>(page: page, settings: settings);
   }
+}
+
+class _ConfiguredMaterialPageRoute<T> extends MaterialPageRoute<T> {
+  _ConfiguredMaterialPageRoute({
+    required super.builder,
+    super.settings,
+    super.maintainState,
+    super.fullscreenDialog,
+    super.allowSnapshotting,
+  });
+
+  @override
+  Duration get transitionDuration => _AnimSettings.enabled
+      ? Duration(milliseconds: _AnimSettings.duration)
+      : Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration => _AnimSettings.enabled
+      ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
+      : Duration.zero;
 }
 
 enum _PageLayerRouteMode {
@@ -294,6 +341,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   late double _bgBlur;
   late double _bgMask;
   late bool _useScreenRadius;
+  late bool _useMotionBlur;
 
   // Frame-skip cache.
   double _lastRoute = -1;
@@ -314,6 +362,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     _bgBlur = _AnimSettings.backgroundBlur;
     _bgMask = _AnimSettings.backgroundMask;
     _useScreenRadius = _AnimSettings.screenRadius;
+    _useMotionBlur = _AnimSettings.motionBlur;
   }
 
   @override
@@ -496,12 +545,13 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
             child: current,
           );
         }
-        return opacity < 1.0 - _epsilon
+        current = opacity < 1.0 - _epsilon
             ? FadeTransition(
                 opacity: AlwaysStoppedAnimation(opacity),
                 child: current,
               )
             : current;
+        return _withMotionBlur(current, eased);
       case _PageLayerRouteMode.slideEnd:
       case _PageLayerRouteMode.slideBottom:
         final isEnd = widget.mode == _PageLayerRouteMode.slideEnd;
@@ -514,20 +564,32 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
           );
         }
         final opacity = 0.9 + 0.1 * eased;
-        return opacity < 1.0 - _epsilon
+        current = opacity < 1.0 - _epsilon
             ? FadeTransition(
                 opacity: AlwaysStoppedAnimation(opacity),
                 child: current,
               )
             : current;
+        return _withMotionBlur(current, eased);
       case _PageLayerRouteMode.fade:
-        return eased < 1.0 - _epsilon
+        current = eased < 1.0 - _epsilon
             ? FadeTransition(
                 opacity: AlwaysStoppedAnimation(eased),
                 child: current,
               )
             : current;
+        return _withMotionBlur(current, eased);
     }
+  }
+
+  Widget _withMotionBlur(Widget child, double progress) {
+    if (!_useMotionBlur) return child;
+    final sigma = _AnimSettings.motionBlurFor(progress);
+    if (sigma <= 0.01) return child;
+    return ImageFiltered(
+      imageFilter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+      child: child,
+    );
   }
 }
 
@@ -548,9 +610,12 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     this.sourceBorderRadius = const BorderRadius.all(Radius.circular(16)),
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: Duration(milliseconds: _AnimSettings.duration),
-          reverseTransitionDuration:
-              Duration(milliseconds: (_AnimSettings.duration * 0.75).round()),
+          transitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: _AnimSettings.duration)
+              : Duration.zero,
+          reverseTransitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
+              : Duration.zero,
         );
 
   @override
@@ -560,6 +625,9 @@ class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (!_AnimSettings.enabled) {
+      return child;
+    }
     final transition = _ContainerTransformWidget(
       animation: animation,
       secondaryAnimation: secondaryAnimation,
@@ -755,13 +823,17 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
   final _PageLayerRouteMode mode;
 
+  // ignore: use_super_parameters
   _SlideRoute({required this.page, required this.mode, RouteSettings? settings})
       : super(
           settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: Duration(milliseconds: _AnimSettings.duration),
-          reverseTransitionDuration:
-              Duration(milliseconds: (_AnimSettings.duration * 0.75).round()),
+          transitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: _AnimSettings.duration)
+              : Duration.zero,
+          reverseTransitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: (_AnimSettings.duration * 0.75).round())
+              : Duration.zero,
         );
 
   @override
@@ -771,6 +843,9 @@ class _SlideRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (!_AnimSettings.enabled) {
+      return child;
+    }
     final transition = _SlideWidget(
       animation: animation,
       secondaryAnimation: secondaryAnimation,
@@ -834,13 +909,17 @@ class _SlideWidgetState extends State<_SlideWidget> {
 class _FadeRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
 
+  // ignore: use_super_parameters
   _FadeRoute({required this.page, RouteSettings? settings})
       : super(
           settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: Duration(milliseconds: _AnimSettings.duration),
-          reverseTransitionDuration:
-              Duration(milliseconds: _AnimSettings.duration),
+          transitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: _AnimSettings.duration)
+              : Duration.zero,
+          reverseTransitionDuration: _AnimSettings.enabled
+              ? Duration(milliseconds: _AnimSettings.duration)
+              : Duration.zero,
         );
 
   @override
@@ -850,6 +929,9 @@ class _FadeRoute<T> extends PageRouteBuilder<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    if (!_AnimSettings.enabled) {
+      return child;
+    }
     final transition = _PageLayerTransition(
       animation: animation,
       secondaryAnimation: secondaryAnimation,

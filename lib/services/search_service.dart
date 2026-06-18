@@ -1198,7 +1198,7 @@ class SearchNavigationHandler {
       if (context.mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
+          PageTransitions.material(
             builder: (_) => TodoEditScreen(
               todo: todo,
               todos: allTodos,
@@ -1254,7 +1254,7 @@ class SearchNavigationHandler {
         if (context.mounted) {
           Navigator.push(
               context,
-              MaterialPageRoute(
+              PageTransitions.material(
                   builder: (_) => CourseDetailScreen(course: course)));
         }
       }
@@ -1275,7 +1275,7 @@ class SearchNavigationHandler {
         Navigator.of(context).popUntil((route) => route.isFirst);
         Navigator.push(
             context,
-            MaterialPageRoute(
+            PageTransitions.material(
                 builder: (_) => TimeLogScreen(
                     username: username, initialTagUuid: tagUuid)));
       }
@@ -1296,7 +1296,7 @@ class SearchNavigationHandler {
         }
         Navigator.push(
             context,
-            MaterialPageRoute(
+            PageTransitions.material(
                 builder: (_) => AppDetailScreen(
                       appName: appName,
                       historyStats: history,

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../utils/theme_color_tokens.dart';
 import '../llm_config_page.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
@@ -81,16 +82,17 @@ class PreferenceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
           child: Text('偏好设置',
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.grey)),
+                  color: colorScheme.onSurfaceVariant)),
         ),
         Card(
           elevation: 2,
@@ -122,13 +124,13 @@ class PreferenceSection extends StatelessWidget {
                 context: context,
                 targetId: 'conflict_detection',
                 child: ListTile(
-                  leading: const Icon(Icons.warning_amber_outlined,
-                      color: Colors.orange),
+                  leading: Icon(Icons.warning_amber_outlined,
+                      color: colorScheme.cdtWarning),
                   title: const Text('冲突检测'),
                   subtitle: const Text('检测待办时间重叠；关闭后首页不弹冲突提醒'),
                   trailing: Switch(
                     value: conflictDetectionEnabled,
-                    activeThumbColor: Colors.orange,
+                    activeThumbColor: colorScheme.cdtWarning,
                     onChanged: onConflictDetectionChanged,
                   ),
                 ),
@@ -179,7 +181,8 @@ class PreferenceSection extends StatelessWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (themeColorMode == 'custom' || themeColorMode == 'image_extracted')
+                      if (themeColorMode == 'custom' ||
+                          themeColorMode == 'image_extracted')
                         GestureDetector(
                           onTap: onPickCustomThemeColor,
                           child: Container(
@@ -187,9 +190,10 @@ class PreferenceSection extends StatelessWidget {
                             height: 24,
                             margin: const EdgeInsets.only(right: 12),
                             decoration: BoxDecoration(
-                              color: customThemeColor ?? Theme.of(context).colorScheme.primary,
+                              color: customThemeColor ??
+                                  Theme.of(context).colorScheme.primary,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.grey.shade400),
+                              border: Border.all(color: colorScheme.outline),
                             ),
                           ),
                         ),
@@ -197,10 +201,15 @@ class PreferenceSection extends StatelessWidget {
                         value: themeColorMode,
                         underline: const SizedBox(),
                         items: const [
-                          DropdownMenuItem(value: 'default', child: Text('默认蓝色')),
-                          DropdownMenuItem(value: 'system_wallpaper', child: Text('跟随壁纸/系统')),
-                          DropdownMenuItem(value: 'image_extracted', child: Text('从图片提取')),
-                          DropdownMenuItem(value: 'custom', child: Text('自定义颜色')),
+                          DropdownMenuItem(
+                              value: 'default', child: Text('默认蓝色')),
+                          DropdownMenuItem(
+                              value: 'system_wallpaper',
+                              child: Text('跟随壁纸/系统')),
+                          DropdownMenuItem(
+                              value: 'image_extracted', child: Text('从图片提取')),
+                          DropdownMenuItem(
+                              value: 'custom', child: Text('自定义颜色')),
                         ],
                         onChanged: onThemeColorModeChanged,
                       ),
@@ -213,8 +222,8 @@ class PreferenceSection extends StatelessWidget {
                 context: context,
                 targetId: 'llm_config',
                 child: ListTile(
-                  leading: const Icon(Icons.psychology_outlined,
-                      color: Colors.deepPurple),
+                  leading: Icon(Icons.psychology_outlined,
+                      color: colorScheme.primary),
                   title: const Text('大模型API配置'),
                   subtitle: FutureBuilder<LLMConfig?>(
                     future: LLMService.getConfig(),
@@ -225,15 +234,16 @@ class PreferenceSection extends StatelessWidget {
                       }
                       final config = snapshot.data;
                       if (config == null || !config.isConfigured) {
-                        return const Text(
+                        return Text(
                           '未配置，用于AI智能解析待办',
-                          style: TextStyle(fontSize: 12, color: Colors.orange),
+                          style: TextStyle(
+                              fontSize: 12, color: colorScheme.cdtWarning),
                         );
                       }
                       return Text(
                         '已配置: ${config.model}',
-                        style:
-                            const TextStyle(fontSize: 12, color: Colors.green),
+                        style: TextStyle(
+                            fontSize: 12, color: colorScheme.cdtSuccess),
                       );
                     },
                   ),
@@ -256,8 +266,8 @@ class PreferenceSection extends StatelessWidget {
                 context: context,
                 targetId: 'llm_retry',
                 child: ListTile(
-                  leading: const Icon(Icons.refresh_outlined,
-                      color: Colors.deepPurple),
+                  leading:
+                      Icon(Icons.refresh_outlined, color: colorScheme.primary),
                   title: const Text('图片识别重试次数'),
                   subtitle: const Text('识别超时后自动重试的次数（后台异步执行）'),
                   trailing: DropdownButton<int>(
@@ -279,15 +289,15 @@ class PreferenceSection extends StatelessWidget {
                 context: context,
                 targetId: 'wallpaper',
                 child: ListTile(
-                  leading: const Icon(Icons.wallpaper_outlined,
-                      color: Colors.deepPurple),
+                  leading: Icon(Icons.wallpaper_outlined,
+                      color: colorScheme.primary),
                   title: const Text('首页壁纸设置'),
                   subtitle: const Text('来源切换、必应选项配置 (地区/分辨率/格式)'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
+                      PageTransitions.material(
                           builder: (context) => const WallpaperSettingsPage()),
                     );
                   },
@@ -298,15 +308,15 @@ class PreferenceSection extends StatelessWidget {
                 context: context,
                 targetId: 'home_text',
                 child: ListTile(
-                  leading: const Icon(Icons.text_fields,
-                      color: Colors.teal),
+                  leading:
+                      Icon(Icons.text_fields, color: colorScheme.secondary),
                   title: const Text('首页文字自定义'),
                   subtitle: const Text('自定义问候语、日期格式、用户名显示'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () async {
                     final result = await Navigator.push<bool>(
                       context,
-                      MaterialPageRoute(
+                      PageTransitions.material(
                           builder: (context) => const HomeTextConfigPage()),
                     );
                     if (result == true && context.mounted) {
@@ -322,7 +332,7 @@ class PreferenceSection extends StatelessWidget {
                   targetId: 'tai_db',
                   child: ListTile(
                     leading:
-                        const Icon(Icons.timer_outlined, color: Colors.indigo),
+                        Icon(Icons.timer_outlined, color: colorScheme.primary),
                     title: const Text('Tai 屏幕时间数据库'),
                     subtitle: Text(
                       taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : taiDbPath,
@@ -330,7 +340,9 @@ class PreferenceSection extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: taiDbPath.isEmpty ? Colors.orange : Colors.grey,
+                        color: taiDbPath.isEmpty
+                            ? colorScheme.cdtWarning
+                            : colorScheme.onSurfaceVariant,
                       ),
                     ),
                     trailing: const Icon(Icons.folder_open_outlined),
@@ -343,12 +355,12 @@ class PreferenceSection extends StatelessWidget {
                   targetId: 'float_window_style',
                   child: ListTile(
                     leading:
-                        const Icon(Icons.layers_outlined, color: Colors.indigo),
+                        Icon(Icons.layers_outlined, color: colorScheme.primary),
                     title: const Text('灵动岛'),
                     subtitle: const Text('开启灵动岛式浮动窗口'),
                     trailing: Switch(
                       value: floatWindowStyle != 2,
-                      activeThumbColor: Colors.indigo,
+                      activeThumbColor: colorScheme.primary,
                       onChanged: (val) {
                         if (onFloatWindowStyleChanged != null) {
                           onFloatWindowStyleChanged!(val ? 1 : 2);
@@ -362,7 +374,7 @@ class PreferenceSection extends StatelessWidget {
                   context: context,
                   targetId: 'force_refresh',
                   child: ListTile(
-                    leading: const Icon(Icons.refresh, color: Colors.indigo),
+                    leading: Icon(Icons.refresh, color: colorScheme.primary),
                     title: const Text('强制刷新悬浮窗位置'),
                     subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
                     trailing: TextButton(
@@ -378,7 +390,7 @@ class PreferenceSection extends StatelessWidget {
                     targetId: 'island_priority',
                     child: ListTile(
                       leading:
-                          const Icon(Icons.priority_high, color: Colors.indigo),
+                          Icon(Icons.priority_high, color: colorScheme.primary),
                       title: const Text('灵动岛优先级设置'),
                       subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
                       trailing: const Icon(Icons.chevron_right),

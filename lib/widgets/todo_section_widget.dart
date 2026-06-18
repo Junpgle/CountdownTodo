@@ -189,7 +189,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       context,
       username: widget.username,
       sourceKey: sourceKey,
-      todos: widget.todos.where((t) => !t.isDone && !_isHistoricalTodo(t)).toList(),
+      todos: widget.todos
+          .where((t) => !t.isDone && !_isHistoricalTodo(t))
+          .toList(),
       todoGroups: widget.todoGroups,
       courses: aiContext.courses,
       timeLogs: aiContext.timeLogs,
@@ -261,7 +263,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
 
   void showAddTodoDialog() {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => AddTodoScreen(
           todoGroups: widget.todoGroups,
           initialTeamUuid: _selectedSubTeamUuid, // 🚀 关键：穿透视口上下文，自动标记团队
@@ -842,7 +844,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     if (goToSettings == true &&
                                         context.mounted) {
                                       Navigator.of(context).push(
-                                        MaterialPageRoute(
+                                        PageTransitions.material(
                                           builder: (_) => const SettingsPage(),
                                         ),
                                       );
@@ -888,8 +890,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
-                                        originalText:
-                                            aiInputCtrl.text,
+                                        originalText: aiInputCtrl.text,
                                       );
                                     }).toList();
 
@@ -949,7 +950,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                             content: Text(
                                               "大模型解析成功，共${parsedResults.length}个待办",
                                             ),
-                                            duration: const Duration(seconds: 2),
+                                            duration:
+                                                const Duration(seconds: 2),
                                           ),
                                         );
                                       }
@@ -1018,7 +1020,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                     if (goToSettings == true &&
                                         context.mounted) {
                                       Navigator.of(context).push(
-                                        MaterialPageRoute(
+                                        PageTransitions.material(
                                           builder: (_) => const SettingsPage(),
                                         ),
                                       );
@@ -1385,7 +1387,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   /// 显示全屏图片预览
   void _showFullImage(BuildContext context, String imagePath) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
           appBar: AppBar(
@@ -1809,8 +1811,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             },
             child: Builder(
               builder: (cardCtx) => AnimatedBuilder(
-                animation: _completingAnimations[todo.id] ??
-                    _kIdleAnimation,
+                animation: _completingAnimations[todo.id] ?? _kIdleAnimation,
                 builder: (context, child) {
                   final anim = _completingAnimations[todo.id];
                   final isAnimating = anim != null && anim.isAnimating;
@@ -2140,15 +2141,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                               width: 4),
                                                           recurrenceIcon,
                                                         ],
-                                                        if (todo.hasConflict) ...[
+                                                        if (todo
+                                                            .hasConflict) ...[
                                                           const SizedBox(
                                                               width: 4),
                                                           Icon(
                                                             Icons
                                                                 .warning_amber_rounded,
                                                             size: 14,
-                                                            color: Colors
-                                                                .orange
+                                                            color: Colors.orange
                                                                 .shade400,
                                                           ),
                                                         ],
@@ -3374,7 +3375,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 isLight: widget.isLight,
                 onAction: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(
+                    PageTransitions.material(
                       builder: (_) => FolderManageScreen(
                         username: widget.username,
                         todoGroups: widget.todoGroups,
@@ -3401,7 +3402,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   onPressed: () async {
                     await Navigator.push(
                       context,
-                      MaterialPageRoute(
+                      PageTransitions.material(
                         builder: (_) =>
                             HistoricalTodosScreen(username: widget.username),
                       ),
@@ -4284,7 +4285,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (_isLoadingRecords) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 8),
-        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+        child: Center(
+            child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
 
@@ -4298,9 +4303,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         ..._focusRecords.take(20).map((r) {
-          final startLocal = DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
+          final startLocal =
+              DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true)
+                  .toLocal();
           final durationMin = r.effectiveDuration ~/ 60;
-          final statusIcon = r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+          final statusIcon = r.isCompleted
+              ? Icons.check_circle_rounded
+              : Icons.timer_off_rounded;
           final statusColor = r.isCompleted ? Colors.green : Colors.orange;
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
@@ -4315,7 +4324,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
+                  PageTransitions.material(
                     builder: (_) => PomodoroDetailScreen(
                       record: r,
                       tags: [],
@@ -4334,7 +4343,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       children: [
                         Text(
                           '${DateFormat('MM-dd HH:mm').format(startLocal)} · $durationMin 分钟',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                         if (r.note != null && r.note!.isNotEmpty) ...[
                           const SizedBox(height: 4),
@@ -4342,7 +4352,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                             r.note!,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[600]),
                           ),
                         ],
                       ],
@@ -4358,8 +4369,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             '仅显示最近 20 条',
             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
           ),
-        if (_focusRecords.isNotEmpty)
-          const SizedBox(height: 8),
+        if (_focusRecords.isNotEmpty) const SizedBox(height: 8),
       ],
     );
   }
@@ -4380,7 +4390,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               onPressed: () async {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(
+                  PageTransitions.material(
                     builder: (_) => TodoPlanScreen(
                       username: widget.username,
                       initialDate: DateTime.now(),
@@ -4440,39 +4450,39 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                           separatorBuilder: (context, index) =>
                               const Divider(height: 1),
                           itemBuilder: (context, index) {
-                        final plan = _relatedPlanBlocks[index];
-                        final start =
-                            DateTime.fromMillisecondsSinceEpoch(plan.startTime);
-                        final end =
-                            DateTime.fromMillisecondsSinceEpoch(plan.endTime);
-                        return ListTile(
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TodoPlanScreen(
-                                  username: widget.username,
-                                  initialDate: DateTime(
-                                      start.year, start.month, start.day),
-                                  initialTodoId: widget.todo.id,
-                                ),
+                            final plan = _relatedPlanBlocks[index];
+                            final start = DateTime.fromMillisecondsSinceEpoch(
+                                plan.startTime);
+                            final end = DateTime.fromMillisecondsSinceEpoch(
+                                plan.endTime);
+                            return ListTile(
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  PageTransitions.material(
+                                    builder: (_) => TodoPlanScreen(
+                                      username: widget.username,
+                                      initialDate: DateTime(
+                                          start.year, start.month, start.day),
+                                      initialTodoId: widget.todo.id,
+                                    ),
+                                  ),
+                                );
+                                _loadRelatedPlans();
+                              },
+                              leading: Icon(Icons.access_time_filled,
+                                  color: colorScheme.primary
+                                      .withValues(alpha: 0.7)),
+                              title: Text(
+                                "${DateFormat('MM-dd').format(start)} ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}",
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w500),
                               ),
+                              subtitle: Text("预计专注 ${plan.plannedMinutes} 分钟"),
+                              trailing: const Icon(Icons.chevron_right,
+                                  size: 20, color: Colors.grey),
                             );
-                            _loadRelatedPlans();
                           },
-                          leading: Icon(Icons.access_time_filled,
-                              color:
-                                  colorScheme.primary.withValues(alpha: 0.7)),
-                          title: Text(
-                            "${DateFormat('MM-dd').format(start)} ${DateFormat('HH:mm').format(start)} - ${DateFormat('HH:mm').format(end)}",
-                            style: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text("预计专注 ${plan.plannedMinutes} 分钟"),
-                          trailing: const Icon(Icons.chevron_right,
-                              size: 20, color: Colors.grey),
-                        );
-                      },
                         ),
                       ],
                     ),
@@ -4485,13 +4495,18 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Widget _buildPlanBlockSummary(ColorScheme colorScheme) {
     final blocks = _relatedPlanBlocks;
     final planned = blocks.fold<int>(0, (s, b) => s + b.plannedMinutes);
-    final actual = blocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
-    final done = blocks.where((b) =>
-        b.status == TodoPlanStatus.finished ||
-        (b.plannedMinutes > 0 &&
-            b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.9)).length;
-    final missed = blocks.where((b) => b.status == TodoPlanStatus.missed).length;
-    final skipped = blocks.where((b) => b.status == TodoPlanStatus.skipped).length;
+    final actual =
+        blocks.fold<int>(0, (s, b) => s + b.actualFocusSeconds ~/ 60);
+    final done = blocks
+        .where((b) =>
+            b.status == TodoPlanStatus.finished ||
+            (b.plannedMinutes > 0 &&
+                b.actualFocusSeconds >= b.plannedMinutes * 60 * 0.9))
+        .length;
+    final missed =
+        blocks.where((b) => b.status == TodoPlanStatus.missed).length;
+    final skipped =
+        blocks.where((b) => b.status == TodoPlanStatus.skipped).length;
     final rate = planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
 
     Widget chip(String label, String value, Color color) {
@@ -4507,9 +4522,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             children: [
               Text(value,
                   style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14)),
+                      color: color, fontWeight: FontWeight.w800, fontSize: 14)),
               Text(label,
                   style: TextStyle(
                       color: colorScheme.onSurface.withValues(alpha: 0.5),
@@ -4525,7 +4538,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       const SizedBox(width: 6),
       chip('实际', '${actual}m', Colors.green),
       const SizedBox(width: 6),
-      chip('达成', '${(rate * 100).round()}%', Theme.of(context).colorScheme.primary),
+      chip('达成', '${(rate * 100).round()}%',
+          Theme.of(context).colorScheme.primary),
       const SizedBox(width: 6),
       chip('完成', '$done', Colors.teal),
       const SizedBox(width: 6),
@@ -4729,7 +4743,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   void _showFullImage(BuildContext context, String imagePath) {
     Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
           appBar: AppBar(

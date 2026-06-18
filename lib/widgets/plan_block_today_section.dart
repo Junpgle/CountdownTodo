@@ -7,6 +7,7 @@ import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../screens/todo_plan_screen.dart';
 import '../screens/plan_block_stats_screen.dart';
+import '../utils/page_transitions.dart';
 
 class PlanBlockTodaySection extends StatefulWidget {
   final String username;
@@ -196,7 +197,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
     return GestureDetector(
       onTap: widget.onTap ??
           () => Navigator.of(context).push(
-                MaterialPageRoute(
+                PageTransitions.material(
                   builder: (_) => TodoPlanScreen(username: widget.username),
                 ),
               ),
@@ -279,7 +280,7 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
               size: 20, color: theme.colorScheme.onSurfaceVariant),
           tooltip: '规划统计',
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            PageTransitions.material(
               builder: (_) => PlanBlockStatsScreen(username: widget.username),
             ),
           ),
@@ -488,7 +489,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
       case PomodoroRecordStatus.interrupted:
         return (Icons.warning_amber_rounded, Colors.orange);
       case PomodoroRecordStatus.switched:
-        return (Icons.swap_horiz_rounded, Theme.of(context).colorScheme.primary);
+        return (
+          Icons.swap_horiz_rounded,
+          Theme.of(context).colorScheme.primary
+        );
     }
   }
 
