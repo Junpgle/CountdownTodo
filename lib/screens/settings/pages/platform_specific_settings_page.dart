@@ -9,19 +9,27 @@ import '../../../storage_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../services/island_data_provider.dart';
 import '../../../windows_island/island_manager.dart';
+import '../../../utils/app_dialogs.dart';
+import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_state_views.dart';
 import '../dialogs/island_priority_dialog.dart';
 
 class PlatformSpecificSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PlatformSpecificSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+  const PlatformSpecificSettingsPage(
+      {super.key, this.initialTarget, this.isEmbedded = false});
 
   @override
-  State<PlatformSpecificSettingsPage> createState() => _PlatformSpecificSettingsPageState();
+  State<PlatformSpecificSettingsPage> createState() =>
+      _PlatformSpecificSettingsPageState();
 }
 
-class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsPage> {
-  static const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+class _PlatformSpecificSettingsPageState
+    extends State<PlatformSpecificSettingsPage> {
+  static const platform =
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
 
   final Map<String, GlobalKey> _itemKeys = {
     'float_window_style': GlobalKey(),
@@ -80,7 +88,8 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
       }
       style = style == 0 ? (prefs.getInt('float_window_style') ?? 0) : style;
 
-      final taiPath = await TaiService.getSavedDbPath() ?? await TaiService.detectDefaultPath();
+      final taiPath = await TaiService.getSavedDbPath() ??
+          await TaiService.detectDefaultPath();
       if (taiPath != null) await TaiService.saveDbPath(taiPath);
 
       if (mounted) {
@@ -93,19 +102,12 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
   }
 
   Widget _buildTile({required String targetId, required Widget child}) {
-    final bool isHighlighted = _highlightTarget == targetId;
-    return Container(
-      key: _itemKeys[targetId],
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-        decoration: BoxDecoration(
-          color: isHighlighted
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-        ),
-        child: child,
-      ),
+    return AppSettingsHighlightedTile(
+      targetId: targetId,
+      highlightTarget: _highlightTarget,
+      itemKeys: _itemKeys,
+      borderRadius: BorderRadius.zero,
+      child: child,
     );
   }
 
@@ -123,7 +125,7 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
 
     if (!valid) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 无效的 Tai 数据库文件')));
+        AppSnackBars.error(context, '❌ 无效的 Tai 数据库文件');
       }
       return;
     }
@@ -132,7 +134,7 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
     setState(() => _taiDbPath = path);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 数据库路径已保存')));
+      AppSnackBars.success(context, '✅ 数据库路径已保存');
     }
   }
 
@@ -143,7 +145,7 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
     );
     if (changed == true) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 灵动岛优先级已更新')));
+        AppSnackBars.success(context, '✅ 灵动岛优先级已更新');
       }
       FloatWindowService.invalidateCache();
       Future.delayed(const Duration(milliseconds: 300), () async {
@@ -160,16 +162,16 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
   // --- Android Methods ---
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
-      final bool hasPermission = await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
+      final bool hasPermission =
+          await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
       if (!hasPermission) {
         setState(() => _liveUpdatesStatus = "权限未开启，尝试跳转设置...");
-        final bool opened = await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
+        final bool opened =
+            await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
 
         if (opened) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请在设置中打开"推广的通知/实时更新"权限'), duration: Duration(seconds: 3)),
-          );
+          AppSnackBars.warning(context, '请在设置中打开"推广的通知/实时更新"权限');
         } else {
           setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
         }
@@ -198,70 +200,66 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
 
   @override
   Widget build(BuildContext context) {
-    final String pageTitle = Platform.isWindows ? 'Windows 专属设置' : (Platform.isAndroid ? 'Android 专属整合' : '平台专属设置');
+    final colorScheme = Theme.of(context).colorScheme;
+    final String pageTitle = Platform.isWindows
+        ? 'Windows 专属设置'
+        : (Platform.isAndroid ? 'Android 专属整合' : '平台专属设置');
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: Text(pageTitle),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: Text(pageTitle),
+            ),
       body: ListView(
         children: [
           if (!Platform.isWindows && !Platform.isAndroid) ...[
-            Container(
-              padding: const EdgeInsets.only(top: 100, left: 32, right: 32),
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.stars_rounded, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '当前平台无专属设置',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '您的设备正在以最佳状态运行该应用，无需任何额外配置即可享受全部核心功能。',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
+            const AppEmptyState(
+              icon: Icons.stars_rounded,
+              title: '当前平台无专属设置',
+              message: '您的设备正在以最佳状态运行该应用，无需任何额外配置即可享受全部核心功能。',
+              padding: EdgeInsets.only(top: 100, left: 32, right: 32),
             ),
           ],
           if (Platform.isWindows) ...[
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
-              child: Text('屏幕时间统计', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const AppSettingsSectionHeader(
+              title: '屏幕时间统计',
+              padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),
             ),
             _buildTile(
               targetId: 'tai_db',
               child: ListTile(
-                leading: const Icon(Icons.timer_outlined, color: Colors.indigo),
+                leading: Icon(Icons.timer_outlined, color: colorScheme.primary),
                 title: const Text('Tai 屏幕时间数据库'),
                 subtitle: Text(
                   _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: _taiDbPath.isEmpty ? Colors.orange : Colors.grey),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _taiDbPath.isEmpty
+                        ? colorScheme.cdtWarning
+                        : colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 trailing: const Icon(Icons.folder_open_outlined),
                 onTap: _pickTaiDatabase,
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-              child: Text('桌面挂件设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const AppSettingsSectionHeader(
+              title: '桌面挂件设置',
+              padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
             ),
             _buildTile(
               targetId: 'float_window_style',
               child: ListTile(
-                leading: const Icon(Icons.layers_outlined, color: Colors.indigo),
+                leading:
+                    Icon(Icons.layers_outlined, color: colorScheme.primary),
                 title: const Text('桌面灵动岛'),
                 subtitle: const Text('开启灵动岛式浮动窗口'),
                 trailing: Switch(
                   value: _floatWindowStyle != 2,
-                  activeThumbColor: Colors.indigo,
+                  activeThumbColor: colorScheme.primary,
                   onChanged: (val) async {
                     int newStyle = val ? 1 : 2;
                     setState(() => _floatWindowStyle = newStyle);
@@ -271,26 +269,32 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
                       try {
                         IslandDataProvider().invalidateCache();
                         IslandManager().clearIslandCache('island-1');
-                      } catch (e) {}
+                      } catch (_) {
+                        // Ignore cleanup failures; the setting value was saved.
+                      }
                     } else {
                       try {
                         IslandDataProvider().invalidateCache();
                         IslandManager().clearIslandCache('island-1');
                         await IslandManager().createIsland('island-1');
-                      } catch (e) {}
+                      } catch (_) {
+                        // Ignore stale island window errors during style changes.
+                      }
                       try {
                         await FloatWindowService.update(forceReset: true);
-                      } catch (e) {}
+                      } catch (_) {
+                        // The next island refresh will retry if this update fails.
+                      }
                     }
                   },
                 ),
               ),
             ),
-            const Divider(height: 1, indent: 72),
+            const AppSettingsDivider(indent: 72),
             _buildTile(
               targetId: 'force_refresh',
               child: ListTile(
-                leading: const Icon(Icons.refresh, color: Colors.indigo),
+                leading: Icon(Icons.refresh, color: colorScheme.primary),
                 title: const Text('强制刷新悬浮窗位置'),
                 subtitle: const Text('将灵动岛悬浮窗重置到屏幕中央'),
                 trailing: TextButton(
@@ -313,11 +317,12 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
               ),
             ),
             if (_floatWindowStyle != 2) ...[
-              const Divider(height: 1, indent: 72),
+              const AppSettingsDivider(indent: 72),
               _buildTile(
                 targetId: 'island_priority',
                 child: ListTile(
-                  leading: const Icon(Icons.priority_high, color: Colors.indigo),
+                  leading:
+                      Icon(Icons.priority_high, color: colorScheme.primary),
                   title: const Text('灵动岛优先级设置'),
                   subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
                   trailing: const Icon(Icons.chevron_right),
@@ -326,29 +331,38 @@ class _PlatformSpecificSettingsPageState extends State<PlatformSpecificSettingsP
               ),
             ],
           ],
-
           if (Platform.isAndroid) ...[
-            const Padding(
-              padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
-              child: Text('Android 系统特性', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const AppSettingsSectionHeader(
+              title: 'Android 系统特性',
+              padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),
             ),
             _buildTile(
               targetId: 'live_updates',
               child: ListTile(
-                leading: const Icon(Icons.update, color: Colors.green),
+                leading: Icon(Icons.update, color: colorScheme.cdtSuccess),
                 title: const Text('Android 16 实时活动 (Live Updates)'),
-                subtitle: Text(_liveUpdatesStatus, style: TextStyle(color: _liveUpdatesStatus.contains('✅') ? Colors.green : Colors.orange, fontSize: 12)),
+                subtitle: Text(_liveUpdatesStatus,
+                    style: TextStyle(
+                        color: _liveUpdatesStatus.contains('✅')
+                            ? colorScheme.cdtSuccess
+                            : colorScheme.cdtWarning,
+                        fontSize: 12)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _checkAndOpenLiveUpdates,
               ),
             ),
-            const Divider(height: 1, indent: 72),
+            const AppSettingsDivider(indent: 72),
             _buildTile(
               targetId: 'island_support',
               child: ListTile(
-                leading: const Icon(Icons.phone_android, color: Colors.blue),
+                leading: Icon(Icons.phone_android, color: colorScheme.primary),
                 title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
-                subtitle: Text(_islandStatus, style: TextStyle(color: _islandStatus.contains('✅') ? Colors.green : Colors.orange, fontSize: 12)),
+                subtitle: Text(_islandStatus,
+                    style: TextStyle(
+                        color: _islandStatus.contains('✅')
+                            ? colorScheme.cdtSuccess
+                            : colorScheme.cdtWarning,
+                        fontSize: 12)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _checkIslandSupport,
               ),

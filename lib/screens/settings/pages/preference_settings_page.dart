@@ -478,16 +478,17 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       }
       if (!foundSlot) {
         final hour = now.hour;
-        if (hour >= 5 && hour < 12)
+        if (hour >= 5 && hour < 12) {
           salutation = '上午好';
-        else if (hour >= 12 && hour < 14)
+        } else if (hour >= 12 && hour < 14) {
           salutation = '中午好';
-        else if (hour >= 14 && hour < 18)
+        } else if (hour >= 14 && hour < 18) {
           salutation = '下午好';
-        else if (hour >= 18 && hour < 23)
+        } else if (hour >= 18 && hour < 23) {
           salutation = '晚上好';
-        else
+        } else {
           salutation = '夜深了';
+        }
       }
     }
 
@@ -810,8 +811,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     if (isMobile) {
       displayColors = [Colors.blue, Colors.purple, Colors.orange, Colors.green];
       if (_themeColorMode == 'custom' && _customThemeColor != null) {
-        if (allPresetColors.any((c) => c.value == _customThemeColor!.value)) {
-          if (!displayColors.any((c) => c.value == _customThemeColor!.value)) {
+        final customArgb = _customThemeColor!.toARGB32();
+        if (allPresetColors.any((c) => c.toARGB32() == customArgb)) {
+          if (!displayColors.any((c) => c.toARGB32() == customArgb)) {
             displayColors[3] = _customThemeColor!;
           }
         }
@@ -877,10 +879,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       isSelected = _themeColorMode == 'app_wallpaper';
     } else if (mode == 'custom' && color != null) {
       isSelected = (_themeColorMode == 'custom') &&
-          _customThemeColor?.value == color.value;
+          _customThemeColor?.toARGB32() == color.toARGB32();
     } else if (mode == 'custom_picker') {
+      final customArgb = _customThemeColor?.toARGB32();
       isSelected = (_themeColorMode == 'custom') &&
-          !displayColors.any((c) => c.value == _customThemeColor?.value);
+          !displayColors.any((c) => c.toARGB32() == customArgb);
     } else if (mode == 'image_extracted') {
       isSelected = _themeColorMode == 'image_extracted';
     }

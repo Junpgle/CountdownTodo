@@ -1441,15 +1441,17 @@ class _DayGridViewState extends State<_DayGridView> {
     final totalMin = logMin + pomMin;
 
     final Map<String, int> tagMinMap = {};
-    for (final l in dLogs)
+    for (final l in dLogs) {
       for (final uid in l.tagUuids) {
         tagMinMap[uid] =
             (tagMinMap[uid] ?? 0) + (l.endTime - l.startTime) ~/ 60000;
       }
-    for (final p in dPoms)
+    }
+    for (final p in dPoms) {
       for (final uid in p.tagUuids) {
         tagMinMap[uid] = (tagMinMap[uid] ?? 0) + p.effectiveDuration ~/ 60;
       }
+    }
 
     return Column(children: [
       _buildSummary(context, totalMin, logMin, pomMin, tagMinMap),
@@ -1926,10 +1928,11 @@ class _GridBgPainter extends CustomPainter {
       final Paint p;
       if (c % kColsPerH == 0) {
         p = colHour;
-      } else if (c % 5 == 0)
+      } else if (c % 5 == 0) {
         p = colHalf;
-      else
+      } else {
         p = colCell;
+      }
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
     }
 

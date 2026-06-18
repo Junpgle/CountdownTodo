@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../utils/theme_color_tokens.dart';
+import '../../../widgets/app_settings_widgets.dart';
+import '../../../widgets/app_state_views.dart';
 
 class PermissionSection extends StatelessWidget {
   final List<Map<String, dynamic>> permissionDefs;
@@ -20,27 +23,12 @@ class PermissionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (!Platform.isAndroid && !Platform.isIOS) {
-      return Container(
-        padding: const EdgeInsets.all(32),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.shield_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            const Text(
-              '桌面端无需管理权限',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '当前平台 (macOS / Windows / Linux) 的系统权限由底层自动分配和托管，您无需在此手动授权。',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ],
-        ),
+      return const AppEmptyState(
+        icon: Icons.shield_outlined,
+        title: '桌面端无需管理权限',
+        message: '当前平台 (macOS / Windows / Linux) 的系统权限由底层自动分配和托管，您无需在此手动授权。',
       );
     }
 
@@ -56,66 +44,46 @@ class PermissionSection extends StatelessWidget {
           s != PermissionStatus.limited;
     }).length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
-          child: Row(
-            children: [
-              const Text('权限管理',
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey)),
-              const SizedBox(width: 8),
-              if (permissionStatuses.isNotEmpty)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: allGranted
-                        ? Colors.green.withValues(alpha: 0.12)
-                        : Colors.orange.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    allGranted ? '全部已授权' : '$undoneCount 项未授权',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: allGranted ? Colors.green : Colors.orange,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ),
-              const Spacer(),
-              GestureDetector(
-                onTap: isCheckingPermissions ? null : onCheckAllPermissions,
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: isCheckingPermissions
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.refresh, size: 18, color: Colors.grey),
+    final statusColor =
+        allGranted ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+
+    return AppSettingsSection(
+      title: '权限管理',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (permissionStatuses.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                allGranted ? '全部已授权' : '$undoneCount 项未授权',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: statusColor,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+            ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: isCheckingPermissions ? null : onCheckAllPermissions,
+            visualDensity: VisualDensity.compact,
+            icon: isCheckingPermissions
+                ? const AppLoadingIndicator(size: 16)
+                : Icon(Icons.refresh,
+                    size: 18, color: colorScheme.onSurfaceVariant),
           ),
-        ),
-        Card(
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: [
-              for (int i = 0; i < permissionDefs.length; i++) ...[
-                if (i > 0) const Divider(height: 1, indent: 56),
-                _buildPermissionTile(context, permissionDefs[i]),
-              ],
-            ],
-          ),
-        ),
+        ],
+      ),
+      children: [
+        for (int i = 0; i < permissionDefs.length; i++) ...[
+          if (i > 0) const AppSettingsDivider(),
+          _buildPermissionTile(context, permissionDefs[i]),
+        ],
       ],
     );
   }
@@ -125,8 +93,9 @@ class PermissionSection extends StatelessWidget {
     final String label = def['label'] as String;
     final String desc = def['desc'] as String;
     final IconData icon = def['icon'] as IconData;
-    final Color color = def['color'] as Color;
     final bool critical = def['critical'] as bool;
+    final colorScheme = Theme.of(context).colorScheme;
+    final Color color = _permissionColor(colorScheme, key, critical);
 
     final PermissionStatus? status = permissionStatuses[key];
     final bool granted = status == PermissionStatus.granted ||
@@ -136,30 +105,27 @@ class PermissionSection extends StatelessWidget {
     Widget statusIcon;
     if (isCheckingPermissions && status == null) {
       statusIcon = const SizedBox(
-          key: ValueKey('checking'),
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2));
+          key: ValueKey('checking'), child: AppLoadingIndicator(size: 18));
     } else if (status == null) {
-      statusIcon = const Icon(
+      statusIcon = Icon(
         Icons.help_outline,
-        key: ValueKey('unknown'),
+        key: const ValueKey('unknown'),
         size: 20,
-        color: Colors.grey,
+        color: colorScheme.onSurfaceVariant,
       );
     } else if (granted) {
-      statusIcon = const Icon(
+      statusIcon = Icon(
         Icons.check_circle,
-        key: ValueKey('granted'),
+        key: const ValueKey('granted'),
         size: 20,
-        color: Colors.green,
+        color: colorScheme.cdtSuccess,
       );
     } else {
       statusIcon = Icon(
         critical ? Icons.error : Icons.warning_amber_rounded,
         key: ValueKey('denied_${critical ? 'critical' : 'warning'}'),
         size: 20,
-        color: critical ? Colors.redAccent : Colors.orange,
+        color: critical ? colorScheme.error : colorScheme.cdtWarning,
       );
     }
 
@@ -180,19 +146,19 @@ class PermissionSection extends StatelessWidget {
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: denied && critical ? Colors.redAccent : null)),
+                  color: denied && critical ? colorScheme.error : null)),
           if (critical) ...[
             const SizedBox(width: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: Colors.redAccent.withValues(alpha: 0.1),
+                color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Text('必要',
+              child: Text('必要',
                   style: TextStyle(
                       fontSize: 10,
-                      color: Colors.redAccent,
+                      color: colorScheme.onErrorContainer,
                       fontWeight: FontWeight.bold)),
             ),
           ],
@@ -224,5 +190,15 @@ class PermissionSection extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _permissionColor(ColorScheme colorScheme, String key, bool isCritical) {
+    if (isCritical) return colorScheme.error;
+    return switch (key) {
+      'storage' => colorScheme.secondary,
+      'usage_stats' => colorScheme.tertiary,
+      'request_install' => colorScheme.cdtInfo,
+      _ => colorScheme.primary,
+    };
   }
 }

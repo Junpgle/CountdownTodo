@@ -93,8 +93,9 @@ class CourseMonthView extends StatelessWidget {
                 .toLocal();
             bool isCrossDay =
                 t.dueDate != null && !DateUtils.isSameDay(start, t.dueDate!);
-            if (isCrossDay && activeDataViews.contains('hideCrossDay'))
+            if (isCrossDay && activeDataViews.contains('hideCrossDay')) {
               return false;
+            }
             return true;
           }).toList()
         : [];

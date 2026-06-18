@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 
-import '../utils/app_color_utils.dart';
 import '../services/pomodoro_service.dart';
 
 // ============================================================
@@ -33,7 +32,6 @@ class PomodoroTodaySection extends StatefulWidget {
 class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     with SingleTickerProviderStateMixin {
   List<PomodoroRecord> _records = [];
-  List<PomodoroTag> _tags = [];
   bool _loading = true;
   bool _collapsed = false;
   bool _isToday = true;
@@ -68,11 +66,9 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     if (!mounted) return;
     setState(() => _loading = true);
     final result = await PomodoroService.getRecentRecords();
-    final tags = await PomodoroService.getTags();
     if (mounted) {
       setState(() {
         _records = result.records;
-        _tags = tags;
         _isToday = result.isToday;
         _loading = false;
       });
@@ -373,162 +369,4 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       ),
     );
   }
-
-  // ==========================================
-  // 标签时间分布统计
-  // ==========================================
-  Widget _buildTagStatistics(Color? subColor) {
-    Map<String, int> tagSeconds = {};
-    int untaggedSeconds = 0;
-
-    for (var r in _records) {
-      if (r.tagUuids.isEmpty) {
-        untaggedSeconds += r.effectiveDuration;
-      } else {
-        final durationPerTag = r.effectiveDuration ~/ r.tagUuids.length;
-        for (var uuid in r.tagUuids) {
-          tagSeconds[uuid] = (tagSeconds[uuid] ?? 0) + durationPerTag;
-        }
-      }
-    }
-
-    List<MapEntry<String, int>> sortedTags = tagSeconds.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: widget.isLight
-                ? Colors.white.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
-            ],
-            border: widget.isLight
-                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('专注项目',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: widget.isLight
-                          ? Colors.white70
-                          : Theme.of(context).colorScheme.outline)),
-              const SizedBox(height: 16),
-              if (sortedTags.isEmpty && untaggedSeconds == 0)
-                Text('暂无数据', style: TextStyle(color: subColor, fontSize: 13)),
-              ...sortedTags.map((entry) {
-                final tag = _tags.cast<PomodoroTag?>().firstWhere(
-                      (t) => t?.uuid == entry.key,
-                      orElse: () => null,
-                    );
-                if (tag == null) return const SizedBox.shrink();
-
-                return _buildTagStatRow(
-                  name: tag.name,
-                  colorHex: tag.color,
-                  seconds: entry.value,
-                  totalSeconds: _totalSeconds,
-                  subColor: subColor,
-                );
-              }),
-              if (untaggedSeconds > 0)
-                _buildTagStatRow(
-                  name: '未分类',
-                  colorHex: '#9E9E9E',
-                  seconds: untaggedSeconds,
-                  totalSeconds: _totalSeconds,
-                  subColor: subColor,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTagStatRow({
-    required String name,
-    required String colorHex,
-    required int seconds,
-    required int totalSeconds,
-    required Color? subColor,
-  }) {
-    final color = _hexToColor(colorHex);
-    final percent = totalSeconds > 0 ? (seconds / totalSeconds) : 0.0;
-    final textColor = widget.isLight ? Colors.white : null;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration:
-                BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [
-              BoxShadow(
-                  color: color.withValues(alpha: 0.4),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2))
-            ]),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            flex: 2,
-            child: Text(
-              name,
-              style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w500, color: textColor),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: percent,
-                backgroundColor: color.withValues(alpha: 0.15),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
-                minHeight: 8,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 50,
-            child: Text(
-              PomodoroService.formatDuration(seconds),
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w700, color: textColor),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _hexToColor(String hex) {
-  return AppColorUtils.hexToColor(
-    hex,
-    fallback: const Color(0xFF607D8B),
-  );
 }

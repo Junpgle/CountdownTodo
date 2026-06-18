@@ -13,9 +13,6 @@ import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
-import '../widgets/team_heatmap_widget.dart';
-import '../widgets/team_gantt_widget.dart';
-import '../utils/timezone_utils.dart';
 import '../utils/theme_color_tokens.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
@@ -79,8 +76,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   int _viewMode = 0; // 0: 1周, 1: 2周, 2: 1个月
   DateTime _selectedMonth = DateTime.now();
   List<CourseItem> _allCourses = [];
-  final double _baseScale = 1.0;
-  final double _currentScale = 1.0;
   bool _isNextSlide = true;
   double _dragOffset = 0.0; // 实时跟踪滑动位移
   DateTime? _selectedMonthDay; // 平板模式下月视图选中的日期
@@ -152,7 +147,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   }
 
   DateTime? _lastModeSwitch;
-  final double _lastScale = 1.0;
 
   @override
   void dispose() {
@@ -3381,14 +3375,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     );
   }
 
-  String _safeStr(String? s) {
-    if (s == null) return '';
-    return s.replaceAll(
-        RegExp(
-            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
-        '');
-  }
-
   void _showDayDetailSheet(DateTime day) {
     showModalBottomSheet(
       context: context,
@@ -3403,305 +3389,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           child: _buildMonthDaySidebar(day),
-        ),
-      ),
-    );
-  }
-
-  void _showTodoDetails(TodoItem todo) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    DateTime startTime = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(
-                color: colorScheme.shadow.withValues(alpha: 0.1),
-                blurRadius: 20,
-                offset: const Offset(0, -5))
-          ],
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  Container(
-                      width: 4,
-                      height: 24,
-                      decoration: BoxDecoration(
-                          color: todo.isDone
-                              ? colorScheme.cdtSuccess
-                              : colorScheme.cdtWarning,
-                          borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(width: 12),
-                  const Text("任务详情",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                          context,
-                          PageTransitions.slideHorizontal(
-                              TodoDetailScreen(todo: todo)));
-                    },
-                    tooltip: '详情页',
-                  ),
-                  IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(_safeStr(todo.title),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    decoration: todo.isDone ? TextDecoration.lineThrough : null,
-                    color: todo.isDone ? colorScheme.cdtDisabled : null,
-                  )),
-              const SizedBox(height: 16),
-              if (todo.remark != null && todo.remark!.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.42),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                  ),
-                  child: Text(_safeStr(todo.remark!),
-                      style: TextStyle(
-                          fontSize: 15,
-                          color: colorScheme.onSurface,
-                          height: 1.5)),
-                ),
-              Wrap(
-                spacing: 16,
-                runSpacing: 20,
-                children: [
-                  _buildDetailItem(
-                      Icons.flag_rounded, "任务状态", todo.isDone ? "已完成" : "进行中",
-                      color: todo.isDone
-                          ? colorScheme.cdtSuccess
-                          : colorScheme.cdtWarning),
-                  _buildDetailItem(
-                      Icons.calendar_today_rounded,
-                      "截止日期",
-                      todo.dueDate != null
-                          ? TimezoneUtils.getRelativeTime(
-                              todo.dueDate!.millisecondsSinceEpoch)
-                          : "未设置",
-                      color: (todo.dueDate != null &&
-                              !todo.isDone &&
-                              todo.dueDate!.isBefore(DateTime.now()))
-                          ? colorScheme.error
-                          : null),
-                  _buildDetailItem(Icons.schedule_rounded, "开始时间",
-                      DateFormat('MM-dd HH:mm').format(startTime)),
-                  if (todo.recurrence != RecurrenceType.none)
-                    _buildDetailItem(Icons.repeat_rounded, "重复模式",
-                        _getRecurrenceLabel(todo.recurrence)),
-                  _buildDetailItem(
-                      Icons.group_rounded, "所属团队", todo.teamName ?? "个人任务",
-                      color:
-                          todo.teamUuid != null ? colorScheme.primary : null),
-                  if (todo.creatorName != null)
-                    _buildDetailItem(
-                        Icons.person_outline_rounded, "创建人", todo.creatorName!),
-                  if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                    _buildDetailItem(Icons.notifications_active_rounded, "提醒设置",
-                        "提前 ${todo.reminderMinutes} 分钟"),
-                ],
-              ),
-              if (todo.imagePath != null && todo.imagePath!.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text("附件图片",
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.file(
-                    File(todo.imagePath!),
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (ctx, err, stack) => const SizedBox.shrink(),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getRecurrenceLabel(RecurrenceType type) {
-    switch (type) {
-      case RecurrenceType.daily:
-        return "每天";
-      case RecurrenceType.weekly:
-        return "每周";
-      case RecurrenceType.monthly:
-        return "每月";
-      case RecurrenceType.yearly:
-        return "每年";
-      case RecurrenceType.weekdays:
-        return "工作日";
-      case RecurrenceType.customDays:
-        return "自定义天数";
-      default:
-        return "不重复";
-    }
-  }
-
-  Widget _buildDetailItem(IconData icon, String label, String value,
-      {Color? color}) {
-    return SizedBox(
-      width: 140,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon,
-                  size: 14,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPanoramaContent() {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      color: colorScheme.surface,
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                      color: colorScheme.shadow.withValues(alpha: 0.04),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10))
-                ],
-              ),
-              child: Column(
-                children: [
-                  TeamHeatmapWidget(todos: _allTodos, viewDays: 35),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Divider(indent: 16, endIndent: 16)),
-                  TeamGanttWidget(
-                    todos: _allTodos,
-                    viewDays: 30,
-                    onTodoTap: _showTodoDetails,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _buildPanoStatStat("全量待办", "${_allTodos.length}",
-                      Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 12),
-                  _buildPanoStatStat(
-                      "团队协作",
-                      "${_allTodos.where((t) => t.teamUuid != null).length}",
-                      colorScheme.secondary),
-                ],
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPanoStatStat(String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11, color: color, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-          ],
         ),
       ),
     );
@@ -3826,8 +3513,6 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
         return '工作日';
       case RecurrenceType.customDays:
         return '每 ${todo.customIntervalDays} 天';
-      default:
-        return '未知';
     }
   }
 
