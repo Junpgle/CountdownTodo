@@ -162,10 +162,22 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (_extractedWallpaperUrl == url) return;
     _extractedWallpaperUrl = url;
     try {
-      final palette = await PaletteGenerator.fromImageProvider(provider);
+      // 缩小图片尺寸可大幅提升解析速度，防止卡顿和 OOM 取色失败
+      final resizedProvider = ResizeImage(provider, width: 256);
+      final palette = await PaletteGenerator.fromImageProvider(
+        resizedProvider,
+        maximumColorCount: 16,
+      );
       if (mounted) {
         setState(() {
-          _wallpaperDominantColor = palette.dominantColor?.color ?? palette.vibrantColor?.color;
+          // 增加多级降级策略，确保一定能取到颜色
+          _wallpaperDominantColor = palette.dominantColor?.color ??
+              palette.vibrantColor?.color ??
+              palette.mutedColor?.color ??
+              palette.lightVibrantColor?.color ??
+              palette.darkVibrantColor?.color ??
+              (palette.colors.isNotEmpty ? palette.colors.first : null);
+              
           StorageService.setAppWallpaperColor(_wallpaperDominantColor);
         });
       }
