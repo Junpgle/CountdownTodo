@@ -11,7 +11,9 @@ const _defaultPageLayerBackgroundMask = 0.24;
 const _defaultPageLayerMaxBlur = 12.0;
 const _defaultContainerContentStart = 0.28;
 const _epsilon = 0.001;
-const _predictiveBackMaxInteractiveProgress = 0.68;
+// Limit the maximum interactive progress for the predictive back gesture.
+// 0.15 means the route progress drops from 1.0 to 0.85 (shrinks to 85%).
+const _predictiveBackMaxInteractiveProgress = 0.50;
 
 class _AnimSettings {
   static bool enabled = true;
@@ -678,6 +680,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
+  double _lastT = 0.0;
+  bool _isReversing = false;
 
   @override
   void initState() {
@@ -749,30 +753,29 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final maskOpacity = ui.lerpDouble(
             0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
 
-        Widget content = RepaintBoundary(child: widget.child);
-        if (_AnimSettings.screenRadius) {
-          final pad = MediaQuery.of(context).padding;
-          final r = pad.top > 30
-              ? 24.0
-              : pad.top > 20
-                  ? 16.0
-                  : 12.0;
-          final corner = ui.lerpDouble(r, 0, t)!;
-          if (corner > 0.5) {
-            content = ClipRRect(
-              borderRadius: BorderRadius.circular(corner),
-              child: content,
-            );
-          }
+        if (t < _lastT - 0.001) {
+          _isReversing = true;
+        } else if (t > _lastT + 0.001) {
+          _isReversing = false;
         }
+        _lastT = t;
 
-        if (contentScale < 1.0 - _epsilon) {
-          content = Transform.scale(
-            scale: contentScale,
-            alignment: const Alignment(0, -0.45),
-            child: content,
-          );
-        }
+        final route = ModalRoute.of(context);
+        final isReverse = widget.animation.status == AnimationStatus.reverse || 
+                          (route != null && route.popGestureInProgress) || 
+                          _isReversing;
+
+        Widget content = RepaintBoundary(child: widget.child);
+
+        // Morph into the button's shape for both opening and closing animations.
+        // We scale the content so its width exactly matches the current box width.
+        final scaleX = width / screenSize.width;
+
+        content = Transform.scale(
+          scale: scaleX,
+          alignment: Alignment.topCenter,
+          child: content,
+        );
 
         if (fadeIn < 1.0 - _epsilon) {
           content = Opacity(opacity: fadeIn, child: content);
@@ -799,13 +802,10 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
                   child: _contentVisible
                       ? IgnorePointer(
                           ignoring: fadeIn < 1.0,
-                          child: Transform.translate(
-                            offset: Offset(-left, -top),
-                            child: SizedBox(
-                              width: screenSize.width,
-                              height: screenSize.height,
-                              child: content,
-                            ),
+                          child: SizedBox(
+                            width: screenSize.width,
+                            height: screenSize.height,
+                            child: content,
                           ),
                         )
                       : null,
