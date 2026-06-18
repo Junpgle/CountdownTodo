@@ -254,6 +254,8 @@ class _AnnouncementCarouselDialogState
 class UpdateService {
   static const String MANIFEST_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
+  static const String FALLBACK_MANIFEST_URL =
+      "http://101.200.13.100:8082/api/manifest";
   static const String CHANGELOG_ARCHIVE_URL =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
@@ -545,15 +547,39 @@ class UpdateService {
   }
 
   static Future<AppManifest?> _fetchManifestFromNetwork() async {
+    // 优先从 GitHub 获取
     try {
-      final response = await http.get(Uri.parse(MANIFEST_URL));
+      final response = await http
+          .get(Uri.parse(MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
         final manifest = AppManifest.fromJson(jsonDecode(body));
         await _writeManifestCache(body);
+        debugPrint('[UpdateService] GitHub manifest 获取成功: v${manifest.versionName}');
         return manifest;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[UpdateService] GitHub manifest 获取失败: $e');
+    }
+
+    // GitHub 失败，降级到服务器获取
+    try {
+      debugPrint('[UpdateService] 降级到服务器获取 manifest...');
+      final response = await http
+          .get(Uri.parse(FALLBACK_MANIFEST_URL))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        final manifest = AppManifest.fromJson(jsonDecode(body));
+        await _writeManifestCache(body);
+        debugPrint('[UpdateService] 服务器 manifest 获取成功: v${manifest.versionName}');
+        return manifest;
+      }
+    } catch (e) {
+      debugPrint('[UpdateService] 服务器 manifest 获取失败: $e');
+    }
+
     return null;
   }
 
