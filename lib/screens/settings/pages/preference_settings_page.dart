@@ -57,6 +57,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   bool _isCheckingUpdate = false;
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
+  String _updateSource = 'server'; // 更新源偏好
 
   @override
   void initState() {
@@ -93,6 +94,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     String wallpaperProvider = await StorageService.getWallpaperProvider();
     Map<String, dynamic> homeTextConfig =
         await StorageService.getHomeTextConfig();
+    String updateSource = await UpdateService.getUpdateSource();
 
     if (mounted) {
       setState(() {
@@ -100,6 +102,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         _themeColorMode = themeColorMode;
         _wallpaperProvider = wallpaperProvider;
         _homeTextConfig = homeTextConfig;
+        _updateSource = updateSource;
         if (customColorVal != null) {
           _customThemeColor = Color(customColorVal);
         }
@@ -285,6 +288,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
             ),
           ),
+          const AppSettingsDivider(),
+          _buildUpdateSourceSection(),
           const AppSettingsSectionHeader(
             title: '其他工具',
             padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
@@ -631,6 +636,84 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSourceSection() {
+    return _buildTile(
+      targetId: 'update_source',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('更新检查源',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildUpdateSourceCard('github', 'GitHub（最新）', Icons.code),
+                const SizedBox(width: 24),
+                _buildUpdateSourceCard('server', '阿里云服务器（更快）', Icons.cloud_outlined),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSourceCard(String value, String title, IconData icon) {
+    final isSelected = _updateSource == value;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () async {
+        await UpdateService.setUpdateSource(value);
+        if (mounted) {
+          setState(() => _updateSource = value);
+        }
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 86,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? colorScheme.tertiary : Colors.transparent,
+                width: 2.5,
+              ),
+              color: colorScheme.surfaceContainerHighest,
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                      color: colorScheme.tertiary.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 1)
+              ],
+            ),
+            child: Center(
+              child: Icon(icon,
+                  size: 28,
+                  color: isSelected
+                      ? colorScheme.tertiary
+                      : colorScheme.onSurfaceVariant),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? colorScheme.tertiary : null,
+              )),
+        ],
       ),
     );
   }
