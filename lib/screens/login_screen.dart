@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
+import '../services/storage/app_settings_storage.dart';
+import '../services/storage/user_session_storage.dart';
 import '../storage_service.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import '../widgets/turnstile_verification_widget.dart';
@@ -147,9 +149,6 @@ class _Field extends StatelessWidget {
     this.obscure = false,
     this.enabled = true,
     this.keyboardType,
-    this.textAlign,
-    this.style,
-    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -159,9 +158,6 @@ class _Field extends StatelessWidget {
   final bool obscure;
   final bool enabled;
   final TextInputType? keyboardType;
-  final TextAlign? textAlign;
-  final TextStyle? style;
-  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
@@ -184,18 +180,11 @@ class _Field extends StatelessWidget {
           obscureText: obscure,
           enabled: enabled,
           keyboardType: keyboardType,
-          textAlign: textAlign ?? TextAlign.start,
-          style: style ??
-              TextStyle(
-                fontSize: 15,
-                color: t.textPri,
-                fontWeight: FontWeight.w400,
-              ),
-          maxLength: maxLength,
-          buildCounter: maxLength != null
-              ? (_, {required currentLength, required isFocused, maxLength}) =>
-                  null
-              : null,
+          style: TextStyle(
+            fontSize: 15,
+            color: t.textPri,
+            fontWeight: FontWeight.w400,
+          ),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(color: t.textHint, fontSize: 15),
@@ -883,7 +872,7 @@ class _LoginScreenState extends State<LoginScreen>
     if (result['success'] == true) {
       final user = result['user'] as Map<String, dynamic>;
       final token = (result['token'] ?? '') as String;
-      await StorageService.saveLoginSession(user['username'] as String,
+      await UserSessionStorage.saveLoginSession(user['username'] as String,
           token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', user['id'] as int);
@@ -960,7 +949,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   void _performAutoLoginAfterRegister(
       String email, String pass, String username) async {
-    await StorageService.setPrivacyPolicyAgreed(true);
+    await AppSettingsStorage.setPrivacyPolicyAgreed(true);
     setState(() => _isLoading = true);
     final loginResult = await ApiService.login(email, pass);
     if (!mounted) return;
@@ -969,7 +958,7 @@ class _LoginScreenState extends State<LoginScreen>
       final userInfo = loginResult['user'] as Map<String, dynamic>;
       final token = (loginResult['token'] ?? '') as String;
       _snack('注册成功，正在同步数据…');
-      await StorageService.saveLoginSession(username, token: token);
+      await UserSessionStorage.saveLoginSession(username, token: token);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('current_user_id', userInfo['id'] as int);
       await BackgroundNotificationService.configureNotificationPoll(
@@ -992,7 +981,7 @@ class _LoginScreenState extends State<LoginScreen>
   void _finalizeLoginAndNavigate(String username) {
     if (!mounted) return;
     if (_privacyAgreed) {
-      StorageService.setPrivacyPolicyAgreed(true);
+      AppSettingsStorage.setPrivacyPolicyAgreed(true);
     }
     setState(() => _isLoading = false);
     Navigator.pushReplacement(

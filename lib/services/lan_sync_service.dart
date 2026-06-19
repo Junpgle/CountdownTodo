@@ -9,6 +9,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/course_service.dart';
+import 'storage/user_session_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -155,7 +156,6 @@ class LanSyncService {
 
   final Map<String, LanDevice> _pendingRequests = {};
   final Map<String, String> _pendingTokens = {};
-  String? _currentRequestDeviceId;
 
   Stream<List<LanDevice>> get onDevicesChanged => _devicesCtrl.stream;
   Stream<String> get onStatusChanged => _statusCtrl.stream;
@@ -304,10 +304,9 @@ class LanSyncService {
     if (_isRunning) return;
     _isRunning = true;
 
-    final prefs = await SharedPreferences.getInstance();
-    _currentUserId = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
-    _currentDeviceId = await StorageService.getDeviceId();
-    _currentDeviceName = await StorageService.getDeviceFriendlyName();
+    _currentUserId = await UserSessionStorage.getCurrentUsername() ?? '';
+    _currentDeviceId = await UserSessionStorage.getDeviceId();
+    _currentDeviceName = await UserSessionStorage.getDeviceFriendlyName();
     _localIp = await _getLocalIp();
 
     if (_currentUserId!.isEmpty) {
@@ -466,7 +465,6 @@ class LanSyncService {
 
       _pendingRequests[remoteDeviceId] = device;
       _pendingTokens[remoteDeviceId] = token;
-      _currentRequestDeviceId = remoteDeviceId;
 
       _incomingRequestCtrl.add(device);
 
@@ -481,7 +479,6 @@ class LanSyncService {
     }
 
     if (action == 'confirm') {
-      final requestToken = data['token'];
       final pendingDevice = _pendingRequests[remoteDeviceId];
 
       if (pendingDevice == null) {
@@ -496,7 +493,6 @@ class LanSyncService {
       }
 
       _pendingRequests.remove(remoteDeviceId);
-      _currentRequestDeviceId = null;
 
       _emitProgress('正在接收数据...');
       _emitProgressValue(0.1);
