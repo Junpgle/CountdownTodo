@@ -15,6 +15,7 @@ import '../services/course_service.dart';
 import 'animation_settings_page.dart';
 import 'login_screen.dart';
 import 'about_screen.dart';
+import 'help/help_center_screen.dart';
 import 'settings/widgets/account_section.dart';
 import 'settings/widgets/sync_settings_section.dart';
 import 'settings/notification_settings_page.dart';
@@ -834,6 +835,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       const PermissionSettingsPage(isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
+                  id: 'help',
+                  icon: Icons.help_outline,
+                  color: Colors.blueGrey,
+                  title: '帮助与反馈',
+                  widgetBuilder: () => HelpCenterScreen(username: _username),
+                ),
+                _buildMacSidebarItem(
                   id: 'about',
                   icon: Icons.info,
                   color: Colors.grey,
@@ -1083,6 +1091,15 @@ class _SettingsPageState extends State<SettingsPage> {
                       context,
                       PageTransitions.slideHorizontal(
                           const PermissionSettingsPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(Icons.help_outline, color: Colors.blueGrey),
+                  title: const Text('帮助与反馈'),
+                  subtitle: const Text('使用指南、快速上手、常见问题'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(context,
+                      PageTransitions.slideHorizontal(HelpCenterScreen(username: _username))),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
