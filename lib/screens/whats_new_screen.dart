@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../services/onboarding_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../update_service.dart';
 import '../utils/page_transitions.dart';
 import 'home_dashboard.dart';
@@ -14,7 +14,9 @@ class WhatsNewScreen extends StatefulWidget {
   static Future<bool> shouldShow() async {
     try {
       final info = await PackageInfo.fromPlatform();
-      return OnboardingService.shouldShowWhatsNew(info.version);
+      final prefs = await SharedPreferences.getInstance();
+      final lastVersion = prefs.getString('last_shown_whats_new_version');
+      return lastVersion != info.version;
     } catch (_) {
       return false;
     }
@@ -71,7 +73,8 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       v.trim().split('+').first.split('-').first;
 
   Future<void> _done() async {
-    await OnboardingService.markWhatsNewShown(_currentVersion);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_shown_whats_new_version', _currentVersion);
 
     if (!mounted) return;
 

@@ -7,7 +7,6 @@ import '../../services/feature_tip_service.dart';
 import '../../update_service.dart';
 import '../../utils/page_transitions.dart';
 import '../feature_guide_screen.dart';
-import '../onboarding/onboarding_screen.dart';
 import '../pomodoro_screen.dart';
 import '../add_todo_screen.dart';
 import '../course_screens.dart';
@@ -40,23 +39,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             '快速上手',
             scheme.primary,
             [
-              _HelpEntry(
-                '重新查看快速上手',
-                '再次体验新手引导（演示模式）',
-                Icons.replay_rounded,
-                scheme.primary,
-                () {
-                  Navigator.push(
-                    context,
-                    PageTransitions.slideHorizontal(
-                      OnboardingScreen(
-                        loggedInUser: widget.username,
-                        isDemoMode: true,
-                      ),
-                    ),
-                  );
-                },
-              ),
+
               _HelpEntry(
                 '重新显示功能提示',
                 '重置所有情境提示，让其重新出现',

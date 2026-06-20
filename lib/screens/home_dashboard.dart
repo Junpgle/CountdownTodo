@@ -71,6 +71,8 @@ import 'todo_plan_screen.dart';
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
+import '../widgets/coach_mark_overlay.dart';
+import '../services/feature_tip_service.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -201,6 +203,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   String _deviceId = '';
   bool _hasShownUpdate = false;
   bool _hasCheckedHolidayPreset = false;
+  bool _showCoachMarks = false;
   TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
@@ -354,6 +357,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
+    _checkCoachMarks();
 
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
@@ -3118,6 +3122,43 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
       }
     }
+  }
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_home_intro');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _fabTodoKey,
+            title: '创建待办',
+            description: '点击此处记下你的第一个待办事项，支持设置提醒和截止日期。',
+          ),
+          CoachMarkStep(
+            targetKey: _fabPomodoroKey,
+            title: '开始专注',
+            description: '点击此处开始番茄钟专注计时，可绑定待办任务。',
+          ),
+          CoachMarkStep(
+            targetKey: _pomodoroCardKey,
+            title: '专注记录',
+            description: '首页会展示今天的专注统计，所有记录都会保存在时间轴中。',
+          ),
+        ],
+        onFinish: _dismissCoachMarks,
+        onSkip: _dismissCoachMarks,
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_home_intro');
+    _showCoachMarks = false;
   }
 
   Future<void> _checkOfficialHolidayPreset() async {
