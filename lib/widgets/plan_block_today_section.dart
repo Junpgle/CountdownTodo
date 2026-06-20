@@ -14,6 +14,7 @@ class PlanBlockTodaySection extends StatefulWidget {
   final bool isLight;
   final int refreshTrigger;
   final VoidCallback? onTap;
+  final Key? chartKey;
 
   const PlanBlockTodaySection({
     super.key,
@@ -21,6 +22,7 @@ class PlanBlockTodaySection extends StatefulWidget {
     this.isLight = false,
     this.refreshTrigger = 0,
     this.onTap,
+    this.chartKey,
   });
 
   @override
@@ -275,13 +277,16 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
           ),
           const SizedBox(width: 4),
         ],
-        IconButton(
-          icon: Icon(Icons.bar_chart_rounded,
-              size: 20, color: theme.colorScheme.onSurfaceVariant),
-          tooltip: '规划统计',
-          onPressed: () => Navigator.of(context).push(
-            PageTransitions.material(
-              builder: (_) => PlanBlockStatsScreen(username: widget.username),
+        SizedBox(
+          key: widget.chartKey,
+          child: IconButton(
+            icon: Icon(Icons.bar_chart_rounded,
+                size: 20, color: theme.colorScheme.onSurfaceVariant),
+            tooltip: '规划统计',
+            onPressed: () => Navigator.of(context).push(
+              PageTransitions.material(
+                builder: (_) => PlanBlockStatsScreen(username: widget.username),
+              ),
             ),
           ),
         ),

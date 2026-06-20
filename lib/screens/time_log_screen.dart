@@ -165,12 +165,12 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
               '时间日志的标签与番茄钟的标签是**通用的**！\n你可以点击这里统一创建或管理所有标签，方便后续按类别进行专注或日志统计。',
         ),
         CoachMarkStep(
+          targetKey: timeLogAddKey,
+          title: '手动补录',
+          description: '除了滑动创建，你也可以直接点击上方的「补录」按钮，通过精确填写时间来手动记录遗漏的专注。',
+        ),
+        CoachMarkStep(
           targetKey: timeLogDragKey,
-          CoachMarkStep(
-            targetKey: timeLogAddKey,
-            title: '手动补录',
-            description: '除了滑动创建，你也可以直接点击上方的「补录」按钮，通过精确填写时间来手动记录遗漏的专注。',
-          ),
           title: '滑动添加日志',
           description: '点击补录按钮后，在日历网格内的空白区域，上下滑动手指即可快速创建一条时间日志！',
         ),
@@ -949,17 +949,17 @@ class _WeekViewState extends State<_WeekView>
               onTap: widget.onManageTags,
             ),
           ),
+          const SizedBox(width: 6),
           SizedBox(
             key: timeLogAddKey,
-            child: const SizedBox(width: 6),
-            _TopBarChip(
+            child: _TopBarChip(
               label: '补录',
               icon: Icons.edit_calendar_outlined,
+              color: Theme.of(ctx).colorScheme.primary,
+              ctx: ctx,
+              onTap: widget.onAddLog,
+              filled: true,
             ),
-            color: Theme.of(ctx).colorScheme.primary,
-            ctx: ctx,
-            onTap: widget.onAddLog,
-            filled: true,
           ),
           const SizedBox(width: 6),
           Builder(

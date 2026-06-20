@@ -158,6 +158,12 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
+  
+  // 🚀 新增：首页引导用的新增 Keys
+  final GlobalKey _todoFolderKey = GlobalKey();
+  final GlobalKey _todoHistoryKey = GlobalKey();
+  final GlobalKey _countdownHistoryKey = GlobalKey();
+  final GlobalKey _todayPlanChartKey = GlobalKey();
   // 每次自增触发首页专注记录卡片与时间轴刷新
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
@@ -3162,6 +3168,26 @@ class _HomeDashboardState extends State<HomeDashboard>
             description: '随时在这里搜索所有内容，待办、倒计时、番茄钟、设置、时间日志、屏幕时间通通拿下。',
           ),
           CoachMarkStep(
+            targetKey: _todoFolderKey,
+            title: '待办文件夹',
+            description: '将不同任务分类归纳到文件夹，让待办列表井井有条。',
+          ),
+          CoachMarkStep(
+            targetKey: _todoHistoryKey,
+            title: '历史待办',
+            description: '在这里回顾所有已经完成或归档的历史待办。',
+          ),
+          CoachMarkStep(
+            targetKey: _countdownHistoryKey,
+            title: '历史倒数日',
+            description: '在这里查看已经结束或过期的重要日子。',
+          ),
+          CoachMarkStep(
+            targetKey: _todayPlanChartKey,
+            title: '规划统计',
+            description: '快速查看今日规划的时间安排与执行统计情况。',
+          ),
+          CoachMarkStep(
             targetKey: _menuKey,
             title: isTablet ? '菜单栏' : '侧边栏',
             description: isTablet
@@ -4335,11 +4361,13 @@ class _HomeDashboardState extends State<HomeDashboard>
                                           isLight: isLight,
                                           username: widget.username,
                                           refreshTrigger: trigger,
+                                          actionKey: _todayPlanChartKey,
                                         );
                                       },
                                     );
                                     Widget countdownSection =
                                         CountdownSectionWidget(
+                                            historyKey: _countdownHistoryKey,
                                             countdowns: _countdowns,
                                             username: widget.username,
                                             isLight: isLight,
@@ -4355,6 +4383,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                           _todoUpdateSignalNotifier,
                                       builder: (context, signal, _) {
                                         return TodoSectionWidget(
+                                          folderKey: _todoFolderKey,
+                                          historyKey: _todoHistoryKey,
                                           todos: _todos,
                                           highlightedTodoIds:
                                               _updatedByOthersTodoIds,
@@ -4535,6 +4565,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             _timelineRefreshTriggerNotifier,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
+                                            chartKey: _todayPlanChartKey,
                                             username: widget.username,
                                             isLight: isLight,
                                             refreshTrigger: trigger,

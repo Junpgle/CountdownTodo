@@ -55,6 +55,9 @@ class TodoSectionWidget extends StatefulWidget {
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
+  final Key? folderKey;
+  final Key? historyKey;
+
   const TodoSectionWidget({
     super.key,
     required this.todos,
@@ -70,6 +73,8 @@ class TodoSectionWidget extends StatefulWidget {
     this.onLLMResultsParsed,
     this.onTeamChanged,
     this.initialSelectedTeamUuid,
+    this.folderKey,
+    this.historyKey,
   });
 
   final String? initialSelectedTeamUuid;
@@ -3373,6 +3378,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
                 actionIcon: Icons.create_new_folder_outlined,
+                actionKey: widget.folderKey,
                 actionTooltip: "管理文件夹",
                 isLight: widget.isLight,
                 onAction: () async {
@@ -3394,23 +3400,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    Icons.history,
-                    size: 20,
-                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                SizedBox(
+                  key: widget.historyKey,
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.history,
+                      size: 20,
+                      color: useDarkUI ? Colors.white70 : Colors.grey,
+                    ),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        PageTransitions.material(
+                          builder: (_) =>
+                              HistoricalTodosScreen(username: widget.username),
+                        ),
+                      );
+                      widget.onRefreshRequested();
+                    },
                   ),
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      PageTransitions.material(
-                        builder: (_) =>
-                            HistoricalTodosScreen(username: widget.username),
-                      ),
-                    );
-                    widget.onRefreshRequested();
-                  },
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
@@ -3632,7 +3641,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_edit_todo');
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_edit_todo');
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
@@ -3704,6 +3714,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               route.animation!.removeStatusListener(listener);
             }
           }
+
           route.animation!.addStatusListener(listener);
         }
       } else {
@@ -4456,26 +4467,26 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             children: [
               const Text("计划安排",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            TextButton.icon(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  PageTransitions.material(
-                    builder: (_) => TodoPlanScreen(
-                      username: widget.username,
-                      initialDate: DateTime.now(),
-                      initialTodoId: widget.todo.id,
+              TextButton.icon(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    PageTransitions.material(
+                      builder: (_) => TodoPlanScreen(
+                        username: widget.username,
+                        initialDate: DateTime.now(),
+                        initialTodoId: widget.todo.id,
+                      ),
                     ),
-                  ),
-                );
-                if (!mounted) return;
-                _loadRelatedPlans();
-              },
-              icon: const Icon(Icons.calendar_today, size: 16),
-              label: const Text("今日计划"),
-            ),
-          ],
-        ),
+                  );
+                  if (!mounted) return;
+                  _loadRelatedPlans();
+                },
+                icon: const Icon(Icons.calendar_today, size: 16),
+                label: const Text("今日计划"),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Container(

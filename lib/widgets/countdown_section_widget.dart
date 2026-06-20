@@ -18,6 +18,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final bool isLight;
   final VoidCallback onDataChanged;
   final Key? addKey; // 🚀 新增 addKey 用于高亮引导
+  final Key? historyKey; // 🚀 新增 historyKey 用于高亮引导
 
   const CountdownSectionWidget({
     super.key,
@@ -26,6 +27,7 @@ class CountdownSectionWidget extends StatefulWidget {
     required this.isLight,
     required this.onDataChanged,
     this.addKey,
+    this.historyKey,
   });
 
   @override
@@ -302,17 +304,20 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                     widget.onDataChanged();
                   },
                 ),
-              IconButton(
-                icon: Icon(Icons.history,
-                    color: useDarkUI ? Colors.white70 : Colors.grey),
-                onPressed: () async {
-                  await Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          HistoricalCountdownsScreen(
-                              username: widget.username)));
-                  widget.onDataChanged();
-                },
+              SizedBox(
+                key: widget.historyKey,
+                child: IconButton(
+                  icon: Icon(Icons.history,
+                      color: useDarkUI ? Colors.white70 : Colors.grey),
+                  onPressed: () async {
+                    await Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            HistoricalCountdownsScreen(
+                                username: widget.username)));
+                    widget.onDataChanged();
+                  },
+                ),
               ),
             ],
           ),
