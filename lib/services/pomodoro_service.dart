@@ -19,6 +19,7 @@ class PomodoroTag {
   String name;
   String color;
   bool isDeleted;
+  bool isArchived;
   int version;
   int createdAt; // UTC ms
   int updatedAt; // UTC ms
@@ -30,6 +31,7 @@ class PomodoroTag {
     required this.name,
     this.color = '#607D8B',
     this.isDeleted = false,
+    this.isArchived = false,
     this.version = 1,
     int? createdAt,
     int? updatedAt,
@@ -45,6 +47,7 @@ class PomodoroTag {
         'name': name,
         'color': color,
         'is_deleted': isDeleted ? 1 : 0,
+        'is_archived': isArchived ? 1 : 0,
         'version': version,
         'created_at': createdAt,
         'updated_at': updatedAt,
@@ -57,6 +60,7 @@ class PomodoroTag {
         name: j['name']?.toString() ?? '',
         color: j['color']?.toString() ?? '#607D8B',
         isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
+        isArchived: j['is_archived'] == 1 || j['is_archived'] == true,
         version: j['version'] as int? ?? 1,
         createdAt: _ms(j['created_at']),
         updatedAt: _ms(j['updated_at']),
@@ -616,6 +620,7 @@ class PomodoroService {
             'name': t.name,
             'color': t.color,
             'is_deleted': t.isDeleted ? 1 : 0,
+            'is_archived': t.isArchived ? 1 : 0,
             'version': t.version,
             'created_at': t.createdAt,
             'updated_at': t.updatedAt,

@@ -71,7 +71,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── 任务绑定 ──
   TodoItem? _boundTodo;
-  List<PomodoroTag> _allTags = [];
+  List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
+  List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<String> _selectedTagUuids = [];
   // Backwards-compatibility: older code referred to `_selectedUuids`.
   // Keep a getter/setter so any remaining call sites still work.
@@ -278,6 +279,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       _settings = results[0] as PomodoroSettings;
       _allTags = results[1] as List<PomodoroTag>;
+      _tags = _allTags.where((t) => !t.isArchived).toList();
       _deviceId = results[2] as String;
 
       final todosRaw = results[3] as List<TodoItem>;
@@ -803,13 +805,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Future<List<String>> _recommendedTagUuidsForTodo(TodoItem todo) async {
-    if (_allTags.isEmpty) return const [];
+    if (_tags.isEmpty) return const [];
     try {
       final records = await PomodoroService.getRecords()
           .timeout(const Duration(seconds: 2), onTimeout: () => []);
       return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
         todo: todo,
-        tags: _allTags,
+        tags: _tags,
         history: records,
         todoHistory: _todos,
         groups: _todoGroups,
@@ -1046,7 +1048,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   void _pushPomodoroNotification(
       {int? overrideRemaining, String alertKey = ''}) {
     final remaining = overrideRemaining ?? _remainingSeconds;
-    final tagNames = _allTags
+    final tagNames = _tags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
         .toList();
@@ -1436,7 +1438,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         sessionUuid: _currentSessionUuid,
         note: _currentNote.isNotEmpty ? _currentNote : null);
     if (recommendedTagUuids.isNotEmpty) {
-      final tagNames = _allTags
+      final tagNames = _tags
           .where((t) => _selectedTagUuids.contains(t.uuid))
           .map((t) => t.name)
           .toList();
@@ -1913,13 +1915,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         allTags: _allTags,
         selectedUuids: _selectedTagUuids,
         showSelection: true,
-        showBatchTag: true,
         showArchive: true,
         onChanged: (tags, selected) async {
           await PomodoroService.saveTags(tags);
           PomodoroService.syncTagsToCloud().catchError((_) => null);
           setState(() {
             _allTags = tags;
+            _tags = tags.where((t) => !t.isArchived).toList();
             _selectedTagUuids = selected;
           });
           await _persistIdleBoundTodo(_boundTodo);
@@ -1927,7 +1929,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _showLocalFloat();
           if (_phase == PomodoroPhase.focusing) {
             final tagNames = tags
-                .where((t) => selected.contains(t.uuid))
+                .where((t) => selected.contains(t.uuid) && !t.isArchived)
                 .map((t) => t.name)
                 .toList();
             _syncService.sendUpdateTagsSignal(tagNames);
@@ -2140,7 +2142,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final bool isIdle =
         _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
 
-    final tagNames = _allTags
+    final tagNames = _tags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
         .toList();
@@ -2720,7 +2722,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               .toList());
     }
     final activeTags =
-        _allTags.where((t) => _selectedTagUuids.contains(t.uuid)).toList();
+        _tags.where((t) => _selectedTagUuids.contains(t.uuid)).toList();
     if (activeTags.isEmpty) return const SizedBox.shrink();
     return Wrap(
         spacing: 6,
@@ -2731,7 +2733,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildIdleMiddle() {
-    if (_allTags.isEmpty) return const SizedBox.shrink();
+    if (_tags.isEmpty) return const SizedBox.shrink();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 148),
       child: SingleChildScrollView(
@@ -2740,7 +2742,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: _allTags.map((tag) {
+              children: _tags.map((tag) {
                 final selected = _selectedTagUuids.contains(tag.uuid);
                 final color = hexToColor(tag.color);
                 return FilterChip(
@@ -2763,7 +2765,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     await _persistIdleBoundTodo(_boundTodo);
                     _showLocalFloat();
                     if (_phase == PomodoroPhase.focusing) {
-                      _syncService.sendUpdateTagsSignal(_allTags
+                      _syncService.sendUpdateTagsSignal(_tags
                           .where((t) => _selectedTagUuids.contains(t.uuid))
                           .map((t) => t.name)
                           .toList());

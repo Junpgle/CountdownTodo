@@ -135,7 +135,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   bool _crossDay = false;
 
   List<TimeLogItem> _allLogs = [];
-  List<PomodoroTag> _tags = [];
+  List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
+  List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<PomodoroRecord> _allPomodoros = [];
   List<TodoItem> _allTodos = [];
   List<TodoGroup> _allTodoGroups = [];
@@ -254,7 +255,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     if (!mounted) return;
 
     setState(() {
-      _tags = results[0] as List<PomodoroTag>;
+      _allTags = results[0] as List<PomodoroTag>;
+      _tags = _allTags.where((t) => !t.isArchived).toList();
       _allLogs =
           (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _allPomodoros = results[2] as List<PomodoroRecord>;
@@ -761,19 +763,23 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         context: context,
         isScrollControlled: true,
         builder: (_) => UnifiedTagManagerSheet(
-          allTags: _tags,
+          allTags: _allTags,
           showSelection: false,
-          showBatchTag: true,
           showArchive: true,
-          pomodoroRecords: _allPomodoros,
           onChanged: (tags, selected) async {
             await PomodoroService.saveTags(tags);
-            setState(() => _tags = tags);
+            setState(() {
+              _allTags = tags;
+              _tags = tags.where((t) => !t.isArchived).toList();
+            });
           },
         ));
     if (updated != null) {
       await PomodoroService.saveTags(updated);
-      setState(() => _tags = updated);
+      setState(() {
+        _allTags = updated;
+        _tags = updated.where((t) => !t.isArchived).toList();
+      });
     }
   }
 

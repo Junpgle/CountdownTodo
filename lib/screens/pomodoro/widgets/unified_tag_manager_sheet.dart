@@ -7,9 +7,7 @@ class UnifiedTagManagerSheet extends StatefulWidget {
   final List<PomodoroTag> allTags;
   final List<String> selectedUuids;
   final void Function(List<PomodoroTag>, List<String>)? onChanged;
-  final List<PomodoroRecord>? pomodoroRecords;
   final bool showSelection;
-  final bool showBatchTag;
   final bool showArchive;
 
   const UnifiedTagManagerSheet({
@@ -17,9 +15,7 @@ class UnifiedTagManagerSheet extends StatefulWidget {
     required this.allTags,
     this.selectedUuids = const [],
     this.onChanged,
-    this.pomodoroRecords,
     this.showSelection = false,
-    this.showBatchTag = false,
     this.showArchive = true,
   });
 
@@ -32,11 +28,11 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
   late List<PomodoroTag> _tags;
   late List<String> _selected;
   late List<PomodoroTag> _archivedTags;
-  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   final TextEditingController _nameController = TextEditingController();
   String _newColor = _presetColors[0];
   bool _showColorPicker = false;
   String? _editingColorTagUuid;
+  bool _showArchived = false;
 
   static const List<String> _presetColors = [
     '#F44336',
@@ -77,9 +73,10 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
   @override
   void initState() {
     super.initState();
-    _tags = List.from(widget.allTags);
+    // 分离活跃标签和归档标签
+    _tags = widget.allTags.where((t) => !t.isArchived).toList();
+    _archivedTags = widget.allTags.where((t) => t.isArchived).toList();
     _selected = List.from(widget.selectedUuids);
-    _archivedTags = [];
   }
 
   @override
@@ -87,6 +84,9 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
     _nameController.dispose();
     super.dispose();
   }
+
+  /// 返回所有标签（活跃 + 归档）
+  List<PomodoroTag> get _allTags => [..._tags, ..._archivedTags];
 
   void _addTag() {
     if (_nameController.text.trim().isEmpty) return;
@@ -99,70 +99,27 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
       _tags.add(tag);
       _nameController.clear();
     });
-    _listKey.currentState?.insertItem(
-      _tags.length - 1,
-      duration: const Duration(milliseconds: 300),
-    );
-    widget.onChanged?.call(_tags, _selected);
+    widget.onChanged?.call(_allTags, _selected);
   }
 
-  void _deleteTag(int index) {
+  void _archiveTag(int index) {
     final tag = _tags[index];
-    _listKey.currentState?.removeItem(
-      index,
-      (_, animation) => _buildRemovedItem(tag, animation),
-      duration: const Duration(milliseconds: 250),
-    );
     setState(() {
       _selected.remove(tag.uuid);
       _tags.removeAt(index);
-      if (widget.showArchive) {
-        _archivedTags.add(tag);
-      }
+      tag.isArchived = true;
+      _archivedTags.add(tag);
     });
-    widget.onChanged?.call(_tags, _selected);
+    widget.onChanged?.call(_allTags, _selected);
   }
 
   void _restoreTag(PomodoroTag tag) {
     setState(() {
       _archivedTags.remove(tag);
+      tag.isArchived = false;
       _tags.add(tag);
     });
-    _listKey.currentState?.insertItem(
-      _tags.length - 1,
-      duration: const Duration(milliseconds: 300),
-    );
-    widget.onChanged?.call(_tags, _selected);
-  }
-
-  void _batchAddTagToUntagged() {
-    if (widget.pomodoroRecords == null || _tags.isEmpty) return;
-    
-    final untaggedRecords = widget.pomodoroRecords!
-        .where((r) => r.tagUuids.isEmpty)
-        .toList();
-    
-    if (untaggedRecords.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有未标签的番茄钟记录')),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => _BatchTagDialog(
-        tags: _tags,
-        untaggedCount: untaggedRecords.length,
-        onConfirm: (tagUuid) {
-          // TODO: 实际保存到数据库
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已为 ${untaggedRecords.length} 条记录添加标签')),
-          );
-          Navigator.pop(ctx);
-        },
-      ),
-    );
+    widget.onChanged?.call(_allTags, _selected);
   }
 
   void _openCustomColorPicker({String? forTagUuid}) {
@@ -183,7 +140,7 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
             color: hex,
           );
         });
-        widget.onChanged?.call(_tags, _selected);
+        widget.onChanged?.call(_allTags, _selected);
       }
     } else {
       setState(() => _newColor = hex);
@@ -209,13 +166,22 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
           children: [
             _buildHeader(),
             const Divider(),
-            if (_tags.isEmpty)
-              _buildEmptyState()
-            else
-              _buildTagList(),
-            _buildAddSection(),
-            if (widget.showArchive && _archivedTags.isNotEmpty) _buildArchivedSection(),
-            if (widget.showBatchTag) _buildBatchTagSection(),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_tags.isEmpty)
+                      _buildEmptyState()
+                    else
+                      _buildTagList(),
+                    _buildAddSection(),
+                    if (widget.showArchive && _archivedTags.isNotEmpty) 
+                      _buildArchivedSection(),
+                  ],
+                ),
+              ),
+            ),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ],
         ),
@@ -233,24 +199,13 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
             '标签管理',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          Row(
-            children: [
-              if (widget.showBatchTag)
-                IconButton(
-                  icon: const Icon(Icons.playlist_add),
-                  color: Theme.of(context).colorScheme.secondary,
-                  tooltip: '批量添加标签',
-                  onPressed: _batchAddTagToUntagged,
-                ),
-              IconButton(
-                icon: const Icon(Icons.check),
-                color: Theme.of(context).colorScheme.primary,
-                onPressed: () {
-                  widget.onChanged?.call(_tags, _selected);
-                  Navigator.pop(context, _tags);
-                },
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.check),
+            color: Theme.of(context).colorScheme.primary,
+            onPressed: () {
+              widget.onChanged?.call(_allTags, _selected);
+              Navigator.pop(context, _allTags);
+            },
           ),
         ],
       ),
@@ -268,36 +223,25 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
   }
 
   Widget _buildTagList() {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 260),
-      child: AnimatedList(
-        key: _listKey,
-        shrinkWrap: true,
-        initialItemCount: _tags.length,
-        itemBuilder: (_, index, animation) {
-          final tag = _tags[index];
-          final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
-          return SizeTransition(
-            sizeFactor: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            ),
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1.0, 0.0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              )),
-              child: FadeTransition(
-                opacity: animation,
-                child: _buildTagItem(tag, index, color),
-              ),
-            ),
-          );
-        },
-      ),
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _tags.length,
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (oldIndex < newIndex) {
+            newIndex -= 1;
+          }
+          final tag = _tags.removeAt(oldIndex);
+          _tags.insert(newIndex, tag);
+        });
+        widget.onChanged?.call(_allTags, _selected);
+      },
+      itemBuilder: (ctx, index) {
+        final tag = _tags[index];
+        final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+        return _buildTagItem(tag, index, color);
+      },
     );
   }
 
@@ -335,34 +279,16 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
                     _selected.remove(tag.uuid);
                   }
                 });
-                widget.onChanged?.call(_tags, _selected);
+                widget.onChanged?.call(_allTags, _selected);
               },
             ),
           IconButton(
-            icon: const Icon(Icons.delete_outline, size: 20, color: Colors.grey),
-            onPressed: () => _deleteTag(index),
+            icon: const Icon(Icons.archive_outlined, size: 20, color: Colors.grey),
+            tooltip: '归档',
+            onPressed: () => _archiveTag(index),
           ),
+          const Icon(Icons.drag_handle, size: 20, color: Colors.grey),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRemovedItem(PomodoroTag tag, Animation<double> animation) {
-    return SizeTransition(
-      sizeFactor: CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeInCubic,
-      ),
-      child: FadeTransition(
-        opacity: animation,
-        child: ListTile(
-          leading: CircleAvatar(
-            radius: 16,
-            backgroundColor: AppColorUtils.hexToColor(tag.color, fallback: Colors.grey),
-          ),
-          title: Text(tag.name),
-          trailing: const Icon(Icons.delete, color: Colors.grey),
-        ),
       ),
     );
   }
@@ -475,27 +401,36 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Divider(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.archive_outlined, size: 16, color: Colors.grey),
-              const SizedBox(width: 8),
-              Text(
-                '已归档 (${_archivedTags.length})',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w600,
+        InkWell(
+          onTap: () => setState(() => _showArchived = !_showArchived),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.archive_outlined, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text(
+                  '已归档 (${_archivedTags.length})',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+                const Spacer(),
+                Icon(
+                  _showArchived ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
           ),
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 120),
-          child: ListView.builder(
+        if (_showArchived)
+          ListView.builder(
             shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             itemCount: _archivedTags.length,
             itemBuilder: (ctx, i) {
               final tag = _archivedTags[i];
@@ -517,22 +452,7 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
               );
             },
           ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildBatchTagSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: OutlinedButton.icon(
-        onPressed: _batchAddTagToUntagged,
-        icon: const Icon(Icons.playlist_add, size: 18),
-        label: const Text('为未标签的番茄钟批量添加标签'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(double.infinity, 40),
-        ),
-      ),
     );
   }
 
@@ -682,95 +602,6 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
           ],
         ),
       ),
-    );
-  }
-}
-
-class _BatchTagDialog extends StatefulWidget {
-  final List<PomodoroTag> tags;
-  final int untaggedCount;
-  final ValueChanged<String> onConfirm;
-
-  const _BatchTagDialog({
-    required this.tags,
-    required this.untaggedCount,
-    required this.onConfirm,
-  });
-
-  @override
-  State<_BatchTagDialog> createState() => _BatchTagDialogState();
-}
-
-class _BatchTagDialogState extends State<_BatchTagDialog> {
-  String? _selectedTagUuid;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.tags.isNotEmpty) {
-      _selectedTagUuid = widget.tags.first.uuid;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('批量添加标签'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('共 ${widget.untaggedCount} 条未标签的番茄钟记录'),
-          const SizedBox(height: 16),
-          const Text('选择标签:'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.tags.map((tag) {
-              final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
-              final isSelected = _selectedTagUuid == tag.uuid;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedTagUuid = tag.uuid),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? color.withValues(alpha: 0.2)
-                        : color.withValues(alpha: 0.05),
-                    border: Border.all(
-                      color: isSelected ? color : color.withValues(alpha: 0.3),
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    tag.name,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _selectedTagUuid != null
-              ? () => widget.onConfirm(_selectedTagUuid!)
-              : null,
-          child: const Text('确定'),
-        ),
-      ],
     );
   }
 }

@@ -135,7 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (interconnectTargets.contains(target)) {
       paneId = 'interconnect';
       paneBuilder = () =>
-          InterconnectSettingsPage(initialTarget: target, isEmbedded: true);
+          InterconnectSettingsPage(initialTarget: target, isEmbedded: true, username: _username);
     } else if (advancedTargets.contains(target)) {
       paneId = 'preference'; // merged into preference
       paneBuilder =
@@ -177,7 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
       else if (paneId == 'course')
         pushWidget = CourseSettingsPage(initialTarget: target);
       else if (paneId == 'interconnect')
-        pushWidget = InterconnectSettingsPage(initialTarget: target);
+        pushWidget = InterconnectSettingsPage(initialTarget: target, username: _username);
       else if (paneId == 'llm_config')
         pushWidget = const LLMConfigPage();
       else if (paneId == 'animation')
@@ -796,7 +796,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: Colors.blue,
                   title: '数据与互联',
                   widgetBuilder: () =>
-                      const InterconnectSettingsPage(isEmbedded: true),
+                      InterconnectSettingsPage(isEmbedded: true, username: _username),
                 ),
                 _buildMacSidebarItem(
                   id: 'llm_config',
@@ -1039,7 +1039,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => Navigator.push(
                       context,
                       PageTransitions.slideHorizontal(
-                          const InterconnectSettingsPage())),
+                          InterconnectSettingsPage(username: _username))),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
