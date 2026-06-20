@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
@@ -3672,6 +3673,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                 onPressed: () => Navigator.pop(context),
                 child: const Text("关闭"),
               ),
+              TextButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse('https://github.com/Junpgle/math_quiz_app/issues');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                icon: const Icon(Icons.bug_report_outlined, size: 16),
+                label: const Text("GitHub"),
+              ),
               FilledButton.tonalIcon(
                 onPressed: () {
                   Navigator.pop(context);
@@ -3748,7 +3759,12 @@ class _HomeDashboardState extends State<HomeDashboard>
           const SizedBox(height: 4),
           _buildInfoRow(
               "当前接入点", isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)"),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          const Text(
+            "注意：链路异常可能影响公告获取、版本更新、多设备同步等功能",
+            style: TextStyle(fontSize: 10, color: Colors.orangeAccent),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
