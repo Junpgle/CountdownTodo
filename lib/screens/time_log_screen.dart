@@ -18,6 +18,7 @@ import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import 'pomodoro/widgets/unified_tag_manager_sheet.dart';
 
 part 'time_log_components.dart';
 
@@ -759,8 +760,17 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final updated = await showModalBottomSheet<List<PomodoroTag>>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _TagManagerSheet(tags: _tags));
+        builder: (_) => UnifiedTagManagerSheet(
+          allTags: _tags,
+          showSelection: false,
+          showBatchTag: true,
+          showArchive: true,
+          pomodoroRecords: _allPomodoros,
+          onChanged: (tags, selected) async {
+            await PomodoroService.saveTags(tags);
+            setState(() => _tags = tags);
+          },
+        ));
     if (updated != null) {
       await PomodoroService.saveTags(updated);
       setState(() => _tags = updated);

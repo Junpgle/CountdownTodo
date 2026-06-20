@@ -17,7 +17,7 @@ import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
 import '../pomodoro_utils.dart';
-import '../widgets/tag_manager_sheet.dart';
+import '../widgets/unified_tag_manager_sheet.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
 import '../widgets/workbench_task_area.dart';
@@ -1909,9 +1909,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => TagManagerSheet(
+      builder: (ctx) => UnifiedTagManagerSheet(
         allTags: _allTags,
         selectedUuids: _selectedTagUuids,
+        showSelection: true,
+        showBatchTag: true,
+        showArchive: true,
         onChanged: (tags, selected) async {
           await PomodoroService.saveTags(tags);
           PomodoroService.syncTagsToCloud().catchError((_) => null);
