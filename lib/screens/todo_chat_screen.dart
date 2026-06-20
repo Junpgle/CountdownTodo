@@ -22,6 +22,8 @@ import '../screens/ai_assistant_tutorial_screen.dart';
 import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 
 class TodoChatScreen extends StatefulWidget {
   final String username;
@@ -98,6 +100,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   int _liveEstimatedTokens = 0;
   String? _activeSessionId;
   Map<String, int> _categoryReminderDefaults = {};
+  final GlobalKey _historyKey = GlobalKey();
+  final GlobalKey _newSessionKey = GlobalKey();
+  final GlobalKey _settingsKey = GlobalKey();
+  final GlobalKey _inputKey = GlobalKey();
+  bool _showCoachMarks = false;
+
   List<TodoPlanBlock> _planBlocks = [];
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
@@ -137,6 +145,67 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _loadDeepThinking();
     _loadCategoryDefaults();
     _loadPlanBlocks();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkCoachMarks();
+    });
+  }
+
+  void _checkCoachMarks() async {
+    if (!mounted || _showCoachMarks) return;
+
+    final hasShown = await FeatureTipService.hasTipBeenShown('todo_chat_guide');
+    if (hasShown || !mounted) return;
+
+    // 等待布局动画完成，避免获取的控件位置不准确
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: _historyKey,
+          title: '历史对话',
+          description: '点击这里可以展开或折叠历史对话列表，随时回顾之前的聊天记录。',
+        ),
+        CoachMarkStep(
+          targetKey: _newSessionKey,
+          title: '新建对话',
+          description: '点击可以开启一轮全新的对话，不带历史记录的包袱。',
+        ),
+        CoachMarkStep(
+          targetKey: _settingsKey,
+          title: '助手设置',
+          description: '如果你想调整大模型的系统提示词或自定义 API 设置，点这里进行个性化配置。',
+        ),
+        CoachMarkStep(
+          targetKey: _inputKey,
+          title: '智能输入区',
+          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动解析时间、地点并帮你创建待办。',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('todo_chat_guide');
+      },
+      onSkip: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('todo_chat_guide');
+      },
+    );
   }
 
   Future<void> _loadCategoryDefaults() async {
@@ -1318,6 +1387,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       ),
       actions: [
         IconButton(
+          key: _historyKey,
           icon: Icon(
             _isWide
                 ? (_sidebarVisible
@@ -1332,11 +1402,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           tooltip: _isWide ? (_sidebarVisible ? '隐藏侧边栏' : '显示侧边栏') : '历史对话',
         ),
         IconButton(
+          key: _newSessionKey,
           icon: const Icon(Icons.add_comment_rounded, size: 22),
           onPressed: _newSession,
           tooltip: '新建对话',
         ),
         IconButton(
+          key: _settingsKey,
           icon: const Icon(Icons.tune_rounded, size: 22),
           onPressed: _showPromptSettings,
           tooltip: '提示词设置',
@@ -2476,7 +2548,6 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       '整理一下我的时间日志',
       '帮我制定一个复习计划',
       '有哪些建议能让我更自律？',
-      '备份我的所有数据',
     ]);
 
     return suggestions.toSet().toList();
@@ -4318,6 +4389,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   Widget _buildInputArea(ColorScheme colorScheme) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
+      key: _inputKey,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: 0.95),
