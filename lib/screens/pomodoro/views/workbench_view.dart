@@ -98,6 +98,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   StreamSubscription? _crossDeviceSub;
   StreamSubscription? _connSub; // 🚀 兼容性修复：改为通配订阅类型
   CrossDevicePomodoroState? _remoteState;
+
+  // ── Coach Mark Keys ──
+  final GlobalKey settingsKey = GlobalKey();
+  final GlobalKey tagsManagerKey = GlobalKey();
+  final GlobalKey serverConnKey = GlobalKey();
+  final GlobalKey modeSwitchKey = GlobalKey();
+  final GlobalKey focusTagsKey = GlobalKey();
+  final GlobalKey bindTodoKey = GlobalKey();
+
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
@@ -2208,7 +2217,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _buildHeader(isIdle, isFocusing, isRemoteWatching),
+                        _buildHeader(isIdle, isFocusing, isRemoteWatching, isLandscape),
                         Expanded(
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 400),
@@ -2367,11 +2376,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       IconButton(
+                          key: settingsKey,
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.settings_outlined),
                           tooltip: '设置',
                           onPressed: _showSettingsDialog),
                       IconButton(
+                          key: tagsManagerKey,
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.label_outline),
                           tooltip: '标签',
@@ -2395,6 +2406,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   isRemoteWatching: isRemoteWatching,
                   boundTodo: _boundTodo,
                   contentColor: contentColor,
+                  bindKey: bindTodoKey,
                   onTap: () =>
                       _showBindTodoDialog(isSwitching: _boundTodo != null),
                 ),
@@ -2411,9 +2423,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
-  Widget _buildHeader(bool isIdle, bool isFocusing, bool isRemoteWatching) {
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+  Widget _buildHeader(bool isIdle, bool isFocusing, bool isRemoteWatching, bool isLandscape) {
+    final isGlobalLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return SizedBox(
       height: kToolbarHeight,
@@ -2421,10 +2432,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         children: [
           AnimatedOpacity(
             opacity:
-                (isFocusing || isRemoteWatching || isLandscape) ? 1.0 : 0.0,
+                (isFocusing || isRemoteWatching || isGlobalLandscape) ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
             child: IgnorePointer(
-              ignoring: !(isFocusing || isRemoteWatching || isLandscape),
+              ignoring: !(isFocusing || isRemoteWatching || isGlobalLandscape),
               child: IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () => Navigator.pop(context)),
@@ -2439,10 +2450,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 ignoring: !isIdle,
                 child: Row(children: [
                   IconButton(
+                      key: settingsKey,
                       icon: const Icon(Icons.settings_outlined),
                       tooltip: '设置',
                       onPressed: _showSettingsDialog),
                   IconButton(
+                      key: tagsManagerKey,
                       icon: const Icon(Icons.label_outline),
                       tooltip: '标签',
                       onPressed: _showTagsDialog),
@@ -2473,6 +2486,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: SegmentedButton<TimerMode>(
+          key: modeSwitchKey,
           segments: const [
             ButtonSegment(
                 value: TimerMode.countdown,
@@ -2520,13 +2534,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         break;
       case SyncConnectionState.error:
       case SyncConnectionState.disconnected:
-      icon = Icons.link_off_rounded;
+        icon = Icons.link_off_rounded;
         color = Colors.redAccent.withValues(alpha: 0.8);
         message = '同步连接已断开，点击重试';
         canRetry = true;
     }
 
     return Tooltip(
+      key: serverConnKey,
       message: message,
       child: InkWell(
         onTap: () {
@@ -2608,6 +2623,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           isRemoteWatching: isRemoteWatching,
           boundTodo: _boundTodo,
           contentColor: contentColor,
+          bindKey: bindTodoKey,
           onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null)),
       const SizedBox(height: 16),
       _buildNoteButton(contentColor),
@@ -2696,7 +2712,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           spacing: 6,
           runSpacing: 4,
           children: _remoteTagNames
-              .map((n) => _SimpleTag(name: n, color: Theme.of(context).colorScheme.secondary))
+              .map((n) => _SimpleTag(
+                  name: n, color: Theme.of(context).colorScheme.secondary))
               .toList());
     }
     final activeTags =
@@ -2716,6 +2733,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       constraints: const BoxConstraints(maxHeight: 148),
       child: SingleChildScrollView(
           child: Wrap(
+              key: focusTagsKey,
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
@@ -2764,6 +2782,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isRemoteWatching: isRemoteWatching,
       phase: _phase,
       boundTodo: _boundTodo,
+      bindKey: bindTodoKey,
       onShowBindTodo: _showBindTodoDialog,
       onStartFocus: _startFocus,
       onFinishEarly: _finishEarly,

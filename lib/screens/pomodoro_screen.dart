@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'package:CountDownTodo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/notification_service.dart';
 import '../services/pomodoro_service.dart';
-import 'pomodoro/widgets/fading_indexed_stack.dart';
 import 'pomodoro/views/workbench_view.dart';
 import 'pomodoro/views/stats_view.dart';
+import '../widgets/coach_mark_overlay.dart';
+import '../services/feature_tip_service.dart';
 
 // ══════════════════════════════════════════════════════════════
 // 番茄钟主页（TabBar: 专注工作台 + 统计看板）
@@ -40,6 +42,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
       GlobalKey<PomodoroWorkbenchState>();
   final GlobalKey<PomodoroWorkbenchState> _workbenchKeyLandscape =
       GlobalKey<PomodoroWorkbenchState>();
+  final GlobalKey _statsTabKey = GlobalKey();
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _disposed = false;
 
@@ -87,6 +90,79 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
     // 监听通知栏按钮事件（listen 会自动 replay 冷启动 pending 事件）
     _setupMethodChannelListener();
+  }
+
+  bool _showCoachMarks = false;
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted || !_workbenchReady) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_pomodoro_intro');
+    if (hasSeenCoachMarks) return;
+
+    // 等待 AppBar 的 AnimatedContainer 动画（300ms）完成，否则目标会因为布局展开而向下偏移
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+
+    final workbench = _workbenchState;
+    if (workbench == null) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: workbench.settingsKey,
+          title: '设置',
+          description: '点击这里可以配置番茄钟的时长、休息时间、循环次数等详细设置。',
+        ),
+        CoachMarkStep(
+          targetKey: workbench.tagsManagerKey,
+          title: '标签管理',
+          description: '在这里管理你的所有专注标签，方便你对不同的专注内容进行分类。',
+        ),
+        CoachMarkStep(
+          targetKey: workbench.serverConnKey,
+          title: '连接状态',
+          description: '显示当前与服务器的跨端同步状态，绿灯表示一切正常。',
+        ),
+        CoachMarkStep(
+          targetKey: workbench.modeSwitchKey,
+          title: '计时模式',
+          description: '你可以随时在正计时与倒计时之间切换，满足不同场景的专注需求。',
+        ),
+        CoachMarkStep(
+          targetKey: workbench.focusTagsKey,
+          title: '选择专注标签',
+          description: '快速为当前的专注选择一个或多个标签。专注结束后也可以随时修改它们！',
+        ),
+        CoachMarkStep(
+          targetKey: workbench.bindTodoKey,
+          title: '绑定专注事件',
+          description: '点击可以绑定具体的待办事项或课程，让每一次专注都有的放矢。专注结束后同样可以重新绑定！',
+        ),
+        CoachMarkStep(
+          targetKey: _statsTabKey,
+          title: '统计看板',
+          description: '专注完成后，可以在这里查看你的专注统计数据，洞悉你的专注趋势。',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          _showCoachMarks = false;
+        }
+        FeatureTipService.markTipShown('coach_pomodoro_intro');
+      },
+      onSkip: () {
+        if (mounted) {
+          _showCoachMarks = false;
+        }
+        FeatureTipService.markTipShown('coach_pomodoro_intro');
+      },
+    );
   }
 
   void _setupMethodChannelListener() {
@@ -156,6 +232,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                     onReady: () {
                       if (!_disposed && mounted && !_workbenchReady) {
                         setState(() => _workbenchReady = true);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _checkCoachMarks();
+                        });
                       }
                     },
                     onRecordAdded: () {
@@ -270,6 +349,9 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                     onReady: () {
                       if (!_disposed && mounted && !_workbenchReady) {
                         setState(() => _workbenchReady = true);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _checkCoachMarks();
+                        });
                       }
                     },
                     onRecordAdded: () {
@@ -362,16 +444,17 @@ class _PomodoroScreenState extends State<PomodoroScreen>
               controller: _tabController,
               indicatorSize: TabBarIndicatorSize.label,
               dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(
+              tabs: [
+                const Tab(
                   icon: Icon(Icons.timer_outlined),
                   text: '工作台',
                   iconMargin: EdgeInsets.only(bottom: 2),
                 ),
                 Tab(
-                  icon: Icon(Icons.bar_chart_rounded),
+                  key: _statsTabKey,
+                  icon: const Icon(Icons.bar_chart_rounded),
                   text: '统计看板',
-                  iconMargin: EdgeInsets.only(bottom: 2),
+                  iconMargin: const EdgeInsets.only(bottom: 2),
                 ),
               ],
             ),

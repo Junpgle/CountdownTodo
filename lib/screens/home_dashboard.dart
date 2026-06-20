@@ -162,7 +162,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
 
-  Future<void> _extractColorFromProvider(ImageProvider provider, String url) async {
+  Future<void> _extractColorFromProvider(
+      ImageProvider provider, String url) async {
     if (_extractedWallpaperUrl == url) return;
     _extractedWallpaperUrl = url;
     try {
@@ -181,7 +182,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               palette.lightVibrantColor?.color ??
               palette.darkVibrantColor?.color ??
               (palette.colors.isNotEmpty ? palette.colors.first : null);
-              
+
           StorageService.setAppWallpaperColor(_wallpaperDominantColor);
         });
       }
@@ -3129,10 +3130,14 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_home_intro');
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_home_intro');
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
+      final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
+          MediaQuery.of(context).size.width > 800;
+
       CoachMarkOverlay.show(
         context: context,
         steps: [
@@ -3158,17 +3163,19 @@ class _HomeDashboardState extends State<HomeDashboard>
           ),
           CoachMarkStep(
             targetKey: _menuKey,
-            title: '侧边栏',
-            description: '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
+            title: isTablet ? '菜单栏' : '侧边栏',
+            description: isTablet
+                ? '点击这里，即可浏览各项功能，设置也从这里进入哦~'
+                : '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
           ),
         ],
         onFinish: () {
           _dismissCoachMarks();
           FeatureTipService.markTipShown('coach_home_intro');
           // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
-          final isTablet = MediaQuery.of(context).size.shortestSide >= 600 || MediaQuery.of(context).size.width > 800;
           if (isTablet) {
-            Future.delayed(const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
+            Future.delayed(
+                const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
           }
         },
         onSkip: () {
@@ -3182,7 +3189,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   // 🚀 新增：检查并显示专注 Tab 的引导
   Future<void> _checkFocusTabCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_focus_tab');
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_focus_tab');
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
@@ -4167,7 +4175,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       builder: (context) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (_wallpaperDominantColor == null) {
-                            _extractColorFromProvider(AssetImage(_wallpaperUrl!), _wallpaperUrl!);
+                            _extractColorFromProvider(
+                                AssetImage(_wallpaperUrl!), _wallpaperUrl!);
                           }
                         });
                         return Image.asset(
@@ -4181,7 +4190,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                           builder: (context) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_wallpaperDominantColor == null) {
-                                _extractColorFromProvider(FileImage(File(_wallpaperUrl!)), _wallpaperUrl!);
+                                _extractColorFromProvider(
+                                    FileImage(File(_wallpaperUrl!)),
+                                    _wallpaperUrl!);
                               }
                             });
                             return Image.file(
@@ -4561,21 +4572,45 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       'timeline': timelineSection,
                                     };
 
-                                    bool isCourseEmpty = (_dashboardCourseData['courses'] == null ||
-                                            (_dashboardCourseData['courses'] as List).isEmpty) ||
-                                        (_dashboardCourseData['title']?.toString().contains('天后') ?? false) ||
-                                        _dashboardCourseData['title'] == '最近无课' ||
-                                        _dashboardCourseData['title'] == '暂无课表';
-                                        
+                                    bool isCourseEmpty =
+                                        (_dashboardCourseData['courses'] ==
+                                                    null ||
+                                                (_dashboardCourseData['courses']
+                                                        as List)
+                                                    .isEmpty) ||
+                                            (_dashboardCourseData['title']
+                                                    ?.toString()
+                                                    .contains('天后') ??
+                                                false) ||
+                                            _dashboardCourseData['title'] ==
+                                                '最近无课' ||
+                                            _dashboardCourseData['title'] ==
+                                                '暂无课表';
+
                                     bool hasNoCourse = isCourseEmpty;
                                     if (isCourseEmpty) {
-                                      final nowMs = DateTime.now().millisecondsSinceEpoch;
-                                      final tomorrowEndMs = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day + 2).millisecondsSinceEpoch;
-                                      bool hasActivePlans = _planBlocks.any((b) => !b.isDeleted && b.endTime > nowMs && b.startTime < tomorrowEndMs);
+                                      final nowMs =
+                                          DateTime.now().millisecondsSinceEpoch;
+                                      final tomorrowEndMs = DateTime(
+                                              DateTime.now().year,
+                                              DateTime.now().month,
+                                              DateTime.now().day + 2)
+                                          .millisecondsSinceEpoch;
+                                      bool hasActivePlans = _planBlocks.any(
+                                          (b) =>
+                                              !b.isDeleted &&
+                                              b.endTime > nowMs &&
+                                              b.startTime < tomorrowEndMs);
                                       bool hasActiveTodos = _todos.any((t) {
-                                        if (t.isDeleted || t.dueDate == null || t.isAllDayTask) return false;
-                                        final startMs = t.createdDate ?? t.createdAt;
-                                        return startMs > 0 && t.dueDate!.millisecondsSinceEpoch > nowMs && startMs < tomorrowEndMs;
+                                        if (t.isDeleted ||
+                                            t.dueDate == null ||
+                                            t.isAllDayTask) return false;
+                                        final startMs =
+                                            t.createdDate ?? t.createdAt;
+                                        return startMs > 0 &&
+                                            t.dueDate!.millisecondsSinceEpoch >
+                                                nowMs &&
+                                            startMs < tomorrowEndMs;
                                       });
                                       if (hasActivePlans || hasActiveTodos) {
                                         hasNoCourse = false;
@@ -5051,7 +5086,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
-    final Color primaryColor = _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
+    final Color primaryColor =
+        _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
         (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -5356,7 +5392,8 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         _reported = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
-          widget.onImageProvider?.call(const AssetImage('assets/images/default_wallpaper.png'));
+          widget.onImageProvider
+              ?.call(const AssetImage('assets/images/default_wallpaper.png'));
         });
       }
     }

@@ -18,6 +18,7 @@ class WorkbenchActions extends StatefulWidget {
 
   final bool isCompact;
   final bool showModeToggle;
+  final Key? bindKey;
 
   const WorkbenchActions({
     super.key,
@@ -35,6 +36,7 @@ class WorkbenchActions extends StatefulWidget {
     required this.onSkipBreak,
     this.isCompact = false,
     this.showModeToggle = true,
+    this.bindKey,
   });
 
   @override
@@ -138,6 +140,7 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
           children: [
             Expanded(
               child: OutlinedButton.icon(
+                key: widget.bindKey,
                 onPressed: widget.onShowBindTodo,
                 icon: Icon(
                   widget.boundTodo != null ? Icons.task_alt : Icons.add_task,
