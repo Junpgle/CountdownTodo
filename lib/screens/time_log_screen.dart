@@ -26,6 +26,7 @@ part 'time_log_components.dart';
 // ══════════════════════════════════════════════════════════
 final GlobalKey timeLogDragKey = GlobalKey();
 final GlobalKey timeLogTagKey = GlobalKey();
+final GlobalKey timeLogAddKey = GlobalKey();
 const double kTimeAxisW = 46.0; // 左侧时间标签列宽（固定）
 const double kRowH = 52.0; // 每行（1小时）高度
 const int kColsPerH = 10; // 每小时几列（60/6=10）→ 24×10=240格
@@ -160,10 +161,16 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         CoachMarkStep(
           targetKey: timeLogTagKey,
           title: '标签管理',
-          description: '时间日志的标签与番茄钟的标签是**通用的**！\n你可以点击这里统一创建或管理所有标签，方便后续按类别进行专注或日志统计。',
+          description:
+              '时间日志的标签与番茄钟的标签是**通用的**！\n你可以点击这里统一创建或管理所有标签，方便后续按类别进行专注或日志统计。',
         ),
         CoachMarkStep(
           targetKey: timeLogDragKey,
+          CoachMarkStep(
+            targetKey: timeLogAddKey,
+            title: '手动补录',
+            description: '除了滑动创建，你也可以直接点击上方的「补录」按钮，通过精确填写时间来手动记录遗漏的专注。',
+          ),
           title: '滑动添加日志',
           description: '点击补录按钮后，在日历网格内的空白区域，上下滑动手指即可快速创建一条时间日志！',
         ),
@@ -932,17 +939,23 @@ class _WeekViewState extends State<_WeekView>
             ctx: ctx,
           ),
           const Spacer(),
-          _TopBarChip(
-            label: '标签',
-            icon: Icons.label_outline,
-            color: _TC.textSub(ctx).withValues(alpha: 0.8),
-            ctx: ctx,
-            onTap: widget.onManageTags,
+          SizedBox(
+            key: timeLogTagKey,
+            child: _TopBarChip(
+              label: '标签',
+              icon: Icons.label_outline,
+              color: _TC.textSub(ctx).withValues(alpha: 0.8),
+              ctx: ctx,
+              onTap: widget.onManageTags,
+            ),
           ),
-          const SizedBox(width: 6),
-          _TopBarChip(
-            label: '补录',
-            icon: Icons.edit_calendar_outlined,
+          SizedBox(
+            key: timeLogAddKey,
+            child: const SizedBox(width: 6),
+            _TopBarChip(
+              label: '补录',
+              icon: Icons.edit_calendar_outlined,
+            ),
             color: Theme.of(ctx).colorScheme.primary,
             ctx: ctx,
             onTap: widget.onAddLog,
@@ -1759,6 +1772,14 @@ class _GridCanvas extends StatelessWidget {
           onTap: () => onTimeLogTap(log),
         );
       }),
+
+      Positioned(
+        top: 9 * rowH,
+        left: rowW / 3,
+        width: rowW / 3,
+        height: rowH,
+        child: SizedBox(key: timeLogDragKey),
+      ),
     ]);
   }
 
