@@ -23,6 +23,8 @@ import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import '../screens/todo_plan_screen.dart';
@@ -3623,6 +3625,48 @@ class TodoEditScreen extends StatefulWidget {
 }
 
 class TodoEditScreenState extends State<TodoEditScreen> {
+  final GlobalKey _planKey = GlobalKey();
+  final GlobalKey _focusKey = GlobalKey();
+  final GlobalKey _dataKey = GlobalKey();
+  bool _showCoachMarks = false;
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_edit_todo');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _planKey,
+            title: '计划安排',
+            description: '为待办事项规划具体的时间块，方便在时间轴上查看与管理。',
+          ),
+          CoachMarkStep(
+            targetKey: _focusKey,
+            title: '专注记录',
+            description: '查看在此任务上的所有番茄钟或正计时专注历史。',
+          ),
+          CoachMarkStep(
+            targetKey: _dataKey,
+            title: '数据存证',
+            description: '每次修改任务的时间、状态或内容，系统都会自动记录，方便随时追溯历史版本。',
+          ),
+        ],
+        onFinish: _dismissCoachMarks,
+        onSkip: _dismissCoachMarks,
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_edit_todo');
+    _showCoachMarks = false;
+  }
+
   late TextEditingController _titleCtrl;
   late TextEditingController _remarkCtrl;
   late TextEditingController _customDaysCtrl;
@@ -3648,6 +3692,24 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        if (route.animation!.isCompleted) {
+          _checkCoachMarks();
+        } else {
+          void listener(AnimationStatus status) {
+            if (status == AnimationStatus.completed) {
+              _checkCoachMarks();
+              route.animation!.removeStatusListener(listener);
+            }
+          }
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        _checkCoachMarks();
+      }
+    });
     final t = widget.todo;
     _titleCtrl = TextEditingController(text: t.title);
     _remarkCtrl = TextEditingController(text: t.remark ?? '');
@@ -4226,8 +4288,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             const SizedBox(height: 24),
           ],
           const SizedBox(height: 12),
-          const Text("数据存证",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          KeyedSubtree(
+            key: _dataKey,
+            child: const Text("数据存证",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -4299,8 +4364,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        const Text("专注记录",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        KeyedSubtree(
+          key: _focusKey,
+          child: const Text("专注记录",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
         const SizedBox(height: 8),
         ..._focusRecords.take(20).map((r) {
           final startLocal =
@@ -4381,11 +4449,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text("计划安排",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        KeyedSubtree(
+          key: _planKey,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("计划安排",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             TextButton.icon(
               onPressed: () async {
                 await Navigator.push(
@@ -4405,6 +4475,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               label: const Text("今日计划"),
             ),
           ],
+        ),
         ),
         const SizedBox(height: 12),
         Container(

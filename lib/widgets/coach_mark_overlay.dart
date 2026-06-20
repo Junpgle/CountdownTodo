@@ -64,6 +64,7 @@ class _CoachMarkOverlayWidget extends StatefulWidget {
 class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
   int _currentStep = 0;
   Rect? _targetRect;
+  bool _isCalculating = true; // 🚀 新增：标记是否正在计算坐标（比如正在滚动）
 
   @override
   void initState() {
@@ -71,7 +72,8 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculateTargetRect());
   }
 
-  void _calculateTargetRect() {
+  Future<void> _calculateTargetRect() async {
+    if (!mounted) return;
     if (_currentStep >= widget.steps.length) {
       widget.onFinish();
       return;
@@ -79,15 +81,26 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
     final step = widget.steps[_currentStep];
     final context = step.targetKey.currentContext;
     if (context != null) {
+      // 🚀 先滚动到可见区域并居中，以免元素在屏幕外导致错位
+      await Scrollable.ensureVisible(
+        context,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      if (!mounted) return;
+
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
       final offset = renderBox.localToGlobal(Offset.zero);
       setState(() {
         _targetRect = offset & renderBox.size;
+        _isCalculating = false;
       });
     } else {
-      // Key not found in widget tree, fallback or skip
+      // Key not found in widget tree, display the tooltip at the center without a hole
       setState(() {
         _targetRect = null;
+        _isCalculating = false;
       });
     }
   }
@@ -96,7 +109,8 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
     if (_currentStep < widget.steps.length - 1) {
       setState(() {
         _currentStep++;
-        _targetRect = null; // Hide temporarily while calculating
+        _isCalculating = true; // 🚀 标记为正在计算
+        // _targetRect = null; // 不再清空，避免中间态闪烁
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _calculateTargetRect());
     } else {
@@ -118,7 +132,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
           GestureDetector(
             onTap: _nextStep,
             child: CustomPaint(
-              painter: _HolePainter(_targetRect),
+              painter: _HolePainter(_isCalculating ? null : _targetRect),
               child: Container(),
             ),
           ),
@@ -134,20 +148,24 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
           ),
 
           // 3. Tooltip Bubble
-          if (_targetRect != null)
-            _buildTooltip(step, _targetRect!),
+          if (!_isCalculating)
+            _buildTooltip(step, _targetRect),
         ],
       ),
     );
   }
 
-  Widget _buildTooltip(CoachMarkStep step, Rect targetRect) {
+  Widget _buildTooltip(CoachMarkStep step, Rect? targetRect) {
     final screenSize = MediaQuery.of(context).size;
-    final isBottomSpaceAvailable = (screenSize.height - targetRect.bottom) > 220;
+    final isBottomSpaceAvailable = targetRect != null ? ((screenSize.height - targetRect.bottom) > 220) : true;
     
     return Positioned(
-      top: isBottomSpaceAvailable ? targetRect.bottom + 16 : null,
-      bottom: !isBottomSpaceAvailable ? screenSize.height - targetRect.top + 16 : null,
+      top: targetRect != null 
+          ? (isBottomSpaceAvailable ? targetRect.bottom + 16 : null)
+          : screenSize.height / 2 - 100, // 默认居中显示
+      bottom: targetRect != null 
+          ? (!isBottomSpaceAvailable ? screenSize.height - targetRect.top + 16 : null)
+          : null,
       left: 16,
       right: 16,
       child: Center(
