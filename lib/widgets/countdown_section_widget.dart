@@ -17,6 +17,7 @@ class CountdownSectionWidget extends StatefulWidget {
   final String username;
   final bool isLight;
   final VoidCallback onDataChanged;
+  final Key? addKey; // 🚀 新增 addKey 用于高亮引导
 
   const CountdownSectionWidget({
     super.key,
@@ -24,6 +25,7 @@ class CountdownSectionWidget extends StatefulWidget {
     required this.username,
     required this.isLight,
     required this.onDataChanged,
+    this.addKey,
   });
 
   @override
@@ -285,6 +287,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                       title: "重要日",
                       icon: Icons.timer,
                       onAdd: _addCountdown,
+                      addKey: widget.addKey, // 🚀 传递 addKey
                       isLight: widget.isLight)),
               if (MediaQuery.of(context).size.width >= 600)
                 IconButton(

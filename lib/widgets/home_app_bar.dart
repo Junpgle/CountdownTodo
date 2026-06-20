@@ -106,6 +106,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? searchKey; // 🚀 新增
   final GlobalKey? teamsKey; // 🚀 新增
   final GlobalKey? aiKey;
+  final GlobalKey? menuKey; // 🚀 新增：左侧菜单键
   final bool showCourseButton;
   final int teamPendingCount; // 🚀 Uni-Sync 4.0: 团队待处理消息数
   final bool hasTeamConflictDot;
@@ -128,6 +129,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.searchKey,
     this.teamsKey,
     this.aiKey,
+    this.menuKey,
     this.showCourseButton = false,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
@@ -365,6 +367,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       elevation: 0,
       toolbarHeight: toolbarH,
       leading: (isTablet || isLandscape) ? null : IconButton(
+        key: widget.menuKey,
         icon: const Icon(Icons.menu_rounded),
         iconSize: 28,
         color: widget.isLight ? Colors.white : Theme.of(context).colorScheme.onSurface,

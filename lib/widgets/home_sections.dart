@@ -8,6 +8,7 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback? onAdd;
+  final Key? addKey; // 🚀 新增 addKey 用于高亮引导
   final VoidCallback? onAction; // 📁 新增操作回调
   final IconData? actionIcon; // 📁 新增操作图标
   final String? actionTooltip; // 📁 新增操作提示
@@ -18,6 +19,7 @@ class SectionHeader extends StatelessWidget {
     required this.title,
     required this.icon,
     this.onAdd,
+    this.addKey,
     this.onAction,
     this.actionIcon,
     this.actionTooltip,
@@ -59,10 +61,13 @@ class SectionHeader extends StatelessWidget {
               tooltip: actionTooltip ?? "操作",
             ),
           if (onAdd != null)
-            IconButton(
-              onPressed: onAdd,
-              icon: Icon(Icons.add_circle_outline, color: iconColor),
-              tooltip: "添加",
+            KeyedSubtree(
+              key: addKey,
+              child: IconButton(
+                onPressed: onAdd,
+                icon: Icon(Icons.add_circle_outline, color: iconColor),
+                tooltip: "添加",
+              ),
             )
         ],
       ),

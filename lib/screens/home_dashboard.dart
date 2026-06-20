@@ -149,7 +149,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<TodoItem>? _persistingTodosSnapshot;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
   final GlobalKey _settingsButtonKey = GlobalKey();
-  final GlobalKey _pomodoroCardKey = GlobalKey();
+  final GlobalKey _pomodoroCardKey = GlobalKey(); // 恢复：用于卡片动画源
+  final GlobalKey _addCountdownKey = GlobalKey(); // 🚀 新增：倒数日添加按钮
   final GlobalKey _mathCardKey = GlobalKey();
   final GlobalKey _screenTimeCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
@@ -246,6 +247,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _teamsButtonKey = GlobalKey();
   final GlobalKey _aiButtonKey = GlobalKey();
   final GlobalKey _courseCenterKey = GlobalKey();
+  final GlobalKey _menuKey = GlobalKey(); // 🚀 新增：侧边栏菜单按钮
 
   Future<void> _openAiAssistantFromAppBar() async {
     final todoState = _todoSectionKey.currentState;
@@ -3144,9 +3146,19 @@ class _HomeDashboardState extends State<HomeDashboard>
             description: '点击此处开始番茄钟专注计时，可绑定待办任务。',
           ),
           CoachMarkStep(
-            targetKey: _pomodoroCardKey,
-            title: '专注记录',
-            description: '首页会展示今天的专注统计，所有记录都会保存在时间轴中。',
+            targetKey: _addCountdownKey,
+            title: '添加重要日',
+            description: '在这里可以添加即将到来的考试、纪念日，或者其他任何对你非常重要的倒数日。',
+          ),
+          CoachMarkStep(
+            targetKey: _searchButtonKey,
+            title: '全局搜索',
+            description: '随时在这里搜索所有内容，待办、倒计时、番茄钟、设置、时间日志、屏幕时间通通拿下。',
+          ),
+          CoachMarkStep(
+            targetKey: _menuKey,
+            title: '侧边栏',
+            description: '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
           ),
         ],
         onFinish: _dismissCoachMarks,
@@ -4172,6 +4184,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     teamsKey: _teamsButtonKey,
                     aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,
+                    menuKey: _menuKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
                     teamPendingCount: _teamPendingCount, // 🚀 绑定计数
@@ -4269,6 +4282,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             countdowns: _countdowns,
                                             username: widget.username,
                                             isLight: isLight,
+                                            addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
                                               _timelineRefreshTriggerNotifier
