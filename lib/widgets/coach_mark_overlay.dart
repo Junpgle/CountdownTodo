@@ -41,7 +41,7 @@ class CoachMarkOverlay {
       },
     );
 
-    Overlay.of(context).insert(overlayEntry);
+    Overlay.of(context, rootOverlay: true).insert(overlayEntry);
   }
 }
 
@@ -91,7 +91,14 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
       if (!mounted) return;
 
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
-      final offset = renderBox.localToGlobal(Offset.zero);
+      
+      // 🚀 获取根 Overlay 的 RenderBox 作为坐标系参考
+      final OverlayState overlay = Overlay.of(context, rootOverlay: true);
+      final RenderBox overlayRenderBox = overlay.context.findRenderObject() as RenderBox;
+      
+      // 计算相对于根 Overlay 的精确坐标
+      final offset = renderBox.localToGlobal(Offset.zero, ancestor: overlayRenderBox);
+      
       setState(() {
         _targetRect = offset & renderBox.size;
         _isCalculating = false;

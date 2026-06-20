@@ -12,9 +12,13 @@ import 'plan_block_stats_screen.dart';
 import '../services/time_estimation_service.dart';
 import '../utils/page_transitions.dart';
 import 'todo_chat_screen.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 
 // 复用 TimeLog 的颜色和基础常量
 const double kTimeAxisW = 46.0;
+
+final GlobalKey planDragKey = GlobalKey();
 
 class TodoPlanScreen extends StatefulWidget {
   final String username;
@@ -44,6 +48,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<PomodoroRecord> _pomodoroRecords = [];
   final Set<String> _mappedBlockIds = <String>{};
 
+  bool _showCoachMarks = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +59,52 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     _focusedDate = DateTime(initial.year, initial.month, initial.day);
     StorageService.dataRefreshNotifier.addListener(_onDataRefresh);
     _loadData();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkCoachMarks();
+    });
+  }
+
+  void _checkCoachMarks() async {
+    if (!mounted || _showCoachMarks) return;
+
+    final hasShown =
+        await FeatureTipService.hasTipBeenShown('todo_plan_guide');
+    if (hasShown || !mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: planDragKey,
+          title: '滑动创建规划',
+          description: '在日历网格内的空白区域，上下滑动手指即可快速规划一整块时间！\n你还可以长按已有的规划块进行拖拽移动。',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('todo_plan_guide');
+      },
+      onSkip: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('todo_plan_guide');
+      },
+    );
   }
 
   @override
@@ -701,6 +753,16 @@ class _PlanGridViewState extends State<_PlanGridView> {
         child: Container(color: Colors.grey.withValues(alpha: 0.05)),
       ));
     }
+
+    // 隐藏的指引锚点 (9:00 - 10:00)
+    lines.add(Positioned(
+      top: 9 * hourH,
+      left: width / 3,
+      width: width / 3,
+      height: hourH,
+      child: SizedBox(key: planDragKey),
+    ));
+
     return lines;
   }
 

@@ -16,12 +16,16 @@ import '../utils/theme_color_tokens.dart';
 import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 
 part 'time_log_components.dart';
 
 // ══════════════════════════════════════════════════════════
 // 常量
 // ══════════════════════════════════════════════════════════
+final GlobalKey timeLogDragKey = GlobalKey();
+final GlobalKey timeLogTagKey = GlobalKey();
 const double kTimeAxisW = 46.0; // 左侧时间标签列宽（固定）
 const double kRowH = 52.0; // 每行（1小时）高度
 const int kColsPerH = 10; // 每小时几列（60/6=10）→ 24×10=240格
@@ -135,6 +139,53 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<TodoGroup> _allTodoGroups = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
   _EntryMode _entryMode = _EntryMode.log;
+  bool _showCoachMarks = false;
+
+  void _checkCoachMarks() async {
+    if (!mounted || _showCoachMarks) return;
+
+    final hasShown = await FeatureTipService.hasTipBeenShown('time_log_guide');
+    if (hasShown || !mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: timeLogTagKey,
+          title: '标签管理',
+          description: '时间日志的标签与番茄钟的标签是**通用的**！\n你可以点击这里统一创建或管理所有标签，方便后续按类别进行专注或日志统计。',
+        ),
+        CoachMarkStep(
+          targetKey: timeLogDragKey,
+          title: '滑动添加日志',
+          description: '点击补录按钮后，在日历网格内的空白区域，上下滑动手指即可快速创建一条时间日志！',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('time_log_guide');
+      },
+      onSkip: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('time_log_guide');
+      },
+    );
+  }
 
   // 打开编辑面板
   void _editTimeLog(TimeLogItem log) {
@@ -161,6 +212,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     _weekStart = _dayStart(DateTime.now())
         .subtract(Duration(days: DateTime.now().weekday - 1));
     _loadData();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkCoachMarks();
+    });
   }
 
   Future<void> _loadData({bool forceSync = false}) async {
