@@ -14,6 +14,8 @@ import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
 
@@ -69,6 +71,54 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _isLoading = true; // 🚀 首页加载锁
   Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别待办
 
+  final GlobalKey _aiTabSwitchKey = GlobalKey();
+  final GlobalKey _attachmentKey = GlobalKey();
+  final GlobalKey _allDayKey = GlobalKey();
+  final GlobalKey _saveButtonKey = GlobalKey();
+  bool _showCoachMarks = false;
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_add_todo');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _aiTabSwitchKey,
+            title: 'AI 智能识别',
+            description: '除了手动创建外，您还可以切换到 AI 识别，通过文字、语音或截图自动提取待办事项。',
+          ),
+          CoachMarkStep(
+            targetKey: _attachmentKey,
+            title: '添加图片附件',
+            description: '可以为待办事项附带一张相关的图片。请注意：图片不会上传到云端，仅在本地展示。',
+          ),
+          CoachMarkStep(
+            targetKey: _allDayKey,
+            title: '全天事件与灵动岛',
+            description: '全天事件会在截止的最后一天上岛通知。取餐、外卖等特殊待办设置为全天事件时，也会自动上岛。',
+          ),
+          CoachMarkStep(
+            targetKey: _saveButtonKey,
+            title: '保存待办',
+            description: '所有的信息都填写完毕后，点击这里就能将其保存到您的计划中了！',
+          ),
+        ],
+        onFinish: _dismissCoachMarks,
+        onSkip: _dismissCoachMarks,
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_add_todo');
+    _showCoachMarks = false;
+  }
+
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
   List<Team> _teams = [];
@@ -87,6 +137,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        if (route.animation!.isCompleted) {
+          _checkCoachMarks();
+        } else {
+          void listener(AnimationStatus status) {
+            if (status == AnimationStatus.completed) {
+              _checkCoachMarks();
+              route.animation!.removeStatusListener(listener);
+            }
+          }
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        _checkCoachMarks();
+      }
+    });
     _selectedGroupId = widget.initialGroupId;
     _selectedTeamUuid = widget.initialTeamUuid;
     _selectedTeamName = widget.initialTeamName;
@@ -1084,17 +1152,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         centerTitle: true,
         title: SizedBox(
           width: 200,
-          child: _buildCustomSegmentedControl(
-            labels: const ["手动创建", "AI 识别"],
-            selectedIndex: _selectedTabIndex,
-            onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+          child: KeyedSubtree(
+            key: _aiTabSwitchKey,
+            child: _buildCustomSegmentedControl(
+              labels: const ["手动创建", "AI 识别"],
+              selectedIndex: _selectedTabIndex,
+              onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+            ),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
-            child: const Text("完成",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          KeyedSubtree(
+            key: _saveButtonKey,
+            child: TextButton(
+              onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
+              child: const Text("完成",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -1262,16 +1336,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 if (_selectedImagePath == null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: TextButton.icon(
-                      onPressed: _pickAttachmentImage,
-                      icon: const Icon(Icons.add_photo_alternate_outlined,
-                          size: 20),
-                      label: const Text("添加图片"),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: Colors.grey.shade600,
+                    child: KeyedSubtree(
+                      key: _attachmentKey,
+                      child: TextButton.icon(
+                        onPressed: _pickAttachmentImage,
+                        icon: const Icon(Icons.add_photo_alternate_outlined,
+                            size: 20),
+                        label: const Text("添加图片"),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: Colors.grey.shade600,
+                        ),
                       ),
                     ),
                   )
@@ -1328,14 +1405,16 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             children: [
               const Text("时间与提醒",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              Row(
-                children: [
-                  const Text("全天事件",
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    height: 24, // 紧凑的Switch
-                    child: Switch(
+              KeyedSubtree(
+                key: _allDayKey,
+                child: Row(
+                  children: [
+                    const Text("全天事件",
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 24, // 紧凑的Switch
+                      child: Switch(
                       value: _isAllDay,
                       onChanged: (val) {
                         setState(() {
@@ -1357,9 +1436,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
