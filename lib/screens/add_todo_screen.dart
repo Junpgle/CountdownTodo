@@ -10,6 +10,7 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../services/time_estimation_service.dart';
@@ -79,7 +80,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
-    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_add_todo');
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_add_todo');
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
@@ -133,10 +135,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   TodoClassificationSuggestion? _classificationSuggestion;
   Timer? _estimationDebounce;
   DateTime? _suggestedDueDate;
+  late Timer _timer;
+  List<TodoGroup> _localTodoGroups = [];
 
   @override
   void initState() {
     super.initState();
+    _localTodoGroups = List.from(widget.todoGroups);
+    if (_localTodoGroups.isEmpty) {
+      _loadTodoGroups();
+    }
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -149,6 +160,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
               route.animation!.removeStatusListener(listener);
             }
           }
+
           route.animation!.addStatusListener(listener);
         }
       } else {
@@ -174,6 +186,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
     _loadTeams();
     _loadPendingTodoConfirm();
+  }
+
+  Future<void> _loadTodoGroups() async {
+    try {
+      final groups = await DatabaseHelper.instance.getTodoGroups();
+      if (mounted) {
+        setState(() {
+          _localTodoGroups = groups;
+        });
+      }
+    } catch (e) {
+      debugPrint('[AddTodoScreen] Failed to load todo groups: $e');
+    }
   }
 
   Future<void> _loadPendingTodoConfirm() async {
@@ -272,6 +297,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
     _dotsController.dispose();
+    _timer.cancel();
     super.dispose();
   }
 
@@ -298,7 +324,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         final classification = await TodoClassificationService.recommendForText(
           title: text,
           remark: _remarkCtrl.text,
-          groups: widget.todoGroups,
+          groups: _localTodoGroups,
           categoryReminderDefaults: _categoryReminderDefaults,
           dueDate: _dueDate,
         );
@@ -584,7 +610,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       final classification = await TodoClassificationService.recommendForText(
         title: r.title,
         remark: r.remark ?? '',
-        groups: widget.todoGroups,
+        groups: _localTodoGroups,
         categoryReminderDefaults: _categoryReminderDefaults,
         dueDate: r.endTime,
       );
@@ -852,9 +878,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final hasDueDate = _suggestedDueDate != null && !_isAllDay;
 
     // Check if classification suggestion is meaningful
-    final hasNewGroup = clsSug != null &&
-        clsSug.hasGroup &&
-        clsSug.groupId != _selectedGroupId;
+    final hasNewGroup =
+        clsSug != null && clsSug.hasGroup && clsSug.groupId != _selectedGroupId;
     final hasClassification =
         hasNewGroup || (clsSug != null && clsSug.tags.isNotEmpty);
 
@@ -873,7 +898,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
+        border:
+            Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: cs.primary.withValues(alpha: 0.05),
@@ -1056,7 +1082,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: subColor?.withValues(alpha: 0.7) ?? Colors.grey,
+                          color:
+                              subColor?.withValues(alpha: 0.7) ?? Colors.grey,
                         ),
                       ),
                     ],
@@ -1072,7 +1099,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 onTap: onAccept,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: (accentColor ?? cs.primary).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -1121,7 +1149,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       ),
     );
   }
-
 
   String _estimationConfidenceLabel(TimeEstimationResult est) {
     final pct = (est.confidence * 100).round();
@@ -1216,18 +1243,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     // Record positive feedback
     if (suggestion.hasGroup) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: true,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: true,
       );
     }
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'priority',
-      suggestedValue: '${suggestion.priority}', accepted: true,
+      keywords: kws,
+      suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}',
+      accepted: true,
     );
     for (final tag in suggestion.tags) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'tag',
-        suggestedValue: tag, accepted: true,
+        keywords: kws,
+        suggestionType: 'tag',
+        suggestedValue: tag,
+        accepted: true,
       );
     }
     setState(() {
@@ -1247,18 +1280,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final kws = _extractKeywords();
     if (suggestion.hasGroup) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: false,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: false,
       );
     }
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'priority',
-      suggestedValue: '${suggestion.priority}', accepted: false,
+      keywords: kws,
+      suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}',
+      accepted: false,
     );
     for (final tag in suggestion.tags) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'tag',
-        suggestedValue: tag, accepted: false,
+        keywords: kws,
+        suggestionType: 'tag',
+        suggestedValue: tag,
+        accepted: false,
       );
     }
   }
@@ -1272,8 +1311,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
     // Positive feedback for user's choice
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'group',
-      suggestedValue: chosenGroupId, accepted: true,
+      keywords: kws,
+      suggestionType: 'group',
+      suggestedValue: chosenGroupId,
+      accepted: true,
     );
 
     // Negative feedback for AI suggestion if user chose differently
@@ -1282,8 +1323,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         suggestion.hasGroup &&
         suggestion.groupId != chosenGroupId) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: false,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: false,
       );
     }
   }
@@ -1415,31 +1458,31 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     SizedBox(
                       height: 24, // 紧凑的Switch
                       child: Switch(
-                      value: _isAllDay,
-                      onChanged: (val) {
-                        setState(() {
-                          _isAllDay = val;
-                          if (_isAllDay) {
-                            _createdAt = DateTime(_createdAt.year,
-                                _createdAt.month, _createdAt.day, 0, 0);
-                            if (_dueDate != null) {
-                              _dueDate = DateTime(_dueDate!.year,
-                                  _dueDate!.month, _dueDate!.day, 23, 59);
-                            } else {
-                              _dueDate = DateTime(_createdAt.year,
-                                  _createdAt.month, _createdAt.day, 23, 59);
+                        value: _isAllDay,
+                        onChanged: (val) {
+                          setState(() {
+                            _isAllDay = val;
+                            if (_isAllDay) {
+                              _createdAt = DateTime(_createdAt.year,
+                                  _createdAt.month, _createdAt.day, 0, 0);
+                              if (_dueDate != null) {
+                                _dueDate = DateTime(_dueDate!.year,
+                                    _dueDate!.month, _dueDate!.day, 23, 59);
+                              } else {
+                                _dueDate = DateTime(_createdAt.year,
+                                    _createdAt.month, _createdAt.day, 23, 59);
+                              }
                             }
-                          }
-                        });
-                      },
+                          });
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -1587,19 +1630,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(height: 24),
 
           // --- 3. 组织归属网格 (2xN) ---
-          if (widget.todoGroups.isNotEmpty || _teams.isNotEmpty) ...[
+          if (_localTodoGroups.isNotEmpty || _teams.isNotEmpty) ...[
             const Text("组织与协作",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(
               children: [
-                if (widget.todoGroups.isNotEmpty)
+                if (_localTodoGroups.isNotEmpty)
                   Expanded(
                       child: _buildPopupSquareTile<String>(
                     title: "归属文件夹",
                     subtitle: _selectedGroupId == null
                         ? "未分类"
-                        : (widget.todoGroups
+                        : (_localTodoGroups
                                 .where((g) => g.id == _selectedGroupId)
                                 .firstOrNull
                                 ?.name ??
@@ -1611,7 +1654,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     items: [
                       const PopupMenuItem<String>(
                           value: "__none__", child: Text("未分类")),
-                      ...widget.todoGroups.where((g) => !g.isDeleted).map((g) =>
+                      ..._localTodoGroups.where((g) => !g.isDeleted).map((g) =>
                           PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
                     onSelected: (v) {
@@ -1630,7 +1673,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       });
                     },
                   )),
-                if (widget.todoGroups.isNotEmpty && _teams.isNotEmpty)
+                if (_localTodoGroups.isNotEmpty && _teams.isNotEmpty)
                   const SizedBox(width: 12),
                 if (_teams.isNotEmpty)
                   Expanded(

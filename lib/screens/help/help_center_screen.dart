@@ -14,8 +14,9 @@ import 'help_article_screen.dart';
 
 class HelpCenterScreen extends StatefulWidget {
   final String? username;
+  final bool isEmbedded;
 
-  const HelpCenterScreen({super.key, this.username});
+  const HelpCenterScreen({super.key, this.username, this.isEmbedded = false});
 
   @override
   State<HelpCenterScreen> createState() => _HelpCenterScreenState();
@@ -27,9 +28,11 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('帮助与反馈'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('帮助与反馈'),
+            ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -39,7 +42,6 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             '快速上手',
             scheme.primary,
             [
-
               _HelpEntry(
                 '重新显示功能提示',
                 '重置所有情境提示，让其重新出现',
@@ -82,8 +84,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                   if (!mounted) return;
                   if (manifest != null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('当前版本: ${manifest.versionName}')),
+                      SnackBar(content: Text('当前版本: ${manifest.versionName}')),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -121,8 +122,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           ],
           actionLabel: '前往添加待办',
           onAction: () {
-            Navigator.push(
-              context,
+            Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(AddTodoScreen(
                 onTodoAdded: (_) {},
               )),
@@ -150,8 +150,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           ],
           actionLabel: '前往课程设置',
           onAction: () {
-            Navigator.push(
-              context,
+            Navigator.of(context, rootNavigator: true).push(
               PageTransitions.slideHorizontal(
                 WeeklyCourseScreen(username: widget.username ?? ''),
               ),
@@ -179,9 +178,9 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           ],
           actionLabel: '前往专注页面',
           onAction: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(PomodoroScreen(username: widget.username ?? '')),
+            Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                  PomodoroScreen(username: widget.username ?? '')),
             );
           },
         )),
@@ -391,7 +390,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     Navigator.push(
       context,
       PageTransitions.slideHorizontal(
-        HelpArticleScreen(article: article),
+        HelpArticleScreen(article: article, isEmbedded: widget.isEmbedded),
       ),
     );
   }
@@ -432,6 +431,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         FeatureGuideScreen(
           isManualReview: true,
           loggedInUser: widget.username,
+          isEmbedded: widget.isEmbedded,
         ),
       ),
     );
@@ -471,9 +471,8 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
             side: BorderSide(color: scheme.outlineVariant),
           ),
           child: Column(
-            children: entries
-                .map((entry) => _buildEntryTile(entry, scheme))
-                .toList(),
+            children:
+                entries.map((entry) => _buildEntryTile(entry, scheme)).toList(),
           ),
         ),
       ],
@@ -486,7 +485,8 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
         if (entry != _buildArticleEntries().first)
           Divider(height: 1, indent: 72, color: scheme.outlineVariant),
         ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           leading: Container(
             width: 40,
             height: 40,

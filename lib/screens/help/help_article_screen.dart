@@ -3,16 +3,20 @@ import '../../models/help_article.dart';
 
 class HelpArticleScreen extends StatelessWidget {
   final HelpArticle article;
+  final bool isEmbedded;
 
-  const HelpArticleScreen({super.key, required this.article});
+  const HelpArticleScreen(
+      {super.key, required this.article, this.isEmbedded = false});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(article.title),
-      ),
+      appBar: isEmbedded
+          ? null
+          : AppBar(
+              title: Text(article.title),
+            ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [

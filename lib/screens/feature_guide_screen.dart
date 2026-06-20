@@ -23,9 +23,14 @@ import 'home_settings_screen.dart';
 class FeatureGuideScreen extends StatefulWidget {
   final String? loggedInUser;
   final bool isManualReview;
+  final bool isEmbedded;
 
-  const FeatureGuideScreen(
-      {super.key, this.loggedInUser, this.isManualReview = false});
+  const FeatureGuideScreen({
+    super.key,
+    this.loggedInUser,
+    this.isManualReview = false,
+    this.isEmbedded = false,
+  });
 
   static const String _guideKey = 'upgrade_guide_shown_version';
 

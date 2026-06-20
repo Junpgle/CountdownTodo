@@ -602,6 +602,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '权限管理';
       case 'about':
         return '关于此应用';
+      case 'help':
+        return '帮助与反馈';
       default:
         return '';
     }
@@ -839,7 +841,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.help_outline,
                   color: Colors.blueGrey,
                   title: '帮助与反馈',
-                  widgetBuilder: () => HelpCenterScreen(username: _username),
+                  widgetBuilder: () =>
+                      HelpCenterScreen(username: _username, isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
                   id: 'about',
@@ -1094,12 +1097,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
-                  leading: const Icon(Icons.help_outline, color: Colors.blueGrey),
+                  leading:
+                      const Icon(Icons.help_outline, color: Colors.blueGrey),
                   title: const Text('帮助与反馈'),
                   subtitle: const Text('使用指南、快速上手、常见问题'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(context,
-                      PageTransitions.slideHorizontal(HelpCenterScreen(username: _username))),
+                  onTap: () => Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                          HelpCenterScreen(username: _username))),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
