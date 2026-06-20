@@ -151,6 +151,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _settingsButtonKey = GlobalKey();
   final GlobalKey _pomodoroCardKey = GlobalKey(); // 恢复：用于卡片动画源
   final GlobalKey _addCountdownKey = GlobalKey(); // 🚀 新增：倒数日添加按钮
+  final GlobalKey _timelineCardKey = GlobalKey(); // 🚀 新增：专注Tab时间轴
   final GlobalKey _mathCardKey = GlobalKey();
   final GlobalKey _screenTimeCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
@@ -3161,8 +3162,57 @@ class _HomeDashboardState extends State<HomeDashboard>
             description: '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
           ),
         ],
-        onFinish: _dismissCoachMarks,
-        onSkip: _dismissCoachMarks,
+        onFinish: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_home_intro');
+          // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
+          final isTablet = MediaQuery.of(context).size.shortestSide >= 600 || MediaQuery.of(context).size.width > 800;
+          if (isTablet) {
+            Future.delayed(const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
+          }
+        },
+        onSkip: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_home_intro');
+        },
+      );
+    }
+  }
+
+  // 🚀 新增：检查并显示专注 Tab 的引导
+  Future<void> _checkFocusTabCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks = await FeatureTipService.hasTipBeenShown('coach_focus_tab');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _timelineCardKey,
+            title: '个人时间轴',
+            description: '这是你专属的个人时间轴，点进去可以查看详尽的分析报告，洞察你的时间都去哪儿了。',
+          ),
+          CoachMarkStep(
+            targetKey: _pomodoroCardKey,
+            title: '最近专注',
+            description: '这里会展示你最近一段时间的专注统计，包括累计专注时长和专注趋势。',
+          ),
+          CoachMarkStep(
+            targetKey: _screenTimeCardKey,
+            title: '屏幕时间',
+            description: '授权后，这里将统计你每日的手机应用使用情况，帮助你减少分心。',
+          ),
+        ],
+        onFinish: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_focus_tab');
+        },
+        onSkip: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_focus_tab');
+        },
       );
     }
   }
@@ -4422,17 +4472,19 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         ),
                                       ),
                                     );
-                                    Widget timelineSection =
-                                        ValueListenableBuilder<int>(
-                                      valueListenable:
-                                          _timelineRefreshTriggerNotifier,
-                                      builder: (context, trigger, _) {
-                                        return PersonalTimelineSection(
-                                          username: widget.username,
-                                          isLight: isLight,
-                                          refreshTrigger: trigger,
-                                        );
-                                      },
+                                    Widget timelineSection = KeyedSubtree(
+                                      key: _timelineCardKey,
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            _timelineRefreshTriggerNotifier,
+                                        builder: (context, trigger, _) {
+                                          return PersonalTimelineSection(
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            refreshTrigger: trigger,
+                                          );
+                                        },
+                                      ),
                                     );
 
                                     Widget pomodoroSection = RepaintBoundary(
@@ -5058,7 +5110,14 @@ class _HomeDashboardState extends State<HomeDashboard>
       int index, IconData icon, String label, Color primary, Color inactive) {
     bool isSelected = _selectedTabIndex == index;
     return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
+      onTap: () {
+        setState(() => _selectedTabIndex = index);
+        if (index == 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _checkFocusTabCoachMarks();
+          });
+        }
+      },
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       child: Container(
