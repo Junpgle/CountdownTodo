@@ -176,7 +176,7 @@ class HomeDrawerMenu extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 24),
 
                   // Features Group
                   Expanded(
@@ -188,7 +188,7 @@ class HomeDrawerMenu extends StatelessWidget {
                           _buildMenuItem(
                             context,
                             icon: Icons.people_rounded,
-                            title: '群组与团队',
+                            title: '群组团队',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
                               onTeams();
@@ -237,7 +237,7 @@ class HomeDrawerMenu extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   
                   // Utilities Group (Frosted Card)
                   Container(
@@ -285,7 +285,7 @@ class HomeDrawerMenu extends StatelessWidget {
                     ),
                   ),
                   
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   
                   // Version Info Badge
                   FutureBuilder<PackageInfo>(
@@ -334,7 +334,7 @@ class HomeDrawerMenu extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: isCompact ? 2.0 : 6.0, horizontal: 8.0),
+      padding: EdgeInsets.symmetric(vertical: isCompact ? 2.0 : 4.0, horizontal: 8.0),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -343,7 +343,7 @@ class HomeDrawerMenu extends StatelessWidget {
           splashColor: colorScheme.primary.withValues(alpha: 0.1),
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0),
+            padding: EdgeInsets.symmetric(vertical: isCompact ? 10.0 : 12.0, horizontal: 12.0),
             child: Row(
               children: [
                 // Icon inside a rounded squircle

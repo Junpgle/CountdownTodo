@@ -107,8 +107,8 @@
         <button class="error-retry" id="retryBtn" style="display:none" onclick="retryTurnstile()">重新验证</button>
     </div>
 
-    <!-- 不使用 render=explicit，Turnstile 会自动渲染所有 .cf-turnstile 元素 -->
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <!-- render=explicit：禁止自动渲染，等 sitekey 设置好后再手动调用 turnstile.render() -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
     <script>
         // 配置 - 由 Flutter 通过 URL 参数注入
         const urlParams = new URLSearchParams(window.location.search);
@@ -118,16 +118,41 @@
         // 应用主题
         document.body.className = theme;
         
-        // 更新 sitekey
-        const widget = document.getElementById('turnstile-widget');
-        if (siteKey) {
-            widget.setAttribute('data-sitekey', siteKey);
-            widget.setAttribute('data-theme', theme);
-        }
-        
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
         const retryBtnEl = document.getElementById('retryBtn');
+        
+        // 等 Turnstile 脚本加载完成后，手动渲染
+        let widgetId = null;
+        function renderTurnstile() {
+            const container = document.getElementById('turnstile-container');
+            // 清空容器（移除占位的空 div）
+            container.innerHTML = '';
+            
+            if (!siteKey) {
+                onTurnstileError('缺少 sitekey 参数');
+                return;
+            }
+            
+            widgetId = turnstile.render(container, {
+                sitekey: siteKey,
+                theme: theme,
+                size: 'normal',
+                callback: onTurnstileSuccess,
+                'expired-callback': onTurnstileExpired,
+                'error-callback': onTurnstileError,
+            });
+        }
+        
+        // 轮询等待 turnstile 对象可用
+        function waitForTurnstile() {
+            if (window.turnstile) {
+                renderTurnstile();
+            } else {
+                setTimeout(waitForTurnstile, 100);
+            }
+        }
+        waitForTurnstile();
         
         // 向 Flutter 发送消息的函数
         function postToFlutter(data) {
@@ -186,8 +211,8 @@
             spinnerEl.style.display = 'inline-block';
             
             // 重置 Turnstile
-            if (window.turnstile) {
-                turnstile.reset('#turnstile-widget');
+            if (window.turnstile && widgetId) {
+                turnstile.reset(widgetId);
             } else {
                 // 如果 turnstile 对象不可用，重新加载页面
                 location.reload();

@@ -23,6 +23,8 @@ import 'todo_group_widget.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import '../screens/todo_plan_screen.dart';
@@ -53,6 +55,9 @@ class TodoSectionWidget extends StatefulWidget {
 
   final Function(String?, String?)? onTeamChanged; // 🚀 传参：ID, Name
 
+  final Key? folderKey;
+  final Key? historyKey;
+
   const TodoSectionWidget({
     super.key,
     required this.todos,
@@ -68,6 +73,8 @@ class TodoSectionWidget extends StatefulWidget {
     this.onLLMResultsParsed,
     this.onTeamChanged,
     this.initialSelectedTeamUuid,
+    this.folderKey,
+    this.historyKey,
   });
 
   final String? initialSelectedTeamUuid;
@@ -3371,6 +3378,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 title: "待办清单",
                 icon: Icons.check_circle_outline,
                 actionIcon: Icons.create_new_folder_outlined,
+                actionKey: widget.folderKey,
                 actionTooltip: "管理文件夹",
                 isLight: widget.isLight,
                 onAction: () async {
@@ -3392,23 +3400,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    Icons.history,
-                    size: 20,
-                    color: useDarkUI ? Colors.white70 : Colors.grey,
+                SizedBox(
+                  key: widget.historyKey,
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.history,
+                      size: 20,
+                      color: useDarkUI ? Colors.white70 : Colors.grey,
+                    ),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        PageTransitions.material(
+                          builder: (_) =>
+                              HistoricalTodosScreen(username: widget.username),
+                        ),
+                      );
+                      widget.onRefreshRequested();
+                    },
                   ),
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      PageTransitions.material(
-                        builder: (_) =>
-                            HistoricalTodosScreen(username: widget.username),
-                      ),
-                    );
-                    widget.onRefreshRequested();
-                  },
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
@@ -3623,6 +3634,49 @@ class TodoEditScreen extends StatefulWidget {
 }
 
 class TodoEditScreenState extends State<TodoEditScreen> {
+  final GlobalKey _planKey = GlobalKey();
+  final GlobalKey _focusKey = GlobalKey();
+  final GlobalKey _dataKey = GlobalKey();
+  bool _showCoachMarks = false;
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_edit_todo');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _planKey,
+            title: '计划安排',
+            description: '为待办事项规划具体的时间块，方便在时间轴上查看与管理。',
+          ),
+          CoachMarkStep(
+            targetKey: _focusKey,
+            title: '专注记录',
+            description: '查看在此任务上的所有番茄钟或正计时专注历史。',
+          ),
+          CoachMarkStep(
+            targetKey: _dataKey,
+            title: '数据存证',
+            description: '每次修改任务的时间、状态或内容，系统都会自动记录，方便随时追溯历史版本。',
+          ),
+        ],
+        onFinish: _dismissCoachMarks,
+        onSkip: _dismissCoachMarks,
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_edit_todo');
+    _showCoachMarks = false;
+  }
+
   late TextEditingController _titleCtrl;
   late TextEditingController _remarkCtrl;
   late TextEditingController _customDaysCtrl;
@@ -3648,6 +3702,25 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        if (route.animation!.isCompleted) {
+          _checkCoachMarks();
+        } else {
+          void listener(AnimationStatus status) {
+            if (status == AnimationStatus.completed) {
+              _checkCoachMarks();
+              route.animation!.removeStatusListener(listener);
+            }
+          }
+
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        _checkCoachMarks();
+      }
+    });
     final t = widget.todo;
     _titleCtrl = TextEditingController(text: t.title);
     _remarkCtrl = TextEditingController(text: t.remark ?? '');
@@ -4226,8 +4299,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             const SizedBox(height: 24),
           ],
           const SizedBox(height: 12),
-          const Text("数据存证",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          KeyedSubtree(
+            key: _dataKey,
+            child: const Text("数据存证",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -4299,8 +4375,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        const Text("专注记录",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        KeyedSubtree(
+          key: _focusKey,
+          child: const Text("专注记录",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
         const SizedBox(height: 8),
         ..._focusRecords.take(20).map((r) {
           final startLocal =
@@ -4381,30 +4460,33 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text("计划安排",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            TextButton.icon(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  PageTransitions.material(
-                    builder: (_) => TodoPlanScreen(
-                      username: widget.username,
-                      initialDate: DateTime.now(),
-                      initialTodoId: widget.todo.id,
+        KeyedSubtree(
+          key: _planKey,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("计划安排",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              TextButton.icon(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    PageTransitions.material(
+                      builder: (_) => TodoPlanScreen(
+                        username: widget.username,
+                        initialDate: DateTime.now(),
+                        initialTodoId: widget.todo.id,
+                      ),
                     ),
-                  ),
-                );
-                if (!mounted) return;
-                _loadRelatedPlans();
-              },
-              icon: const Icon(Icons.calendar_today, size: 16),
-              label: const Text("今日计划"),
-            ),
-          ],
+                  );
+                  if (!mounted) return;
+                  _loadRelatedPlans();
+                },
+                icon: const Icon(Icons.calendar_today, size: 16),
+                label: const Text("今日计划"),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         Container(

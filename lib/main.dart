@@ -397,14 +397,16 @@ class _MyAppState extends State<MyApp> {
           await StorageService.clearLoginSession();
           final prefs = await SharedPreferences.getInstance();
           await prefs.clear();
-          if (mounted) {
-            setState(() {
-              _loggedInUser = null;
-            });
-          }
           if (dialogContext.mounted) {
             Navigator.pop(dialogContext, false);
           }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _loggedInUser = null;
+              });
+            }
+          });
         },
       ),
     );
@@ -413,11 +415,13 @@ class _MyAppState extends State<MyApp> {
       await StorageService.clearLoginSession();
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
-      if (mounted) {
-        setState(() {
-          _loggedInUser = null;
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _loggedInUser = null;
+          });
+        }
+      });
     }
   }
 

@@ -48,6 +48,7 @@ class CourseSectionWidget extends StatelessWidget {
   final bool isLight;
   final String? username;
   final int refreshTrigger;
+  final Key? actionKey;
 
   const CourseSectionWidget({
     super.key,
@@ -56,6 +57,7 @@ class CourseSectionWidget extends StatelessWidget {
     required this.isLight,
     this.username,
     this.refreshTrigger = 0,
+    this.actionKey,
   });
 
   void _showCourseDetail(
@@ -240,6 +242,7 @@ class CourseSectionWidget extends StatelessWidget {
         todos: todos,
         isLight: isLight,
         refreshTrigger: refreshTrigger,
+        actionKey: actionKey,
         onCourseTap: (course, cardKey) =>
             _showCourseDetail(context, course, cardKey),
       );
@@ -347,6 +350,7 @@ class _TodayScheduleList extends StatefulWidget {
     required this.isLight,
     required this.refreshTrigger,
     required this.onCourseTap,
+    this.actionKey,
   });
 
   final String username;
@@ -355,6 +359,7 @@ class _TodayScheduleList extends StatefulWidget {
   final bool isLight;
   final int refreshTrigger;
   final void Function(CourseItem course, GlobalKey cardKey) onCourseTap;
+  final Key? actionKey;
 
   @override
   State<_TodayScheduleList> createState() => _TodayScheduleListState();
@@ -531,6 +536,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
           onAction: _openTodoPlanScreen,
           actionIcon: Icons.event_note_outlined,
           actionTooltip: '打开规划界面',
+          actionKey: widget.actionKey,
           isLight: widget.isLight,
         ),
         content,

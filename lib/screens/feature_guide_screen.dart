@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,14 +19,21 @@ import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import 'home_settings_screen.dart';
+import '../services/course_service.dart';
+import '../models.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
   final String? loggedInUser;
   final bool isManualReview;
+  final bool isEmbedded;
 
-  const FeatureGuideScreen(
-      {super.key, this.loggedInUser, this.isManualReview = false});
+  const FeatureGuideScreen({
+    super.key,
+    this.loggedInUser,
+    this.isManualReview = false,
+    this.isEmbedded = false,
+  });
 
   static const String _guideKey = 'upgrade_guide_shown_version';
 
@@ -98,6 +106,16 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
   String _themeMode = 'system';
+
+  // 云端数据
+  bool _checkingCloudData = false;
+  bool _hasCloudCourses = false;
+  bool _hasCloudSemester = false;
+  List<CourseItem>? _cloudCourses;
+  DateTime? _cloudSemesterStart;
+  DateTime? _cloudSemesterEnd;
+  bool _importingCourses = false;
+  bool _importingSemester = false;
 
   late List<Widget Function()> _pagesBuilder;
 
@@ -199,6 +217,116 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _semesterEnabled = enabled;
         _themeMode = theme;
       });
+    }
+    unawaited(_checkCloudData());
+  }
+
+  Future<void> _checkCloudData() async {
+    if (widget.loggedInUser == null || widget.loggedInUser!.isEmpty) return;
+    if (mounted) setState(() => _checkingCloudData = true);
+
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('current_user_id') ?? 0;
+    if (userId == 0) {
+      if (mounted) setState(() => _checkingCloudData = false);
+      return;
+    }
+
+    final results = await Future.wait([
+      ApiService.fetchCourses(userId),
+      ApiService.fetchUserSettings(),
+    ]).timeout(const Duration(seconds: 5), onTimeout: () => [null, null]);
+
+    final cloudCoursesRaw = results[0] as List<dynamic>?;
+    final cloudSettings = results[1] as Map<String, dynamic>?;
+
+    List<CourseItem>? courses;
+    if (cloudCoursesRaw != null && cloudCoursesRaw.isNotEmpty) {
+      courses = cloudCoursesRaw
+          .map((e) => CourseItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+
+    DateTime? semStart;
+    DateTime? semEnd;
+    if (cloudSettings != null) {
+      if (cloudSettings['semester_start'] != null) {
+        semStart = DateTime.fromMillisecondsSinceEpoch(
+            (cloudSettings['semester_start'] as num).toInt());
+      }
+      if (cloudSettings['semester_end'] != null) {
+        semEnd = DateTime.fromMillisecondsSinceEpoch(
+            (cloudSettings['semester_end'] as num).toInt());
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _checkingCloudData = false;
+        _hasCloudCourses = courses != null && courses.isNotEmpty;
+        _cloudCourses = courses;
+        _hasCloudSemester = semStart != null && semEnd != null;
+        _cloudSemesterStart = semStart;
+        _cloudSemesterEnd = semEnd;
+      });
+    }
+  }
+
+  Future<void> _importCloudCourses() async {
+    if (_cloudCourses == null || _cloudCourses!.isEmpty) return;
+    setState(() => _importingCourses = true);
+    try {
+      await CourseService.saveCourses(widget.loggedInUser!, _cloudCourses!);
+      if (mounted) {
+        setState(() => _hasCloudCourses = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('课表已从云端导入成功'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importingCourses = false);
+    }
+  }
+
+  Future<void> _importCloudSemester() async {
+    if (_cloudSemesterStart == null || _cloudSemesterEnd == null) return;
+    setState(() => _importingSemester = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          StorageService.KEY_SEMESTER_START, _cloudSemesterStart!.toIso8601String());
+      await prefs.setString(
+          StorageService.KEY_SEMESTER_END, _cloudSemesterEnd!.toIso8601String());
+      if (mounted) {
+        setState(() {
+          _semesterStart = _cloudSemesterStart;
+          _semesterEnd = _cloudSemesterEnd;
+          _hasCloudSemester = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('开学/放假时间已从云端同步'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importingSemester = false);
     }
   }
 
@@ -1357,6 +1485,56 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ],
           ),
         ),
+        if (_checkingCloudData) ...[
+          const SizedBox(height: 16),
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ] else if (_hasCloudCourses || _hasCloudSemester) ...[
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Icon(Icons.cloud_sync_rounded,
+                  size: 16, color: scheme.onSurface.withValues(alpha: 0.5)),
+              const SizedBox(width: 6),
+              Text('检测到云端数据',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.onSurface.withValues(alpha: 0.5))),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_hasCloudCourses)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _importingCourses ? null : _importCloudCourses,
+                icon: _importingCourses
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.calendar_month_rounded, size: 20),
+                label: Text(_importingCourses ? '正在导入...' : '从云端同步课表'),
+              ),
+            ),
+          if (_hasCloudCourses && _hasCloudSemester) const SizedBox(height: 8),
+          if (_hasCloudSemester)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _importingSemester ? null : _importCloudSemester,
+                icon: _importingSemester
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.date_range_rounded, size: 20),
+                label: Text(_importingSemester ? '正在同步...' : '从云端同步开学/放假时间'),
+              ),
+            ),
+        ],
       ],
     ));
   }

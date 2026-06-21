@@ -4,6 +4,7 @@ import '../../models.dart';
 import '../../services/course_service.dart';
 import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/storage/app_settings_storage.dart';
 import '../../utils/app_dialogs.dart';
 import '../../utils/app_time_formats.dart';
 import '../../widgets/app_sheet_widgets.dart';
@@ -46,25 +47,27 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _loadSettings() async {
     final liveEnabled =
-        await StorageService.isLiveActivityNotificationEnabled();
-    final normalEnabled = await StorageService.isNormalNotificationEnabled();
-    final courseEnabled = await StorageService.isCourseNotificationEnabled();
-    final quizEnabled = await StorageService.isQuizNotificationEnabled();
+        await AppSettingsStorage.isLiveActivityNotificationEnabled();
+    final normalEnabled =
+        await AppSettingsStorage.isNormalNotificationEnabled();
+    final courseEnabled =
+        await AppSettingsStorage.isCourseNotificationEnabled();
+    final quizEnabled = await AppSettingsStorage.isQuizNotificationEnabled();
     final todoSummaryEnabled =
-        await StorageService.isTodoSummaryNotificationEnabled();
+        await AppSettingsStorage.isTodoSummaryNotificationEnabled();
     final specialTodoEnabled =
-        await StorageService.isSpecialTodoNotificationEnabled();
+        await AppSettingsStorage.isSpecialTodoNotificationEnabled();
     final pomodoroEnabled =
-        await StorageService.isPomodoroNotificationEnabled();
+        await AppSettingsStorage.isPomodoroNotificationEnabled();
     final todoRecognizeEnabled =
-        await StorageService.isTodoRecognizeNotificationEnabled();
+        await AppSettingsStorage.isTodoRecognizeNotificationEnabled();
     final todoLiveEnabled =
-        await StorageService.isTodoLiveNotificationEnabled();
+        await AppSettingsStorage.isTodoLiveNotificationEnabled();
     final pomodoroEndEnabled =
-        await StorageService.isPomodoroEndNotificationEnabled();
+        await AppSettingsStorage.isPomodoroEndNotificationEnabled();
     final reminderEnabled =
-        await StorageService.isReminderNotificationEnabled();
-    final reminderMinutes = await StorageService.getCourseReminderMinutes();
+        await AppSettingsStorage.isReminderNotificationEnabled();
+    final reminderMinutes = await AppSettingsStorage.getCourseReminderMinutes();
 
     setState(() {
       _liveActivityEnabled = liveEnabled;
@@ -85,7 +88,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (username != null) {
       final groups = await StorageService.getTodoGroups(username);
       final catReminders =
-          await StorageService.getCategoryReminderMinutes(username);
+          await AppSettingsStorage.getCategoryReminderMinutes(username);
       setState(() {
         _username = username;
         _todoGroups = groups.where((g) => !g.isDeleted).toList();
@@ -96,7 +99,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _toggleLiveActivityMaster(bool? value) async {
     final enabled = value ?? false;
-    await StorageService.setLiveActivityNotificationEnabled(enabled);
+    await AppSettingsStorage.setLiveActivityNotificationEnabled(enabled);
     setState(() {
       _liveActivityEnabled = enabled;
       if (!enabled) {
@@ -110,27 +113,27 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       }
     });
     if (enabled) {
-      await StorageService.setCourseNotificationEnabled(true);
-      await StorageService.setQuizNotificationEnabled(true);
-      await StorageService.setTodoSummaryNotificationEnabled(true);
-      await StorageService.setSpecialTodoNotificationEnabled(true);
-      await StorageService.setPomodoroNotificationEnabled(true);
-      await StorageService.setTodoRecognizeNotificationEnabled(true);
-      await StorageService.setTodoLiveNotificationEnabled(true);
+      await AppSettingsStorage.setCourseNotificationEnabled(true);
+      await AppSettingsStorage.setQuizNotificationEnabled(true);
+      await AppSettingsStorage.setTodoSummaryNotificationEnabled(true);
+      await AppSettingsStorage.setSpecialTodoNotificationEnabled(true);
+      await AppSettingsStorage.setPomodoroNotificationEnabled(true);
+      await AppSettingsStorage.setTodoRecognizeNotificationEnabled(true);
+      await AppSettingsStorage.setTodoLiveNotificationEnabled(true);
     } else {
-      await StorageService.setCourseNotificationEnabled(false);
-      await StorageService.setQuizNotificationEnabled(false);
-      await StorageService.setTodoSummaryNotificationEnabled(false);
-      await StorageService.setSpecialTodoNotificationEnabled(false);
-      await StorageService.setPomodoroNotificationEnabled(false);
-      await StorageService.setTodoRecognizeNotificationEnabled(false);
-      await StorageService.setTodoLiveNotificationEnabled(false);
+      await AppSettingsStorage.setCourseNotificationEnabled(false);
+      await AppSettingsStorage.setQuizNotificationEnabled(false);
+      await AppSettingsStorage.setTodoSummaryNotificationEnabled(false);
+      await AppSettingsStorage.setSpecialTodoNotificationEnabled(false);
+      await AppSettingsStorage.setPomodoroNotificationEnabled(false);
+      await AppSettingsStorage.setTodoRecognizeNotificationEnabled(false);
+      await AppSettingsStorage.setTodoLiveNotificationEnabled(false);
     }
   }
 
   Future<void> _toggleNormalMaster(bool? value) async {
     final enabled = value ?? false;
-    await StorageService.setNormalNotificationEnabled(enabled);
+    await AppSettingsStorage.setNormalNotificationEnabled(enabled);
     setState(() {
       _normalEnabled = enabled;
       if (!enabled) {
@@ -139,11 +142,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       }
     });
     if (enabled) {
-      await StorageService.setPomodoroEndNotificationEnabled(true);
-      await StorageService.setReminderNotificationEnabled(true);
+      await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
+      await AppSettingsStorage.setReminderNotificationEnabled(true);
     } else {
-      await StorageService.setPomodoroEndNotificationEnabled(false);
-      await StorageService.setReminderNotificationEnabled(false);
+      await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
+      await AppSettingsStorage.setReminderNotificationEnabled(false);
     }
   }
 
@@ -197,7 +200,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'course',
                   v,
                   (val) => _courseEnabled = val,
-                  StorageService.setCourseNotificationEnabled,
+                  AppSettingsStorage.setCourseNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -209,7 +212,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'quiz',
                   v,
                   (val) => _quizEnabled = val,
-                  StorageService.setQuizNotificationEnabled,
+                  AppSettingsStorage.setQuizNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -221,7 +224,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'todo_summary',
                   v,
                   (val) => _todoSummaryEnabled = val,
-                  StorageService.setTodoSummaryNotificationEnabled,
+                  AppSettingsStorage.setTodoSummaryNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -233,7 +236,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'special_todo',
                   v,
                   (val) => _specialTodoEnabled = val,
-                  StorageService.setSpecialTodoNotificationEnabled,
+                  AppSettingsStorage.setSpecialTodoNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -245,7 +248,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'pomodoro',
                   v,
                   (val) => _pomodoroEnabled = val,
-                  StorageService.setPomodoroNotificationEnabled,
+                  AppSettingsStorage.setPomodoroNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -257,7 +260,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'todo_recognize',
                   v,
                   (val) => _todoRecognizeEnabled = val,
-                  StorageService.setTodoRecognizeNotificationEnabled,
+                  AppSettingsStorage.setTodoRecognizeNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -269,7 +272,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'todo_live',
                   v,
                   (val) => _todoLiveEnabled = val,
-                  StorageService.setTodoLiveNotificationEnabled,
+                  AppSettingsStorage.setTodoLiveNotificationEnabled,
                 ),
               ),
             ],
@@ -296,7 +299,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'pomodoro_end',
                   v,
                   (val) => _pomodoroEndEnabled = val,
-                  StorageService.setPomodoroEndNotificationEnabled,
+                  AppSettingsStorage.setPomodoroEndNotificationEnabled,
                 ),
               ),
               _buildSwitchTile(
@@ -308,7 +311,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   'reminder',
                   v,
                   (val) => _reminderEnabled = val,
-                  StorageService.setReminderNotificationEnabled,
+                  AppSettingsStorage.setReminderNotificationEnabled,
                 ),
               ),
               if (_reminderEnabled) ...[
@@ -684,7 +687,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                           ? Icon(Icons.check, color: colorScheme.primary)
                           : null,
                       onTap: () async {
-                        await StorageService.setCourseReminderMinutes(mins);
+                        await AppSettingsStorage.setCourseReminderMinutes(mins);
                         if (!mounted) return;
                         setState(() {
                           _courseReminderMinutes = mins;
@@ -965,7 +968,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                           final newData =
                               Map<String, int>.from(_categoryReminderMinutes);
                           newData[group.id] = mins;
-                          await StorageService.saveCategoryReminderMinutes(
+                          await AppSettingsStorage.saveCategoryReminderMinutes(
                               _username!, newData);
                           if (!mounted) return;
                           setState(() {

@@ -15,6 +15,7 @@ import '../services/course_service.dart';
 import 'animation_settings_page.dart';
 import 'login_screen.dart';
 import 'about_screen.dart';
+import 'help/help_center_screen.dart';
 import 'settings/widgets/account_section.dart';
 import 'settings/widgets/sync_settings_section.dart';
 import 'settings/notification_settings_page.dart';
@@ -134,7 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
     } else if (interconnectTargets.contains(target)) {
       paneId = 'interconnect';
       paneBuilder = () =>
-          InterconnectSettingsPage(initialTarget: target, isEmbedded: true);
+          InterconnectSettingsPage(initialTarget: target, isEmbedded: true, username: _username);
     } else if (advancedTargets.contains(target)) {
       paneId = 'preference'; // merged into preference
       paneBuilder =
@@ -176,7 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
       else if (paneId == 'course')
         pushWidget = CourseSettingsPage(initialTarget: target);
       else if (paneId == 'interconnect')
-        pushWidget = InterconnectSettingsPage(initialTarget: target);
+        pushWidget = InterconnectSettingsPage(initialTarget: target, username: _username);
       else if (paneId == 'llm_config')
         pushWidget = const LLMConfigPage();
       else if (paneId == 'animation')
@@ -601,6 +602,8 @@ class _SettingsPageState extends State<SettingsPage> {
         return '权限管理';
       case 'about':
         return '关于此应用';
+      case 'help':
+        return '帮助与反馈';
       default:
         return '';
     }
@@ -793,7 +796,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: Colors.blue,
                   title: '数据与互联',
                   widgetBuilder: () =>
-                      const InterconnectSettingsPage(isEmbedded: true),
+                      InterconnectSettingsPage(isEmbedded: true, username: _username),
                 ),
                 _buildMacSidebarItem(
                   id: 'llm_config',
@@ -832,6 +835,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '权限管理',
                   widgetBuilder: () =>
                       const PermissionSettingsPage(isEmbedded: true),
+                ),
+                _buildMacSidebarItem(
+                  id: 'help',
+                  icon: Icons.help_outline,
+                  color: Colors.blueGrey,
+                  title: '帮助与反馈',
+                  widgetBuilder: () =>
+                      HelpCenterScreen(username: _username, isEmbedded: true),
                 ),
                 _buildMacSidebarItem(
                   id: 'about',
@@ -1028,7 +1039,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => Navigator.push(
                       context,
                       PageTransitions.slideHorizontal(
-                          const InterconnectSettingsPage())),
+                          InterconnectSettingsPage(username: _username))),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
@@ -1083,6 +1094,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       context,
                       PageTransitions.slideHorizontal(
                           const PermissionSettingsPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading:
+                      const Icon(Icons.help_outline, color: Colors.blueGrey),
+                  title: const Text('帮助与反馈'),
+                  subtitle: const Text('使用指南、快速上手、常见问题'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                          HelpCenterScreen(username: _username))),
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

@@ -11,6 +11,7 @@ import '../../../utils/page_transitions.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import '../../feature_guide_screen.dart';
+import '../../help/help_center_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../update_service.dart';
@@ -295,11 +296,29 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
+            targetId: 'help_center',
+            child: ListTile(
+              leading: Icon(Icons.help_outline_rounded, color: colorScheme.primary),
+              title: const Text('帮助与反馈'),
+              subtitle: const Text('使用指南、快速上手、常见问题'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  PageTransitions.slideHorizontal(HelpCenterScreen(
+                    username: _username,
+                  )),
+                );
+              },
+            ),
+          ),
+          const AppSettingsDivider(indent: 72),
+          _buildTile(
             targetId: 'feature_guide',
             child: ListTile(
-              leading: Icon(Icons.school_outlined, color: colorScheme.primary),
-              title: const Text('重新查看新版教程与权限设置'),
-              subtitle: const Text('可再次查看功能介绍与重新配置各项权限'),
+              leading: Icon(Icons.school_outlined, color: Colors.grey),
+              title: const Text('更新日志与版本引导'),
+              subtitle: const Text('查看新版本功能介绍'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(

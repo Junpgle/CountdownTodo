@@ -16,6 +16,8 @@ import 'time_log_screen.dart';
 import 'course_month_view.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../utils/theme_color_tokens.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 
 // --- 二级界面：按周查看课表 (全屏自适应压缩视图) ---
 class WeeklyCourseScreen extends StatefulWidget {
@@ -93,6 +95,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   final Map<String, GlobalKey> _todoCardKeys = {};
   final Map<String, GlobalKey> _timeLogCardKeys = {};
   final Map<String, GlobalKey> _pomodoroCardKeys = {};
+
+  final GlobalKey _filterKey = GlobalKey();
+  final GlobalKey _viewModeKey = GlobalKey();
+  final GlobalKey _timeLogKey = GlobalKey();
+  final GlobalKey _gridKey = GlobalKey();
+  final GlobalKey _allDayKey = GlobalKey();
+  final GlobalKey _dayHeaderKey = GlobalKey();
+
+  bool _showCoachMarks = false;
 
   GlobalKey _getCourseCardKey(String courseName, int weekday, int startTime) {
     // Include current week to avoid key collisions while AnimatedSwitcher keeps
@@ -248,8 +259,74 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       setState(() => _isLoading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _courseExpandCtrl.forward();
+        _checkCoachMarks();
       });
     }
+  }
+
+  void _checkCoachMarks() async {
+    if (!mounted || _showCoachMarks) return;
+
+    final hasShown =
+        await FeatureTipService.hasTipBeenShown('course_screen_guide');
+    if (hasShown || !mounted) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: _viewModeKey,
+          title: '视图切换',
+          description: '在这里切换单周、双周和月视图。单双周视图支持自适应折叠空闲时间，月视图方便概览整月安排。',
+        ),
+        CoachMarkStep(
+          targetKey: _filterKey,
+          title: '数据筛选',
+          description: '可以在这里勾选要在时间轴上显示的数据，比如待办、时间日志、番茄钟、今日规划等。',
+        ),
+        CoachMarkStep(
+          targetKey: _timeLogKey,
+          title: '记录日志',
+          description: '点击这里可以快速进入时间日志页面，手动记录你花费的时间。',
+        ),
+        CoachMarkStep(
+          targetKey: _allDayKey,
+          title: '全天待办',
+          description: '全天的待办会在顶部展示。',
+        ),
+        if (MediaQuery.of(context).size.width > 900)
+          CoachMarkStep(
+            targetKey: _dayHeaderKey,
+            title: '单日所有任务',
+            description: '宽屏设备下，点击表头上的某一天，还可以在侧边快速查看当天的所有任务！',
+          ),
+        CoachMarkStep(
+          targetKey: _gridKey,
+          title: '查看详情',
+          description: '在日历网格中，点击任意一块课程、待办或日志，都能查看详细信息并进行编辑操作哦！',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('course_screen_guide');
+      },
+      onSkip: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('course_screen_guide');
+      },
+    );
   }
 
   // --- 🚀 性能优化: 预先按日期分组数据 (避免在动画期间重复计算) ---
@@ -2962,6 +3039,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             onPressed: _openAiAssistant,
           ),
           IconButton(
+            key: _viewModeKey,
             visualDensity: const VisualDensity(horizontal: -2),
             icon: Icon(
                 _viewMode == 2
@@ -2974,6 +3052,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
           IconButton(
+            key: _timeLogKey,
             visualDensity: const VisualDensity(horizontal: -2),
             icon: const Icon(Icons.edit_calendar, size: 20),
             tooltip: '记录时间日志',
@@ -2991,6 +3070,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             },
           ),
           MenuAnchor(
+            key: _filterKey,
             menuChildren: [
               _buildCheckableMenuItem('courses', '课表'),
               _buildCheckableMenuItem('todos', '待办'),
@@ -3104,8 +3184,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         child: Column(
                           children: [
                             if (_viewMode == 0) ...[
-                              _buildHeader(_getMondayOfCurrentWeek()),
-                              _buildAllDayHeaderRow(_getMondayOfCurrentWeek()),
+                              SizedBox(
+                                key: _dayHeaderKey,
+                                child: _buildHeader(_getMondayOfCurrentWeek()),
+                              ),
+                              SizedBox(
+                                key: _allDayKey,
+                                child: _buildAllDayHeaderRow(
+                                    _getMondayOfCurrentWeek()),
+                              ),
                               Divider(
                                   height: 1,
                                   thickness: 0.5,
@@ -3193,6 +3280,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 },
                                 // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
                                 child: AnimatedSwitcher(
+                                  key: _gridKey,
                                   duration: const Duration(milliseconds: 400),
                                   transitionBuilder: (child, animation) {
                                     return Transform.translate(

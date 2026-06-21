@@ -9,6 +9,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models.dart';
 import '../storage_service.dart';
+import 'storage/app_settings_storage.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -36,7 +37,9 @@ class NotificationService {
     _ensureChannelBound();
     try {
       await _channel.invokeMethod('notificationDartReady');
-    } catch (_) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   /// 订阅指定 method 的通知事件。返回 StreamSubscription，dispose 时 cancel 即可。
@@ -82,15 +85,19 @@ class NotificationService {
     macOS: DarwinNotificationDetails(),
   );
 
-  static bool get _isDesktopSupported =>
-      Platform.isWindows || Platform.isMacOS;
+  static bool get _isDesktopSupported => Platform.isWindows || Platform.isMacOS;
 
   static Future<void> init() async {
     await ensureInitialized();
   }
 
   static Future<void> ensureInitialized() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows && !Platform.isMacOS) return;
+    if (!Platform.isAndroid &&
+        !Platform.isIOS &&
+        !Platform.isWindows &&
+        !Platform.isMacOS) {
+      return;
+    }
     if (_initialized) return;
     final existing = _initializationFuture;
     if (existing != null) return existing;
@@ -149,7 +156,7 @@ class NotificationService {
     required String timeStr,
     required String teacher,
   }) async {
-    if (!await StorageService.isCourseNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isCourseNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
@@ -171,7 +178,9 @@ class NotificationService {
         'timeStr': timeStr,
         'teacher': teacher,
       });
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   static Future<void> updateQuizNotification({
@@ -181,7 +190,7 @@ class NotificationService {
     required bool isOver,
     int score = 0,
   }) async {
-    if (!await StorageService.isQuizNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isQuizNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     if (isOver) {
@@ -198,7 +207,9 @@ class NotificationService {
         'isOver': false,
         'score': score,
       });
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   /// 🚀 Uni-Sync: 显示通用系统通知 (用于团队变动等重要事件)
@@ -227,7 +238,7 @@ class NotificationService {
   }
 
   static Future<void> updateTodoNotification(List<TodoItem> todos) async {
-    if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
     await ensureInitialized();
 
@@ -360,9 +371,9 @@ class NotificationService {
     final isAllDayTodo = _isAllDayTodo(todo);
 
     if (isSpecialTodo) {
-      if (!await StorageService.isSpecialTodoNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) return;
     } else {
-      if (!await StorageService.isTodoSummaryNotificationEnabled()) return;
+      if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
     }
 
     DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
@@ -429,7 +440,7 @@ class NotificationService {
     List<String> tagNames = const [],
     String alertKey = '',
   }) async {
-    if (!await StorageService.isPomodoroNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isPomodoroNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final String countdownStr;
@@ -451,7 +462,9 @@ class NotificationService {
         'tagNames': tagNames,
         'alertKey': alertKey,
       });
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   static Future<void> sendPomodoroEndAlert({
@@ -459,7 +472,7 @@ class NotificationService {
     String? todoTitle,
     bool isBreak = false,
   }) async {
-    if (!await StorageService.isPomodoroEndNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
@@ -494,7 +507,9 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('cancelNotification');
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   /// 取消特定 ID 的特殊待办通知
@@ -504,12 +519,14 @@ class NotificationService {
     try {
       await _channel.invokeMethod(
           'cancelSpecialTodoNotification', {'notificationId': notifId});
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
       {bool clearFirst = true}) async {
-    if (!await StorageService.isReminderNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isReminderNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (reminders.isEmpty && !clearFirst) return;
     await ensureInitialized();
@@ -576,7 +593,9 @@ class NotificationService {
         'remindersJson': jsonEncode(payload),
         'clearFirst': clearFirst,
       });
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getScheduledReminders() async {
@@ -615,7 +634,9 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod('cancelReminder', {'notifId': notifId});
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   static Future<bool> checkExactAlarmPermission() async {
@@ -632,13 +653,16 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await _channel.invokeMethod('openExactAlarmSettings');
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   // ==========================================
   // 📸 图片识别待办通知
   // ==========================================
 
+  // ignore: constant_identifier_names
   static const int NOTIF_ID_TODO_RECOGNIZE = 9001;
 
   /// 显示图片识别进度通知（实时通知）
@@ -650,7 +674,7 @@ class NotificationService {
     required int maxAttempts,
     required String status,
   }) async {
-    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
@@ -688,7 +712,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
-    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
@@ -721,7 +745,7 @@ class NotificationService {
   static Future<void> showTodoRecognizeFailed({
     required String errorMsg,
   }) async {
-    if (!await StorageService.isTodoRecognizeNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
@@ -762,7 +786,9 @@ class NotificationService {
 
     try {
       await _channel.invokeMethod('cancelTodoRecognizeNotification');
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   /// 🚀 显示版本更新实时通知
@@ -809,7 +835,9 @@ class NotificationService {
     try {
       await _channel.invokeMethod(
           'cancelNotification'); // cancelNotification 会清除 UPDATE_NOTIFICATION_ID
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 
   /// 取消测验进度通知
@@ -817,7 +845,9 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     try {
       await cancelSpecialTodoNotification(12355);
-    } catch (e) {}
+    } catch (_) {
+      // Native notification calls are best-effort.
+    }
   }
 }
 

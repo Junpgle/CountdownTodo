@@ -2,22 +2,23 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:uuid/uuid.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
 import 'models.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
-import 'services/background_notification_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
+import 'services/storage/app_settings_storage.dart';
+import 'services/storage/countdown_storage.dart';
+import 'services/storage/pomodoro_storage.dart';
+import 'services/storage/storage_conflict_cleanup.dart';
+import 'services/storage/user_session_storage.dart';
 
 class StorageService {
   static final Set<String> recentlyResolvedUuids = {};
@@ -276,7 +277,8 @@ class StorageService {
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
-  static ValueNotifier<String> themeColorModeNotifier = ValueNotifier('default');
+  static ValueNotifier<String> themeColorModeNotifier =
+      ValueNotifier('default');
   static ValueNotifier<Color?> customThemeColorNotifier = ValueNotifier(null);
   static ValueNotifier<Color?> appWallpaperColorNotifier = ValueNotifier(null);
   static final Map<String, Future<List<TodoItem>>> _inflightTodoRequests = {};
@@ -290,7 +292,8 @@ class StorageService {
   });
 
   static final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
-  static final ValueNotifier<int> wallpaperRefreshNotifier = ValueNotifier<int>(0);
+  static final ValueNotifier<int> wallpaperRefreshNotifier =
+      ValueNotifier<int>(0);
   static Timer? _refreshDebouncer;
   static Timer? _syncDebouncer;
   static String? _queuedSyncUsername;
@@ -428,62 +431,14 @@ class StorageService {
   // ==========================================
 
   /// 获取设备唯一 UUID (用于后端同步过滤)
-  static Future<String> _getUniqueDeviceId(String username) async {
-    final prefs = await StorageService.prefs;
-    String accountDeviceKey = "${KEY_DEVICE_ID}_$username";
-    String? deviceId = prefs.getString(accountDeviceKey);
-    if (deviceId == null) {
-      deviceId = const Uuid().v4();
-      await prefs.setString(accountDeviceKey, deviceId);
-    }
-    return deviceId;
-  }
-
   static Future<String> getDeviceFriendlyName() async =>
-      _getDetailedDeviceName();
-
-  /// 核心：获取"人话"版的设备型号与类型 (手机/平板/PC)
-  static Future<String> _getDetailedDeviceName() async {
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    String model = "Unknown Device";
-    String type = "Device";
-
-    try {
-      if (kIsWeb) {
-        model = "Web Browser";
-        type = "PC";
-      } else if (Platform.isAndroid) {
-        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-        model = "${androidInfo.manufacturer} ${androidInfo.model}";
-        // 平板判断：最短边大于 600dp 通常认为是平板
-        final double shortestSide = WidgetsBinding.instance.platformDispatcher
-                .views.first.physicalSize.shortestSide /
-            WidgetsBinding
-                .instance.platformDispatcher.views.first.devicePixelRatio;
-        type = shortestSide > 600 ? "Tablet" : "Phone";
-      } else if (Platform.isIOS) {
-        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-        model = iosInfo.utsname.machine ?? "iPhone";
-        type =
-            iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
-      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        model = Platform.operatingSystem;
-        type = "PC";
-      }
-    } catch (e) {
-      debugPrint("获取设备型号失败: $e");
-    }
-
-    return "$model ($type)";
-  }
+      UserSessionStorage.getDeviceFriendlyName();
 
   // ==========================================
   // 基础身份获取 (Auth Identity)
   // ==========================================
-  static Future<String?> getCurrentUsername() async {
-    final p = await prefs;
-    return p.getString(KEY_CURRENT_USER);
-  }
+  static Future<String?> getCurrentUsername() =>
+      UserSessionStorage.getCurrentUsername();
 
   static Future<bool> rollbackLocalItem(
       String table, int logId, String username) async {
@@ -513,11 +468,7 @@ class StorageService {
     }
   }
 
-  static Future<String> getDeviceId() async {
-    final prefs = await StorageService.prefs;
-    final username = prefs.getString(KEY_CURRENT_USER) ?? 'default';
-    return _getUniqueDeviceId(username);
-  }
+  static Future<String> getDeviceId() => UserSessionStorage.getDeviceId();
 
   // ==========================================
   // 基础配置与用户系统
@@ -525,66 +476,28 @@ class StorageService {
   static Future<void> initTheme() async {
     final prefs = await StorageService.prefs;
     themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
-    themeColorModeNotifier.value = prefs.getString(KEY_THEME_COLOR_MODE) ?? 'default';
+    themeColorModeNotifier.value =
+        prefs.getString(KEY_THEME_COLOR_MODE) ?? 'default';
     int? colorVal = prefs.getInt(KEY_CUSTOM_THEME_COLOR);
     if (colorVal != null) {
       customThemeColorNotifier.value = Color(colorVal);
     }
   }
 
-  static Future<bool> register(String username, String password) async {
-    final prefs = await StorageService.prefs;
-    Map<String, dynamic> users = {};
-    String? usersJson = prefs.getString(KEY_USERS);
-    if (usersJson != null) users = jsonDecode(usersJson);
-    if (users.containsKey(username)) return false;
-    users[username] = password;
-    await prefs.setString(KEY_USERS, jsonEncode(users));
-    return true;
-  }
+  static Future<bool> register(String username, String password) =>
+      UserSessionStorage.register(username, password);
 
-  static Future<bool> login(String username, String password) async {
-    final prefs = await StorageService.prefs;
-    String? usersJson = prefs.getString(KEY_USERS);
-    if (usersJson == null) return false;
-    Map<String, dynamic> users = jsonDecode(usersJson);
-    return users.containsKey(username) && users[username] == password;
-  }
+  static Future<bool> login(String username, String password) =>
+      UserSessionStorage.login(username, password);
 
-  static Future<void> saveLoginSession(String username, {String? token}) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(KEY_CURRENT_USER, username);
-    if (token != null && token.isNotEmpty) {
-      await prefs.setString(KEY_AUTH_TOKEN, token);
-      ApiService.setToken(token);
-    }
-    // 🚀 核心修复：登录成功后立即关闭旧的数据库连接，触发 getter 重新根据新用户打开隔离文件
-    await DatabaseHelper.instance.closeDatabase();
-  }
+  static Future<void> saveLoginSession(String username, {String? token}) =>
+      UserSessionStorage.saveLoginSession(username, token: token);
 
-  static Future<String?> getLoginSession() async {
-    final prefs = await StorageService.prefs;
-    String? token = prefs.getString(KEY_AUTH_TOKEN);
-    if (token != null && token.isNotEmpty) {
-      ApiService.setToken(token);
-    }
-    return prefs.getString(KEY_CURRENT_USER);
-  }
+  static Future<String?> getLoginSession() =>
+      UserSessionStorage.getLoginSession();
 
-  static Future<void> clearLoginSession() async {
-    final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    await prefs.remove(KEY_CURRENT_USER);
-    await prefs.remove(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
-    await prefs.remove(_scopedKey(KEY_SCREEN_TIME_CACHE, username));
-    await prefs.remove(_scopedKey(KEY_SCREEN_TIME_HISTORY, username));
-    await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
-    await prefs.remove(KEY_AUTH_TOKEN);
-    ApiService.setToken('');
-    unawaited(BackgroundNotificationService.stopNotificationPoll());
-    // 🚀 核心修复：退出登录后关闭并清空数据库引用
-    await DatabaseHelper.instance.closeDatabase();
-  }
+  static Future<void> clearLoginSession() =>
+      UserSessionStorage.clearLoginSession();
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
     final prefs = await StorageService.prefs;
@@ -627,10 +540,8 @@ class StorageService {
   }
 
   static Future<void> savePomodoroTags(
-      String username, List<Map<String, dynamic>> tags) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString("pomodoro_tags_$username", jsonEncode(tags));
-  }
+          String username, List<Map<String, dynamic>> tags) =>
+      PomodoroStorage.savePomodoroTags(username, tags);
 
   // ==========================================
   // 测验历史与排行榜
@@ -738,278 +649,28 @@ class StorageService {
   // 倒计时 (Countdowns)
   // ==========================================
   static Future<void> saveCountdowns(String username, List<CountdownItem> items,
-      {bool sync = true, bool isSyncSource = false}) async {
-    Map<String, CountdownItem> dedupeMap = {};
-    for (var item in items) {
-      if (!dedupeMap.containsKey(item.id) ||
-          item.updatedAt > dedupeMap[item.id]!.updatedAt) {
-        dedupeMap[item.id] = item;
-      }
-    }
+          {bool sync = true, bool isSyncSource = false}) =>
+      CountdownStorage.saveCountdowns(
+        username,
+        items,
+        sync: sync,
+        isSyncSource: isSyncSource,
+        hasSubstantialChange: _hasSubstantialChange,
+        recordLocalAudit: _recordLocalAuditOptimized,
+        requestSync: requestSync,
+        onCommitted: _inflightTodoRequests.clear,
+      );
 
-    final dedupeList = dedupeMap.values.toList();
-
-    // SQL 已是主存储，清理旧 Prefs 镜像，避免全量倒计时 JSON
-    // 通过 shared_preferences MethodChannel 触发 Android OOM。
-    unawaited(_clearCountdownPrefsMirror(username));
-
-    final dbHelper = DatabaseHelper.instance;
-    final db = await dbHelper.database;
-
-    // 🚀 批量获取现有数据，用于审计
-    Map<String, Map<String, dynamic>> existingItemsMap = {};
-    if (!isSyncSource && dedupeList.isNotEmpty) {
-      final uuids = dedupeList.map((e) => "'${e.id}'").join(',');
-      final List<Map<String, dynamic>> existing =
-          await db.rawQuery('SELECT * FROM countdowns WHERE uuid IN ($uuids)');
-      for (var row in existing) {
-        existingItemsMap[row['uuid']] = row;
-      }
-    }
-
-    final batch = db.batch();
-    for (var item in dedupeList) {
-      bool hasChanged = true;
-      final oldData = existingItemsMap[item.id];
-      if (oldData != null) {
-        hasChanged = _hasSubstantialChange(oldData, item.toJson(), [
-          'title',
-          'target_time',
-          'is_deleted',
-          'is_completed',
-          'team_uuid',
-          'version',
-          'updated_at'
-        ]);
-      }
-
-      if (!isSyncSource && hasChanged) {
-        unawaited(_recordLocalAuditOptimized(
-            'countdowns', item.id, item.toJson(), item.teamUuid, oldData));
-
-        batch.insert('op_logs', {
-          'op_type': 'UPSERT',
-          'target_table': 'countdowns',
-          'target_uuid': item.id,
-          'data_json': jsonEncode(item.toJson()),
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'is_synced': 0,
-          'sync_error': '',
-        });
-      }
-
-      if (hasChanged || oldData == null) {
-        batch.insert(
-            'countdowns',
-            {
-              'uuid': item.id,
-              'team_uuid': item.teamUuid,
-              'team_name': item.teamName,
-              'creator_id': item.creatorId,
-              'creator_name': item.creatorName,
-              'title': item.title,
-              'target_time': item.targetDate.millisecondsSinceEpoch,
-              'is_deleted': item.isDeleted ? 1 : 0,
-              'is_completed': item.isCompleted ? 1 : 0,
-              'version': item.version,
-              'updated_at': item.updatedAt,
-              'created_at': item.createdAt,
-              'has_conflict': item.hasConflict ? 1 : 0,
-              'conflict_data': item.conflictData != null
-                  ? jsonEncode(item.conflictData)
-                  : null,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
-      }
-    }
-
-    if (dedupeList.isNotEmpty) {
-      await batch.commit(noResult: true);
-      _inflightTodoRequests.clear();
-    }
-
-    if (sync) requestSync(username);
-  }
-
-  static Future<void> _clearCountdownPrefsMirror(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${KEY_COUNTDOWNS}_$username");
-    await prefs.remove(KEY_COUNTDOWNS);
-  }
-
-  static Future<void> _clearGhostConflictFlags(dynamic db) async {
-    const emptyConflictWhere =
-        "has_conflict = 1 AND (conflict_data IS NULL OR TRIM(conflict_data) = '' OR conflict_data = 'null')";
-    const staleConflictDataWhere =
-        "has_conflict = 0 AND conflict_data IS NOT NULL AND TRIM(conflict_data) != '' AND conflict_data != 'null'";
-    for (final table in const ['todos', 'todo_groups', 'countdowns']) {
-      try {
-        final emptySnapshotCount = await db.update(
-          table,
-          {'has_conflict': 0, 'conflict_data': null},
-          where: emptyConflictWhere,
-        );
-        final staleSnapshotCount = await db.update(
-          table,
-          {'conflict_data': null},
-          where: staleConflictDataWhere,
-        );
-        if (emptySnapshotCount > 0 || staleSnapshotCount > 0) {
-          debugPrint(
-              '✅ 已清理 $table 的幽灵冲突: empty=$emptySnapshotCount stale=$staleSnapshotCount');
-        }
-      } catch (e) {
-        debugPrint('⚠️ 清理 $table 幽灵冲突失败: $e');
-      }
-    }
-  }
+  static Future<void> _clearGhostConflictFlags(dynamic db) =>
+      StorageConflictCleanup.clearGhostConflictFlags(db);
 
   static Future<List<CountdownItem>> getCountdowns(String username,
-      {bool includeDeleted = false}) async {
-    final prefs = await SharedPreferences.getInstance();
-    try {
-      final dbHelper = DatabaseHelper.instance;
-      final db = await dbHelper.database;
-      await _clearGhostConflictFlags(db);
-
-      // 1. 迁移检查
-      final String migrationKey = "migrated_countdowns_$username";
-      final bool alreadyMigrated = prefs.getBool(migrationKey) ?? false;
-
-      final List<Map<String, dynamic>> sqliteCount =
-          await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
-      if (sqliteCount.first['cnt'] == 0) {
-        List<String> legacyJsonList =
-            prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
-
-        // 🚀 核心修复：极致兼容方案 - 增加一次性迁移保护
-        if (!alreadyMigrated && legacyJsonList.isEmpty && username.isNotEmpty) {
-          final String markerKey = "${KEY_COUNTDOWNS}_${username}_migrated";
-          if (!(prefs.getBool(markerKey) ?? false)) {
-            legacyJsonList = prefs.getStringList(KEY_COUNTDOWNS) ?? [];
-            if (legacyJsonList.isNotEmpty) {
-              await prefs.setBool(markerKey, true);
-            }
-          }
-        }
-
-        if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
-          List<CountdownItem> legacyData = legacyJsonList
-              .map((e) => CountdownItem.fromJson(jsonDecode(e)))
-              .toList();
-          await saveCountdowns(username, legacyData,
-              sync: false, isSyncSource: true);
-          // 🚀 迁移成功后物理移除 Prefs 中的大对象
-          await prefs.remove("${KEY_COUNTDOWNS}_$username");
-          await prefs.remove(KEY_COUNTDOWNS);
-          debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
-        }
-        if (legacyJsonList.isNotEmpty && alreadyMigrated) {
-          debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
-        }
-        await prefs.setBool(migrationKey, true);
-      } else if (alreadyMigrated) {
-        await prefs.remove("${KEY_COUNTDOWNS}_$username");
-        await prefs.remove(KEY_COUNTDOWNS);
-      }
-
-      // 2. 从 SQL 读取
-      final List<Map<String, dynamic>> maps = await db.query('countdowns',
-          where: includeDeleted ? null : 'is_deleted = 0');
-
-      if (maps.isNotEmpty) {
-        // 🚀 性能优化：当数量较多时，将对象映射逻辑移动到后台 Isolate，避免阻塞主线程（Choreographer 跳帧的主要原因）
-        if (maps.length > 50) {
-          return await compute(_parseCountdownItemsIsolate, maps);
-        }
-
-        return maps
-            .map((m) => CountdownItem(
-                  id: m['uuid'],
-                  title: m['title'] ?? '',
-                  targetDate:
-                      DateTime.fromMillisecondsSinceEpoch(m['target_time']),
-                  isDeleted: m['is_deleted'] == 1,
-                  isCompleted: m['is_completed'] == 1,
-                  version: m['version'] ?? 1,
-                  updatedAt:
-                      m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  createdAt:
-                      m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-                  teamUuid: m['team_uuid'],
-                  teamName: m['team_name'],
-                  creatorId: m['creator_id'],
-                  creatorName: m['creator_name'],
-                  hasConflict: m['has_conflict'] == 1,
-                  conflictData: m['conflict_data'] != null
-                      ? jsonDecode(m['conflict_data'])
-                      : null,
-                ))
-            .toList();
-      }
-    } catch (e) {
-      debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
-    }
-
-    // 逃生通道
-    List<String> list =
-        prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
-
-    // 🚀 逃生通道也使用 Isolate 优化
-    if (list.length > 50) {
-      return await compute(_parseCountdownJsonItemsIsolate, list);
-    }
-
-    List<CountdownItem> result = [];
-    for (var e in list) {
-      try {
-        result.add(CountdownItem.fromJson(jsonDecode(e)));
-      } catch (_) {}
-    }
-    return result;
-  }
-
-  /// 🚀 Isolate 专用：静态解析方法
-  static List<CountdownItem> _parseCountdownItemsIsolate(
-      List<Map<String, dynamic>> maps) {
-    return maps
-        .map((m) => CountdownItem(
-              id: m['uuid'],
-              title: m['title'] ?? '',
-              targetDate: DateTime.fromMillisecondsSinceEpoch(m['target_time']),
-              isDeleted: m['is_deleted'] == 1,
-              isCompleted: m['is_completed'] == 1,
-              version: m['version'] ?? 1,
-              updatedAt:
-                  m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-              createdAt:
-                  m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-              teamUuid: m['team_uuid'],
-              teamName: m['team_name'],
-              creatorId: m['creator_id'],
-              creatorName: m['creator_name'],
-              hasConflict: m['has_conflict'] == 1,
-              conflictData: m['conflict_data'] != null
-                  ? jsonDecode(m['conflict_data'])
-                  : null,
-            ))
-        .toList();
-  }
-
-  static List<CountdownItem> _parseCountdownJsonItemsIsolate(
-      List<String> jsonList) {
-    return jsonList
-        .map((e) {
-          try {
-            return CountdownItem.fromJson(jsonDecode(e));
-          } catch (_) {
-            return null;
-          }
-        })
-        .whereType<CountdownItem>()
-        .toList();
-  }
+          {bool includeDeleted = false}) =>
+      CountdownStorage.getCountdowns(
+        username,
+        includeDeleted: includeDeleted,
+        saveMigratedCountdowns: saveCountdowns,
+      );
 
   static Future<void> deleteCountdownGlobally(
       String username, String idToDelete) async {
@@ -1101,7 +762,7 @@ class StorageService {
                 (row['is_completed'] as int?) ?? 0;
           }
           //debugPrint(
-            //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
+          //  '🧪 [SyncDiag][saveTodos-sync] preserving ${existingCompletionMap.length} protected completions (force-flush=${_forceFlushProtectedUuids.length}, pending-oplog=${_pendingSyncOplogUuids.length})');
         }
       }
     }
@@ -1152,8 +813,8 @@ class StorageService {
         });
         queuedTodoOps++;
         //if (!isSyncSource) {
-          //debugPrint(
-          //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
+        //debugPrint(
+        //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
         //}
       }
 
@@ -1245,7 +906,6 @@ class StorageService {
           '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
     */
     }
-
 
     if (recomputeScheduleConflicts) {
       await _refreshTodoScheduleConflicts(username);
@@ -2644,165 +2304,20 @@ class StorageService {
   // 时间日志 (Time Logs)
   // ==========================================
   static Future<void> saveTimeLogs(String username, List<TimeLogItem> items,
-      {bool sync = true}) async {
-    final prefs = await StorageService.prefs;
-    final db = await DatabaseHelper.instance.database;
-    final Map<String, TimeLogItem> dedupeMap = {};
-
-    for (var item in items) {
-      final existing = dedupeMap[item.id];
-      // LWW 策略：比较 version 和 updatedAt
-      if (existing == null ||
-          item.version > existing.version ||
-          (item.version == existing.version &&
-              item.updatedAt > existing.updatedAt)) {
-        dedupeMap[item.id] = item;
-      }
-    }
-
-    List<TimeLogItem> result = dedupeMap.values.toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
-
-    final batch = db.batch();
-    for (final item in result) {
-      batch.insert(
-        'time_logs',
-        {
-          'uuid': item.id,
-          'title': item.title,
-          'tag_uuids': jsonEncode(item.tagUuids),
-          'start_time': item.startTime,
-          'end_time': item.endTime,
-          'remark': item.remark,
-          'is_deleted': item.isDeleted ? 1 : 0,
-          'version': item.version,
-          'updated_at': item.updatedAt,
-          'created_at': item.createdAt,
-          'device_id': item.deviceId ?? '',
-          'team_uuid': item.teamUuid ?? '',
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
+          {bool sync = true}) =>
+      PomodoroStorage.saveTimeLogs(
+        username,
+        items,
+        sync: sync,
+        requestSync: requestSync,
       );
-    }
-    if (result.isNotEmpty) {
-      await batch.commit(noResult: true);
-    }
 
-    await prefs.remove("${KEY_TIME_LOGS}_$username");
-    await prefs.remove(KEY_TIME_LOGS);
-
-    if (sync) requestSync(username);
-  }
-
-  static Future<List<TimeLogItem>> getTimeLogs(String username,
-      {int? limit}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final dbHelper = DatabaseHelper.instance;
-
-    try {
-      // 1. 迁移检查
-      final String migrationKey = "migrated_timelogs_$username";
-      final bool migrated = prefs.getBool(migrationKey) ?? false;
-
-      if (!migrated) {
-        List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
-        if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          legacyJsonList = prefs.getStringList(KEY_TIME_LOGS) ?? [];
-        }
-
-        if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
-          List<TimeLogItem> legacyItems = [];
-          for (var e in legacyJsonList) {
-            try {
-              legacyItems.add(TimeLogItem.fromJson(jsonDecode(e)));
-            } catch (_) {}
-          }
-          await saveTimeLogs(username, legacyItems, sync: false);
-          // 🚀 迁移成功后物理移除 Prefs 中的大对象，防止 OOM
-          await prefs.remove("${KEY_TIME_LOGS}_$username");
-          await prefs.remove(KEY_TIME_LOGS);
-          debugPrint("✅ 专注记录迁移完成并已物理清理。");
-        }
-        await prefs.setBool(migrationKey, true);
-      } else {
-        final db = await dbHelper.database;
-        final countRows =
-            await db.rawQuery('SELECT COUNT(*) as cnt FROM time_logs');
-        final hasSqlRows = (countRows.first['cnt'] as int? ?? 0) > 0;
-        final legacyJsonList =
-            prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
-        if (!hasSqlRows && legacyJsonList.isNotEmpty) {
-          final legacyItems = <TimeLogItem>[];
-          for (final e in legacyJsonList) {
-            try {
-              legacyItems.add(TimeLogItem.fromJson(jsonDecode(e)));
-            } catch (_) {}
-          }
-          if (legacyItems.isNotEmpty) {
-            await saveTimeLogs(username, legacyItems, sync: false);
-            debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
-          }
-        }
-      }
-
-      final db = await dbHelper.database;
-      // 2. 从 SQL 读取
-      final List<Map<String, dynamic>> maps = await db.query(
-        'time_logs',
-        where: 'is_deleted = 0',
-        orderBy: 'start_time DESC',
+  static Future<List<TimeLogItem>> getTimeLogs(String username, {int? limit}) =>
+      PomodoroStorage.getTimeLogs(
+        username,
         limit: limit,
+        saveMigratedTimeLogs: saveTimeLogs,
       );
-
-      return maps
-          .map((m) => TimeLogItem(
-                id: (m['uuid'] ?? m['id'])?.toString(),
-                title: (m['task_name'] ?? m['title'] ?? '').toString(),
-                tagUuids: _decodeStringList(m['tag_uuids']),
-                startTime: _parseNullableInt(m['start_time']) ?? 0,
-                endTime: _parseNullableInt(m['end_time']) ?? 0,
-                remark: (m['notes'] ?? m['remark'])?.toString(),
-                version: _parseNullableInt(m['version']) ?? 1,
-                updatedAt: _parseNullableInt(m['updated_at']) ??
-                    DateTime.now().millisecondsSinceEpoch,
-                createdAt: _parseNullableInt(m['created_at']) ??
-                    DateTime.now().millisecondsSinceEpoch,
-                isDeleted: (m['is_deleted'] == 1),
-                deviceId: _emptyToNull(m['device_id']),
-                teamUuid: _emptyToNull(m['team_uuid']),
-              ))
-          .toList();
-    } catch (e) {
-      debugPrint("⚠️ TimeLogs SQL 异常: $e");
-      // 逃生通道
-      List<String> list =
-          prefs.getStringList("${KEY_TIME_LOGS}_$username") ?? [];
-      return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
-    }
-  }
-
-  static List<String> _decodeStringList(dynamic value) {
-    if (value is List) {
-      return value.map((e) => e.toString()).toList();
-    }
-    if (value is String && value.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(value);
-        if (decoded is List) {
-          return decoded.map((e) => e.toString()).toList();
-        }
-      } catch (_) {}
-    }
-    return <String>[];
-  }
-
-  static String? _emptyToNull(dynamic value) {
-    final text = value?.toString();
-    if (text == null || text.isEmpty || text == 'null') return null;
-    return text;
-  }
 
   static Future<bool> deleteTimeLogGlobally(
       String username, String idToDelete) async {
@@ -3157,8 +2672,10 @@ class StorageService {
       if (userId == null) throw Exception("用户未登录");
 
       // 2. 环境信息准备
-      final String deviceId = await _getUniqueDeviceId(username);
-      final String friendlyName = await _getDetailedDeviceName();
+      final String deviceId =
+          await UserSessionStorage.getDeviceIdForUser(username);
+      final String friendlyName =
+          await UserSessionStorage.getDeviceFriendlyName();
       final String serverKey =
           ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
       int lastSyncTime = forceFullSync
@@ -3669,7 +3186,7 @@ class StorageService {
               continue;
             }
             //debugPrint(
-           //    '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
+            //    '🧪 [SyncDiag][IndepCompletion] WRITE $todoUuid isCompleted=$isCompleted (raw=$rawCompleted)');
             batch.insert(
                 'todo_completions',
                 {
@@ -3845,7 +3362,8 @@ class StorageService {
           final mergeTimeCond =
               sItem.updatedAt > local.updatedAt && !sItem.hasConflict;
           if (sItem.hasConflict || local.hasConflict) {
-            debugPrint('🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
+            debugPrint(
+                '🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
           }
           if (sItem.isDeleted ||
               sItem.version > local.version ||
@@ -4017,7 +3535,8 @@ class StorageService {
           }
           if (sItem.isDeleted ||
               sItem.version > allLocalCountdowns[idx].version ||
-              (sItem.updatedAt > allLocalCountdowns[idx].updatedAt && !sItem.hasConflict)) {
+              (sItem.updatedAt > allLocalCountdowns[idx].updatedAt &&
+                  !sItem.hasConflict)) {
             allLocalCountdowns[idx] = sItem;
             hasChanges = true;
           }
@@ -4957,390 +4476,165 @@ class StorageService {
   // 🔔 通知管理设置
   // ==========================================
 
-  static Future<bool> isLiveActivityNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_LIVE_ENABLED) ?? true;
-  }
+  static Future<bool> isLiveActivityNotificationEnabled() =>
+      AppSettingsStorage.isLiveActivityNotificationEnabled();
 
-  static Future<void> setLiveActivityNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_LIVE_ENABLED, enabled);
-  }
+  static Future<void> setLiveActivityNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setLiveActivityNotificationEnabled(enabled);
 
-  static Future<bool> isNormalNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_NORMAL_ENABLED) ?? true;
-  }
+  static Future<bool> isNormalNotificationEnabled() =>
+      AppSettingsStorage.isNormalNotificationEnabled();
 
-  static Future<void> setNormalNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_NORMAL_ENABLED, enabled);
-  }
+  static Future<void> setNormalNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setNormalNotificationEnabled(enabled);
 
-  static Future<bool> isCourseNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_COURSE_ENABLED) ?? true;
-  }
+  static Future<bool> isCourseNotificationEnabled() =>
+      AppSettingsStorage.isCourseNotificationEnabled();
 
-  static Future<void> setCourseNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_COURSE_ENABLED, enabled);
-  }
+  static Future<void> setCourseNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setCourseNotificationEnabled(enabled);
 
-  static Future<bool> isQuizNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_QUIZ_ENABLED) ?? true;
-  }
+  static Future<bool> isQuizNotificationEnabled() =>
+      AppSettingsStorage.isQuizNotificationEnabled();
 
-  static Future<void> setQuizNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_QUIZ_ENABLED, enabled);
-  }
+  static Future<void> setQuizNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setQuizNotificationEnabled(enabled);
 
-  static Future<bool> isTodoSummaryNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED) ?? true;
-  }
+  static Future<bool> isTodoSummaryNotificationEnabled() =>
+      AppSettingsStorage.isTodoSummaryNotificationEnabled();
 
-  static Future<void> setTodoSummaryNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_TODO_SUMMARY_ENABLED, enabled);
-  }
+  static Future<void> setTodoSummaryNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setTodoSummaryNotificationEnabled(enabled);
 
-  static Future<bool> isSpecialTodoNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED) ?? true;
-  }
+  static Future<bool> isSpecialTodoNotificationEnabled() =>
+      AppSettingsStorage.isSpecialTodoNotificationEnabled();
 
-  static Future<void> setSpecialTodoNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_SPECIAL_TODO_ENABLED, enabled);
-  }
+  static Future<void> setSpecialTodoNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setSpecialTodoNotificationEnabled(enabled);
 
-  static Future<bool> isPomodoroNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_POMODORO_ENABLED) ?? true;
-  }
+  static Future<bool> isPomodoroNotificationEnabled() =>
+      AppSettingsStorage.isPomodoroNotificationEnabled();
 
-  static Future<void> setPomodoroNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_POMODORO_ENABLED, enabled);
-  }
+  static Future<void> setPomodoroNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setPomodoroNotificationEnabled(enabled);
 
-  static Future<bool> isTodoRecognizeNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED) ?? true;
-  }
+  static Future<bool> isTodoRecognizeNotificationEnabled() =>
+      AppSettingsStorage.isTodoRecognizeNotificationEnabled();
 
-  static Future<void> setTodoRecognizeNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_TODO_RECOGNIZE_ENABLED, enabled);
-  }
+  static Future<void> setTodoRecognizeNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setTodoRecognizeNotificationEnabled(enabled);
 
-  static Future<bool> isTodoLiveNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_TODO_LIVE_ENABLED) ?? true;
-  }
+  static Future<bool> isTodoLiveNotificationEnabled() =>
+      AppSettingsStorage.isTodoLiveNotificationEnabled();
 
-  static Future<void> setTodoLiveNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_TODO_LIVE_ENABLED, enabled);
-  }
+  static Future<void> setTodoLiveNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setTodoLiveNotificationEnabled(enabled);
 
-  static Future<bool> isPomodoroEndNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_POMODORO_END_ENABLED) ?? true;
-  }
+  static Future<bool> isPomodoroEndNotificationEnabled() =>
+      AppSettingsStorage.isPomodoroEndNotificationEnabled();
 
-  static Future<void> setPomodoroEndNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_POMODORO_END_ENABLED, enabled);
-  }
+  static Future<void> setPomodoroEndNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setPomodoroEndNotificationEnabled(enabled);
 
-  static Future<bool> isReminderNotificationEnabled() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_NOTIFY_REMINDER_ENABLED) ?? true;
-  }
+  static Future<bool> isReminderNotificationEnabled() =>
+      AppSettingsStorage.isReminderNotificationEnabled();
 
-  static Future<void> setReminderNotificationEnabled(bool enabled) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_NOTIFY_REMINDER_ENABLED, enabled);
-  }
+  static Future<void> setReminderNotificationEnabled(bool enabled) =>
+      AppSettingsStorage.setReminderNotificationEnabled(enabled);
 
-  static Future<int> getCourseReminderMinutes() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getInt(KEY_COURSE_REMINDER_MINUTES) ?? 15;
-  }
+  static Future<int> getCourseReminderMinutes() =>
+      AppSettingsStorage.getCourseReminderMinutes();
 
-  static Future<void> setCourseReminderMinutes(int minutes) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_COURSE_REMINDER_MINUTES, minutes);
-  }
+  static Future<void> setCourseReminderMinutes(int minutes) =>
+      AppSettingsStorage.setCourseReminderMinutes(minutes);
 
-  static Future<bool> isPrivacyPolicyAgreed() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_PRIVACY_AGREED) ?? false;
-  }
+  static Future<bool> isPrivacyPolicyAgreed() =>
+      AppSettingsStorage.isPrivacyPolicyAgreed();
 
-  static Future<void> setPrivacyPolicyAgreed(bool agreed,
-      {String? date}) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_PRIVACY_AGREED, agreed);
-    if (agreed) {
-      final versionDate = date ?? await _getPrivacyPolicyCurrentVersion();
-      await prefs.setString(KEY_PRIVACY_DATE, versionDate);
-    }
-  }
+  static Future<void> setPrivacyPolicyAgreed(bool agreed, {String? date}) =>
+      AppSettingsStorage.setPrivacyPolicyAgreed(agreed, date: date);
 
-  static Future<bool> isPrivacyPolicyUpToDate() async {
-    final prefs = await StorageService.prefs;
-    final storedDate = prefs.getString(KEY_PRIVACY_DATE);
-    if (storedDate == null) return false;
+  static Future<bool> isPrivacyPolicyUpToDate() =>
+      AppSettingsStorage.isPrivacyPolicyUpToDate();
 
-    final cachedVersion = prefs.getString(KEY_PRIVACY_CACHED_VERSION);
-    final cacheTime = prefs.getInt(KEY_PRIVACY_CACHE_TIME) ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    // Check if we need to refresh the cache in the background
-    if (cachedVersion == null ||
-        now - cacheTime >= PRIVACY_CACHE_DURATION.inMilliseconds) {
-      // Fire-and-forget background fetch so we don't block the UI app startup
-      _getPrivacyPolicyCurrentVersion();
-    }
-
-    if (cachedVersion != null) {
-      return _compareDates(storedDate, cachedVersion) >= 0;
-    }
-
-    // Default to true if no cache is available so we don't popup incorrectly on network failure
-    return true;
-  }
-
-  /// 从 GitHub 获取隐私政策的版本日期，包含缓存机制
-  static Future<String> _getPrivacyPolicyCurrentVersion() async {
-    final prefs = await StorageService.prefs;
-
-    // 检查缓存是否有效
-    final cachedVersion = prefs.getString(KEY_PRIVACY_CACHED_VERSION);
-    final cacheTime = prefs.getInt(KEY_PRIVACY_CACHE_TIME) ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    if (cachedVersion != null &&
-        now - cacheTime < PRIVACY_CACHE_DURATION.inMilliseconds) {
-      debugPrint('[Privacy] Using cached version: $cachedVersion');
-      return cachedVersion;
-    }
-
-    // 从网络获取
-    try {
-      final response = await http
-          .get(Uri.parse(PRIVACY_RAW_URL))
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final version = _extractPrivacyVersionDate(response.body);
-        if (version.isNotEmpty) {
-          // 缓存结果
-          await prefs.setString(KEY_PRIVACY_CACHED_VERSION, version);
-          await prefs.setInt(KEY_PRIVACY_CACHE_TIME, now);
-          debugPrint('[Privacy] Updated version: $version');
-          return version;
-        }
-      }
-    } catch (e) {}
-
-    // 如果网络请求失败但有缓存，返回缓存的版本
-    if (cachedVersion != null) {
-      return cachedVersion;
-    }
-
-    // 默认返回当前日期
-    final defaultDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    return defaultDate;
-  }
-
-  /// 从隐私政策 Markdown 内容中提取版本日期
-  /// 格式例子: **版本日期：2026年4月11日** 或 **版本日期：2026-04-11**
-  static String _extractPrivacyVersionDate(String content) {
-    try {
-      // 匹配 "版本日期：YYYY年M月D日" 格式
-      final pattern1 = RegExp(r'版本日期[：:]?\s*(\d{4})年(\d{1,2})月(\d{1,2})日');
-      final match1 = pattern1.firstMatch(content);
-      if (match1 != null) {
-        final year = match1.group(1)!;
-        final month = match1.group(2)!.padLeft(2, '0');
-        final day = match1.group(3)!.padLeft(2, '0');
-        return '$year-$month-$day';
-      }
-
-      // 匹配 "版本日期：YYYY-MM-DD" 格式
-      final pattern2 = RegExp(r'版本日期[：:]?\s*(\d{4}-\d{2}-\d{2})');
-      final match2 = pattern2.firstMatch(content);
-      if (match2 != null) {
-        return match2.group(1)!;
-      }
-
-      debugPrint('[Privacy] Could not extract version date from content');
-      return '';
-    } catch (e) {
-      debugPrint('[Privacy] Error extracting version date: $e');
-      return '';
-    }
-  }
-
-  static int _compareDates(String a, String b) {
-    try {
-      final dateA = DateTime.parse(a);
-      final dateB = DateTime.parse(b);
-      return dateA.compareTo(dateB);
-    } catch (_) {
-      return a.compareTo(b);
-    }
-  }
-
-  static Future<void> withdrawPrivacyAgreement() async {
-    final prefs = await StorageService.prefs;
-    await prefs.remove(KEY_PRIVACY_AGREED);
-    await prefs.remove(KEY_PRIVACY_DATE);
-  }
+  static Future<void> withdrawPrivacyAgreement() =>
+      AppSettingsStorage.withdrawPrivacyAgreement();
 
   static void dispose() {
     _recurrenceCheckCache.clear();
     _lastRecurrenceCheckDate = null;
   }
 
-  static Future<String> getWallpaperProvider() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_PROVIDER) ?? 'bing';
-  }
+  static Future<String> getWallpaperProvider() =>
+      AppSettingsStorage.getWallpaperProvider();
 
-  static Future<void> saveWallpaperProvider(String provider) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_WALLPAPER_PROVIDER, provider);
-  }
+  static Future<void> saveWallpaperProvider(String provider) =>
+      AppSettingsStorage.saveWallpaperProvider(provider);
 
-  static Future<String> getWallpaperImageFormat() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_IMAGE_FORMAT) ?? 'jpg';
-  }
+  static Future<String> getWallpaperImageFormat() =>
+      AppSettingsStorage.getWallpaperImageFormat();
 
-  static Future<void> saveWallpaperImageFormat(String format) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_WALLPAPER_IMAGE_FORMAT, format);
-  }
+  static Future<void> saveWallpaperImageFormat(String format) =>
+      AppSettingsStorage.saveWallpaperImageFormat(format);
 
-  static Future<int> getWallpaperIndex() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getInt(KEY_WALLPAPER_INDEX) ?? 0;
-  }
+  static Future<int> getWallpaperIndex() =>
+      AppSettingsStorage.getWallpaperIndex();
 
-  static Future<void> saveWallpaperIndex(int index) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_WALLPAPER_INDEX, index);
-  }
+  static Future<void> saveWallpaperIndex(int index) =>
+      AppSettingsStorage.saveWallpaperIndex(index);
 
-  static Future<String> getWallpaperMkt() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_MKT) ?? 'zh-CN';
-  }
+  static Future<String> getWallpaperMkt() =>
+      AppSettingsStorage.getWallpaperMkt();
 
-  static Future<void> saveWallpaperMkt(String mkt) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_WALLPAPER_MKT, mkt);
-  }
+  static Future<void> saveWallpaperMkt(String mkt) =>
+      AppSettingsStorage.saveWallpaperMkt(mkt);
 
-  static Future<String> getWallpaperResolution() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_RESOLUTION) ?? '1920';
-  }
+  static Future<String> getWallpaperResolution() =>
+      AppSettingsStorage.getWallpaperResolution();
 
-  static Future<void> saveWallpaperResolution(String resolution) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_WALLPAPER_RESOLUTION, resolution);
-  }
+  static Future<void> saveWallpaperResolution(String resolution) =>
+      AppSettingsStorage.saveWallpaperResolution(resolution);
 
-  static Future<int?> getWallpaperCacheCleanupTime() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getInt(keyWallpaperCacheCleanupTime);
-  }
+  static Future<int?> getWallpaperCacheCleanupTime() =>
+      AppSettingsStorage.getWallpaperCacheCleanupTime();
 
-  static Future<void> saveWallpaperCacheCleanupTime(int timestamp) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setInt(keyWallpaperCacheCleanupTime, timestamp);
-  }
+  static Future<void> saveWallpaperCacheCleanupTime(int timestamp) =>
+      AppSettingsStorage.saveWallpaperCacheCleanupTime(timestamp);
 
-  static Future<String?> getWallpaperCustomPath() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_WALLPAPER_CUSTOM_PATH);
-  }
+  static Future<String?> getWallpaperCustomPath() =>
+      AppSettingsStorage.getWallpaperCustomPath();
 
-  static Future<void> saveWallpaperCustomPath(String path) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_WALLPAPER_CUSTOM_PATH, path);
-  }
+  static Future<void> saveWallpaperCustomPath(String path) =>
+      AppSettingsStorage.saveWallpaperCustomPath(path);
 
-  static Future<void> clearWallpaperCustomPath() async {
-    final prefs = await StorageService.prefs;
-    await prefs.remove(KEY_WALLPAPER_CUSTOM_PATH);
-  }
+  static Future<void> clearWallpaperCustomPath() =>
+      AppSettingsStorage.clearWallpaperCustomPath();
 
-  static Future<bool> getTodoFoldersInline() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getBool(KEY_TODO_FOLDERS_INLINE) ??
-        true; // Defaults to embedded/inline
-  }
+  static Future<bool> getTodoFoldersInline() =>
+      AppSettingsStorage.getTodoFoldersInline();
 
-  static Future<void> setTodoFoldersInline(bool inline) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, inline);
-  }
+  static Future<void> setTodoFoldersInline(bool inline) =>
+      AppSettingsStorage.setTodoFoldersInline(inline);
 
-  static Future<String> getTodoFolderDisplayMode() async {
-    final prefs = await StorageService.prefs;
-    final mode = prefs.getString(KEY_TODO_FOLDER_DISPLAY_MODE);
-    if (mode != null && mode.isNotEmpty) return mode;
-    return (prefs.getBool(KEY_TODO_FOLDERS_INLINE) ?? true)
-        ? 'inline'
-        : 'separate';
-  }
+  static Future<String> getTodoFolderDisplayMode() =>
+      AppSettingsStorage.getTodoFolderDisplayMode();
 
-  static Future<void> setTodoFolderDisplayMode(String mode) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_TODO_FOLDER_DISPLAY_MODE, mode);
-    await prefs.setBool(KEY_TODO_FOLDERS_INLINE, mode != 'separate');
-  }
+  static Future<void> setTodoFolderDisplayMode(String mode) =>
+      AppSettingsStorage.setTodoFolderDisplayMode(mode);
 
-  static Future<void> saveLastCourseImportUrl(String url) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_LAST_COURSE_IMPORT_URL, url);
-  }
+  static Future<void> saveLastCourseImportUrl(String url) =>
+      AppSettingsStorage.saveLastCourseImportUrl(url);
 
-  static Future<String?> getLastCourseImportUrl() async {
-    final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_LAST_COURSE_IMPORT_URL);
-  }
+  static Future<String?> getLastCourseImportUrl() =>
+      AppSettingsStorage.getLastCourseImportUrl();
 
   // categoryGroupId -> minutes
-  static Future<Map<String, int>> getCategoryReminderMinutes(
-      String username) async {
-    final prefs = await StorageService.prefs;
-    final jsonStr =
-        prefs.getString("${KEY_CATEGORY_REMINDER_MINUTES}_$username");
-    if (jsonStr == null) return {};
-    try {
-      final Map<String, dynamic> rawResult = jsonDecode(jsonStr);
-      return rawResult.map((key, value) => MapEntry(key, value as int));
-    } catch (_) {
-      return {};
-    }
-  }
+  static Future<Map<String, int>> getCategoryReminderMinutes(String username) =>
+      AppSettingsStorage.getCategoryReminderMinutes(username);
 
   static Future<void> saveCategoryReminderMinutes(
-      String username, Map<String, int> data) async {
-    final prefs = await StorageService.prefs;
-    await prefs.setString(
-        "${KEY_CATEGORY_REMINDER_MINUTES}_$username", jsonEncode(data));
-  }
+          String username, Map<String, int> data) =>
+      AppSettingsStorage.saveCategoryReminderMinutes(username, data);
 
   static Future<List<Map<String, dynamic>>> getSyncFailures() async {
     final db = await DatabaseHelper.instance.database;

@@ -17,10 +17,17 @@ class SyncStatusBanner extends StatefulWidget {
 
 class _SyncStatusBannerState extends State<SyncStatusBanner> {
   SyncPathStatus _status = SyncPathStatus.connecting;
+  SyncPathStatus _pendingStatus = SyncPathStatus.connecting;
   String _detailMessage = "正在确认同步链路...";
+  String _pendingMessage = "正在确认同步链路...";
   bool _isExpanded = false;
+  bool _isWaitingToShow = false;
   Timer? _heartbeatTimer;
   Timer? _autoHideTimer;
+  Timer? _showDelayTimer;
+
+  // 连接中断后延迟显示 banner 的时间（秒）
+  static const int _showDelaySeconds = 5;
 
   // 监听 WS 连接状态变化
   StreamSubscription? _wsConnSub;
@@ -41,6 +48,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   void dispose() {
     _heartbeatTimer?.cancel();
     _autoHideTimer?.cancel();
+    _showDelayTimer?.cancel();
     _wsConnSub?.cancel();
     super.dispose();
   }
@@ -100,8 +108,12 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
   void updateStatus(SyncPathStatus status, {String? message}) {
     if (!mounted) return;
 
-    // 🚀 核心逻辑：如果从“非在线”切换到“在线”，先进入 success 状态展示 2 秒再消失
+    // 🚀 核心逻辑：如果从"非在线"切换到"在线"，先进入 success 状态展示 2 秒再消失
     if (status == SyncPathStatus.online && _status != SyncPathStatus.online && _status != SyncPathStatus.success) {
+      // 取消延迟显示计时器（如果正在等待）
+      _showDelayTimer?.cancel();
+      _isWaitingToShow = false;
+
       setState(() {
         _status = SyncPathStatus.success;
         _detailMessage = "同步连接已恢复";
@@ -122,6 +134,39 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
     if (status != SyncPathStatus.online && status != SyncPathStatus.success) {
       _autoHideTimer?.cancel();
     }
+
+    // 🚀 新增：连接中断时延迟显示 banner
+    if (status == SyncPathStatus.offline || status == SyncPathStatus.serverError || status == SyncPathStatus.connecting) {
+      // 保存待显示状态
+      _pendingStatus = status;
+      _pendingMessage = message ?? _detailMessage;
+
+      // 如果已经显示了非在线状态，直接更新
+      if (_status != SyncPathStatus.online && _status != SyncPathStatus.success) {
+        setState(() {
+          _status = status;
+          if (message != null) _detailMessage = message;
+        });
+      } else if (!_isWaitingToShow) {
+        // 首次断线，启动延迟计时器
+        _isWaitingToShow = true;
+        _showDelayTimer?.cancel();
+        _showDelayTimer = Timer(const Duration(seconds: _showDelaySeconds), () {
+          if (mounted) {
+            setState(() {
+              _status = _pendingStatus;
+              _detailMessage = _pendingMessage;
+              _isWaitingToShow = false;
+            });
+          }
+        });
+      }
+      return;
+    }
+
+    // 其他状态直接更新
+    _showDelayTimer?.cancel();
+    _isWaitingToShow = false;
 
     setState(() {
       _status = status;

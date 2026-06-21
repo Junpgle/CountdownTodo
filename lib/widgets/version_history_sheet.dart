@@ -114,9 +114,10 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
         _history.where((item) => item['is_local'] != true).toList();
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
+      initialChildSize: 0.45,
+      minChildSize: 0.35,
       maxChildSize: 0.9,
+      expand: false,
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(

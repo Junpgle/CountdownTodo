@@ -16,12 +16,18 @@ import '../utils/theme_color_tokens.dart';
 import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
+import 'pomodoro/unified_tag_manager_screen.dart';
 
 part 'time_log_components.dart';
 
 // ══════════════════════════════════════════════════════════
 // 常量
 // ══════════════════════════════════════════════════════════
+final GlobalKey timeLogDragKey = GlobalKey();
+final GlobalKey timeLogTagKey = GlobalKey();
+final GlobalKey timeLogAddKey = GlobalKey();
 const double kTimeAxisW = 46.0; // 左侧时间标签列宽（固定）
 const double kRowH = 52.0; // 每行（1小时）高度
 const int kColsPerH = 10; // 每小时几列（60/6=10）→ 24×10=240格
@@ -129,12 +135,66 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   bool _crossDay = false;
 
   List<TimeLogItem> _allLogs = [];
-  List<PomodoroTag> _tags = [];
+  List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
+  List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<PomodoroRecord> _allPomodoros = [];
   List<TodoItem> _allTodos = [];
   List<TodoGroup> _allTodoGroups = [];
   List<TodoPlanBlock> _allPlanBlocks = [];
   _EntryMode _entryMode = _EntryMode.log;
+  bool _showCoachMarks = false;
+
+  void _checkCoachMarks() async {
+    if (!mounted || _showCoachMarks) return;
+
+    final hasShown = await FeatureTipService.hasTipBeenShown('time_log_guide');
+    if (hasShown || !mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    setState(() {
+      _showCoachMarks = true;
+    });
+
+    CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: timeLogTagKey,
+          title: '标签管理',
+          description:
+              '时间日志的标签与番茄钟的标签是**通用的**！\n你可以点击这里统一创建或管理所有标签，方便后续按类别进行专注或日志统计。',
+        ),
+        CoachMarkStep(
+          targetKey: timeLogAddKey,
+          title: '手动补录',
+          description: '除了滑动创建，你也可以直接点击上方的「补录」按钮，通过精确填写时间来手动记录遗漏的专注。',
+        ),
+        CoachMarkStep(
+          targetKey: timeLogDragKey,
+          title: '滑动添加日志',
+          description: '点击补录按钮后，在日历网格内的空白区域，上下滑动手指即可快速创建一条时间日志！',
+        ),
+      ],
+      onFinish: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('time_log_guide');
+      },
+      onSkip: () {
+        if (mounted) {
+          setState(() {
+            _showCoachMarks = false;
+          });
+        }
+        FeatureTipService.markTipShown('time_log_guide');
+      },
+    );
+  }
 
   // 打开编辑面板
   void _editTimeLog(TimeLogItem log) {
@@ -161,6 +221,10 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     _weekStart = _dayStart(DateTime.now())
         .subtract(Duration(days: DateTime.now().weekday - 1));
     _loadData();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkCoachMarks();
+    });
   }
 
   Future<void> _loadData({bool forceSync = false}) async {
@@ -191,7 +255,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     if (!mounted) return;
 
     setState(() {
-      _tags = results[0] as List<PomodoroTag>;
+      _allTags = results[0] as List<PomodoroTag>;
+      _tags = _allTags.where((t) => !t.isArchived).toList();
       _allLogs =
           (results[1] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _allPomodoros = results[2] as List<PomodoroRecord>;
@@ -694,14 +759,29 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   }
 
   void _showTagManager() async {
-    final updated = await showModalBottomSheet<List<PomodoroTag>>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _TagManagerSheet(tags: _tags));
+    final updated = await Navigator.push<List<PomodoroTag>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UnifiedTagManagerScreen(
+          allTags: _allTags,
+          showSelection: false,
+          showArchive: true,
+          onChanged: (tags, selected) async {
+            await PomodoroService.saveTags(tags);
+            setState(() {
+              _allTags = tags;
+              _tags = tags.where((t) => !t.isArchived).toList();
+            });
+          },
+        ),
+      ),
+    );
     if (updated != null) {
       await PomodoroService.saveTags(updated);
-      setState(() => _tags = updated);
+      setState(() {
+        _allTags = updated;
+        _tags = updated.where((t) => !t.isArchived).toList();
+      });
     }
   }
 
@@ -877,21 +957,27 @@ class _WeekViewState extends State<_WeekView>
             ctx: ctx,
           ),
           const Spacer(),
-          _TopBarChip(
-            label: '标签',
-            icon: Icons.label_outline,
-            color: _TC.textSub(ctx).withValues(alpha: 0.8),
-            ctx: ctx,
-            onTap: widget.onManageTags,
+          SizedBox(
+            key: timeLogTagKey,
+            child: _TopBarChip(
+              label: '标签',
+              icon: Icons.label_outline,
+              color: _TC.textSub(ctx).withValues(alpha: 0.8),
+              ctx: ctx,
+              onTap: widget.onManageTags,
+            ),
           ),
           const SizedBox(width: 6),
-          _TopBarChip(
-            label: '补录',
-            icon: Icons.edit_calendar_outlined,
-            color: Theme.of(ctx).colorScheme.primary,
-            ctx: ctx,
-            onTap: widget.onAddLog,
-            filled: true,
+          SizedBox(
+            key: timeLogAddKey,
+            child: _TopBarChip(
+              label: '补录',
+              icon: Icons.edit_calendar_outlined,
+              color: Theme.of(ctx).colorScheme.primary,
+              ctx: ctx,
+              onTap: widget.onAddLog,
+              filled: true,
+            ),
           ),
           const SizedBox(width: 6),
           Builder(
@@ -1704,6 +1790,14 @@ class _GridCanvas extends StatelessWidget {
           onTap: () => onTimeLogTap(log),
         );
       }),
+
+      Positioned(
+        top: 9 * rowH,
+        left: rowW / 3,
+        width: rowW / 3,
+        height: rowH,
+        child: SizedBox(key: timeLogDragKey),
+      ),
     ]);
   }
 

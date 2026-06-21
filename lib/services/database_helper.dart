@@ -229,7 +229,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 30, // V30: screen_time 保留设备名与分类字段
+          version: 31, // V31: pomodoro_tags 新增 is_archived 归档字段
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -243,6 +243,19 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 31) {
+              try {
+                final info =
+                    await db.rawQuery("PRAGMA table_info(pomodoro_tags)");
+                if (!info.any((row) => row['name'] == 'is_archived')) {
+                  await db.execute(
+                      "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;");
+                  debugPrint('✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
+                }
+              } catch (e) {
+                debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
+              }
+            }
             if (oldVersion < 30) {
               await ensureScreenTimeSchema(db);
             }
@@ -1209,6 +1222,7 @@ class DatabaseHelper {
         name $textType,
         color $jsonType,
         is_deleted $boolType DEFAULT 0,
+        is_archived $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,
         updated_at $integerType,

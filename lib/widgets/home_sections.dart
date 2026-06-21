@@ -8,7 +8,9 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback? onAdd;
+  final Key? addKey; // 🚀 新增 addKey 用于高亮引导
   final VoidCallback? onAction; // 📁 新增操作回调
+  final Key? actionKey; // 🚀 新增 actionKey 用于高亮引导
   final IconData? actionIcon; // 📁 新增操作图标
   final String? actionTooltip; // 📁 新增操作提示
   final bool isLight;
@@ -18,7 +20,9 @@ class SectionHeader extends StatelessWidget {
     required this.title,
     required this.icon,
     this.onAdd,
+    this.addKey,
     this.onAction,
+    this.actionKey,
     this.actionIcon,
     this.actionTooltip,
     this.isLight = false,
@@ -52,17 +56,25 @@ class SectionHeader extends StatelessWidget {
                 ),
           ),
           const Spacer(),
-          if (onAction != null && actionIcon != null)
-            IconButton(
-              onPressed: onAction,
-              icon: Icon(actionIcon, color: iconColor),
-              tooltip: actionTooltip ?? "操作",
+          if (onAction != null && actionIcon != null) ...[
+            SizedBox(
+              key: actionKey,
+              child: IconButton(
+                icon: Icon(actionIcon!, color: iconColor, size: 20),
+                onPressed: onAction,
+                tooltip: actionTooltip ?? "操作",
+              ),
             ),
+            const SizedBox(width: 4),
+          ],
           if (onAdd != null)
-            IconButton(
-              onPressed: onAdd,
-              icon: Icon(Icons.add_circle_outline, color: iconColor),
-              tooltip: "添加",
+            KeyedSubtree(
+              key: addKey,
+              child: IconButton(
+                onPressed: onAdd,
+                icon: Icon(Icons.add_circle_outline, color: iconColor),
+                tooltip: "添加",
+              ),
             )
         ],
       ),
@@ -395,7 +407,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
                                     "更新: ${DateFormat('HH:mm').format(widget.lastSyncTime!)}",
                                     style: TextStyle(
                                         fontSize: isTablet ? 11 : 10,
-                                        color: Colors.blueGrey.withValues(alpha: 0.7))),
+                                        color: Colors.blueGrey
+                                            .withValues(alpha: 0.7))),
                             ],
                           ),
                           Text(_formatSeconds(totalTime),
@@ -625,7 +638,10 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     Color bgColor = isLight
         ? Colors.white.withValues(alpha: 0.1)
-        : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3);
+        : Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.3);
     Color textColor = isLight ? Colors.white70 : Colors.grey.shade600;
 
     return ClipRRect(
@@ -758,8 +774,9 @@ class MathStatsCard extends StatelessWidget {
                       ]),
                       Divider(
                           height: isTablet ? 32 : 24,
-                          color:
-                              Theme.of(context).dividerColor.withValues(alpha: 0.4)),
+                          color: Theme.of(context)
+                              .dividerColor
+                              .withValues(alpha: 0.4)),
                       Row(children: [
                         Expanded(
                             child: Column(

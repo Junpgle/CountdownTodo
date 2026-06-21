@@ -4,11 +4,13 @@ import '../../../utils/page_transitions.dart';
 import '../../band_sync_screen.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
+import '../batch_tag_page.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const InterconnectSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+  final String username;
+  const InterconnectSettingsPage({super.key, this.initialTarget, this.isEmbedded = false, required this.username});
 
   @override
   State<InterconnectSettingsPage> createState() => _InterconnectSettingsPageState();
@@ -194,6 +196,25 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                       PageTransitions.slideHorizontal(
                         CalendarSyncPage(isEmbedded: widget.isEmbedded),
                         settings: const RouteSettings(name: '日历同步向导'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'batch_tag',
+                  icon: Icons.label_outlined,
+                  title: '批量标签',
+                  subtitle: '为番茄钟和时间日志批量添加标签',
+                  color: Colors.teal,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        BatchTagPage(
+                          username: widget.username,
+                          isEmbedded: widget.isEmbedded,
+                        ),
+                        settings: const RouteSettings(name: '批量添加标签'),
                       ),
                     );
                   },

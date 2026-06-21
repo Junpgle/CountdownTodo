@@ -154,8 +154,6 @@ class _TurnstileVerificationWidgetState
 
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(
-          widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF))
       ..addJavaScriptChannel(
         'TurnstileChannel',
         onMessageReceived: _onJavaScriptMessage,
@@ -204,9 +202,11 @@ class _TurnstileVerificationWidgetState
             }
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint('[Turnstile] ❌ WebView error: ${error.description}');
+            debugPrint('[Turnstile] ❌ WebView error: ${error.description} (code: ${error.errorType})');
+            // 渲染成功后的子资源错误（如 Turnstile 内部网络请求）可忽略
+            if (_isRendered || _isVerified) return;
             _cancelLoadTimeout();
-            if (mounted && !_isVerified) {
+            if (mounted) {
               setState(() {
                 _hasError = true;
                 _errorMessage = '人机验证加载失败，请检查网络后重试';
@@ -218,9 +218,15 @@ class _TurnstileVerificationWidgetState
         ),
       );
 
+    if (defaultTargetPlatform != TargetPlatform.macOS) {
+      controller.setBackgroundColor(
+        widget.isDarkMode ? const Color(0xFF13131F) : const Color(0xFFF8F8FF));
+    }
+
     // 加载验证页面
     final theme = widget.isDarkMode ? 'dark' : 'light';
-    final url = '$_verifyPageUrl?theme=$theme&action=${widget.action}';
+    final siteKey = EnvironmentService.turnstileSiteKey;
+    final url = '$_verifyPageUrl?sitekey=$siteKey&theme=$theme&action=${widget.action}';
     debugPrint('[Turnstile] 🌐 Loading URL: $url');
     controller.loadRequest(Uri.parse(url));
 
@@ -242,8 +248,9 @@ class _TurnstileVerificationWidgetState
     final theme = widget.isDarkMode ? 'dark' : 'light';
     _webViewController!.runJavaScript('''
       document.body.className = '$theme';
-      var w = document.getElementById('turnstile-widget');
-      if (w) w.setAttribute('data-theme', '$theme');
+      if (window.turnstile && widgetId) {
+        turnstile.setTheme(widgetId, '$theme');
+      }
     ''');
   }
 

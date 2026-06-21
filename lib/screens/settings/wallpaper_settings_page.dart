@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import '../../services/storage/app_settings_storage.dart';
 import '../../storage_service.dart';
 
 class WallpaperSettingsPage extends StatefulWidget {
@@ -31,12 +32,12 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
   }
 
   Future<void> _loadSettings() async {
-    final provider = await StorageService.getWallpaperProvider();
-    final format = await StorageService.getWallpaperImageFormat();
-    final index = await StorageService.getWallpaperIndex();
-    final mkt = await StorageService.getWallpaperMkt();
-    final resolution = await StorageService.getWallpaperResolution();
-    final customPath = await StorageService.getWallpaperCustomPath();
+    final provider = await AppSettingsStorage.getWallpaperProvider();
+    final format = await AppSettingsStorage.getWallpaperImageFormat();
+    final index = await AppSettingsStorage.getWallpaperIndex();
+    final mkt = await AppSettingsStorage.getWallpaperMkt();
+    final resolution = await AppSettingsStorage.getWallpaperResolution();
+    final customPath = await AppSettingsStorage.getWallpaperCustomPath();
 
     if (mounted) {
       setState(() {
@@ -59,7 +60,9 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
       maxHeight: 3840,
     );
     if (pickedFile == null) return;
+    if (!mounted) return;
 
+    final theme = Theme.of(context);
     String sourcePath = pickedFile.path;
     try {
       final croppedFile = await ImageCropper().cropImage(
@@ -69,7 +72,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: '裁剪壁纸',
-            toolbarColor: Theme.of(context).primaryColor,
+            toolbarColor: theme.primaryColor,
             toolbarWidgetColor: Colors.white,
             lockAspectRatio: false,
           ),
@@ -87,7 +90,8 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
         sourcePath = croppedFile.path;
       }
     } catch (e) {
-      debugPrint('ImageCropper not supported on this platform, using original image: $e');
+      debugPrint(
+          'ImageCropper not supported on this platform, using original image: $e');
     }
 
     final appDir = await getApplicationDocumentsDirectory();
@@ -96,7 +100,8 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
       await wallpaperDir.create(recursive: true);
     }
 
-    final fileName = 'custom_wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final fileName =
+        'custom_wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final savedPath = p.join(wallpaperDir.path, fileName);
     await File(sourcePath).copy(savedPath);
 
@@ -107,7 +112,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
       } catch (_) {}
     }
 
-    await StorageService.saveWallpaperCustomPath(savedPath);
+    await AppSettingsStorage.saveWallpaperCustomPath(savedPath);
     StorageService.triggerWallpaperRefresh();
     if (mounted) {
       setState(() {
@@ -123,7 +128,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
         if (await oldFile.exists()) await oldFile.delete();
       } catch (_) {}
     }
-    await StorageService.clearWallpaperCustomPath();
+    await AppSettingsStorage.clearWallpaperCustomPath();
     StorageService.triggerWallpaperRefresh();
     if (mounted) {
       setState(() {
@@ -142,15 +147,18 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
     }
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('壁纸设置'),
-        elevation: 0,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('壁纸设置'),
+              elevation: 0,
+            ),
       body: ListView(
         children: [
           _buildSectionTitle('基本设置'),
           ListTile(
-            leading: const Icon(Icons.source_outlined, color: Colors.deepPurple),
+            leading:
+                const Icon(Icons.source_outlined, color: Colors.deepPurple),
             title: const Text('壁纸来源'),
             subtitle: const Text('GitHub: 随机仓库壁纸 | Bing: 必应每日一图 | 自定义: 本地图片'),
             trailing: DropdownButton<String>(
@@ -164,7 +172,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
               onChanged: (val) {
                 if (val != null) {
                   setState(() => _provider = val);
-                  StorageService.saveWallpaperProvider(val);
+                  AppSettingsStorage.saveWallpaperProvider(val);
                   StorageService.triggerWallpaperRefresh();
                 }
               },
@@ -178,7 +186,8 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             const Divider(height: 1, indent: 56),
             _buildSectionTitle('必应选项'),
             ListTile(
-              leading: const Icon(Icons.image_outlined, color: Colors.deepPurple),
+              leading:
+                  const Icon(Icons.image_outlined, color: Colors.deepPurple),
               title: const Text('图片格式'),
               trailing: DropdownButton<String>(
                 value: _format,
@@ -190,7 +199,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                 onChanged: (val) {
                   if (val != null) {
                     setState(() => _format = val);
-                    StorageService.saveWallpaperImageFormat(val);
+                    AppSettingsStorage.saveWallpaperImageFormat(val);
                   }
                 },
               ),
@@ -210,14 +219,15 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                 onChanged: (val) {
                   if (val != null) {
                     setState(() => _index = val);
-                    StorageService.saveWallpaperIndex(val);
+                    AppSettingsStorage.saveWallpaperIndex(val);
                   }
                 },
               ),
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
-              leading: const Icon(Icons.language_outlined, color: Colors.deepPurple),
+              leading:
+                  const Icon(Icons.language_outlined, color: Colors.deepPurple),
               title: const Text('地区/语言'),
               trailing: DropdownButton<String>(
                 value: _mkt,
@@ -242,14 +252,15 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                 onChanged: (val) {
                   if (val != null) {
                     setState(() => _mkt = val);
-                    StorageService.saveWallpaperMkt(val);
+                    AppSettingsStorage.saveWallpaperMkt(val);
                   }
                 },
               ),
             ),
             const Divider(height: 1, indent: 56),
             ListTile(
-              leading: const Icon(Icons.monitor_outlined, color: Colors.deepPurple),
+              leading:
+                  const Icon(Icons.monitor_outlined, color: Colors.deepPurple),
               title: const Text('分辨率'),
               trailing: DropdownButton<String>(
                 value: _resolution,
@@ -263,7 +274,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                 onChanged: (val) {
                   if (val != null) {
                     setState(() => _resolution = val);
-                    StorageService.saveWallpaperResolution(val);
+                    AppSettingsStorage.saveWallpaperResolution(val);
                   }
                 },
               ),
@@ -349,7 +360,11 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             '自定义壁纸将从本地加载，不会联网获取。',
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.6),
+              color: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.color
+                  ?.withValues(alpha: 0.6),
             ),
           ),
         ),
@@ -368,13 +383,19 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
             Icon(
               Icons.wallpaper,
               size: 48,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withValues(alpha: 0.4),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无自定义壁纸',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.5),
               ),
             ),
           ],

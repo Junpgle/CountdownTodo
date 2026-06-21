@@ -17,7 +17,7 @@ import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
 import '../pomodoro_utils.dart';
-import '../widgets/tag_manager_sheet.dart';
+import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
 import '../widgets/workbench_task_area.dart';
@@ -71,7 +71,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   // ── 任务绑定 ──
   TodoItem? _boundTodo;
-  List<PomodoroTag> _allTags = [];
+  List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
+  List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<String> _selectedTagUuids = [];
   // Backwards-compatibility: older code referred to `_selectedUuids`.
   // Keep a getter/setter so any remaining call sites still work.
@@ -98,6 +99,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   StreamSubscription? _crossDeviceSub;
   StreamSubscription? _connSub; // 🚀 兼容性修复：改为通配订阅类型
   CrossDevicePomodoroState? _remoteState;
+
+  // ── Coach Mark Keys ──
+  final GlobalKey settingsKey = GlobalKey();
+  final GlobalKey tagsManagerKey = GlobalKey();
+  final GlobalKey serverConnKey = GlobalKey();
+  final GlobalKey modeSwitchKey = GlobalKey();
+  final GlobalKey focusTagsKey = GlobalKey();
+  final GlobalKey bindTodoKey = GlobalKey();
+
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
@@ -269,6 +279,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
       _settings = results[0] as PomodoroSettings;
       _allTags = results[1] as List<PomodoroTag>;
+      _tags = _allTags.where((t) => !t.isArchived).toList();
       _deviceId = results[2] as String;
 
       final todosRaw = results[3] as List<TodoItem>;
@@ -794,13 +805,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Future<List<String>> _recommendedTagUuidsForTodo(TodoItem todo) async {
-    if (_allTags.isEmpty) return const [];
+    if (_tags.isEmpty) return const [];
     try {
       final records = await PomodoroService.getRecords()
           .timeout(const Duration(seconds: 2), onTimeout: () => []);
       return TodoClassificationService.recommendPomodoroTagUuidsForTodo(
         todo: todo,
-        tags: _allTags,
+        tags: _tags,
         history: records,
         todoHistory: _todos,
         groups: _todoGroups,
@@ -1037,7 +1048,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   void _pushPomodoroNotification(
       {int? overrideRemaining, String alertKey = ''}) {
     final remaining = overrideRemaining ?? _remainingSeconds;
-    final tagNames = _allTags
+    final tagNames = _tags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
         .toList();
@@ -1427,7 +1438,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         sessionUuid: _currentSessionUuid,
         note: _currentNote.isNotEmpty ? _currentNote : null);
     if (recommendedTagUuids.isNotEmpty) {
-      final tagNames = _allTags
+      final tagNames = _tags
           .where((t) => _selectedTagUuids.contains(t.uuid))
           .map((t) => t.name)
           .toList();
@@ -1894,20 +1905,21 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12)));
   }
 
-  void _showTagsDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => TagManagerSheet(
-        allTags: _allTags,
+  void _showTagsDialog() async {
+    final updated = await Navigator.push<List<PomodoroTag>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UnifiedTagManagerScreen(
+          allTags: _allTags,
         selectedUuids: _selectedTagUuids,
+        showSelection: true,
+        showArchive: true,
         onChanged: (tags, selected) async {
           await PomodoroService.saveTags(tags);
           PomodoroService.syncTagsToCloud().catchError((_) => null);
           setState(() {
             _allTags = tags;
+            _tags = tags.where((t) => !t.isArchived).toList();
             _selectedTagUuids = selected;
           });
           await _persistIdleBoundTodo(_boundTodo);
@@ -1915,14 +1927,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _showLocalFloat();
           if (_phase == PomodoroPhase.focusing) {
             final tagNames = tags
-                .where((t) => selected.contains(t.uuid))
+                .where((t) => selected.contains(t.uuid) && !t.isArchived)
                 .map((t) => t.name)
                 .toList();
             _syncService.sendUpdateTagsSignal(tagNames);
           }
         },
       ),
-    );
+    ));
   }
 
   void _showBindTodoDialog({bool isSwitching = false}) {
@@ -2128,7 +2140,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     final bool isIdle =
         _phase == PomodoroPhase.idle || _phase == PomodoroPhase.finished;
 
-    final tagNames = _allTags
+    final tagNames = _tags
         .where((t) => _selectedTagUuids.contains(t.uuid))
         .map((t) => t.name)
         .toList();
@@ -2208,7 +2220,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _buildHeader(isIdle, isFocusing, isRemoteWatching),
+                        _buildHeader(isIdle, isFocusing, isRemoteWatching, isLandscape),
                         Expanded(
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 400),
@@ -2367,11 +2379,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       IconButton(
+                          key: settingsKey,
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.settings_outlined),
                           tooltip: '设置',
                           onPressed: _showSettingsDialog),
                       IconButton(
+                          key: tagsManagerKey,
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(Icons.label_outline),
                           tooltip: '标签',
@@ -2395,6 +2409,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   isRemoteWatching: isRemoteWatching,
                   boundTodo: _boundTodo,
                   contentColor: contentColor,
+                  bindKey: bindTodoKey,
                   onTap: () =>
                       _showBindTodoDialog(isSwitching: _boundTodo != null),
                 ),
@@ -2411,9 +2426,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
-  Widget _buildHeader(bool isIdle, bool isFocusing, bool isRemoteWatching) {
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+  Widget _buildHeader(bool isIdle, bool isFocusing, bool isRemoteWatching, bool isLandscape) {
+    final isGlobalLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return SizedBox(
       height: kToolbarHeight,
@@ -2421,10 +2435,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         children: [
           AnimatedOpacity(
             opacity:
-                (isFocusing || isRemoteWatching || isLandscape) ? 1.0 : 0.0,
+                (isFocusing || isRemoteWatching || isGlobalLandscape) ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
             child: IgnorePointer(
-              ignoring: !(isFocusing || isRemoteWatching || isLandscape),
+              ignoring: !(isFocusing || isRemoteWatching || isGlobalLandscape),
               child: IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () => Navigator.pop(context)),
@@ -2439,10 +2453,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 ignoring: !isIdle,
                 child: Row(children: [
                   IconButton(
+                      key: settingsKey,
                       icon: const Icon(Icons.settings_outlined),
                       tooltip: '设置',
                       onPressed: _showSettingsDialog),
                   IconButton(
+                      key: tagsManagerKey,
                       icon: const Icon(Icons.label_outline),
                       tooltip: '标签',
                       onPressed: _showTagsDialog),
@@ -2473,6 +2489,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: SegmentedButton<TimerMode>(
+          key: modeSwitchKey,
           segments: const [
             ButtonSegment(
                 value: TimerMode.countdown,
@@ -2520,13 +2537,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         break;
       case SyncConnectionState.error:
       case SyncConnectionState.disconnected:
-      icon = Icons.link_off_rounded;
+        icon = Icons.link_off_rounded;
         color = Colors.redAccent.withValues(alpha: 0.8);
         message = '同步连接已断开，点击重试';
         canRetry = true;
     }
 
     return Tooltip(
+      key: serverConnKey,
       message: message,
       child: InkWell(
         onTap: () {
@@ -2608,6 +2626,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           isRemoteWatching: isRemoteWatching,
           boundTodo: _boundTodo,
           contentColor: contentColor,
+          bindKey: bindTodoKey,
           onTap: () => _showBindTodoDialog(isSwitching: _boundTodo != null)),
       const SizedBox(height: 16),
       _buildNoteButton(contentColor),
@@ -2696,11 +2715,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           spacing: 6,
           runSpacing: 4,
           children: _remoteTagNames
-              .map((n) => _SimpleTag(name: n, color: Theme.of(context).colorScheme.secondary))
+              .map((n) => _SimpleTag(
+                  name: n, color: Theme.of(context).colorScheme.secondary))
               .toList());
     }
     final activeTags =
-        _allTags.where((t) => _selectedTagUuids.contains(t.uuid)).toList();
+        _tags.where((t) => _selectedTagUuids.contains(t.uuid)).toList();
     if (activeTags.isEmpty) return const SizedBox.shrink();
     return Wrap(
         spacing: 6,
@@ -2711,15 +2731,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildIdleMiddle() {
-    if (_allTags.isEmpty) return const SizedBox.shrink();
+    if (_tags.isEmpty) return const SizedBox.shrink();
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 148),
       child: SingleChildScrollView(
           child: Wrap(
+              key: focusTagsKey,
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: _allTags.map((tag) {
+              children: _tags.map((tag) {
                 final selected = _selectedTagUuids.contains(tag.uuid);
                 final color = hexToColor(tag.color);
                 return FilterChip(
@@ -2742,7 +2763,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     await _persistIdleBoundTodo(_boundTodo);
                     _showLocalFloat();
                     if (_phase == PomodoroPhase.focusing) {
-                      _syncService.sendUpdateTagsSignal(_allTags
+                      _syncService.sendUpdateTagsSignal(_tags
                           .where((t) => _selectedTagUuids.contains(t.uuid))
                           .map((t) => t.name)
                           .toList());
@@ -2764,6 +2785,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isRemoteWatching: isRemoteWatching,
       phase: _phase,
       boundTodo: _boundTodo,
+      bindKey: bindTodoKey,
       onShowBindTodo: _showBindTodoDialog,
       onStartFocus: _startFocus,
       onFinishEarly: _finishEarly,

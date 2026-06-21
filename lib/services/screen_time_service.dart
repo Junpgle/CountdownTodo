@@ -4,11 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/tai_service.dart';
+import '../services/storage/user_session_storage.dart';
 import '../../storage_service.dart';
 
 class ScreenTimeService {
   static const _channel = MethodChannel('com.math_quiz_app/screen_time');
-  static const int SYNC_INTERVAL_MINUTES = 2;
+  static const int syncIntervalMinutes = 2;
 
   static Future<bool> checkPermission() async {
     if (kIsWeb || !Platform.isAndroid) return true;
@@ -42,7 +43,7 @@ class ScreenTimeService {
     // 2. 检查是否需要静默刷新
     DateTime? lastSync = await StorageService.getLastScreenTimeSync();
     bool needSync = lastSync == null ||
-        DateTime.now().difference(lastSync).inMinutes >= SYNC_INTERVAL_MINUTES;
+        DateTime.now().difference(lastSync).inMinutes >= syncIntervalMinutes;
 
     if (needSync) {
       // 异步执行，不阻塞 UI 返回缓存数据
@@ -57,7 +58,7 @@ class ScreenTimeService {
     if (kIsWeb) return;
 
     try {
-      String? username = await StorageService.getLoginSession();
+      String? username = await UserSessionStorage.getLoginSession();
       if (username == null) return;
 
       bool hasScreenTimeData = false;
@@ -97,7 +98,7 @@ class ScreenTimeService {
       // 2. 将本机纯净数据推送到云端
       // 🚀 优先使用独立的 /api/screen_time 接口上传屏幕时间数据
       if (hasScreenTimeData) {
-        String deviceName = await StorageService.getDeviceFriendlyName();
+        String deviceName = await UserSessionStorage.getDeviceFriendlyName();
         await StorageService.syncScreenTimeAlone(username, deviceName);
       }
 

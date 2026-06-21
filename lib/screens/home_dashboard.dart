@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
 import '../utils/page_transitions.dart';
 
@@ -71,6 +72,8 @@ import 'todo_plan_screen.dart';
 // 🚀 引入
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
+import '../widgets/coach_mark_overlay.dart';
+import '../services/feature_tip_service.dart';
 
 class HomeDashboard extends StatefulWidget {
   final String username;
@@ -147,18 +150,27 @@ class _HomeDashboardState extends State<HomeDashboard>
   List<TodoItem>? _persistingTodosSnapshot;
   final GlobalKey<TodoSectionWidgetState> _todoSectionKey = GlobalKey();
   final GlobalKey _settingsButtonKey = GlobalKey();
-  final GlobalKey _pomodoroCardKey = GlobalKey();
+  final GlobalKey _pomodoroCardKey = GlobalKey(); // 恢复：用于卡片动画源
+  final GlobalKey _addCountdownKey = GlobalKey(); // 🚀 新增：倒数日添加按钮
+  final GlobalKey _timelineCardKey = GlobalKey(); // 🚀 新增：专注Tab时间轴
   final GlobalKey _mathCardKey = GlobalKey();
   final GlobalKey _screenTimeCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
+  
+  // 🚀 新增：首页引导用的新增 Keys
+  final GlobalKey _todoFolderKey = GlobalKey();
+  final GlobalKey _todoHistoryKey = GlobalKey();
+  final GlobalKey _countdownHistoryKey = GlobalKey();
+  final GlobalKey _todayPlanChartKey = GlobalKey();
   // 每次自增触发首页专注记录卡片与时间轴刷新
   final ValueNotifier<int> _timelineRefreshTriggerNotifier =
       ValueNotifier<int>(0);
 
-  Future<void> _extractColorFromProvider(ImageProvider provider, String url) async {
+  Future<void> _extractColorFromProvider(
+      ImageProvider provider, String url) async {
     if (_extractedWallpaperUrl == url) return;
     _extractedWallpaperUrl = url;
     try {
@@ -177,7 +189,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               palette.lightVibrantColor?.color ??
               palette.darkVibrantColor?.color ??
               (palette.colors.isNotEmpty ? palette.colors.first : null);
-              
+
           StorageService.setAppWallpaperColor(_wallpaperDominantColor);
         });
       }
@@ -201,6 +213,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   String _deviceId = '';
   bool _hasShownUpdate = false;
   bool _hasCheckedHolidayPreset = false;
+  bool _showCoachMarks = false;
   TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
@@ -243,6 +256,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _teamsButtonKey = GlobalKey();
   final GlobalKey _aiButtonKey = GlobalKey();
   final GlobalKey _courseCenterKey = GlobalKey();
+  final GlobalKey _menuKey = GlobalKey(); // 🚀 新增：侧边栏菜单按钮
 
   Future<void> _openAiAssistantFromAppBar() async {
     final todoState = _todoSectionKey.currentState;
@@ -354,6 +368,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
+    _checkCoachMarks();
 
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
@@ -3120,6 +3135,129 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_home_intro');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
+          MediaQuery.of(context).size.width > 800;
+
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _fabTodoKey,
+            title: '创建待办',
+            description: '点击此处记下你的第一个待办事项，支持设置提醒和截止日期。',
+          ),
+          CoachMarkStep(
+            targetKey: _fabPomodoroKey,
+            title: '开始专注',
+            description: '点击此处开始番茄钟专注计时，可绑定待办任务。',
+          ),
+          CoachMarkStep(
+            targetKey: _addCountdownKey,
+            title: '添加重要日',
+            description: '在这里可以添加即将到来的考试、纪念日，或者其他任何对你非常重要的倒数日。',
+          ),
+          CoachMarkStep(
+            targetKey: _searchButtonKey,
+            title: '全局搜索',
+            description: '随时在这里搜索所有内容，待办、倒计时、番茄钟、设置、时间日志、屏幕时间通通拿下。',
+          ),
+          CoachMarkStep(
+            targetKey: _todoFolderKey,
+            title: '待办文件夹',
+            description: '将不同任务分类归纳到文件夹，让待办列表井井有条。',
+          ),
+          CoachMarkStep(
+            targetKey: _todoHistoryKey,
+            title: '历史待办',
+            description: '在这里回顾所有已经完成或归档的历史待办。',
+          ),
+          CoachMarkStep(
+            targetKey: _countdownHistoryKey,
+            title: '历史倒数日',
+            description: '在这里查看已经结束或过期的重要日子。',
+          ),
+          CoachMarkStep(
+            targetKey: _todayPlanChartKey,
+            title: '规划统计',
+            description: '快速查看今日规划的时间安排与执行统计情况。',
+          ),
+          CoachMarkStep(
+            targetKey: _menuKey,
+            title: isTablet ? '菜单栏' : '侧边栏',
+            description: isTablet
+                ? '点击这里，即可浏览各项功能，设置也从这里进入哦~'
+                : '点击这里，即可调出侧栏，涵盖多个功能的快捷入口，设置也从这里进入哦~',
+          ),
+        ],
+        onFinish: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_home_intro');
+          // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
+          if (isTablet) {
+            Future.delayed(
+                const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
+          }
+        },
+        onSkip: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_home_intro');
+        },
+      );
+    }
+  }
+
+  // 🚀 新增：检查并显示专注 Tab 的引导
+  Future<void> _checkFocusTabCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_focus_tab');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _timelineCardKey,
+            title: '个人时间轴',
+            description: '这是你专属的个人时间轴，点进去可以查看详尽的分析报告，洞察你的时间都去哪儿了。',
+          ),
+          CoachMarkStep(
+            targetKey: _pomodoroCardKey,
+            title: '最近专注',
+            description: '这里会展示你最近一段时间的专注统计，包括累计专注时长和专注趋势。',
+          ),
+          CoachMarkStep(
+            targetKey: _screenTimeCardKey,
+            title: '屏幕时间',
+            description: '授权后，这里将统计你每日的手机应用使用情况，帮助你减少分心。',
+          ),
+        ],
+        onFinish: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_focus_tab');
+        },
+        onSkip: () {
+          _dismissCoachMarks();
+          FeatureTipService.markTipShown('coach_focus_tab');
+        },
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_home_intro');
+    _showCoachMarks = false;
+  }
+
   Future<void> _checkOfficialHolidayPreset() async {
     if (_hasCheckedHolidayPreset || !mounted) return;
     _hasCheckedHolidayPreset = true;
@@ -3535,6 +3673,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                 onPressed: () => Navigator.pop(context),
                 child: const Text("关闭"),
               ),
+              TextButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse('https://github.com/Junpgle/math_quiz_app/issues');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                icon: const Icon(Icons.bug_report_outlined, size: 16),
+                label: const Text("GitHub"),
+              ),
               FilledButton.tonalIcon(
                 onPressed: () {
                   Navigator.pop(context);
@@ -3611,7 +3759,12 @@ class _HomeDashboardState extends State<HomeDashboard>
           const SizedBox(height: 4),
           _buildInfoRow(
               "当前接入点", isTest ? "Aliyun (Test Node)" : "Aliyun (Global Node)"),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          const Text(
+            "注意：链路异常可能影响公告获取、版本更新、多设备同步等功能",
+            style: TextStyle(fontSize: 10, color: Colors.orangeAccent),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -4064,7 +4217,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                       builder: (context) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (_wallpaperDominantColor == null) {
-                            _extractColorFromProvider(AssetImage(_wallpaperUrl!), _wallpaperUrl!);
+                            _extractColorFromProvider(
+                                AssetImage(_wallpaperUrl!), _wallpaperUrl!);
                           }
                         });
                         return Image.asset(
@@ -4078,7 +4232,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                           builder: (context) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_wallpaperDominantColor == null) {
-                                _extractColorFromProvider(FileImage(File(_wallpaperUrl!)), _wallpaperUrl!);
+                                _extractColorFromProvider(
+                                    FileImage(File(_wallpaperUrl!)),
+                                    _wallpaperUrl!);
                               }
                             });
                             return Image.file(
@@ -4131,6 +4287,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     teamsKey: _teamsButtonKey,
                     aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,
+                    menuKey: _menuKey,
                     courseKey: _courseButtonKey,
                     showCourseButton: isTablet,
                     teamPendingCount: _teamPendingCount, // 🚀 绑定计数
@@ -4220,14 +4377,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                                           isLight: isLight,
                                           username: widget.username,
                                           refreshTrigger: trigger,
+                                          actionKey: _todayPlanChartKey,
                                         );
                                       },
                                     );
                                     Widget countdownSection =
                                         CountdownSectionWidget(
+                                            historyKey: _countdownHistoryKey,
                                             countdowns: _countdowns,
                                             username: widget.username,
                                             isLight: isLight,
+                                            addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
                                               _timelineRefreshTriggerNotifier
@@ -4239,6 +4399,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                           _todoUpdateSignalNotifier,
                                       builder: (context, signal, _) {
                                         return TodoSectionWidget(
+                                          folderKey: _todoFolderKey,
+                                          historyKey: _todoHistoryKey,
                                           todos: _todos,
                                           highlightedTodoIds:
                                               _updatedByOthersTodoIds,
@@ -4367,17 +4529,19 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         ),
                                       ),
                                     );
-                                    Widget timelineSection =
-                                        ValueListenableBuilder<int>(
-                                      valueListenable:
-                                          _timelineRefreshTriggerNotifier,
-                                      builder: (context, trigger, _) {
-                                        return PersonalTimelineSection(
-                                          username: widget.username,
-                                          isLight: isLight,
-                                          refreshTrigger: trigger,
-                                        );
-                                      },
+                                    Widget timelineSection = KeyedSubtree(
+                                      key: _timelineCardKey,
+                                      child: ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            _timelineRefreshTriggerNotifier,
+                                        builder: (context, trigger, _) {
+                                          return PersonalTimelineSection(
+                                            username: widget.username,
+                                            isLight: isLight,
+                                            refreshTrigger: trigger,
+                                          );
+                                        },
+                                      ),
                                     );
 
                                     Widget pomodoroSection = RepaintBoundary(
@@ -4417,6 +4581,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             _timelineRefreshTriggerNotifier,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
+                                            chartKey: _todayPlanChartKey,
                                             username: widget.username,
                                             isLight: isLight,
                                             refreshTrigger: trigger,
@@ -4454,21 +4619,45 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       'timeline': timelineSection,
                                     };
 
-                                    bool isCourseEmpty = (_dashboardCourseData['courses'] == null ||
-                                            (_dashboardCourseData['courses'] as List).isEmpty) ||
-                                        (_dashboardCourseData['title']?.toString().contains('天后') ?? false) ||
-                                        _dashboardCourseData['title'] == '最近无课' ||
-                                        _dashboardCourseData['title'] == '暂无课表';
-                                        
+                                    bool isCourseEmpty =
+                                        (_dashboardCourseData['courses'] ==
+                                                    null ||
+                                                (_dashboardCourseData['courses']
+                                                        as List)
+                                                    .isEmpty) ||
+                                            (_dashboardCourseData['title']
+                                                    ?.toString()
+                                                    .contains('天后') ??
+                                                false) ||
+                                            _dashboardCourseData['title'] ==
+                                                '最近无课' ||
+                                            _dashboardCourseData['title'] ==
+                                                '暂无课表';
+
                                     bool hasNoCourse = isCourseEmpty;
                                     if (isCourseEmpty) {
-                                      final nowMs = DateTime.now().millisecondsSinceEpoch;
-                                      final tomorrowEndMs = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day + 2).millisecondsSinceEpoch;
-                                      bool hasActivePlans = _planBlocks.any((b) => !b.isDeleted && b.endTime > nowMs && b.startTime < tomorrowEndMs);
+                                      final nowMs =
+                                          DateTime.now().millisecondsSinceEpoch;
+                                      final tomorrowEndMs = DateTime(
+                                              DateTime.now().year,
+                                              DateTime.now().month,
+                                              DateTime.now().day + 2)
+                                          .millisecondsSinceEpoch;
+                                      bool hasActivePlans = _planBlocks.any(
+                                          (b) =>
+                                              !b.isDeleted &&
+                                              b.endTime > nowMs &&
+                                              b.startTime < tomorrowEndMs);
                                       bool hasActiveTodos = _todos.any((t) {
-                                        if (t.isDeleted || t.dueDate == null || t.isAllDayTask) return false;
-                                        final startMs = t.createdDate ?? t.createdAt;
-                                        return startMs > 0 && t.dueDate!.millisecondsSinceEpoch > nowMs && startMs < tomorrowEndMs;
+                                        if (t.isDeleted ||
+                                            t.dueDate == null ||
+                                            t.isAllDayTask) return false;
+                                        final startMs =
+                                            t.createdDate ?? t.createdAt;
+                                        return startMs > 0 &&
+                                            t.dueDate!.millisecondsSinceEpoch >
+                                                nowMs &&
+                                            startMs < tomorrowEndMs;
                                       });
                                       if (hasActivePlans || hasActiveTodos) {
                                         hasNoCourse = false;
@@ -4944,7 +5133,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
-    final Color primaryColor = _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
+    final Color primaryColor =
+        _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
         (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
@@ -5003,7 +5193,14 @@ class _HomeDashboardState extends State<HomeDashboard>
       int index, IconData icon, String label, Color primary, Color inactive) {
     bool isSelected = _selectedTabIndex == index;
     return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
+      onTap: () {
+        setState(() => _selectedTabIndex = index);
+        if (index == 2) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _checkFocusTabCoachMarks();
+          });
+        }
+      },
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
       child: Container(
@@ -5242,7 +5439,8 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         _reported = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
-          widget.onImageProvider?.call(const AssetImage('assets/images/default_wallpaper.png'));
+          widget.onImageProvider
+              ?.call(const AssetImage('assets/images/default_wallpaper.png'));
         });
       }
     }

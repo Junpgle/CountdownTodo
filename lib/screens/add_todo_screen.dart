@@ -10,10 +10,13 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
+import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
+import '../services/feature_tip_service.dart';
+import '../widgets/coach_mark_overlay.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
 
@@ -69,6 +72,55 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _isLoading = true; // 🚀 首页加载锁
   Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别待办
 
+  final GlobalKey _aiTabSwitchKey = GlobalKey();
+  final GlobalKey _attachmentKey = GlobalKey();
+  final GlobalKey _allDayKey = GlobalKey();
+  final GlobalKey _saveButtonKey = GlobalKey();
+  bool _showCoachMarks = false;
+
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_add_todo');
+    if (hasSeenCoachMarks) return;
+    if (mounted) {
+      _showCoachMarks = true;
+      CoachMarkOverlay.show(
+        context: context,
+        steps: [
+          CoachMarkStep(
+            targetKey: _aiTabSwitchKey,
+            title: 'AI 智能识别',
+            description: '除了手动创建外，您还可以切换到 AI 识别，通过文字、语音或截图自动提取待办事项。',
+          ),
+          CoachMarkStep(
+            targetKey: _attachmentKey,
+            title: '添加图片附件',
+            description: '可以为待办事项附带一张相关的图片。请注意：图片不会上传到云端，仅在本地展示。',
+          ),
+          CoachMarkStep(
+            targetKey: _allDayKey,
+            title: '全天事件与灵动岛',
+            description: '全天事件会在截止的最后一天上岛通知。取餐、外卖等特殊待办设置为全天事件时，也会自动上岛。',
+          ),
+          CoachMarkStep(
+            targetKey: _saveButtonKey,
+            title: '保存待办',
+            description: '所有的信息都填写完毕后，点击这里就能将其保存到您的计划中了！',
+          ),
+        ],
+        onFinish: _dismissCoachMarks,
+        onSkip: _dismissCoachMarks,
+      );
+    }
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    if (!mounted) return;
+    await FeatureTipService.markTipShown('coach_add_todo');
+    _showCoachMarks = false;
+  }
+
   Map<String, int> _categoryReminderDefaults = {};
   String? _username;
   List<Team> _teams = [];
@@ -83,10 +135,38 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   TodoClassificationSuggestion? _classificationSuggestion;
   Timer? _estimationDebounce;
   DateTime? _suggestedDueDate;
+  late Timer _timer;
+  List<TodoGroup> _localTodoGroups = [];
 
   @override
   void initState() {
     super.initState();
+    _localTodoGroups = List.from(widget.todoGroups);
+    if (_localTodoGroups.isEmpty) {
+      _loadTodoGroups();
+    }
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) setState(() {});
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = ModalRoute.of(context);
+      if (route != null && route.animation != null) {
+        if (route.animation!.isCompleted) {
+          _checkCoachMarks();
+        } else {
+          void listener(AnimationStatus status) {
+            if (status == AnimationStatus.completed) {
+              _checkCoachMarks();
+              route.animation!.removeStatusListener(listener);
+            }
+          }
+
+          route.animation!.addStatusListener(listener);
+        }
+      } else {
+        _checkCoachMarks();
+      }
+    });
     _selectedGroupId = widget.initialGroupId;
     _selectedTeamUuid = widget.initialTeamUuid;
     _selectedTeamName = widget.initialTeamName;
@@ -106,6 +186,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
     _loadTeams();
     _loadPendingTodoConfirm();
+  }
+
+  Future<void> _loadTodoGroups() async {
+    try {
+      final groups = await DatabaseHelper.instance.getTodoGroups();
+      if (mounted) {
+        setState(() {
+          _localTodoGroups = groups;
+        });
+      }
+    } catch (e) {
+      debugPrint('[AddTodoScreen] Failed to load todo groups: $e');
+    }
   }
 
   Future<void> _loadPendingTodoConfirm() async {
@@ -204,6 +297,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
     _dotsController.dispose();
+    _timer.cancel();
     super.dispose();
   }
 
@@ -230,7 +324,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         final classification = await TodoClassificationService.recommendForText(
           title: text,
           remark: _remarkCtrl.text,
-          groups: widget.todoGroups,
+          groups: _localTodoGroups,
           categoryReminderDefaults: _categoryReminderDefaults,
           dueDate: _dueDate,
         );
@@ -516,7 +610,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       final classification = await TodoClassificationService.recommendForText(
         title: r.title,
         remark: r.remark ?? '',
-        groups: widget.todoGroups,
+        groups: _localTodoGroups,
         categoryReminderDefaults: _categoryReminderDefaults,
         dueDate: r.endTime,
       );
@@ -784,9 +878,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final hasDueDate = _suggestedDueDate != null && !_isAllDay;
 
     // Check if classification suggestion is meaningful
-    final hasNewGroup = clsSug != null &&
-        clsSug.hasGroup &&
-        clsSug.groupId != _selectedGroupId;
+    final hasNewGroup =
+        clsSug != null && clsSug.hasGroup && clsSug.groupId != _selectedGroupId;
     final hasClassification =
         hasNewGroup || (clsSug != null && clsSug.tags.isNotEmpty);
 
@@ -805,7 +898,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
+        border:
+            Border.all(color: cs.primary.withValues(alpha: 0.2), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: cs.primary.withValues(alpha: 0.05),
@@ -988,7 +1082,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: subColor?.withValues(alpha: 0.7) ?? Colors.grey,
+                          color:
+                              subColor?.withValues(alpha: 0.7) ?? Colors.grey,
                         ),
                       ),
                     ],
@@ -1004,7 +1099,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 onTap: onAccept,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: (accentColor ?? cs.primary).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -1054,7 +1150,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
-
   String _estimationConfidenceLabel(TimeEstimationResult est) {
     final pct = (est.confidence * 100).round();
     if (est.confidence >= 0.6) return '高置信度 $pct%';
@@ -1084,17 +1179,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         centerTitle: true,
         title: SizedBox(
           width: 200,
-          child: _buildCustomSegmentedControl(
-            labels: const ["手动创建", "AI 识别"],
-            selectedIndex: _selectedTabIndex,
-            onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+          child: KeyedSubtree(
+            key: _aiTabSwitchKey,
+            child: _buildCustomSegmentedControl(
+              labels: const ["手动创建", "AI 识别"],
+              selectedIndex: _selectedTabIndex,
+              onChanged: (idx) => setState(() => _selectedTabIndex = idx),
+            ),
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
-            child: const Text("完成",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          KeyedSubtree(
+            key: _saveButtonKey,
+            child: TextButton(
+              onPressed: _selectedTabIndex == 0 ? _addTodo : _addBatchTodos,
+              child: const Text("完成",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -1142,18 +1243,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     // Record positive feedback
     if (suggestion.hasGroup) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: true,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: true,
       );
     }
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'priority',
-      suggestedValue: '${suggestion.priority}', accepted: true,
+      keywords: kws,
+      suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}',
+      accepted: true,
     );
     for (final tag in suggestion.tags) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'tag',
-        suggestedValue: tag, accepted: true,
+        keywords: kws,
+        suggestionType: 'tag',
+        suggestedValue: tag,
+        accepted: true,
       );
     }
     setState(() {
@@ -1173,18 +1280,24 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final kws = _extractKeywords();
     if (suggestion.hasGroup) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: false,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: false,
       );
     }
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'priority',
-      suggestedValue: '${suggestion.priority}', accepted: false,
+      keywords: kws,
+      suggestionType: 'priority',
+      suggestedValue: '${suggestion.priority}',
+      accepted: false,
     );
     for (final tag in suggestion.tags) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'tag',
-        suggestedValue: tag, accepted: false,
+        keywords: kws,
+        suggestionType: 'tag',
+        suggestedValue: tag,
+        accepted: false,
       );
     }
   }
@@ -1198,8 +1311,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
     // Positive feedback for user's choice
     SuggestionFeedbackService.record(
-      keywords: kws, suggestionType: 'group',
-      suggestedValue: chosenGroupId, accepted: true,
+      keywords: kws,
+      suggestionType: 'group',
+      suggestedValue: chosenGroupId,
+      accepted: true,
     );
 
     // Negative feedback for AI suggestion if user chose differently
@@ -1208,8 +1323,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         suggestion.hasGroup &&
         suggestion.groupId != chosenGroupId) {
       SuggestionFeedbackService.record(
-        keywords: kws, suggestionType: 'group',
-        suggestedValue: suggestion.groupId!, accepted: false,
+        keywords: kws,
+        suggestionType: 'group',
+        suggestedValue: suggestion.groupId!,
+        accepted: false,
       );
     }
   }
@@ -1262,16 +1379,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 if (_selectedImagePath == null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: TextButton.icon(
-                      onPressed: _pickAttachmentImage,
-                      icon: const Icon(Icons.add_photo_alternate_outlined,
-                          size: 20),
-                      label: const Text("添加图片"),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: Colors.grey.shade600,
+                    child: KeyedSubtree(
+                      key: _attachmentKey,
+                      child: TextButton.icon(
+                        onPressed: _pickAttachmentImage,
+                        icon: const Icon(Icons.add_photo_alternate_outlined,
+                            size: 20),
+                        label: const Text("添加图片"),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: Colors.grey.shade600,
+                        ),
                       ),
                     ),
                   )
@@ -1328,34 +1448,37 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             children: [
               const Text("时间与提醒",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              Row(
-                children: [
-                  const Text("全天事件",
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    height: 24, // 紧凑的Switch
-                    child: Switch(
-                      value: _isAllDay,
-                      onChanged: (val) {
-                        setState(() {
-                          _isAllDay = val;
-                          if (_isAllDay) {
-                            _createdAt = DateTime(_createdAt.year,
-                                _createdAt.month, _createdAt.day, 0, 0);
-                            if (_dueDate != null) {
-                              _dueDate = DateTime(_dueDate!.year,
-                                  _dueDate!.month, _dueDate!.day, 23, 59);
-                            } else {
-                              _dueDate = DateTime(_createdAt.year,
-                                  _createdAt.month, _createdAt.day, 23, 59);
+              KeyedSubtree(
+                key: _allDayKey,
+                child: Row(
+                  children: [
+                    const Text("全天事件",
+                        style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 24, // 紧凑的Switch
+                      child: Switch(
+                        value: _isAllDay,
+                        onChanged: (val) {
+                          setState(() {
+                            _isAllDay = val;
+                            if (_isAllDay) {
+                              _createdAt = DateTime(_createdAt.year,
+                                  _createdAt.month, _createdAt.day, 0, 0);
+                              if (_dueDate != null) {
+                                _dueDate = DateTime(_dueDate!.year,
+                                    _dueDate!.month, _dueDate!.day, 23, 59);
+                              } else {
+                                _dueDate = DateTime(_createdAt.year,
+                                    _createdAt.month, _createdAt.day, 23, 59);
+                              }
                             }
-                          }
-                        });
-                      },
+                          });
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -1507,19 +1630,19 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           const SizedBox(height: 24),
 
           // --- 3. 组织归属网格 (2xN) ---
-          if (widget.todoGroups.isNotEmpty || _teams.isNotEmpty) ...[
+          if (_localTodoGroups.isNotEmpty || _teams.isNotEmpty) ...[
             const Text("组织与协作",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Row(
               children: [
-                if (widget.todoGroups.isNotEmpty)
+                if (_localTodoGroups.isNotEmpty)
                   Expanded(
                       child: _buildPopupSquareTile<String>(
                     title: "归属文件夹",
                     subtitle: _selectedGroupId == null
                         ? "未分类"
-                        : (widget.todoGroups
+                        : (_localTodoGroups
                                 .where((g) => g.id == _selectedGroupId)
                                 .firstOrNull
                                 ?.name ??
@@ -1531,7 +1654,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     items: [
                       const PopupMenuItem<String>(
                           value: "__none__", child: Text("未分类")),
-                      ...widget.todoGroups.where((g) => !g.isDeleted).map((g) =>
+                      ..._localTodoGroups.where((g) => !g.isDeleted).map((g) =>
                           PopupMenuItem(value: g.id, child: Text(g.name)))
                     ],
                     onSelected: (v) {
@@ -1550,7 +1673,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       });
                     },
                   )),
-                if (widget.todoGroups.isNotEmpty && _teams.isNotEmpty)
+                if (_localTodoGroups.isNotEmpty && _teams.isNotEmpty)
                   const SizedBox(width: 12),
                 if (_teams.isNotEmpty)
                   Expanded(
