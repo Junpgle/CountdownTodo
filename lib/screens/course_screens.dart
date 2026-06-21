@@ -2732,15 +2732,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       }
     }
 
-    // 注入一个隐藏的目标块用于新手指引高亮（周三 10:00 的位置）
-    children.add(Positioned(
-      left: cellWidth * 2,
-      top: _timeToY(10, 0, minuteHeight),
-      width: cellWidth,
-      height: minuteHeight * 60,
-      child: SizedBox(key: _gridKey),
-    ));
-
     return Stack(children: children);
   }
 
@@ -3289,6 +3280,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                 },
                                 // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
                                 child: AnimatedSwitcher(
+                                  key: _gridKey,
                                   duration: const Duration(milliseconds: 400),
                                   transitionBuilder: (child, animation) {
                                     return Transform.translate(
