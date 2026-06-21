@@ -7,7 +7,13 @@ import '../../utils/app_color_utils.dart';
 
 class BatchTagPage extends StatefulWidget {
   final String username;
-  const BatchTagPage({super.key, required this.username});
+  final bool isEmbedded;
+  
+  const BatchTagPage({
+    super.key, 
+    required this.username,
+    this.isEmbedded = false,
+  });
 
   @override
   State<BatchTagPage> createState() => _BatchTagPageState();
@@ -277,30 +283,34 @@ class _BatchTagPageState extends State<BatchTagPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('批量添加标签'),
-        actions: [
-          if (_targetTagUuids.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '已选 ${_targetTagUuids.length} 个标签',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onPrimaryContainer,
+        automaticallyImplyLeading: !widget.isEmbedded,
+        toolbarHeight: widget.isEmbedded ? 0 : null,
+        title: widget.isEmbedded ? null : const Text('批量添加标签'),
+        actions: widget.isEmbedded
+            ? null
+            : [
+                if (_targetTagUuids.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '已选 ${_targetTagUuids.length} 个标签',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-        ],
+              ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

@@ -210,7 +210,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                     Navigator.push(
                       context,
                       PageTransitions.slideHorizontal(
-                        BatchTagPage(username: widget.username),
+                        BatchTagPage(
+                          username: widget.username,
+                          isEmbedded: widget.isEmbedded,
+                        ),
                         settings: const RouteSettings(name: '批量添加标签'),
                       ),
                     );

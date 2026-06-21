@@ -17,7 +17,7 @@ import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
 import '../pomodoro_utils.dart';
-import '../widgets/unified_tag_manager_sheet.dart';
+import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
 import '../widgets/workbench_task_area.dart';
@@ -1905,14 +1905,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 12)));
   }
 
-  void _showTagsDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => UnifiedTagManagerSheet(
-        allTags: _allTags,
+  void _showTagsDialog() async {
+    final updated = await Navigator.push<List<PomodoroTag>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UnifiedTagManagerScreen(
+          allTags: _allTags,
         selectedUuids: _selectedTagUuids,
         showSelection: true,
         showArchive: true,
@@ -1936,7 +1934,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           }
         },
       ),
-    );
+    ));
   }
 
   void _showBindTodoDialog({bool isSwitching = false}) {
