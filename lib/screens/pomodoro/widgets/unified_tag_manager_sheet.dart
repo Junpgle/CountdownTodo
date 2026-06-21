@@ -35,45 +35,20 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
   bool _showArchived = false;
 
   static const List<String> _presetColors = [
-    '#F44336',
-    '#E91E63',
-    '#9C27B0',
-    '#3F51B5',
-    '#2196F3',
-    '#009688',
-    '#4CAF50',
-    '#FF9800',
-    '#607D8B',
-    '#795548',
+    '#F44336', '#E91E63', '#9C27B0', '#3F51B5', '#2196F3', '#009688',
+    '#4CAF50', '#FF9800', '#607D8B', '#795548',
   ];
 
   static const List<String> _extendedColors = [
-    '#EF5350',
-    '#EC407A',
-    '#AB47BC',
-    '#5C6BC0',
-    '#42A5F5',
-    '#26A69A',
-    '#66BB6A',
-    '#FFA726',
-    '#78909C',
-    '#8D6E63',
-    '#F48FB1',
-    '#CE93D8',
-    '#9FA8DA',
-    '#81D4FA',
-    '#80CBC4',
-    '#A5D6A7',
-    '#FFCC80',
-    '#BCAAA4',
-    '#B0BEC5',
-    '#D7CCC8',
+    '#EF5350', '#EC407A', '#AB47BC', '#5C6BC0', '#42A5F5', '#26A69A',
+    '#66BB6A', '#FFA726', '#78909C', '#8D6E63', '#F48FB1', '#CE93D8',
+    '#9FA8DA', '#81D4FA', '#80CBC4', '#A5D6A7', '#FFCC80', '#BCAAA4',
+    '#B0BEC5', '#D7CCC8',
   ];
 
   @override
   void initState() {
     super.initState();
-    // 分离活跃标签和归档标签
     _tags = widget.allTags.where((t) => !t.isArchived).toList();
     _archivedTags = widget.allTags.where((t) => t.isArchived).toList();
     _selected = List.from(widget.selectedUuids);
@@ -85,7 +60,6 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
     super.dispose();
   }
 
-  /// 返回所有标签（活跃 + 归档）
   List<PomodoroTag> get _allTags => [..._tags, ..._archivedTags];
 
   void _addTag() {
@@ -150,88 +124,146 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     if (_showColorPicker) {
-      return _buildColorPicker();
+      return _buildColorPicker(colorScheme);
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Padding(
-        padding: MediaQuery.of(context).viewInsets,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            const Divider(),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_tags.isEmpty)
-                      _buildEmptyState()
-                    else
-                      _buildTagList(),
-                    _buildAddSection(),
-                    if (widget.showArchive && _archivedTags.isNotEmpty) 
-                      _buildArchivedSection(),
-                  ],
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildHeader(colorScheme),
+              Flexible(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_tags.isEmpty)
+                        _buildEmptyState(colorScheme)
+                      else
+                        _buildTagList(colorScheme),
+                      const SizedBox(height: 16),
+                      _buildAddSection(colorScheme),
+                      const SizedBox(height: 16),
+                      if (widget.showArchive && _archivedTags.isNotEmpty) 
+                        _buildArchivedSection(colorScheme),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            '标签管理',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+  Widget _buildHeader(ColorScheme colorScheme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 8),
+        Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(2),
           ),
-          IconButton(
-            icon: const Icon(Icons.check),
-            color: Theme.of(context).colorScheme.primary,
-            onPressed: () {
-              widget.onChanged?.call(_allTags, _selected);
-              Navigator.pop(context, _allTags);
-            },
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '标签管理',
+                style: TextStyle(
+                  fontSize: 20, 
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              FilledButton.tonalIcon(
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('完成'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  widget.onChanged?.call(_allTags, _selected);
+                  Navigator.pop(context, _allTags);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(ColorScheme colorScheme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.label_outline, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+          const SizedBox(height: 12),
+          Text(
+            '还没有标签',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '在下方创建你的第一个标签吧',
+            style: TextStyle(
+              fontSize: 13,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return const Padding(
-      padding: EdgeInsets.all(32),
-      child: Text(
-        '还没有标签，下方添加新标签',
-        style: TextStyle(color: Colors.grey),
-      ),
-    );
-  }
-
-  Widget _buildTagList() {
+  Widget _buildTagList(ColorScheme colorScheme) {
     return ReorderableListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
       itemCount: _tags.length,
       onReorder: (oldIndex, newIndex) {
         setState(() {
-          if (oldIndex < newIndex) {
-            newIndex -= 1;
-          }
+          if (oldIndex < newIndex) newIndex -= 1;
           final tag = _tags.removeAt(oldIndex);
           _tags.insert(newIndex, tag);
         });
@@ -239,220 +271,296 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
       },
       itemBuilder: (ctx, index) {
         final tag = _tags[index];
-        final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
-        return _buildTagItem(tag, index, color);
+        final color = AppColorUtils.hexToColor(tag.color, fallback: colorScheme.primary);
+        return _buildTagItem(tag, index, color, colorScheme);
       },
     );
   }
 
-  Widget _buildTagItem(PomodoroTag tag, int index, Color color) {
-    return ListTile(
+  Widget _buildTagItem(PomodoroTag tag, int index, Color color, ColorScheme colorScheme) {
+    return Container(
       key: ValueKey(tag.uuid),
-      leading: GestureDetector(
-        onTap: () => _openCustomColorPicker(forTagUuid: tag.uuid),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 4),
-            ],
-          ),
-          child: const Icon(Icons.palette, color: Colors.white, size: 16),
-        ),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
       ),
-      title: Text(tag.name),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.showSelection)
-            Checkbox(
-              value: _selected.contains(tag.uuid),
-              activeColor: color,
-              onChanged: (val) {
-                setState(() {
-                  if (val == true) {
-                    _selected.add(tag.uuid);
-                  } else {
-                    _selected.remove(tag.uuid);
-                  }
-                });
-                widget.onChanged?.call(_allTags, _selected);
-              },
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        leading: GestureDetector(
+          onTap: () => _openCustomColorPicker(forTagUuid: tag.uuid),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6, offset: const Offset(0, 2)),
+              ],
             ),
-          IconButton(
-            icon: const Icon(Icons.archive_outlined, size: 20, color: Colors.grey),
-            tooltip: '归档',
-            onPressed: () => _archiveTag(index),
+            child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
           ),
-          const Icon(Icons.drag_handle, size: 20, color: Colors.grey),
-        ],
+        ),
+        title: Text(
+          tag.name,
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.showSelection)
+              Checkbox(
+                value: _selected.contains(tag.uuid),
+                activeColor: color,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                onChanged: (val) {
+                  setState(() {
+                    if (val == true) {
+                      _selected.add(tag.uuid);
+                    } else {
+                      _selected.remove(tag.uuid);
+                    }
+                  });
+                  widget.onChanged?.call(_allTags, _selected);
+                },
+              ),
+            IconButton(
+              icon: Icon(Icons.archive_outlined, size: 20, color: colorScheme.onSurfaceVariant),
+              tooltip: '归档',
+              onPressed: () => _archiveTag(index),
+            ),
+            ReorderableDragStartListener(
+              index: index,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(Icons.drag_indicator, size: 20, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildAddSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+  Widget _buildAddSection(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'NEW TAG',
-            style: TextStyle(
-              fontSize: 9,
-              color: Colors.grey,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
+              Icon(Icons.add_circle_outline, size: 18, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '添加新标签',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => _openCustomColorPicker(),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColorUtils.hexToColor(_newColor, fallback: Colors.grey),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colorScheme.surface, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColorUtils.hexToColor(_newColor, fallback: Colors.grey).withValues(alpha: 0.4),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.color_lens, color: Colors.white, size: 20),
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: TextField(
                   controller: _nameController,
                   onSubmitted: (_) => _addTag(),
                   decoration: InputDecoration(
-                    hintText: '标签名称',
+                    hintText: '输入标签名称...',
+                    hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                     isDense: true,
                     filled: true,
-                    fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    fillColor: colorScheme.surface,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _openCustomColorPicker(),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColorUtils.hexToColor(_newColor, fallback: Colors.grey),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColorUtils.hexToColor(_newColor, fallback: Colors.grey).withValues(alpha: 0.4),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
+              IconButton.filled(
                 onPressed: _addTag,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                icon: const Icon(Icons.add),
+                style: IconButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  minimumSize: const Size(44, 44),
                 ),
-                child: const Text('+ 添加'),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _presetColors.map((c) {
-              final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
-              return GestureDetector(
-                onTap: () => setState(() => _newColor = c),
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: col,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _newColor == c
-                          ? Colors.white
-                          : Colors.transparent,
-                      width: 2,
+          const SizedBox(height: 16),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: _presetColors.map((c) {
+                final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
+                final isSelected = _newColor == c;
+                return GestureDetector(
+                  onTap: () => setState(() => _newColor = c),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(right: 12),
+                    width: isSelected ? 32 : 28,
+                    height: isSelected ? 32 : 28,
+                    decoration: BoxDecoration(
+                      color: col,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colorScheme.surface,
+                        width: isSelected ? 2 : 0,
+                      ),
+                      boxShadow: isSelected
+                          ? [BoxShadow(color: col.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 2))]
+                          : null,
                     ),
-                    boxShadow: _newColor == c
-                        ? [BoxShadow(color: col, blurRadius: 6)]
-                        : null,
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildArchivedSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(),
-        InkWell(
-          onTap: () => setState(() => _showArchived = !_showArchived),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(Icons.archive_outlined, size: 16, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(
-                  '已归档 (${_archivedTags.length})',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w600,
+  Widget _buildArchivedSection(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _showArchived = !_showArchived),
+            borderRadius: _showArchived 
+                ? const BorderRadius.vertical(top: Radius.circular(16))
+                : BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(Icons.archive_outlined, size: 20, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 12),
+                  Text(
+                    '已归档',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const Spacer(),
-                Icon(
-                  _showArchived ? Icons.expand_less : Icons.expand_more,
-                  size: 20,
-                  color: Colors.grey,
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_archivedTags.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _showArchived ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        if (_showArchived)
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _archivedTags.length,
-            itemBuilder: (ctx, i) {
-              final tag = _archivedTags[i];
-              final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
-              return ListTile(
-                dense: true,
-                leading: CircleAvatar(
-                  radius: 12,
-                  backgroundColor: color,
-                ),
-                title: Text(
-                  tag.name,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                trailing: TextButton(
-                  onPressed: () => _restoreTag(tag),
-                  child: const Text('恢复', style: TextStyle(fontSize: 12)),
-                ),
-              );
-            },
-          ),
-      ],
+          if (_showArchived) ...[
+            const Divider(height: 1),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _archivedTags.length,
+              separatorBuilder: (_, __) => const Divider(height: 1, indent: 48),
+              itemBuilder: (ctx, i) {
+                final tag = _archivedTags[i];
+                final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+                return ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(
+                    tag.name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  trailing: FilledButton.tonal(
+                    onPressed: () => _restoreTag(tag),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: const Size(0, 32),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('恢复', style: TextStyle(fontSize: 12)),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
     );
   }
 
@@ -466,7 +574,8 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('选择颜色'),
+        title: const Text('自定义颜色'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: pickerColor,
@@ -474,6 +583,7 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
               pickerColor = color;
             },
             enableAlpha: false,
+            labelTypes: const [],
           ),
         ),
         actions: [
@@ -484,7 +594,7 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
               Navigator.of(context).pop();
             },
           ),
-          ElevatedButton(
+          FilledButton(
             child: const Text('确定'),
             onPressed: () {
               final hex =
@@ -499,106 +609,133 @@ class _UnifiedTagManagerSheetState extends State<UnifiedTagManagerSheet>
     );
   }
 
-  Widget _buildColorPicker() {
+  Widget _buildColorPicker(ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Padding(
-        padding: MediaQuery.of(context).viewInsets,
+      child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     '选择颜色',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
-                  IconButton(
+                  IconButton.filledTonal(
                     icon: const Icon(Icons.close),
+                    style: IconButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                     onPressed: () => setState(() => _showColorPicker = false),
                   ),
                 ],
               ),
             ),
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '预设颜色',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: _presetColors.map((c) {
-                      final col =
-                          AppColorUtils.hexToColor(c, fallback: Colors.grey);
-                      return GestureDetector(
-                        onTap: () => _onCustomColorSelected(c),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: col,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    '更多颜色',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: _extendedColors.map((c) {
-                      final col =
-                          AppColorUtils.hexToColor(c, fallback: Colors.grey);
-                      return GestureDetector(
-                        onTap: () => _onCustomColorSelected(c),
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: col,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1.5),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _openColorPickerDialog,
-                      icon: const Icon(Icons.palette_outlined),
-                      label: const Text('自定义颜色'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '预设颜色',
+                      style: TextStyle(
+                        fontSize: 14, 
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: _presetColors.map((c) {
+                        final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
+                        return GestureDetector(
+                          onTap: () => _onCustomColorSelected(c),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: col,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(color: col.withValues(alpha: 0.4), blurRadius: 6, offset: const Offset(0, 2)),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      '更多颜色',
+                      style: TextStyle(
+                        fontSize: 14, 
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: _extendedColors.map((c) {
+                        final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
+                        return GestureDetector(
+                          onTap: () => _onCustomColorSelected(c),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: col,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(color: col.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: _openColorPickerDialog,
+                        icon: const Icon(Icons.palette_outlined),
+                        label: const Text('自定义颜色'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ],
         ),
       ),
