@@ -91,7 +91,6 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         title: '添加新标签',
         onSubmit: (name, colorHex) {
           final tag = PomodoroTag(
-            uuid: 'tag_${DateTime.now().millisecondsSinceEpoch}',
             name: name.trim(),
             color: colorHex,
           );
@@ -119,6 +118,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           setState(() {
             tag.name = name.trim();
             tag.color = colorHex;
+            tag.updatedAt = DateTime.now().millisecondsSinceEpoch;
+            tag.version += 1;
           });
           _notifyChanges();
           Navigator.pop(ctx);
@@ -379,7 +380,6 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           title: '添加新标签',
           onSubmit: (name, colorHex) {
             final tag = PomodoroTag(
-              uuid: 'tag_${DateTime.now().millisecondsSinceEpoch}',
               name: name.trim(),
               color: colorHex,
             );
@@ -402,6 +402,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             setState(() {
               _editingTag!.name = name.trim();
               _editingTag!.color = colorHex;
+              _editingTag!.updatedAt = DateTime.now().millisecondsSinceEpoch;
+              _editingTag!.version += 1;
             });
             _notifyChanges();
           },
