@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../storage_service.dart';
+import '../settings/batch_tag_page.dart';
 import '../../services/pomodoro_service.dart';
 import '../../utils/app_color_utils.dart';
 
@@ -135,7 +138,41 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: const Text('管理标签'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('管理标签'),
+            GestureDetector(
+              onTap: () async {
+                final prefs = await SharedPreferences.getInstance();
+                final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BatchTagPage(
+                      username: username,
+                      isEmbedded: false,
+                    ),
+                    settings: const RouteSettings(name: '批量添加标签'),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2.0),
+                child: Text(
+                  '想要批量给事件添加标签？',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
         scrolledUnderElevation: 0,
         backgroundColor: colorScheme.surface,
         actions: [
@@ -388,6 +425,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               _isAddingNewTag = false;
             });
             _notifyChanges();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('添加成功'), duration: Duration(seconds: 1)),
+            );
           },
         ),
       );
@@ -404,8 +444,12 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               _editingTag!.color = colorHex;
               _editingTag!.updatedAt = DateTime.now().millisecondsSinceEpoch;
               _editingTag!.version += 1;
+              _editingTag = null;
             });
             _notifyChanges();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('保存成功'), duration: Duration(seconds: 1)),
+            );
           },
         ),
       );
@@ -782,7 +826,6 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
               pickerColor = color;
             },
             enableAlpha: false,
-            labelTypes: const [],
           ),
         ),
         actions: [

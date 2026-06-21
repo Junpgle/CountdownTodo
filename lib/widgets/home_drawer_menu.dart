@@ -188,7 +188,7 @@ class HomeDrawerMenu extends StatelessWidget {
                           _buildMenuItem(
                             context,
                             icon: Icons.people_rounded,
-                            title: '群组与团队',
+                            title: '群组团队',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
                               onTeams();
