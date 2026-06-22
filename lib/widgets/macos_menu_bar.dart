@@ -17,6 +17,8 @@ import '../update_service.dart';
 import '../screens/about_screen.dart';
 import '../screens/add_todo_screen.dart';
 import '../screens/feature_guide_screen.dart';
+import '../screens/settings/pages/data_export_page.dart';
+import '../screens/settings/pages/data_import_page.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
 
@@ -64,19 +66,35 @@ class MacosMenuBar extends StatelessWidget {
         ),
 
         // ─── 文件 ───
-        const PlatformMenu(
+        PlatformMenu(
           label: '文件',
           menus: [
-            PlatformMenuItem(
+            const PlatformMenuItem(
               label: '新建待办',
               shortcut: SingleActivator(LogicalKeyboardKey.keyN, meta: true),
               onSelected: _onNewTodo,
             ),
-            PlatformMenuItem(
+            const PlatformMenuItem(
               label: '新建倒计时',
               shortcut: SingleActivator(LogicalKeyboardKey.keyN,
                   meta: true, shift: true),
               onSelected: _onNewCountdown,
+            ),
+            const PlatformMenuItemGroup(
+              members: [
+                PlatformMenuItem(
+                  label: '导入数据...',
+                  shortcut:
+                      SingleActivator(LogicalKeyboardKey.keyO, meta: true),
+                  onSelected: _onImportData,
+                ),
+                PlatformMenuItem(
+                  label: '导出数据...',
+                  shortcut: SingleActivator(LogicalKeyboardKey.keyS,
+                      meta: true, shift: true),
+                  onSelected: _onExportData,
+                ),
+              ],
             ),
           ],
         ),
@@ -348,15 +366,19 @@ class MacosMenuBar extends StatelessWidget {
   }
 
   static void _onImportData() {
-    // TODO: macOS 菜单 - 导入数据。项目暂无通用数据导入功能（仅有课程导入）。
-    _showSnackBar('导入数据功能即将推出');
-    debugPrint('[MacosMenuBar] 导入数据 - TODO: 通用数据导入功能尚未实现');
+    final context = appNavigatorKey.currentContext;
+    if (context == null) return;
+    Navigator.of(context).push(
+      PageTransitions.slideHorizontal(const DataImportPage()),
+    );
   }
 
   static void _onExportData() {
-    // TODO: macOS 菜单 - 导出数据。项目暂无通用数据导出功能（仅有时间轴图片导出）。
-    _showSnackBar('导出数据功能即将推出');
-    debugPrint('[MacosMenuBar] 导出数据 - TODO: 通用数据导出功能尚未实现');
+    final context = appNavigatorKey.currentContext;
+    if (context == null) return;
+    Navigator.of(context).push(
+      PageTransitions.slideHorizontal(const DataExportPage()),
+    );
   }
 
   // ──────────────────── 查看菜单 ────────────────────

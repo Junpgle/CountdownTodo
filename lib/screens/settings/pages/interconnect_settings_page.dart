@@ -5,6 +5,8 @@ import '../../band_sync_screen.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
 import '../batch_tag_page.dart';
+import 'data_export_page.dart';
+import 'data_import_page.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -215,6 +217,38 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                           isEmbedded: widget.isEmbedded,
                         ),
                         settings: const RouteSettings(name: '批量添加标签'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'data_export',
+                  icon: Icons.upload_file,
+                  title: '数据导出',
+                  subtitle: '将待办、课程、倒计时等数据导出为文件',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        DataExportPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '数据导出'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'data_import',
+                  icon: Icons.download,
+                  title: '数据导入',
+                  subtitle: '从备份文件恢复或合并数据',
+                  color: Colors.cyan,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        DataImportPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '数据导入'),
                       ),
                     );
                   },
