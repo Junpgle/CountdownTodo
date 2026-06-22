@@ -150,10 +150,16 @@ class _DataImportPageState extends State<DataImportPage> {
       return;
     }
 
+    final uuidStrategy = _isSameAccount == false
+        ? UuidStrategy.regenerate
+        : UuidStrategy.keepOriginal;
     final result = await DataImportService.importData(
       username: username,
       filePath: _filePath!,
-      options: ImportOptions(teamStrategy: _teamStrategy),
+      options: ImportOptions(
+        teamStrategy: _teamStrategy,
+        uuidStrategy: uuidStrategy,
+      ),
     );
 
     if (mounted) {

@@ -29,7 +29,11 @@ class DataImportService {
 
   // UUID 重映射表
   static final Map<String, String> _uuidRemap = {};
+  // 用于确定性 UUID v5 的用户盐值，在 importData 开始时设置
+  static String _uuidNamespaceSalt = '';
 
+  /// 使用 UUID v5 确定性重映射，确保同源 UUID 在同一目标账号下始终映射到同一个新 UUID，
+  /// 避免重复导入产生重复数据。
   static String _remapUuid(String? oldUuid, {bool shouldRegenerate = false}) {
     if (oldUuid == null || oldUuid.isEmpty) return oldUuid ?? '';
     if (!shouldRegenerate) return oldUuid;
@@ -37,7 +41,7 @@ class DataImportService {
     if (_uuidRemap.containsKey(oldUuid)) {
       return _uuidRemap[oldUuid]!;
     }
-    final newUuid = const Uuid().v4();
+    final newUuid = const Uuid().v5(Uuid.NAMESPACE_URL, '$_uuidNamespaceSalt|$oldUuid');
     _uuidRemap[oldUuid] = newUuid;
     return newUuid;
   }
@@ -111,8 +115,9 @@ class DataImportService {
     ImportOptions options = const ImportOptions(),
   }) async {
     try {
-      // 清空 UUID 重映射表
+      // 重置 UUID 重映射，设置用户盐值确保同账号内确定性映射
       _uuidRemap.clear();
+      _uuidNamespaceSalt = '${ApiService.currentUserId}_$username';
       
       final file = File(filePath);
       final jsonString = await file.readAsString();
@@ -123,35 +128,39 @@ class DataImportService {
       final joinedTeamUuids = await _getJoinedTeamUuids();
       debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
 
-      // 多重检测是否需要重新生成 UUID
-      final currentDeviceId = await StorageService.getDeviceId();
-      final fileDeviceId = json['deviceId']?.toString();
-      final fileUsername = json['username']?.toString();
-      final fileUserId = json['userId'] as int?;
-      final currentUserId = ApiService.currentUserId;
-      
-      // 判断逻辑：
-      // 1. 优先使用 userId 比较（最可靠）
-      // 2. 其次使用 username 比较
-      // 3. 都没有则默认同账号
-      final bool needRegenerate;
-      if (fileUserId != null && fileUserId > 0) {
-        // 有 userId，直接比较
-        needRegenerate = fileUserId != currentUserId;
-      } else if (fileUsername != null) {
-        // 没有 userId，用 username 比较
-        needRegenerate = fileUsername != username;
-      } else {
-        // 旧版本导出的文件，保守策略
-        needRegenerate = false;
-      }
-      
-      final uuidStrategy = needRegenerate ? UuidStrategy.regenerate : UuidStrategy.keepOriginal;
-      
-      if (needRegenerate) {
-        debugPrint('⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
-      } else if (fileDeviceId != null && fileDeviceId != currentDeviceId) {
-        debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
+      // 如果调用方没有显式指定 uuidStrategy，则自动检测
+      UuidStrategy uuidStrategy = options.uuidStrategy;
+      if (uuidStrategy == UuidStrategy.keepOriginal) {
+        // 默认策略：自动检测是否需要重新生成
+        final currentDeviceId = await StorageService.getDeviceId();
+        final fileDeviceId = json['deviceId']?.toString();
+        final fileUsername = json['username']?.toString();
+        final fileUserId = json['userId'] as int?;
+        final currentUserId = ApiService.currentUserId;
+        
+        // 判断逻辑：
+        // 1. 优先使用 userId 比较（最可靠）
+        // 2. 其次使用 username 比较
+        // 3. 都没有则默认同账号
+        final bool needRegenerate;
+        if (fileUserId != null && fileUserId > 0) {
+          // 有 userId，直接比较
+          needRegenerate = fileUserId != currentUserId;
+        } else if (fileUsername != null) {
+          // 没有 userId，用 username 比较
+          needRegenerate = fileUsername != username;
+        } else {
+          // 旧版本导出的文件，保守策略
+          needRegenerate = false;
+        }
+        
+        uuidStrategy = needRegenerate ? UuidStrategy.regenerate : UuidStrategy.keepOriginal;
+        
+        if (needRegenerate) {
+          debugPrint('⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
+        } else if (fileDeviceId != null && fileDeviceId != currentDeviceId) {
+          debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
+        }
       }
 
       int importedCount = 0;
@@ -197,6 +206,18 @@ class DataImportService {
         updatedCount += result['updated']!;
       }
 
+      // pomodoro_tags 必须在 time_logs 和 pomodoro_records 之前导入，
+      // 以便 tagUuids 的重映射表 (_uuidRemap) 在相关数据导入时已就绪
+      if (data.containsKey('pomodoro_tags') && data['pomodoro_tags'] is List) {
+        final result = await _importPomodoroTags(
+          data['pomodoro_tags'] as List<dynamic>,
+          uuidStrategy,
+        );
+        importedCount += result['imported']!;
+        skippedCount += result['skipped']!;
+        updatedCount += result['updated']!;
+      }
+
       if (data.containsKey('time_logs') && data['time_logs'] is List) {
         final result = await _importTimeLogs(
           username,
@@ -227,16 +248,6 @@ class DataImportService {
           data['courses'] as List<dynamic>,
           joinedTeamUuids,
           options.teamStrategy,
-          uuidStrategy,
-        );
-        importedCount += result['imported']!;
-        skippedCount += result['skipped']!;
-        updatedCount += result['updated']!;
-      }
-
-      if (data.containsKey('pomodoro_tags') && data['pomodoro_tags'] is List) {
-        final result = await _importPomodoroTags(
-          data['pomodoro_tags'] as List<dynamic>,
           uuidStrategy,
         );
         importedCount += result['imported']!;
@@ -513,6 +524,13 @@ class DataImportService {
       final oldId = log.id;
       log.id = _remapUuid(oldId, shouldRegenerate: shouldRegenerate);
 
+      // 处理关联的 tagUuids（必须在 pomodoro_tags 导入之后执行）
+      if (shouldRegenerate) {
+        log.tagUuids = log.tagUuids.map((tagUuid) {
+          return _uuidRemap[tagUuid] ?? tagUuid;
+        }).toList();
+      }
+
       // 检查本地是否存在
       final existing = localMap[oldId] ?? localMap[log.id];
 
@@ -607,7 +625,16 @@ class DataImportService {
 
     for (final item in items) {
       final map = item as Map<String, dynamic>;
-      final course = CourseItem.fromJson(map);
+      var course = CourseItem.fromJson(map);
+
+      // 处理 UUID（课程使用确定性 UUID，重新生成会改变）
+      final oldUuid = course.uuid;
+      if (shouldRegenerate) {
+        // 课程需要特殊处理：uuid 是 final，需修改 JSON 后重建
+        final newUuid = _remapUuid(oldUuid, shouldRegenerate: true);
+        map['uuid'] = newUuid;
+        course = CourseItem.fromJson(map);
+      }
       
       // 处理团队数据
       if (course.teamUuid != null && course.teamUuid!.isNotEmpty) {
@@ -620,14 +647,6 @@ class DataImportService {
             course.teamUuid = null;
           }
         }
-      }
-
-      // 处理 UUID（课程使用确定性 UUID，重新生成会改变）
-      final oldUuid = course.uuid;
-      if (shouldRegenerate) {
-        // 课程需要特殊处理，因为它是确定性 UUID
-        // 使用新的随机 UUID
-        _uuidRemap[oldUuid] = const Uuid().v4();
       }
 
       // 检查本地是否存在

@@ -3,6 +3,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../storage_service.dart';
 import '../settings/batch_tag_page.dart';
+import '../settings/rebind_tag_page.dart';
 import '../../services/pomodoro_service.dart';
 import '../../utils/app_color_utils.dart';
 
@@ -142,34 +143,67 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('管理标签'),
-            GestureDetector(
-              onTap: () async {
-                final prefs = await SharedPreferences.getInstance();
-                final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
-                if (!context.mounted) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BatchTagPage(
-                      username: username,
-                      isEmbedded: false,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BatchTagPage(
+                          username: username,
+                          isEmbedded: false,
+                        ),
+                        settings: const RouteSettings(name: '批量添加标签'),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2.0),
+                    child: Text(
+                      '想要批量给事件添加标签？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: colorScheme.primary,
+                      ),
                     ),
-                    settings: const RouteSettings(name: '批量添加标签'),
-                  ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.only(top: 2.0),
-                child: Text(
-                  '想要批量给事件添加标签？',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.primary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: colorScheme.primary,
                   ),
                 ),
-              ),
+                GestureDetector(
+                  onTap: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => RebindTagPage(
+                          username: username,
+                        ),
+                        settings: const RouteSettings(name: '重新绑定标签'),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      '需要重新绑定已删除的标签？',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.error,
+                        decoration: TextDecoration.underline,
+                        decorationColor: colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

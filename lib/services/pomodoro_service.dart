@@ -145,6 +145,11 @@ class PomodoroRecord {
   /// 实际有效的专注秒数（优先用 actualDuration）
   int get effectiveDuration => actualDuration ?? plannedDuration;
 
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
   /// 是否已完成（status == completed）
   bool get isCompleted => status == PomodoroRecordStatus.completed;
 
@@ -543,6 +548,20 @@ class PomodoroService {
       }
     }
 
+    return [];
+  }
+
+  /// 获取所有标签（包括已删除的），用于识别未知标签
+  static Future<List<PomodoroTag>> getAllTagsIncludingDeleted() async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query('pomodoro_tags');
+      if (maps.isNotEmpty) {
+        return maps.map((m) => PomodoroTag.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Tag SQL 读取异常: $e");
+    }
     return [];
   }
 
