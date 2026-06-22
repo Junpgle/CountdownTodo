@@ -16,6 +16,20 @@ class ExportTypeOption {
   });
 }
 
+class ExportOptions {
+  final bool removeTeamBinding;
+  final bool removeImagePath;
+  final bool removeConflictData;
+  final bool removeDeviceId;
+
+  const ExportOptions({
+    this.removeTeamBinding = false,
+    this.removeImagePath = true,
+    this.removeConflictData = true,
+    this.removeDeviceId = true,
+  });
+}
+
 class ExportResult {
   final bool success;
   final String? filePath;
@@ -27,6 +41,26 @@ class ExportResult {
     this.filePath,
     this.errorMessage,
     required this.totalItems,
+  });
+}
+
+enum TeamDataStrategy {
+  skip,
+  convertToPersonal,
+}
+
+enum UuidStrategy {
+  keepOriginal,
+  regenerate,
+}
+
+class ImportOptions {
+  final TeamDataStrategy teamStrategy;
+  final UuidStrategy uuidStrategy;
+
+  const ImportOptions({
+    this.teamStrategy = TeamDataStrategy.skip,
+    this.uuidStrategy = UuidStrategy.keepOriginal,
   });
 }
 
@@ -48,12 +82,14 @@ class ImportTypePreview {
   final String key;
   final String label;
   final int count;
+  int teamCount;
   int conflictCount;
 
   ImportTypePreview({
     required this.key,
     required this.label,
     required this.count,
+    this.teamCount = 0,
     this.conflictCount = 0,
   });
 }

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
+import 'api_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -95,6 +96,7 @@ class DataExportService {
     required String username,
     required List<String> selectedTypes,
     required bool saveToFile,
+    ExportOptions options = const ExportOptions(),
   }) async {
     try {
       final deviceId = await StorageService.getDeviceId();
@@ -102,49 +104,130 @@ class DataExportService {
       int totalItems = 0;
 
       if (selectedTypes.contains('todos')) {
-        final items = await StorageService.getTodos(username, includeDeleted: true);
+        var items = await StorageService.getTodos(username, includeDeleted: true);
+        if (options.removeTeamBinding) {
+          items = items.map((t) {
+            t.teamUuid = null;
+            t.teamName = null;
+            t.creatorId = null;
+            t.creatorName = null;
+            return t;
+          }).toList();
+        }
+        if (options.removeImagePath) {
+          for (var t in items) {
+            t.imagePath = null;
+          }
+        }
+        if (options.removeConflictData) {
+          for (var t in items) {
+            t.hasConflict = false;
+            t.serverVersionData = null;
+          }
+        }
         data['todos'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('countdowns')) {
-        final items = await StorageService.getCountdowns(username, includeDeleted: true);
+        var items = await StorageService.getCountdowns(username, includeDeleted: true);
+        if (options.removeTeamBinding) {
+          items = items.map((c) {
+            c.teamUuid = null;
+            c.teamName = null;
+            c.creatorId = null;
+            c.creatorName = null;
+            return c;
+          }).toList();
+        }
+        if (options.removeConflictData) {
+          for (var c in items) {
+            c.hasConflict = false;
+            c.conflictData = null;
+          }
+        }
         data['countdowns'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('todo_groups')) {
-        final items = await StorageService.getTodoGroups(username, includeDeleted: true);
+        var items = await StorageService.getTodoGroups(username, includeDeleted: true);
+        if (options.removeTeamBinding) {
+          items = items.map((g) {
+            g.teamUuid = null;
+            g.teamName = null;
+            g.creatorId = null;
+            g.creatorName = null;
+            return g;
+          }).toList();
+        }
         data['todo_groups'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('time_logs')) {
-        final items = await StorageService.getTimeLogs(username);
+        var items = await StorageService.getTimeLogs(username);
+        if (options.removeTeamBinding) {
+          for (var l in items) {
+            l.teamUuid = null;
+          }
+        }
+        if (options.removeDeviceId) {
+          for (var l in items) {
+            l.deviceId = null;
+          }
+        }
         data['time_logs'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('todo_plan_blocks')) {
-        final items = await StorageService.getPlanBlocks(username, includeDeleted: true);
+        var items = await StorageService.getPlanBlocks(username, includeDeleted: true);
+        if (options.removeDeviceId) {
+          for (var b in items) {
+            b.deviceId = null;
+          }
+        }
         data['todo_plan_blocks'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('courses')) {
-        final items = await CourseService.getAllCourses(username, applyCalendarAdjustments: false);
+        var items = await CourseService.getAllCourses(username, applyCalendarAdjustments: false);
+        if (options.removeTeamBinding) {
+          for (var c in items) {
+            c.teamUuid = null;
+          }
+        }
         data['courses'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('pomodoro_tags')) {
         final items = await PomodoroService.getTags();
+        if (options.removeConflictData) {
+          for (var t in items) {
+            t.hasConflict = false;
+            t.conflictData = null;
+          }
+        }
         data['pomodoro_tags'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
 
       if (selectedTypes.contains('pomodoro_records')) {
         final items = await PomodoroService.getRecords();
+        if (options.removeDeviceId) {
+          for (var r in items) {
+            r.deviceId = null;
+          }
+        }
+        if (options.removeConflictData) {
+          for (var r in items) {
+            r.hasConflict = false;
+            r.conflictData = null;
+          }
+        }
         data['pomodoro_records'] = items.map((e) => e.toJson()).toList();
         totalItems += items.length;
       }
@@ -158,6 +241,8 @@ class DataExportService {
         'version': _exportVersion,
         'exportedAt': DateTime.now().millisecondsSinceEpoch,
         'deviceId': deviceId,
+        'userId': ApiService.currentUserId,
+        'username': username,
         'selectedTypes': selectedTypes,
         'data': data,
       };
