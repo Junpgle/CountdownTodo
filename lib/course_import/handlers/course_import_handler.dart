@@ -14,9 +14,10 @@ import '../../storage_service.dart';
 class CourseImportHandler {
   final BuildContext context;
   final String username;
-  final DateTime? semesterStart;
+  DateTime? semesterStart;
   final VoidCallback onRescheduleReminders;
   final Function(String) showMessage;
+  final Function(DateTime)? onSemesterStartChanged;
 
   CourseImportHandler({
     required this.context,
@@ -24,7 +25,80 @@ class CourseImportHandler {
     required this.semesterStart,
     required this.onRescheduleReminders,
     required this.showMessage,
+    this.onSemesterStartChanged,
   });
+
+  Future<bool> _ensureSemesterStartSet() async {
+    if (semesterStart != null) return true;
+
+    final DateTime? picked = await showDialog<DateTime>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.school_outlined, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('请先设置开学日期'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '导入课表需要知道开学日期，才能计算每节课的具体日期。',
+                style: TextStyle(fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '请选择本学期的第一天（周一）：',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_month),
+                  label: const Text('选择开学日期'),
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                      helpText: '选择开学日期',
+                    );
+                    if (picked != null && ctx.mounted) {
+                      Navigator.pop(ctx, picked);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (picked == null) return false;
+
+    semesterStart = picked;
+    StorageService.saveAppSetting(
+      StorageService.KEY_SEMESTER_START,
+      picked.toIso8601String(),
+    );
+    onSemesterStartChanged?.call(picked);
+    return true;
+  }
 
   Future<void> smartImportCourse() async {
     // 1. 先弹出学校选择器
@@ -72,6 +146,8 @@ class CourseImportHandler {
     );
 
     if (selectedSchool == null) return;
+
+    if (!await _ensureSemesterStartSet()) return;
 
     // 2. 根据学校执行不同的导入方式
     FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -231,6 +307,8 @@ class CourseImportHandler {
     );
 
     if (selectedUrl == null) return;
+
+    if (!await _ensureSemesterStartSet()) return;
 
     // 修复电脑端返回时因为复杂动画导致的 WebView 进程卡死问题
     final bool isDesktop = Theme.of(context).platform == TargetPlatform.windows || 
