@@ -1246,13 +1246,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
 
     ({double pre, double post}) buildHideLengths(
-        double rangeStart, double rangeEnd, double minStart, double maxEnd) {
+        double rangeStart, double rangeEnd, double minStart, double maxEnd,
+        {bool onlyHideBefore = false}) {
       if (minStart >= maxEnd) {
         return (pre: rangeEnd - rangeStart, post: 0.0);
       }
       return (
         pre: (minStart - rangeStart).clamp(0.0, rangeEnd - rangeStart),
-        post: (rangeEnd - maxEnd).clamp(0.0, rangeEnd - rangeStart),
+        post: onlyHideBefore
+            ? 0.0
+            : (rangeEnd - maxEnd).clamp(0.0, rangeEnd - rangeStart),
       );
     }
 
@@ -1273,9 +1276,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       addRange(ranges, rangeEnd - post, rangeEnd);
     }
 
-    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly);
+    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly,
+        onlyHideBefore: true);
     final lunch = buildHideLengths(lunchStart, lunchEnd, minLunch, maxLunch);
-    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate);
+    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate,
+        onlyHideBefore: true);
     final String lunchCollapseText =
         _buildLunchCollapseText(lunchStart, lunchEnd, lunch.pre, lunch.post);
 
