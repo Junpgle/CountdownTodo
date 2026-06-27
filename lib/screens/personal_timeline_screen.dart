@@ -2239,15 +2239,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     return '$mins 分钟';
   }
 
-  String _formatSecondsCompact(int seconds) {
-    if (seconds <= 0) return '0分';
-    final hours = seconds ~/ 3600;
-    final mins = (seconds % 3600) ~/ 60;
-    if (hours > 0 && mins > 0) return '$hours时$mins分';
-    if (hours > 0) return '$hours时';
-    if (mins > 0) return '$mins分';
-    return '$seconds秒';
-  }
+  String _formatSecondsCompact(int seconds) => formatDurationCompact(seconds);
 
   String _formatPercent(double value) {
     if (value.isNaN || value.isInfinite) return '0%';

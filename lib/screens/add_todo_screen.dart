@@ -13,6 +13,7 @@ import '../services/llm_service.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
+import '../utils/time_utils.dart';
 import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
@@ -1209,14 +1210,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     );
   }
 
-  String _formatDuration(int minutes) {
-    if (minutes >= 60) {
-      final h = minutes ~/ 60;
-      final m = minutes % 60;
-      return m > 0 ? '$h小时$m分钟' : '$h小时';
-    }
-    return '$minutes分钟';
-  }
+  String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   List<String> _extractKeywords() {
     final text = _titleCtrl.text.trim().toLowerCase();

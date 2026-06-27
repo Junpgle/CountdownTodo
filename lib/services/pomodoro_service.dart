@@ -8,6 +8,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:CountDownTodo/services/database_helper.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/time_utils.dart';
+export '../utils/time_utils.dart';
 import 'api_service.dart';
 
 // ============================================================
@@ -175,6 +177,36 @@ class PomodoroRecord {
         pauseIntervals = pauseIntervals ?? [],
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  /// 从运行状态创建记录，统一映射字段，避免各调用点重复
+  factory PomodoroRecord.fromRunState({
+    required PomodoroRunState state,
+    required PomodoroRecordStatus status,
+    required int endMs,
+    int? actualDuration,
+    String? deviceId,
+  }) {
+    final computedActual = actualDuration ??
+        PomodoroRunState.computeActualSeconds(
+            state.sessionStartMs, state.accumulatedMs,
+            endMs: endMs);
+    return PomodoroRecord(
+      uuid: state.sessionUuid,
+      todoUuid: state.todoUuid,
+      todoTitle: state.todoTitle,
+      tagUuids: List.from(state.tagUuids),
+      startTime: state.sessionStartMs,
+      endTime: endMs,
+      plannedDuration: state.plannedFocusSeconds,
+      actualDuration: computedActual,
+      status: status,
+      deviceId: deviceId,
+      planBlockId: state.planBlockId,
+      note: state.note,
+      totalPauseSeconds: (state.accumulatedMs / 1000).round(),
+      pauseIntervals: List.from(state.pauseIntervals),
+    );
+  }
 
   /// 实际有效的专注秒数（优先用 actualDuration）
   int get effectiveDuration => actualDuration ?? plannedDuration;
@@ -869,6 +901,10 @@ class PomodoroService {
             'device_id': r.deviceId,
             'plan_block_id': r.planBlockId,
             'note': r.note,
+            'total_pause_seconds': r.totalPauseSeconds,
+            'pause_intervals': r.pauseIntervals != null
+                ? jsonEncode(r.pauseIntervals!.map((e) => e.toJson()).toList())
+                : null,
             'is_deleted': r.isDeleted ? 1 : 0,
             'version': r.version,
             'created_at': r.createdAt,
@@ -928,6 +964,10 @@ class PomodoroService {
           'device_id': record.deviceId,
           'plan_block_id': record.planBlockId,
           'note': record.note,
+          'total_pause_seconds': record.totalPauseSeconds,
+          'pause_intervals': record.pauseIntervals != null
+              ? jsonEncode(record.pauseIntervals!.map((e) => e.toJson()).toList())
+              : null,
           'is_deleted': record.isDeleted ? 1 : 0,
           'version': record.version,
           'created_at': record.createdAt,
@@ -1039,14 +1079,8 @@ class PomodoroService {
   }
 
   /// 格式化时长
-  static String formatDuration(int totalSeconds) {
-    if (totalSeconds <= 0) return '0分钟';
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    if (h > 0 && m > 0) return '$h小时$m分';
-    if (h > 0) return '$h小时';
-    return '$m分钟';
-  }
+  static String formatDuration(int totalSeconds) =>
+      formatDurationChinese(totalSeconds);
 
   // ── 增量同步：从云端拉取并合并到本地 ────────────────────────
 
@@ -1152,6 +1186,12 @@ class PomodoroService {
                   ? (rr.planBlockId ?? ex.planBlockId)
                   : (ex.planBlockId ?? rr.planBlockId),
               note: cloudNewer ? (rr.note ?? ex.note) : (ex.note ?? rr.note),
+              totalPauseSeconds: cloudNewer
+                  ? (rr.totalPauseSeconds ?? ex.totalPauseSeconds)
+                  : (ex.totalPauseSeconds ?? rr.totalPauseSeconds),
+              pauseIntervals: cloudNewer
+                  ? (rr.pauseIntervals ?? ex.pauseIntervals)
+                  : (ex.pauseIntervals ?? rr.pauseIntervals),
               isDeleted: cloudNewer ? rr.isDeleted : ex.isDeleted,
               version: cloudNewer ? rr.version : ex.version,
               createdAt: ex.createdAt,
@@ -1247,6 +1287,8 @@ class PomodoroService {
           deviceId: existing.deviceId ?? remote.deviceId,
           planBlockId: existing.planBlockId ?? remote.planBlockId,
           note: existing.note ?? remote.note,
+          totalPauseSeconds: existing.totalPauseSeconds ?? remote.totalPauseSeconds,
+          pauseIntervals: existing.pauseIntervals ?? remote.pauseIntervals,
           isDeleted: existing.isDeleted,
           version: existing.version,
           createdAt: existing.createdAt,
@@ -1468,6 +1510,8 @@ class PomodoroService {
         deviceId: updated.deviceId ?? old.deviceId,
         planBlockId: updated.planBlockId,
         note: updated.note,
+        totalPauseSeconds: updated.totalPauseSeconds ?? old.totalPauseSeconds,
+        pauseIntervals: updated.pauseIntervals ?? old.pauseIntervals,
         isDeleted: updated.isDeleted,
         version: (updated.version <= old.version)
             ? (old.version + 1)
@@ -1492,6 +1536,8 @@ class PomodoroService {
         deviceId: updated.deviceId,
         planBlockId: updated.planBlockId,
         note: updated.note,
+        totalPauseSeconds: updated.totalPauseSeconds,
+        pauseIntervals: updated.pauseIntervals,
         isDeleted: updated.isDeleted,
         version: updated.version,
         createdAt: updated.createdAt,
@@ -1519,7 +1565,10 @@ class PomodoroService {
         actualDuration: old.actualDuration,
         status: old.status,
         deviceId: old.deviceId,
+        planBlockId: old.planBlockId,
         note: old.note,
+        totalPauseSeconds: old.totalPauseSeconds,
+        pauseIntervals: old.pauseIntervals,
         isDeleted: true,
         version: old.version + 1,
         createdAt: old.createdAt,

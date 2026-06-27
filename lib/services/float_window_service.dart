@@ -392,19 +392,11 @@ class FloatWindowService {
               saved.sessionStartMs, saved.accumulatedMs,
               endMs: now);
 
-      final record = PomodoroRecord(
-        uuid: saved.sessionUuid,
-        todoUuid: saved.todoUuid,
-        todoTitle: saved.todoTitle,
-        tagUuids: saved.tagUuids,
-        startTime: saved.sessionStartMs,
-        endTime: now,
-        plannedDuration: saved.plannedFocusSeconds,
-        actualDuration: actualSecs,
+      final record = PomodoroRecord.fromRunState(
+        state: saved,
         status: PomodoroRecordStatus.completed,
-        note: saved.note,
-        totalPauseSeconds: (saved.accumulatedMs / 1000).round(),
-        pauseIntervals: saved.pauseIntervals,
+        endMs: now,
+        actualDuration: actualSecs,
       );
 
       await PomodoroService.addRecord(record);
@@ -425,19 +417,10 @@ class FloatWindowService {
           saved.sessionStartMs, saved.accumulatedMs,
           endMs: now);
       if (actualSecs > 5) {
-        await PomodoroService.addRecord(PomodoroRecord(
-          uuid: saved.sessionUuid,
-          todoUuid: saved.todoUuid,
-          todoTitle: saved.todoTitle,
-          tagUuids: saved.tagUuids,
-          startTime: saved.sessionStartMs,
-          endTime: now,
-          plannedDuration: saved.plannedFocusSeconds,
-          actualDuration: actualSecs,
+        await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+          state: saved,
           status: PomodoroRecordStatus.interrupted,
-          note: saved.note,
-          totalPauseSeconds: (saved.accumulatedMs / 1000).round(),
-          pauseIntervals: saved.pauseIntervals,
+          endMs: now,
         ));
       }
       PomodoroSyncService().sendStopSignal();

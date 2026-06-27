@@ -237,21 +237,11 @@ class PomodoroControlService {
         state.sessionStartMs, state.accumulatedMs,
         endMs: now);
 
-    await PomodoroService.addRecord(PomodoroRecord(
-      uuid: state.sessionUuid,
-      todoUuid: state.todoUuid,
-      todoTitle: state.todoTitle,
-      tagUuids: state.tagUuids,
-      startTime: state.sessionStartMs,
-      endTime: now,
-      plannedDuration: state.plannedFocusSeconds,
-      actualDuration: actualSeconds,
+    await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+      state: state,
       status: status,
+      endMs: now,
       deviceId: deviceId,
-      planBlockId: state.planBlockId,
-      note: state.note,
-      totalPauseSeconds: (state.accumulatedMs / 1000).round(),
-      pauseIntervals: state.pauseIntervals,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {

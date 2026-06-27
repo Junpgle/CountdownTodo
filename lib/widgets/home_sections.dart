@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:intl/intl.dart' hide TextDirection;
+import '../utils/time_utils.dart';
 
 /// 通用的板块标题
 class SectionHeader extends StatelessWidget {
@@ -209,12 +210,7 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
     super.dispose();
   }
 
-  String _formatSeconds(int totalSeconds) {
-    int h = totalSeconds ~/ 3600;
-    int m = (totalSeconds % 3600) ~/ 60;
-    if (h > 0) return "${h}h ${m}m";
-    return "${m}m ${totalSeconds % 60}s";
-  }
+  String _formatSeconds(int totalSeconds) => formatDurationEnglish(totalSeconds);
 
   Widget _buildShimmerLoading(bool isTablet) {
     return Container(

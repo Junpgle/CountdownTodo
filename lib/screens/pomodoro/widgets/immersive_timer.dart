@@ -84,18 +84,9 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
           : 0.0;
     }
 
-    final mins = widget.remainingSeconds ~/ 60;
-    final secs = widget.remainingSeconds % 60;
-    String timeStr = '';
-
-    if (effectiveIsCountUp) {
-      timeStr =
-          '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    } else {
-      timeStr = widget.remainingSeconds > 60
-          ? "${((widget.remainingSeconds / 60).ceil())}'"
-          : '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    }
+    final timeStr = effectiveIsCountUp
+        ? formatTimerMMSS(widget.remainingSeconds)
+        : formatCountdown(widget.remainingSeconds);
 
     Color ringColor = Theme.of(context).colorScheme.primary;
     if (isFocusing) ringColor = const Color(0xFFFF6B6B);
@@ -132,7 +123,7 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
             : isFocusing
                 ? (widget.isPaused
                     ? (widget.pauseSeconds > 0
-                        ? '⏸️ 暂停中 ${widget.pauseSeconds ~/ 60}:${(widget.pauseSeconds % 60).toString().padLeft(2, '0')}'
+                        ? '⏸️ 暂停中 ${formatTimerMMSS(widget.pauseSeconds)}'
                         : '⏸️ 已暂停')
                     : (effectiveIsCountUp ? '正在正计时' : '保持专注'))
                 : isRemote

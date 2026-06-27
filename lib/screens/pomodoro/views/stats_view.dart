@@ -947,12 +947,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
   }
 
-  String _formatPauseDuration(int totalSeconds) {
-    if (totalSeconds < 60) return '${totalSeconds}秒';
-    final m = totalSeconds ~/ 60;
-    final s = totalSeconds % 60;
-    return s > 0 ? '${m}分${s}秒' : '${m}分钟';
-  }
+  String _formatPauseDuration(int totalSeconds) => formatDurationChinese(totalSeconds);
 
   Widget _buildPauseIntervalRow(BuildContext ctx, int index, PauseInterval interval) {
     final startStr = DateFormat('HH:mm:ss').format(

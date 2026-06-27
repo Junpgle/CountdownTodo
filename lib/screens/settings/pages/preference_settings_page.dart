@@ -6,7 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../storage_service.dart';
 import '../../../utils/app_dialogs.dart';
-import '../../../utils/app_time_formats.dart';
+import '../../../utils/time_utils.dart';
 import '../../../utils/page_transitions.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';

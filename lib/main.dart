@@ -604,17 +604,10 @@ class _MyAppState extends State<MyApp> {
           runState.sessionStartMs, runState.accumulatedMs,
           endMs: now);
       final plannedSeconds = runState.plannedFocusSeconds;
-      final record = PomodoroRecord(
-        startTime: runState.sessionStartMs,
-        endTime: now,
-        plannedDuration: plannedSeconds,
-        actualDuration: actualSeconds,
-        tagUuids: runState.tagUuids,
-        todoUuid: runState.todoUuid,
-        todoTitle: runState.todoTitle,
+      final record = PomodoroRecord.fromRunState(
+        state: runState,
         status: PomodoroRecordStatus.completed,
-        totalPauseSeconds: (runState.accumulatedMs / 1000).round(),
-        pauseIntervals: runState.pauseIntervals,
+        endMs: now,
       );
       debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
@@ -627,17 +620,10 @@ class _MyAppState extends State<MyApp> {
           runState.sessionStartMs, runState.accumulatedMs,
           endMs: now);
       if (actualSeconds > 5) {
-        final record = PomodoroRecord(
-          startTime: runState.sessionStartMs,
-          endTime: now,
-          plannedDuration: runState.plannedFocusSeconds,
-          actualDuration: actualSeconds,
-          tagUuids: runState.tagUuids,
-          todoUuid: runState.todoUuid,
-          todoTitle: runState.todoTitle,
+        final record = PomodoroRecord.fromRunState(
+          state: runState,
           status: PomodoroRecordStatus.interrupted,
-          totalPauseSeconds: (runState.accumulatedMs / 1000).round(),
-          pauseIntervals: runState.pauseIntervals,
+          endMs: now,
         );
         debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
         await PomodoroService.addRecord(record);
