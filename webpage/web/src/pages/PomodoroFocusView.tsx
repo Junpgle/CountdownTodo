@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Trash2, CheckCircle2, X, ArrowLeft,
-  PlayCircle, StopCircle, Hash, RefreshCw, Clock
+  PlayCircle, StopCircle, Hash, RefreshCw, Clock,
+  Pause, Play
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { SyncEngine } from '../services/sync';
@@ -33,7 +34,7 @@ export const PomodoroFocusView = ({
   onTodoCompleted: (uuid: string) => void;
   remotePomActive: boolean;
   remotePomDisplay: string;
-  remotePomData: { tags: string[]; todoTitle: string; note: string; mode: number; timestamp: number; targetEnd: number; duration: number };
+  remotePomData: { tags: string[]; todoTitle: string; note: string; mode: number; timestamp: number; targetEnd: number; duration: number; isPaused?: boolean; pausedAtMs?: number; accumulatedMs?: number; pauseStartMs?: number };
 }) => {
   const [settings, setSettings] = useState<PomodoroSettings>(() => loadPomodoroSettings(userId));
   const [showSettings, setShowSettings] = useState(false);
@@ -143,6 +144,10 @@ export const PomodoroFocusView = ({
     if (!pomState) { setIsRunning(false); return; }
     setIsRunning(true);
     const update = () => {
+      // 🚀 暂停状态下不更新倒计时
+      if (pomState.isPaused) {
+        return;
+      }
       const now = Date.now();
       const remain = pomState.endTimeMs - now;
       if (remain <= 0) {
@@ -272,6 +277,57 @@ export const PomodoroFocusView = ({
     savePomodoroState(userId, null);
     setPomState(null);
     setIsRunning(false);
+  };
+
+  // 🚀 新增：暂停专注
+  const pauseFocus = () => {
+    if (!pomState || pomState.phase !== 'focus' || pomState.isPaused) return;
+    const nowMs = Date.now();
+    const accumulatedMs = (pomState.accumulatedMs || 0) + (nowMs - (pomState.pauseStartMs || pomState.startTimeMs));
+    const updatedState: PomodoroState = {
+      ...pomState,
+      isPaused: true,
+      pausedAtMs: nowMs,
+      accumulatedMs,
+      pauseStartMs: nowMs,
+    };
+    savePomodoroState(userId, updatedState);
+    setPomState(updatedState);
+
+    WsService.getInstance().send({
+      action: 'PAUSE',
+      session_uuid: pomState.recordUuid,
+      pausedAtMs: nowMs,
+      accumulatedMs,
+      pauseStartMs: nowMs,
+      timestamp: nowMs,
+    });
+  };
+
+  // 🚀 新增：恢复专注
+  const resumeFocus = () => {
+    if (!pomState || !pomState.isPaused) return;
+    const nowMs = Date.now();
+    const pausedDuration = nowMs - (pomState.pausedAtMs || nowMs);
+    const newEndTimeMs = pomState.endTimeMs + pausedDuration;
+    const updatedState: PomodoroState = {
+      ...pomState,
+      isPaused: false,
+      pausedAtMs: undefined,
+      pauseStartMs: undefined,
+      endTimeMs: newEndTimeMs,
+    };
+    savePomodoroState(userId, updatedState);
+    setPomState(updatedState);
+    setRemainMs(newEndTimeMs - nowMs);
+
+    WsService.getInstance().send({
+      action: 'RESUME',
+      session_uuid: pomState.recordUuid,
+      target_end_ms: newEndTimeMs,
+      accumulatedMs: pomState.accumulatedMs || 0,
+      timestamp: nowMs,
+    });
   };
 
   const handleSwitchTask = () => {
@@ -472,8 +528,8 @@ export const PomodoroFocusView = ({
           {/* Timer Card */}
           <div className={`relative shrink-0 rounded-3xl shadow-sm border flex flex-col items-center justify-center p-8 sm:p-10 gap-6 transition-all ${
             remotePomActive && !pomState
-              ? 'bg-gradient-to-br from-purple-50/40 to-indigo-50/40 border-purple-200/60'
-              : pomState?.phase === 'rest' ? 'bg-white border-emerald-200' : (isRunning ? 'bg-white border-red-200' : 'bg-white border-slate-100')
+              ? (remotePomData.isPaused ? 'bg-gradient-to-br from-amber-50/40 to-orange-50/40 border-amber-200/60' : 'bg-gradient-to-br from-purple-50/40 to-indigo-50/40 border-purple-200/60')
+              : pomState?.phase === 'rest' ? 'bg-white border-emerald-200' : (pomState?.isPaused ? 'bg-white border-amber-200' : (isRunning ? 'bg-white border-red-200' : 'bg-white border-slate-100'))
           }`}>
             {remotePomActive && !pomState && (
                <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-purple-500/5 via-indigo-500/5 to-fuchsia-500/5 pointer-events-none" />
@@ -481,9 +537,10 @@ export const PomodoroFocusView = ({
 
             {pomState && (
               <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase ${
+                pomState.isPaused ? 'bg-amber-50 text-amber-600 border border-amber-100' :
                 pomState.phase === 'rest' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-500 border border-red-100'
               }`}>
-                {pomState.phase === 'focus' ? `🍅 第 ${pomState.loopIndex + 1} / ${settings.loopCount} 轮 · 专注中` : '☕ 休息时间'}
+                {pomState.isPaused ? '⏸ 已暂停' : (pomState.phase === 'focus' ? `🍅 第 ${pomState.loopIndex + 1} / ${settings.loopCount} 轮 · 专注中` : '☕ 休息时间')}
               </div>
             )}
 
@@ -500,13 +557,15 @@ export const PomodoroFocusView = ({
                 </svg>
                 <div className="absolute flex flex-col items-center justify-center text-center">
                   <span className="flex h-3 w-3 relative mb-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${remotePomData.isPaused ? 'bg-amber-400' : 'bg-purple-400'} opacity-75`}></span>
+                    <span className={`relative inline-flex rounded-full h-3 w-3 ${remotePomData.isPaused ? 'bg-amber-500' : 'bg-purple-500'}`}></span>
                   </span>
                   <span className="text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-slate-800">
                     {remotePomDisplay}
                   </span>
-                  <span className="text-sm font-bold text-purple-500 uppercase tracking-widest mt-1">远程专注中</span>
+                  <span className={`text-sm font-bold uppercase tracking-widest mt-1 ${remotePomData.isPaused ? 'text-amber-500' : 'text-purple-500'}`}>
+                    {remotePomData.isPaused ? '远程已暂停' : '远程专注中'}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -515,7 +574,7 @@ export const PomodoroFocusView = ({
                   <circle cx="100" cy="100" r="88" fill="none" stroke="#f1f5f9" strokeWidth="12" />
                   <circle
                     cx="100" cy="100" r="88" fill="none"
-                    stroke={pomState?.phase === 'rest' ? '#10b981' : (isRunning ? '#ef4444' : '#6366f1')}
+                    stroke={pomState?.isPaused ? '#f59e0b' : (pomState?.phase === 'rest' ? '#10b981' : (isRunning ? '#ef4444' : '#6366f1'))}
                     strokeWidth="12"
                     strokeLinecap="round"
                     strokeDasharray={`${2 * Math.PI * 88}`}
@@ -525,10 +584,10 @@ export const PomodoroFocusView = ({
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-5xl sm:text-6xl font-black tabular-nums text-slate-800 tracking-tight">
-                    {pomState ? formatTimer(remainMs) : formatTimer(settings.focusDuration * 1000)}
+                    {pomState ? (pomState.isPaused ? '⏸' : formatTimer(remainMs)) : formatTimer(settings.focusDuration * 1000)}
                   </span>
                   <span className="text-sm font-bold text-slate-400 mt-1">
-                    {pomState ? (pomState.phase === 'focus' ? '专注剩余' : '休息剩余') : '准备开始'}
+                    {pomState ? (pomState.isPaused ? '已暂停' : (pomState.phase === 'focus' ? '专注剩余' : '休息剩余')) : '准备开始'}
                   </span>
                 </div>
               </div>
@@ -638,9 +697,21 @@ export const PomodoroFocusView = ({
             ) : (
               <div className="flex gap-3 w-full">
                 {pomState?.phase === 'focus' && (
-                  <button onClick={() => setShowSwitchDialog(true)} className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2">
-                    <ArrowLeft className="w-4 h-4" /> 切换任务
-                  </button>
+                  <>
+                    {/* 🚀 暂停/恢复按钮 */}
+                    {pomState.isPaused ? (
+                      <button onClick={resumeFocus} className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2">
+                        <Play className="w-4 h-4" /> 继续专注
+                      </button>
+                    ) : (
+                      <button onClick={pauseFocus} className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2">
+                        <Pause className="w-4 h-4" /> 暂停
+                      </button>
+                    )}
+                    <button onClick={() => setShowSwitchDialog(true)} className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2">
+                      <ArrowLeft className="w-4 h-4" /> 切换任务
+                    </button>
+                  </>
                 )}
                 <button onClick={stopSession} className="flex-1 bg-red-50 hover:bg-red-100 text-red-500 font-bold py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2">
                   <StopCircle className="w-4 h-4" /> 放弃
