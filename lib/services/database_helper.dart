@@ -229,7 +229,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 31, // V31: pomodoro_tags 新增 is_archived 归档字段
+          version: 32, // V32: pomodoro_records 新增暂停区间字段
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -243,6 +243,23 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 32) {
+              try {
+                final info =
+                    await db.rawQuery("PRAGMA table_info(pomodoro_records)");
+                if (!info.any((row) => row['name'] == 'total_pause_seconds')) {
+                  await db.execute(
+                      "ALTER TABLE pomodoro_records ADD COLUMN total_pause_seconds INTEGER;");
+                }
+                if (!info.any((row) => row['name'] == 'pause_intervals')) {
+                  await db.execute(
+                      "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;");
+                }
+                debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
+              } catch (e) {
+                debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
+              }
+            }
             if (oldVersion < 31) {
               try {
                 final info =
@@ -1164,6 +1181,8 @@ class DatabaseHelper {
         device_id $jsonType,
         plan_block_id TEXT,
         note TEXT,
+        total_pause_seconds INTEGER,
+        pause_intervals TEXT,
         is_deleted $boolType DEFAULT 0,
         version $integerType DEFAULT 1,
         created_at $integerType,

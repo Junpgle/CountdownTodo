@@ -403,6 +403,8 @@ class FloatWindowService {
         actualDuration: actualSecs,
         status: PomodoroRecordStatus.completed,
         note: saved.note,
+        totalPauseSeconds: (saved.accumulatedMs / 1000).round(),
+        pauseIntervals: saved.pauseIntervals,
       );
 
       await PomodoroService.addRecord(record);
@@ -434,6 +436,8 @@ class FloatWindowService {
           actualDuration: actualSecs,
           status: PomodoroRecordStatus.interrupted,
           note: saved.note,
+          totalPauseSeconds: (saved.accumulatedMs / 1000).round(),
+          pauseIntervals: saved.pauseIntervals,
         ));
       }
       PomodoroSyncService().sendStopSignal();

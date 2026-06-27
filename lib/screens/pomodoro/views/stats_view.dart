@@ -765,6 +765,53 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     ]),
                   ),
                 ),
+                // 暂停信息
+                if (session.totalPauseSeconds != null && session.totalPauseSeconds! > 0) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('暂停时长', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      Text(
+                        _formatPauseDuration(session.totalPauseSeconds!),
+                        style: TextStyle(
+                          color: Theme.of(ctx).colorScheme.error,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (session.pauseIntervals != null && session.pauseIntervals!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '${session.pauseIntervals!.length} 次',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (session.pauseIntervals != null && session.pauseIntervals!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (int i = 0; i < session.pauseIntervals!.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 4),
+                            _buildPauseIntervalRow(ctx, i + 1, session.pauseIntervals![i]),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 16),
                 const Text('绑定任务', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
@@ -879,6 +926,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         startTime: session.startTime, endTime: session.endTime, plannedDuration: session.plannedDuration,
                         actualDuration: session.actualDuration, status: session.status, deviceId: session.deviceId,
                         planBlockId: session.planBlockId, note: editNote.isNotEmpty ? editNote : null,
+                        totalPauseSeconds: session.totalPauseSeconds,
+                        pauseIntervals: session.pauseIntervals,
                         isDeleted: session.isDeleted, version: session.version + 1, createdAt: session.createdAt,
                         updatedAt: DateTime.now().millisecondsSinceEpoch,
                       );
@@ -895,6 +944,52 @@ class PomodoroStatsState extends State<PomodoroStats> {
           );
         },
       ),
+    );
+  }
+
+  String _formatPauseDuration(int totalSeconds) {
+    if (totalSeconds < 60) return '${totalSeconds}秒';
+    final m = totalSeconds ~/ 60;
+    final s = totalSeconds % 60;
+    return s > 0 ? '${m}分${s}秒' : '${m}分钟';
+  }
+
+  Widget _buildPauseIntervalRow(BuildContext ctx, int index, PauseInterval interval) {
+    final startStr = DateFormat('HH:mm:ss').format(
+        DateTime.fromMillisecondsSinceEpoch(interval.startMs, isUtc: true).toLocal());
+    final endStr = interval.isOngoing
+        ? '进行中'
+        : DateFormat('HH:mm:ss').format(
+            DateTime.fromMillisecondsSinceEpoch(interval.endMs!, isUtc: true).toLocal());
+    final durationStr = interval.isOngoing ? '' : _formatPauseDuration(interval.durationSeconds);
+    return Row(
+      children: [
+        Text(
+          '$index.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$startStr → $endStr',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (durationStr.isNotEmpty) ...[
+          const Spacer(),
+          Text(
+            durationStr,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(ctx).colorScheme.error,
+            ),
+          ),
+        ],
+      ],
     );
   }
 

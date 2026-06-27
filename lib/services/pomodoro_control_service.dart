@@ -250,6 +250,8 @@ class PomodoroControlService {
       deviceId: deviceId,
       planBlockId: state.planBlockId,
       note: state.note,
+      totalPauseSeconds: (state.accumulatedMs / 1000).round(),
+      pauseIntervals: state.pauseIntervals,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {

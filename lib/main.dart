@@ -613,6 +613,8 @@ class _MyAppState extends State<MyApp> {
         todoUuid: runState.todoUuid,
         todoTitle: runState.todoTitle,
         status: PomodoroRecordStatus.completed,
+        totalPauseSeconds: (runState.accumulatedMs / 1000).round(),
+        pauseIntervals: runState.pauseIntervals,
       );
       debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
@@ -634,6 +636,8 @@ class _MyAppState extends State<MyApp> {
           todoUuid: runState.todoUuid,
           todoTitle: runState.todoTitle,
           status: PomodoroRecordStatus.interrupted,
+          totalPauseSeconds: (runState.accumulatedMs / 1000).round(),
+          pauseIntervals: runState.pauseIntervals,
         );
         debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
         await PomodoroService.addRecord(record);
