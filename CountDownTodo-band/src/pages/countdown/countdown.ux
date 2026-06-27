@@ -9,7 +9,8 @@
 
     <!-- 列表区域 -->
     <block if="{{countdownList.length > 0}}">
-      <div for="{{countdownList}}" class="item">
+      <!-- 未过期的倒数日 -->
+      <div for="{{countdownList}}" class="item" if="{{$item.remainingDays >= 0}}">
         <div class="item-left">
           <div class="days-badge {{getDaysClass($item.remainingDays)}}">
             <text class="days-num">{{$item.remainingDays}}</text>
@@ -21,6 +22,29 @@
           <text class="item-date">{{$item.formattedDate}}</text>
         </div>
         <text class="delete-btn" onclick="deleteCountdown($item)">×</text>
+      </div>
+
+      <!-- 已过期区域 -->
+      <div if="{{hasPassed}}" class="passed-section">
+        <div class="passed-header" onclick="togglePassed">
+          <text class="passed-title">已过期</text>
+          <text class="passed-arrow">{{showPassed ? '▼' : '▶'}}</text>
+        </div>
+        <block if="{{showPassed}}">
+          <div for="{{countdownList}}" class="item passed-item" if="{{$item.remainingDays < 0}}">
+            <div class="item-left">
+              <div class="days-badge {{getDaysClass($item.remainingDays)}}">
+                <text class="days-num">{{$item.remainingDays}}</text>
+                <text class="days-unit" static>天</text>
+              </div>
+            </div>
+            <div class="item-center">
+              <text class="item-title">{{$item.title}}</text>
+              <text class="item-date">{{$item.formattedDate}}</text>
+            </div>
+            <text class="delete-btn" onclick="deleteCountdown($item)">×</text>
+          </div>
+        </block>
       </div>
     </block>
 
@@ -38,7 +62,9 @@ import prompt from '@system.prompt'
 
 export default {
   data: {
-    countdownList: []
+    countdownList: [],
+    hasPassed: false,
+    showPassed: false
   },
 
   onInit() {
@@ -62,19 +88,56 @@ export default {
       key: 'sync_countdown',
       success: (data) => {
         if (data) {
-          this.countdownList = JSON.parse(data)
-          this.calculateRemainingDays()
-          this.formatTargetDates()
-          this.countdownList.sort((a, b) => a.remainingDays - b.remainingDays)
+          let list = JSON.parse(data)
+          list = this.removeDuplicates(list)
+          this.calculateRemainingDaysForList(list)
+          this.formatTargetDatesForList(list)
+          const upcoming = list.filter(item => item.remainingDays >= 0)
+          const passed = list.filter(item => item.remainingDays < 0)
+          upcoming.sort((a, b) => a.remainingDays - b.remainingDays)
+          passed.sort((a, b) => b.remainingDays - a.remainingDays)
+          this.countdownList = [...upcoming, ...passed]
+          this.hasPassed = passed.length > 0
+          this.showPassed = false
         }
       },
       fail: () => {}
     })
   },
 
-  formatTargetDates() {
-    for (let i = 0; i < this.countdownList.length; i++) {
-      const item = this.countdownList[i]
+  removeDuplicates(list) {
+    const seen = new Map()
+    return list.filter(item => {
+      const key = item.id || `${item.title}_${item.targetDate || item.target_time}`
+      if (seen.has(key)) return false
+      seen.set(key, true)
+      return true
+    })
+  },
+
+  calculateRemainingDaysForList(list) {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i]
+      let target
+      if (typeof item.targetDate === 'number') {
+        target = new Date(item.targetDate)
+      } else if (typeof item.target_time === 'number') {
+        target = new Date(item.target_time)
+      } else {
+        target = new Date(item.targetDate)
+      }
+      target.setHours(0, 0, 0, 0)
+      const diff = target - now
+      item.remainingDays = Math.ceil(diff / (1000 * 60 * 60 * 24))
+    }
+  },
+
+  formatTargetDatesForList(list) {
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i]
       if (!item.formattedDate) {
         let date
         if (typeof item.targetDate === 'number') {
@@ -88,26 +151,6 @@ export default {
         }
         item.formattedDate = `${date.getFullYear()}-${this.padZero(date.getMonth() + 1)}-${this.padZero(date.getDate())}`
       }
-    }
-  },
-
-  calculateRemainingDays() {
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-
-    for (let i = 0; i < this.countdownList.length; i++) {
-      const item = this.countdownList[i]
-      let target
-      if (typeof item.targetDate === 'number') {
-        target = new Date(item.targetDate)
-      } else if (typeof item.target_time === 'number') {
-        target = new Date(item.target_time)
-      } else {
-        target = new Date(item.targetDate)
-      }
-      target.setHours(0, 0, 0, 0)
-      const diff = target - now
-      item.remainingDays = Math.ceil(diff / (1000 * 60 * 60 * 24))
     }
   },
 
@@ -138,6 +181,10 @@ export default {
       message: '已删除',
       duration: 300
     })
+  },
+
+  togglePassed() {
+    this.showPassed = !this.showPassed
   },
 
   goBack() {
@@ -209,6 +256,26 @@ export default {
   background-color: #555555;
 }
 
+.days-passed {
+  background-color: #ff6b6b40;
+}
+
+.days-today {
+  background-color: #4ecdc4;
+}
+
+.days-soon {
+  background-color: #ffe66d;
+}
+
+.days-normal {
+  background-color: #45b7d1;
+}
+
+.days-far {
+  background-color: #96ceb4;
+}
+
 .days-num {
   font-size: 40px;
   font-weight: bold;
@@ -246,6 +313,34 @@ export default {
   border-radius: 24px;
   text-align: center;
   line-height: 48px;
+}
+
+.passed-section {
+  margin-top: 10px;
+}
+
+.passed-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #2a2a2a;
+  border-radius: 20px;
+  padding: 20px 28px;
+  margin-bottom: 12px;
+}
+
+.passed-title {
+  font-size: 28px;
+  color: #888888;
+}
+
+.passed-arrow {
+  font-size: 24px;
+  color: #888888;
+}
+
+.passed-item {
+  opacity: 0.7;
 }
 
 .empty {
