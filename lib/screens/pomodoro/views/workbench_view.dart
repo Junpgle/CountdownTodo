@@ -16,7 +16,8 @@ import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../update_service.dart';
-import '../pomodoro_utils.dart';
+import '../../../utils/app_color_utils.dart';
+import '../../../utils/time_utils.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
@@ -2701,7 +2702,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         spacing: 6,
         runSpacing: 4,
         children: activeTags
-            .map((t) => _SimpleTag(name: t.name, color: hexToColor(t.color)))
+            .map((t) => _SimpleTag(name: t.name, color: AppColorUtils.parseHex(t.color)))
             .toList());
   }
 
@@ -2717,7 +2718,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               alignment: WrapAlignment.center,
               children: _tags.map((tag) {
                 final selected = _selectedTagUuids.contains(tag.uuid);
-                final color = hexToColor(tag.color);
+                final color = AppColorUtils.parseHex(tag.color);
                 return FilterChip(
                   label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                   selected: selected,

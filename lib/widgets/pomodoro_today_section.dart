@@ -1,8 +1,12 @@
 import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../screens/course_screens.dart';
 import '../services/pomodoro_service.dart';
+import '../utils/page_transitions.dart';
+import '../utils/theme_color_tokens.dart';
 
 // ============================================================
 // 首页最近专注统计卡片
@@ -237,7 +241,8 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
             Column(
               children: [
                 _buildHourlyChart(subColor),
-                // 🚀 根据用户要求，首页移除“专注项目”统计，点击后在专注Tab查看
+                const SizedBox(height: 12),
+                _buildRecordsList(),
               ],
             ),
         ],
@@ -364,6 +369,165 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 番茄钟记录列表
+  // ==========================================
+  Widget _buildRecordsList() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: widget.isLight
+                ? Colors.white.withValues(alpha: 0.15)
+                : colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+            border: widget.isLight
+                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+                : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '专注记录',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: widget.isLight
+                      ? Colors.white70
+                      : colorScheme.outline,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ..._records.map((record) => _buildRecordItem(record)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordItem(PomodoroRecord record) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final startLocal =
+        DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
+            .toLocal();
+    final durationMin = record.effectiveDuration ~/ 60;
+    final statusIcon =
+        record.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+    final statusColor = record.isCompleted
+        ? (widget.isLight ? Colors.greenAccent : colorScheme.cdtSuccess)
+        : (widget.isLight ? Colors.amber : colorScheme.cdtWarning);
+    final hasPause = (record.totalPauseSeconds ?? 0) > 0;
+    final cardKey = GlobalKey();
+
+    return Padding(
+      key: ValueKey(record.uuid),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            PageTransitions.pushFromRect(
+              context: context,
+              page: PomodoroDetailScreen(
+                record: record,
+                tags: [],
+              ),
+              sourceKey: cardKey,
+              sourceBorderRadius: const BorderRadius.all(Radius.circular(12)),
+            );
+          },
+          child: Container(
+            key: cardKey,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                Icon(statusIcon, size: 18, color: statusColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${DateFormat('HH:mm').format(startLocal)} · $durationMin 分钟',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: widget.isLight
+                              ? Colors.white
+                              : colorScheme.onSurface,
+                        ),
+                      ),
+                      if (record.todoTitle != null &&
+                          record.todoTitle!.isNotEmpty)
+                        Text(
+                          record.todoTitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: widget.isLight
+                                ? Colors.white70
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasPause)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (widget.isLight
+                              ? Colors.orange
+                              : colorScheme.cdtWarning)
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '暂停 ${formatDurationChinese(record.totalPauseSeconds ?? 0)}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: widget.isLight
+                            ? Colors.orange
+                            : colorScheme.cdtWarning,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: widget.isLight
+                      ? Colors.white38
+                      : colorScheme.onSurface.withValues(alpha: 0.25),
+                ),
+              ],
+            ),
           ),
         ),
       ),

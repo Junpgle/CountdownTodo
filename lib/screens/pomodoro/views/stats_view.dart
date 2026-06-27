@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../../../models.dart';
 import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
-import '../pomodoro_utils.dart';
+import '../../../screens/course_screens.dart';
+import '../../../utils/app_color_utils.dart';
+import '../../../utils/page_transitions.dart';
 
 class PomodoroStats extends StatefulWidget {
   final String username;
@@ -485,7 +487,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       children: sorted.map((e) {
         final tag = _tags.cast<PomodoroTag?>().firstWhere((t) => t?.uuid == e.key, orElse: () => null);
         final name = tag?.name ?? '未知';
-        final color = hexToColor(tag?.color ?? '#9E9E9E');
+        final color = AppColorUtils.parseHex(tag?.color ?? '#9E9E9E');
         final pct = totalSecs > 0 ? e.value / totalSecs : 0.0;
         
         return Padding(
@@ -555,6 +557,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
         ? s.tagUuids.map((uuid) => _tags.cast<PomodoroTag?>().firstWhere((t) => t?.uuid == uuid, orElse: () => null)?.name ?? uuid).join(', ')
         : null;
     final timeLabel = showDate ? DateFormat('MM-dd HH:mm').format(startLocal) : DateFormat('HH:mm').format(startLocal);
+    final cardKey = GlobalKey();
 
     final content = widget.isCompact
         ? Row(children: [
@@ -619,11 +622,26 @@ class PomodoroStatsState extends State<PomodoroStats> {
           );
 
     return Card(
+      key: cardKey,
       elevation: 0,
       color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16)),
-      child: Padding(padding: widget.isCompact ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : EdgeInsets.zero, child: content),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
+        onTap: () {
+          PageTransitions.pushFromRect(
+            context: context,
+            page: PomodoroDetailScreen(
+              record: s,
+              tags: _tags,
+            ),
+            sourceKey: cardKey,
+            sourceBorderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
+          );
+        },
+        child: Padding(padding: widget.isCompact ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : EdgeInsets.zero, child: content),
+      ),
     );
   }
 
@@ -850,7 +868,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   spacing: 8, runSpacing: 8,
                   children: _tags.map((tag) {
                     final sel = editTags.contains(tag.uuid);
-                    final color = hexToColor(tag.color);
+                    final color = AppColorUtils.parseHex(tag.color);
                     return FilterChip(
                       label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                       selected: sel, showCheckmark: false, selectedColor: color.withValues(alpha: 0.2),

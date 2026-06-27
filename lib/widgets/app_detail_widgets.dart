@@ -224,6 +224,76 @@ class AppDetailDivider extends StatelessWidget {
   }
 }
 
+class AppDetailScreen extends StatelessWidget {
+  final String appBarTitle;
+  final IconData icon;
+  final String title;
+  final String? headerSubtitle;
+  final Color? color;
+  final double iconSize;
+  final double titleSize;
+  final TextDecoration? titleDecoration;
+  final Color? titleColor;
+  final double? progress;
+  final Color? progressColor;
+  final List<Widget> sections;
+  final List<Widget>? appBarActions;
+  final EdgeInsetsGeometry padding;
+  final ScrollPhysics? scrollPhysics;
+  final Color? backgroundColor;
+
+  const AppDetailScreen({
+    super.key,
+    required this.appBarTitle,
+    required this.icon,
+    required this.title,
+    this.headerSubtitle,
+    this.color,
+    this.iconSize = 72,
+    this.titleSize = 24,
+    this.titleDecoration,
+    this.titleColor,
+    this.progress,
+    this.progressColor,
+    required this.sections,
+    this.appBarActions,
+    this.padding = const EdgeInsets.all(24),
+    this.scrollPhysics,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      appBar: AppBar(
+        title: Text(appBarTitle),
+        actions: appBarActions,
+      ),
+      body: ListView(
+        padding: padding,
+        physics: scrollPhysics,
+        children: [
+          AppDetailHeader(
+            icon: icon,
+            title: title,
+            subtitle: headerSubtitle,
+            color: color,
+            iconSize: iconSize,
+            titleSize: titleSize,
+            titleDecoration: titleDecoration,
+            titleColor: titleColor,
+            progress: progress,
+            progressColor: progressColor,
+          ),
+          const SizedBox(height: 20),
+          ...sections,
+        ],
+      ),
+    );
+  }
+}
+
 class AppMetricChip extends StatelessWidget {
   final String label;
   final Color color;
