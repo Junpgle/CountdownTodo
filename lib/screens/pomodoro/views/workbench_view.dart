@@ -15,6 +15,7 @@ import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
+import '../../../services/macos_pomodoro_status_bar_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/time_utils.dart';
@@ -135,6 +136,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   StreamSubscription? _islandSub;
   StreamSubscription? _bandSub;
+  StreamSubscription? _macStatusBarSub;
   void _listenToIslandActions() {
     _islandSub = IslandChannel.actionStream.listen((actionData) {
       if (!mounted) return;
@@ -172,6 +174,22 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         }
       }
     });
+    // 监听 macOS 状态栏操作
+    if (Platform.isMacOS) {
+      _macStatusBarSub = MacPomodoroStatusBarService.onAction.listen((action) {
+        if (!mounted) return;
+        switch (action) {
+          case MacPomodoroAction.togglePause:
+            if (_isPaused) {
+              _resumeFocus();
+            } else {
+              _pauseFocus();
+            }
+          case MacPomodoroAction.stopFocus:
+            _finishEarly();
+        }
+      });
+    }
   }
 
   StreamSubscription? _runStateSub;
@@ -228,6 +246,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _runStateSub?.cancel();
     _islandSub?.cancel();
     _bandSub?.cancel();
+    _macStatusBarSub?.cancel();
     _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
