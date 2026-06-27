@@ -1388,7 +1388,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Future<void> _switchTask(TodoItem? newTodo) async {
     if (_phase != PomodoroPhase.focusing) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+    final actualSeconds = PomodoroRunState.computeActualSeconds(
+        _sessionStartMs, _accumulatedMs,
+        endMs: now);
 
     final oldTodo = _boundTodo;
     final oldTagUuids = List<String>.from(_selectedTagUuids);
@@ -1458,14 +1460,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isHandlingEnd = true;
     try {
       _ticker?.cancel();
-      _isPaused = false;
-      _pausedAtMs = 0;
-      _accumulatedMs = 0;
       NotificationService.cancelNotification();
       NotificationService.cancelReminder(40001);
       NotificationService.cancelReminder(40002);
       final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+      final actualSeconds = PomodoroRunState.computeActualSeconds(
+          _sessionStartMs, _accumulatedMs,
+          endMs: now);
+      _isPaused = false;
+      _pausedAtMs = 0;
+      _accumulatedMs = 0;
       final isCountUp = _settings.mode == TimerMode.countUp;
 
       await _persistIdleBoundTodo(_boundTodo);
@@ -1508,7 +1512,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
         durationSeconds: isCountUp
-            ? ((now - _sessionStartMs) / 1000).round()
+            ? PomodoroRunState.computeActualSeconds(
+                _sessionStartMs, _accumulatedMs,
+                endMs: now)
             : _settings.focusMinutes * 60,
         startMs: _sessionStartMs,
         endMs: now,
@@ -1726,8 +1732,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
       if (confirm) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        final actualSeconds =
-            ((now - _sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+        final actualSeconds = PomodoroRunState.computeActualSeconds(
+            _sessionStartMs, _accumulatedMs,
+            endMs: now);
         final isCountUpMode = _settings.mode == TimerMode.countUp;
         if (actualSeconds > 5) {
           await PomodoroService.addRecord(PomodoroRecord(

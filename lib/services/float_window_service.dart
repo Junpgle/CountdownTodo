@@ -386,8 +386,11 @@ class FloatWindowService {
     // Save record in background
     if (action == 'finish') {
       final isCountUp = saved.mode == TimerMode.countUp;
-      final actualSecs =
-          isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
+      final actualSecs = isCountUp
+          ? secs
+          : PomodoroRunState.computeActualSeconds(
+              saved.sessionStartMs, saved.accumulatedMs,
+              endMs: now);
 
       final record = PomodoroRecord(
         uuid: saved.sessionUuid,
@@ -416,7 +419,9 @@ class FloatWindowService {
         }
       }
     } else if (action == 'abandon') {
-      final actualSecs = ((now - saved.sessionStartMs) ~/ 1000);
+      final actualSecs = PomodoroRunState.computeActualSeconds(
+          saved.sessionStartMs, saved.accumulatedMs,
+          endMs: now);
       if (actualSecs > 5) {
         await PomodoroService.addRecord(PomodoroRecord(
           uuid: saved.sessionUuid,

@@ -352,6 +352,19 @@ class PomodoroRunState {
   })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [];
 
+  /// 计算实际专注秒数（扣除暂停累计时间）
+  /// [endMs] 默认为当前时间，可传入自定义结束时间
+  static int computeActualSeconds(
+    int sessionStartMs,
+    int accumulatedMs, {
+    int? endMs,
+  }) {
+    final end = endMs ?? DateTime.now().millisecondsSinceEpoch;
+    return (((end - sessionStartMs) - accumulatedMs) / 1000)
+        .round()
+        .clamp(0, 24 * 3600);
+  }
+
   Map<String, dynamic> toJson() => {
         'phase': phase.index,
         'sessionUuid': sessionUuid,
