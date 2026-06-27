@@ -1457,15 +1457,23 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isHandlingEnd = true;
     try {
       _ticker?.cancel();
+      _pauseTicker?.cancel();
       NotificationService.cancelNotification();
       NotificationService.cancelReminder(40001);
       NotificationService.cancelReminder(40002);
       final now = DateTime.now().millisecondsSinceEpoch;
+      
+      // 如果正在暂停，关闭最后一个暂停区间
+      if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = now;
+      }
+      
       final actualSeconds = PomodoroRunState.computeActualSeconds(
           _sessionStartMs, _accumulatedMs,
           endMs: now);
       _isPaused = false;
       _pausedAtMs = 0;
+      _pauseStartMs = 0;
       final isCountUp = _settings.mode == TimerMode.countUp;
 
       await _persistIdleBoundTodo(_boundTodo);
@@ -1498,9 +1506,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
+      _pauseTicker?.cancel();
       NotificationService.cancelReminder(40001);
       final now = DateTime.now().millisecondsSinceEpoch;
       final isCountUp = _settings.mode == TimerMode.countUp;
+      
+      // 如果正在暂停，关闭最后一个暂停区间
+      if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = now;
+      }
+      
       await _persistIdleBoundTodo(_boundTodo);
       await _clearRunStateSilently();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
@@ -1699,6 +1714,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     try {
       _ticker?.cancel();
       _ticker = null;
+      _pauseTicker?.cancel();
       bool confirm = skipDialog;
       if (!skipDialog) {
         final res = await showDialog<bool>(
@@ -1724,6 +1740,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
       if (confirm) {
         final now = DateTime.now().millisecondsSinceEpoch;
+        
+        // 如果正在暂停，关闭最后一个暂停区间
+        if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+          _pauseIntervals.last.endMs = now;
+        }
+        
         final actualSeconds = PomodoroRunState.computeActualSeconds(
             _sessionStartMs, _accumulatedMs,
             endMs: now);
