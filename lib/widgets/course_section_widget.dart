@@ -404,10 +404,11 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _TodoCompactCard(
         todo: todo,
         isLight: widget.isLight,
-        onTap: () => Navigator.of(context).push(
-          PageTransitions.material(
-            builder: (_) => TodoDetailScreen(todo: todo),
-          ),
+        onTap: (cardKey) => PageTransitions.pushFromRect(
+          context: context,
+          page: TodoDetailScreen(todo: todo),
+          sourceKey: cardKey,
+          sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
         ),
       );
     }
@@ -908,7 +909,7 @@ class _PlanCompactCard extends StatelessWidget {
   }
 }
 
-class _TodoCompactCard extends StatelessWidget {
+class _TodoCompactCard extends StatefulWidget {
   const _TodoCompactCard({
     required this.todo,
     required this.isLight,
@@ -917,31 +918,39 @@ class _TodoCompactCard extends StatelessWidget {
 
   final TodoItem todo;
   final bool isLight;
-  final VoidCallback onTap;
+  final Function(GlobalKey cardKey) onTap;
+
+  @override
+  State<_TodoCompactCard> createState() => _TodoCompactCardState();
+}
+
+class _TodoCompactCardState extends State<_TodoCompactCard> {
+  late final GlobalKey _cardKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final start = DateTime.fromMillisecondsSinceEpoch(
-      todo.createdDate ?? todo.createdAt,
+      widget.todo.createdDate ?? widget.todo.createdAt,
     ).toLocal();
-    final end = todo.dueDate!.toLocal();
+    final end = widget.todo.dueDate!.toLocal();
     final now = DateTime.now();
-    final statusColor = todo.isDone
+    final statusColor = widget.todo.isDone
         ? Colors.green
         : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
     final minutes = end.difference(start).inMinutes;
 
     return Container(
+      key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: statusColor.withValues(alpha: isLight ? 0.16 : 0.24),
+          color: statusColor.withValues(alpha: widget.isLight ? 0.16 : 0.24),
           width: 1,
         ),
-        boxShadow: isLight
+        boxShadow: widget.isLight
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -956,9 +965,9 @@ class _TodoCompactCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
+          onTap: () => widget.onTap(_cardKey),
           onLongPress: () =>
-              VersionHistorySheet.show(context, todo.id, 'todos', todo.title),
+              VersionHistorySheet.show(context, widget.todo.id, 'todos', widget.todo.title),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
@@ -1007,7 +1016,7 @@ class _TodoCompactCard extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            todo.isDone
+                            widget.todo.isDone
                                 ? Icons.check_circle_rounded
                                 : Icons.task_alt_rounded,
                             size: 14,
@@ -1016,14 +1025,14 @@ class _TodoCompactCard extends StatelessWidget {
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
-                              todo.title,
+                              widget.todo.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w600,
                                 color: colorScheme.onSurface,
-                                decoration: todo.isDone
+                                decoration: widget.todo.isDone
                                     ? TextDecoration.lineThrough
                                     : null,
                                 height: 1.2,
@@ -1042,7 +1051,7 @@ class _TodoCompactCard extends StatelessWidget {
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
-                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${todo.remark?.isNotEmpty == true ? ' · ${todo.remark}' : ''}',
+                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${widget.todo.remark?.isNotEmpty == true ? ' · ${widget.todo.remark}' : ''}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
