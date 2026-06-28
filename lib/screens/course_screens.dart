@@ -10,7 +10,6 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
-import '../utils/app_time_formats.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
@@ -1246,13 +1245,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
 
     ({double pre, double post}) buildHideLengths(
-        double rangeStart, double rangeEnd, double minStart, double maxEnd) {
+        double rangeStart, double rangeEnd, double minStart, double maxEnd,
+        {bool onlyHideBefore = false}) {
       if (minStart >= maxEnd) {
         return (pre: rangeEnd - rangeStart, post: 0.0);
       }
       return (
         pre: (minStart - rangeStart).clamp(0.0, rangeEnd - rangeStart),
-        post: (rangeEnd - maxEnd).clamp(0.0, rangeEnd - rangeStart),
+        post: onlyHideBefore
+            ? 0.0
+            : (rangeEnd - maxEnd).clamp(0.0, rangeEnd - rangeStart),
       );
     }
 
@@ -1273,9 +1275,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       addRange(ranges, rangeEnd - post, rangeEnd);
     }
 
-    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly);
+    final early = buildHideLengths(earlyStart, earlyEnd, minEarly, maxEarly,
+        onlyHideBefore: true);
     final lunch = buildHideLengths(lunchStart, lunchEnd, minLunch, maxLunch);
-    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate);
+    final late = buildHideLengths(lateStart, lateEnd, minLate, maxLate,
+        onlyHideBefore: true);
     final String lunchCollapseText =
         _buildLunchCollapseText(lunchStart, lunchEnd, lunch.pre, lunch.post);
 
@@ -3495,58 +3499,52 @@ class CourseDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('课程详情')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          AppDetailHeader(
-            icon: Icons.class_,
-            title: course.courseName,
-            color: colorScheme.secondary,
-          ),
-          const SizedBox(height: 20),
-          AppDetailSection(
-            title: '课程信息',
-            children: [
-              AppDetailRow(
-                  icon: Icons.person, label: '授课教师', value: course.teacherName),
+    return AppDetailScreen(
+      appBarTitle: '课程详情',
+      icon: Icons.class_,
+      title: course.courseName,
+      color: colorScheme.secondary,
+      sections: [
+        AppDetailSection(
+          title: '课程信息',
+          children: [
+            AppDetailRow(
+                icon: Icons.person, label: '授课教师', value: course.teacherName),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.location_on,
+                label: '上课地点',
+                value: course.roomName),
+            const AppDetailDivider(),
+            AppDetailRow(
+              icon: Icons.calendar_today,
+              label: '日期',
+              value:
+                  '${course.date} (第${course.weekIndex}周 周${course.weekday})',
+            ),
+            const AppDetailDivider(),
+            AppDetailRow(
+              icon: Icons.access_time,
+              label: '时间',
+              value:
+                  '${course.formattedStartTime} - ${course.formattedEndTime}',
+            ),
+            if (course.lessonType != null &&
+                course.lessonType!.isNotEmpty) ...[
               const AppDetailDivider(),
               AppDetailRow(
-                  icon: Icons.location_on,
-                  label: '上课地点',
-                  value: course.roomName),
-              const AppDetailDivider(),
-              AppDetailRow(
-                icon: Icons.calendar_today,
-                label: '日期',
-                value:
-                    '${course.date} (第${course.weekIndex}周 周${course.weekday})',
+                icon: Icons.category,
+                label: '类型/备注',
+                value: course.lessonType == 'EXPERIMENT'
+                    ? '实验课'
+                    : (course.lessonType == 'THEORY'
+                        ? '理论课'
+                        : course.lessonType!),
               ),
-              const AppDetailDivider(),
-              AppDetailRow(
-                icon: Icons.access_time,
-                label: '时间',
-                value:
-                    '${course.formattedStartTime} - ${course.formattedEndTime}',
-              ),
-              if (course.lessonType != null &&
-                  course.lessonType!.isNotEmpty) ...[
-                const AppDetailDivider(),
-                AppDetailRow(
-                  icon: Icons.category,
-                  label: '类型/备注',
-                  value: course.lessonType == 'EXPERIMENT'
-                      ? '实验课'
-                      : (course.lessonType == 'THEORY'
-                          ? '理论课'
-                          : course.lessonType!),
-                ),
-              ],
             ],
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -3633,167 +3631,154 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
       }
     }
 
-    return Scaffold(
+    return AppDetailScreen(
+      appBarTitle: '任务详情',
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('任务详情'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Column(
-          children: [
-            AppDetailHeader(
-              icon: todo.isDone
-                  ? Icons.check_circle_rounded
-                  : Icons.pending_rounded,
-              title: todo.title,
-              titleSize: 22,
-              titleDecoration: todo.isDone ? TextDecoration.lineThrough : null,
-              titleColor: todo.isDone ? colorScheme.cdtDisabled : null,
-              color:
-                  todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning,
-              iconSize: 64,
-              progress: progress,
-              progressColor:
-                  todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
+      icon: todo.isDone
+          ? Icons.check_circle_rounded
+          : Icons.pending_rounded,
+      title: todo.title,
+      titleSize: 22,
+      titleDecoration: todo.isDone ? TextDecoration.lineThrough : null,
+      titleColor: todo.isDone ? colorScheme.cdtDisabled : null,
+      color: todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning,
+      iconSize: 64,
+      progress: progress,
+      progressColor:
+          todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      scrollPhysics: const BouncingScrollPhysics(),
+      sections: [
+        AppDetailSection(title: "基本信息", children: [
+          AppDetailRow(
+              icon: Icons.flag_rounded,
+              label: "当前状态",
+              value: todo.isDone ? "已完成" : "进行中",
+              valueColor: todo.isDone
+                  ? colorScheme.cdtSuccess
+                  : colorScheme.cdtWarning),
+          AppDetailRow(
+              icon: Icons.schedule_rounded,
+              label: "开始时间",
+              value: startTimeStr),
+          AppDetailRow(
+              icon: Icons.event_busy_rounded,
+              label: "截止时间",
+              value: endTimeStr,
+              valueColor: (endTime != null &&
+                      !todo.isDone &&
+                      endTime.isBefore(DateTime.now()))
+                  ? colorScheme.error
+                  : null),
+          if (todo.recurrence != RecurrenceType.none)
+            AppDetailRow(
+                icon: Icons.repeat_rounded,
+                label: "重复周期",
+                value: _getRecurrenceText()),
+          if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
+            AppDetailRow(
+                icon: Icons.notifications_active_rounded,
+                label: "提醒设置",
+                value: "提前 ${todo.reminderMinutes} 分钟"),
+        ]),
+        if (todo.teamUuid != null)
+          AppDetailSection(title: "协作信息", children: [
+            AppDetailRow(
+                icon: Icons.group_rounded,
+                label: "所属团队",
+                value: todo.teamName ?? "未知团队"),
+            AppDetailRow(
+                icon: Icons.person_rounded,
+                label: "创建者",
+                value: todo.creatorName ?? "未知用户"),
+            AppDetailRow(
+                icon: Icons.handshake_rounded,
+                label: "协作模式",
+                value: todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
+          ]),
+        if (todo.remark != null && todo.remark!.isNotEmpty)
+          AppDetailSection(title: "备注详情", children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                todo.remark!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                  height: 1.5,
+                ),
+              ),
             ),
-            const SizedBox(height: 20),
-            AppDetailSection(title: "基本信息", children: [
-              AppDetailRow(
-                  icon: Icons.flag_rounded,
-                  label: "当前状态",
-                  value: todo.isDone ? "已完成" : "进行中",
-                  valueColor: todo.isDone
-                      ? colorScheme.cdtSuccess
-                      : colorScheme.cdtWarning),
-              AppDetailRow(
-                  icon: Icons.schedule_rounded,
-                  label: "开始时间",
-                  value: startTimeStr),
-              AppDetailRow(
-                  icon: Icons.event_busy_rounded,
-                  label: "截止时间",
-                  value: endTimeStr,
-                  valueColor: (endTime != null &&
-                          !todo.isDone &&
-                          endTime.isBefore(DateTime.now()))
-                      ? colorScheme.error
-                      : null),
-              if (todo.recurrence != RecurrenceType.none)
-                AppDetailRow(
-                    icon: Icons.repeat_rounded,
-                    label: "重复周期",
-                    value: _getRecurrenceText()),
-              if (todo.reminderMinutes != null && todo.reminderMinutes! > 0)
-                AppDetailRow(
-                    icon: Icons.notifications_active_rounded,
-                    label: "提醒设置",
-                    value: "提前 ${todo.reminderMinutes} 分钟"),
-            ]),
-            if (todo.teamUuid != null)
-              AppDetailSection(title: "协作信息", children: [
-                AppDetailRow(
-                    icon: Icons.group_rounded,
-                    label: "所属团队",
-                    value: todo.teamName ?? "未知团队"),
-                AppDetailRow(
-                    icon: Icons.person_rounded,
-                    label: "创建者",
-                    value: todo.creatorName ?? "未知用户"),
-                AppDetailRow(
-                    icon: Icons.handshake_rounded,
-                    label: "协作模式",
-                    value: todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
-              ]),
-            if (todo.remark != null && todo.remark!.isNotEmpty)
-              AppDetailSection(title: "备注详情", children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    todo.remark!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurface,
-                      height: 1.5,
-                    ),
-                  ),
+          ]),
+        if (todo.originalText != null && todo.originalText!.isNotEmpty)
+          AppDetailSection(title: "原始识别文本", children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                todo.originalText!,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: colorScheme.onSurfaceVariant,
                 ),
-              ]),
-            if (todo.originalText != null && todo.originalText!.isNotEmpty)
-              AppDetailSection(title: "原始识别文本", children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    todo.originalText!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+              ),
+            ),
+          ]),
+        if (todo.imagePath != null && todo.imagePath!.isNotEmpty)
+          AppDetailSection(title: "附件图片", children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(todo.imagePath!),
+                  errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片",
+                      style: TextStyle(fontSize: 12)),
                 ),
-              ]),
-            if (todo.imagePath != null && todo.imagePath!.isNotEmpty)
-              AppDetailSection(title: "附件图片", children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      File(todo.imagePath!),
-                      errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片",
-                          style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                ),
-              ]),
-            AppDetailSection(title: "系统信息", children: [
-              AppDetailRow(
-                  icon: Icons.update_rounded,
-                  label: "最近更新",
-                  value: AppTimeFormats.format(
-                      DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
-                              isUtc: true)
-                          .toLocal(),
-                      'yyyy-MM-dd HH:mm:ss')),
-              AppDetailRow(
-                  icon: Icons.fingerprint_rounded,
-                  label: "任务 ID",
-                  value: todo.id.length > 8
-                      ? "${todo.id.substring(0, 8)}..."
-                      : todo.id,
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: todo.id));
-                    AppSnackBars.success(context, "ID 已复制到剪贴板");
-                  }),
-            ]),
-            if (!_loadingRecords && _focusRecords.isNotEmpty)
-              AppDetailSection(
-                  title: "专注记录 (${_focusRecords.length})",
-                  children: [
-                    ..._focusRecords
-                        .take(20)
-                        .map((r) => _buildFocusRecordRow(r)),
-                    if (_focusRecords.length > 20)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          '仅显示最近 20 条',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
+              ),
+            ),
+          ]),
+        AppDetailSection(title: "系统信息", children: [
+          AppDetailRow(
+              icon: Icons.update_rounded,
+              label: "最近更新",
+              value: AppTimeFormats.format(
+                  DateTime.fromMillisecondsSinceEpoch(todo.updatedAt,
+                          isUtc: true)
+                      .toLocal(),
+                  'yyyy-MM-dd HH:mm:ss')),
+          AppDetailRow(
+              icon: Icons.fingerprint_rounded,
+              label: "任务 ID",
+              value: todo.id.length > 8
+                  ? "${todo.id.substring(0, 8)}..."
+                  : todo.id,
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: todo.id));
+                AppSnackBars.success(context, "ID 已复制到剪贴板");
+              }),
+        ]),
+        if (!_loadingRecords && _focusRecords.isNotEmpty)
+          AppDetailSection(
+              title: "专注记录 (${_focusRecords.length})",
+              children: [
+                ..._focusRecords
+                    .take(20)
+                    .map((r) => _buildFocusRecordRow(r)),
+                if (_focusRecords.length > 20)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '仅显示最近 20 条',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                  ]),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
+                    ),
+                  ),
+              ]),
+        const SizedBox(height: 40),
+      ],
     );
   }
 
@@ -3889,58 +3874,52 @@ class TimeLogDetailScreen extends StatelessWidget {
       }
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('时间日志详情')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          AppDetailHeader(
-            icon: Icons.edit_calendar,
-            title: log.title.isNotEmpty ? log.title : '时间日志',
-            color: logColor,
-          ),
-          const SizedBox(height: 20),
-          AppDetailSection(
-            title: '记录信息',
-            children: [
-              AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+    return AppDetailScreen(
+      appBarTitle: '时间日志详情',
+      icon: Icons.edit_calendar,
+      title: log.title.isNotEmpty ? log.title : '时间日志',
+      color: logColor,
+      sections: [
+        AppDetailSection(
+          title: '记录信息',
+          children: [
+            AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.access_time,
+                label: '时长',
+                value: '$durationMin 分钟'),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.play_arrow,
+                label: '开始时间',
+                value: AppTimeFormats.fullDateTime(start)),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.stop,
+                label: '结束时间',
+                value: AppTimeFormats.fullDateTime(end)),
+            if (log.remark != null && log.remark!.isNotEmpty) ...[
               const AppDetailDivider(),
               AppDetailRow(
-                  icon: Icons.access_time,
-                  label: '时长',
-                  value: '$durationMin 分钟'),
-              const AppDetailDivider(),
-              AppDetailRow(
-                  icon: Icons.play_arrow,
-                  label: '开始时间',
-                  value: AppTimeFormats.fullDateTime(start)),
-              const AppDetailDivider(),
-              AppDetailRow(
-                  icon: Icons.stop,
-                  label: '结束时间',
-                  value: AppTimeFormats.fullDateTime(end)),
-              if (log.remark != null && log.remark!.isNotEmpty) ...[
-                const AppDetailDivider(),
-                AppDetailRow(
-                    icon: Icons.note,
-                    label: '备注',
-                    value: log.remark!,
-                    valueMaxLines: 4),
-              ],
-              const AppDetailDivider(),
-              AppDetailRow(
-                icon: Icons.update,
-                label: '最近更新',
-                value: AppTimeFormats.fullDateTime(
-                  DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
-                          isUtc: true)
-                      .toLocal(),
-                ),
-              ),
+                  icon: Icons.note,
+                  label: '备注',
+                  value: log.remark!,
+                  valueMaxLines: 4),
             ],
-          ),
-        ],
-      ),
+            const AppDetailDivider(),
+            AppDetailRow(
+              icon: Icons.update,
+              label: '最近更新',
+              value: AppTimeFormats.fullDateTime(
+                DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
+                        isUtc: true)
+                    .toLocal(),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -3980,71 +3959,174 @@ class PomodoroDetailScreen extends StatelessWidget {
 
     String statusText = record.isCompleted ? '已完成' : '已中断';
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('番茄钟详情')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          AppDetailHeader(
-            icon: Icons.local_fire_department,
-            title: '专注记录',
-            color: pomColor,
-          ),
-          const SizedBox(height: 20),
-          AppDetailSection(
-            title: '专注信息',
-            children: [
-              AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+    final pauseIntervals = record.pauseIntervals ?? [];
+    final totalPauseSeconds = record.totalPauseSeconds ?? 0;
+    final hasPauseData = totalPauseSeconds > 0 || pauseIntervals.isNotEmpty;
+
+    return AppDetailScreen(
+      appBarTitle: '番茄钟详情',
+      icon: Icons.local_fire_department,
+      title: '专注记录',
+      color: pomColor,
+      sections: [
+        AppDetailSection(
+          title: '专注信息',
+          children: [
+            AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.access_time,
+                label: '时长',
+                value: '$durationMin 分钟'),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.play_arrow,
+                label: '开始时间',
+                value: AppTimeFormats.fullDateTime(start)),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.stop,
+                label: '结束时间',
+                value: AppTimeFormats.fullDateTime(end)),
+            const AppDetailDivider(),
+            AppDetailRow(
+                icon: Icons.info_outline,
+                label: '状态',
+                value: statusText,
+                valueColor: record.isCompleted
+                    ? colorScheme.cdtSuccess
+                    : colorScheme.cdtWarning),
+            if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
               const AppDetailDivider(),
               AppDetailRow(
-                  icon: Icons.access_time,
-                  label: '时长',
-                  value: '$durationMin 分钟'),
-              const AppDetailDivider(),
-              AppDetailRow(
-                  icon: Icons.play_arrow,
-                  label: '开始时间',
-                  value: AppTimeFormats.fullDateTime(start)),
-              const AppDetailDivider(),
-              AppDetailRow(
-                  icon: Icons.stop,
-                  label: '结束时间',
-                  value: AppTimeFormats.fullDateTime(end)),
-              const AppDetailDivider(),
-              AppDetailRow(
-                  icon: Icons.info_outline,
-                  label: '状态',
-                  value: statusText,
-                  valueColor: record.isCompleted
-                      ? colorScheme.cdtSuccess
-                      : colorScheme.cdtWarning),
-              if (record.todoTitle != null && record.todoTitle!.isNotEmpty) ...[
-                const AppDetailDivider(),
-                AppDetailRow(
-                    icon: Icons.task_alt,
-                    label: '关联待办',
-                    value: record.todoTitle!,
-                    valueMaxLines: 3),
-              ],
-              if (record.note != null && record.note!.isNotEmpty) ...[
-                const AppDetailDivider(),
-                AppDetailRow(
-                    icon: Icons.note_rounded,
-                    label: '备注',
-                    value: record.note!,
-                    valueMaxLines: 4),
-              ],
-              const AppDetailDivider(),
-              AppDetailRow(
-                icon: Icons.update,
-                label: '最近更新',
-                value: AppTimeFormats.fullDateTime(
-                  DateTime.fromMillisecondsSinceEpoch(record.updatedAt,
-                          isUtc: true)
-                      .toLocal(),
-                ),
-              ),
+                  icon: Icons.task_alt,
+                  label: '关联待办',
+                  value: record.todoTitle!,
+                  valueMaxLines: 3),
             ],
+            if (record.note != null && record.note!.isNotEmpty) ...[
+              const AppDetailDivider(),
+              AppDetailRow(
+                  icon: Icons.note_rounded,
+                  label: '备注',
+                  value: record.note!,
+                  valueMaxLines: 4),
+            ],
+            const AppDetailDivider(),
+            AppDetailRow(
+              icon: Icons.update,
+              label: '最近更新',
+              value: AppTimeFormats.fullDateTime(
+                DateTime.fromMillisecondsSinceEpoch(record.updatedAt,
+                        isUtc: true)
+                    .toLocal(),
+              ),
+            ),
+          ],
+        ),
+        if (hasPauseData)
+          AppDetailSection(
+            title: '暂停记录',
+            children: [
+              AppDetailRow(
+                icon: Icons.pause_circle_outline,
+                label: '总暂停时长',
+                value: formatDurationChinese(totalPauseSeconds),
+                valueColor: colorScheme.cdtWarning,
+              ),
+              if (pauseIntervals.isNotEmpty) ...[
+                const AppDetailDivider(),
+                const SizedBox(height: 8),
+                ...pauseIntervals.asMap().entries.map((entry) {
+                  final index = entry.key + 1;
+                  final interval = entry.value;
+                  return _buildPauseIntervalRow(
+                      context, index, interval, colorScheme);
+                }),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPauseIntervalRow(BuildContext context, int index,
+      PauseInterval interval, ColorScheme colorScheme) {
+    final startLocal =
+        DateTime.fromMillisecondsSinceEpoch(interval.startMs).toLocal();
+    final endLocal = interval.endMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(interval.endMs!).toLocal()
+        : null;
+    final durationSec = interval.durationSeconds;
+    final isOngoing = interval.isOngoing;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isOngoing
+                  ? colorScheme.error.withValues(alpha: 0.15)
+                  : colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '$index',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isOngoing
+                    ? colorScheme.error
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${AppTimeFormats.format(startLocal, 'yyyy-MM-dd HH:mm:ss')}${endLocal != null ? ' - ${DateFormat('HH:mm:ss').format(endLocal)}' : ''}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                if (isOngoing)
+                  Text(
+                    '暂停中...',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.error,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isOngoing
+                  ? colorScheme.error.withValues(alpha: 0.1)
+                  : colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              formatDurationChinese(durationSec),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isOngoing
+                    ? colorScheme.error
+                    : colorScheme.onPrimaryContainer,
+              ),
+            ),
           ),
         ],
       ),

@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import '../../../models.dart';
 import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
-import '../pomodoro_utils.dart';
+import '../../../screens/course_screens.dart';
+import '../../../utils/app_color_utils.dart';
+import '../../../utils/page_transitions.dart';
 
 class PomodoroStats extends StatefulWidget {
   final String username;
@@ -485,7 +487,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       children: sorted.map((e) {
         final tag = _tags.cast<PomodoroTag?>().firstWhere((t) => t?.uuid == e.key, orElse: () => null);
         final name = tag?.name ?? '未知';
-        final color = hexToColor(tag?.color ?? '#9E9E9E');
+        final color = AppColorUtils.parseHex(tag?.color ?? '#9E9E9E');
         final pct = totalSecs > 0 ? e.value / totalSecs : 0.0;
         
         return Padding(
@@ -555,6 +557,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
         ? s.tagUuids.map((uuid) => _tags.cast<PomodoroTag?>().firstWhere((t) => t?.uuid == uuid, orElse: () => null)?.name ?? uuid).join(', ')
         : null;
     final timeLabel = showDate ? DateFormat('MM-dd HH:mm').format(startLocal) : DateFormat('HH:mm').format(startLocal);
+    final cardKey = GlobalKey();
 
     final content = widget.isCompact
         ? Row(children: [
@@ -619,11 +622,26 @@ class PomodoroStatsState extends State<PomodoroStats> {
           );
 
     return Card(
+      key: cardKey,
       elevation: 0,
       color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16)),
-      child: Padding(padding: widget.isCompact ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : EdgeInsets.zero, child: content),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
+        onTap: () {
+          PageTransitions.pushFromRect(
+            context: context,
+            page: PomodoroDetailScreen(
+              record: s,
+              tags: _tags,
+            ),
+            sourceKey: cardKey,
+            sourceBorderRadius: BorderRadius.circular(widget.isCompact ? 12 : 16),
+          );
+        },
+        child: Padding(padding: widget.isCompact ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : EdgeInsets.zero, child: content),
+      ),
     );
   }
 
@@ -765,6 +783,53 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     ]),
                   ),
                 ),
+                // 暂停信息
+                if (session.totalPauseSeconds != null && session.totalPauseSeconds! > 0) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('暂停时长', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      Text(
+                        _formatPauseDuration(session.totalPauseSeconds!),
+                        style: TextStyle(
+                          color: Theme.of(ctx).colorScheme.error,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (session.pauseIntervals != null && session.pauseIntervals!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '${session.pauseIntervals!.length} 次',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (session.pauseIntervals != null && session.pauseIntervals!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (int i = 0; i < session.pauseIntervals!.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 4),
+                            _buildPauseIntervalRow(ctx, i + 1, session.pauseIntervals![i]),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
                 const SizedBox(height: 16),
                 const Text('绑定任务', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
@@ -803,7 +868,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                   spacing: 8, runSpacing: 8,
                   children: _tags.map((tag) {
                     final sel = editTags.contains(tag.uuid);
-                    final color = hexToColor(tag.color);
+                    final color = AppColorUtils.parseHex(tag.color);
                     return FilterChip(
                       label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                       selected: sel, showCheckmark: false, selectedColor: color.withValues(alpha: 0.2),
@@ -879,6 +944,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         startTime: session.startTime, endTime: session.endTime, plannedDuration: session.plannedDuration,
                         actualDuration: session.actualDuration, status: session.status, deviceId: session.deviceId,
                         planBlockId: session.planBlockId, note: editNote.isNotEmpty ? editNote : null,
+                        totalPauseSeconds: session.totalPauseSeconds,
+                        pauseIntervals: session.pauseIntervals,
                         isDeleted: session.isDeleted, version: session.version + 1, createdAt: session.createdAt,
                         updatedAt: DateTime.now().millisecondsSinceEpoch,
                       );
@@ -895,6 +962,47 @@ class PomodoroStatsState extends State<PomodoroStats> {
           );
         },
       ),
+    );
+  }
+
+  String _formatPauseDuration(int totalSeconds) => formatDurationChinese(totalSeconds);
+
+  Widget _buildPauseIntervalRow(BuildContext ctx, int index, PauseInterval interval) {
+    final startStr = DateFormat('HH:mm:ss').format(
+        DateTime.fromMillisecondsSinceEpoch(interval.startMs, isUtc: true).toLocal());
+    final endStr = interval.isOngoing
+        ? '进行中'
+        : DateFormat('HH:mm:ss').format(
+            DateTime.fromMillisecondsSinceEpoch(interval.endMs!, isUtc: true).toLocal());
+    final durationStr = interval.isOngoing ? '' : _formatPauseDuration(interval.durationSeconds);
+    return Row(
+      children: [
+        Text(
+          '$index.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '$startStr → $endStr',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (durationStr.isNotEmpty) ...[
+          const Spacer(),
+          Text(
+            durationStr,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(ctx).colorScheme.error,
+            ),
+          ),
+        ],
+      ],
     );
   }
 

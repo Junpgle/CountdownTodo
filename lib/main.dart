@@ -600,17 +600,14 @@ class _MyAppState extends State<MyApp> {
     debugPrint('[Band] 处理手环操作: $action');
     if (action == 'finish') {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds = ((now - runState.sessionStartMs) / 1000).round();
+      final actualSeconds = PomodoroRunState.computeActualSeconds(
+          runState.sessionStartMs, runState.accumulatedMs,
+          endMs: now);
       final plannedSeconds = runState.plannedFocusSeconds;
-      final record = PomodoroRecord(
-        startTime: runState.sessionStartMs,
-        endTime: now,
-        plannedDuration: plannedSeconds,
-        actualDuration: actualSeconds,
-        tagUuids: runState.tagUuids,
-        todoUuid: runState.todoUuid,
-        todoTitle: runState.todoTitle,
+      final record = PomodoroRecord.fromRunState(
+        state: runState,
         status: PomodoroRecordStatus.completed,
+        endMs: now,
       );
       debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
@@ -619,18 +616,14 @@ class _MyAppState extends State<MyApp> {
       debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds =
-          ((now - runState.sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+      final actualSeconds = PomodoroRunState.computeActualSeconds(
+          runState.sessionStartMs, runState.accumulatedMs,
+          endMs: now);
       if (actualSeconds > 5) {
-        final record = PomodoroRecord(
-          startTime: runState.sessionStartMs,
-          endTime: now,
-          plannedDuration: runState.plannedFocusSeconds,
-          actualDuration: actualSeconds,
-          tagUuids: runState.tagUuids,
-          todoUuid: runState.todoUuid,
-          todoTitle: runState.todoTitle,
+        final record = PomodoroRecord.fromRunState(
+          state: runState,
           status: PomodoroRecordStatus.interrupted,
+          endMs: now,
         );
         debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
         await PomodoroService.addRecord(record);

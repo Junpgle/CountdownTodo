@@ -37,8 +37,9 @@ class ImmersiveTimer extends StatefulWidget {
 }
 
 class _ImmersiveTimerState extends State<ImmersiveTimer>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _celebrationController;
+  late AnimationController _breathingController;
 
   @override
   void initState() {
@@ -47,11 +48,16 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat();
+    _breathingController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
     _celebrationController.dispose();
+    _breathingController.dispose();
     super.dispose();
   }
 
@@ -78,18 +84,9 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
           : 0.0;
     }
 
-    final mins = widget.remainingSeconds ~/ 60;
-    final secs = widget.remainingSeconds % 60;
-    String timeStr = '';
-
-    if (effectiveIsCountUp) {
-      timeStr =
-          '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    } else {
-      timeStr = widget.remainingSeconds > 60
-          ? "${((widget.remainingSeconds / 60).ceil())}'"
-          : '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-    }
+    final timeStr = effectiveIsCountUp
+        ? formatTimerMMSS(widget.remainingSeconds)
+        : formatCountdown(widget.remainingSeconds);
 
     Color ringColor = Theme.of(context).colorScheme.primary;
     if (isFocusing) ringColor = const Color(0xFFFF6B6B);
@@ -126,11 +123,11 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
             : isFocusing
                 ? (widget.isPaused
                     ? (widget.pauseSeconds > 0
-                        ? '⏸️ 暂停中 ${widget.pauseSeconds ~/ 60}:${(widget.pauseSeconds % 60).toString().padLeft(2, '0')}'
+                        ? '⏸️ 暂停中 ${formatTimerMMSS(widget.pauseSeconds)}'
                         : '⏸️ 已暂停')
-                    : (effectiveIsCountUp ? '📈 正在正计时' : '🍅 保持专注'))
+                    : (effectiveIsCountUp ? '正在正计时' : '保持专注'))
                 : isRemote
-                    ? '👀 $displayIdentifier ${widget.isRemoteCountUp ? '正计时' : '专注'}中'
+                    ? '$displayIdentifier ${widget.isRemoteCountUp ? '正计时' : '专注'}中'
                     : '准备开始';
 
     final String cycleText = isRemote
@@ -145,32 +142,43 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
 
     final double ringSize = (isLandscape
             ? (isActive ? 240.0 : 200.0)
-            : (isActive ? 268.0 : 210.0)) *
+            : (isActive ? 280.0 : 220.0)) *
         compactFactor;
     final double strokeW =
-        isActive ? 12.0 * compactFactor : 10.0 * compactFactor;
+        isActive ? 14.0 * compactFactor : 10.0 * compactFactor;
     final double timeFontSize =
-        (isLandscape ? (isActive ? 56.0 : 44.0) : (isActive ? 60.0 : 48.0)) *
+        (isLandscape ? (isActive ? 64.0 : 50.0) : (isActive ? 72.0 : 56.0)) *
             compactFactor;
-    final double labelFontSize = (isActive ? 13.0 : 12.0) * compactFactor;
+    final double labelFontSize = (isActive ? 15.0 : 13.0) * compactFactor;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-      width: ringSize,
-      height: ringSize,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          if (isActive)
-            BoxShadow(
-              color: ringColor.withValues(alpha: 0.2),
-              blurRadius: 36 * compactFactor,
-              spreadRadius: 8 * compactFactor,
-            ),
-        ],
-      ),
-      child: Stack(
+    return AnimatedBuilder(
+      animation: _breathingController,
+      builder: (context, child) {
+        final breathValue = (isFocusing && !widget.isPaused) ? _breathingController.value : 0.0;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+          width: ringSize,
+          height: ringSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Theme.of(context).colorScheme.surface,
+            boxShadow: [
+              if (isActive)
+                BoxShadow(
+                  color: ringColor.withValues(alpha: 0.15 + (breathValue * 0.15)),
+                  blurRadius: (24 + (breathValue * 16)) * compactFactor,
+                  spreadRadius: (4 + (breathValue * 6)) * compactFactor,
+                ),
+              if (isActive)
+                BoxShadow(
+                  color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.08),
+                  blurRadius: 16 * compactFactor,
+                  offset: const Offset(0, 8),
+                ),
+            ],
+          ),
+          child: Stack(
         alignment: Alignment.center,
         children: [
           SizedBox(
@@ -240,7 +248,8 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
                   key: ValueKey(widget.phase),
                   style: TextStyle(
                     fontSize: labelFontSize,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
                     color: labelColor,
                   ),
                   maxLines: 1,
@@ -253,27 +262,32 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
                 curve: Curves.easeInOut,
                 style: TextStyle(
                   fontSize: timeFontSize,
-                  fontWeight: FontWeight.w300,
+                  fontWeight: FontWeight.w200,
                   color: timeColor,
                   fontFeatures: const [FontFeature.tabularFigures()],
-                  letterSpacing: -2,
+                  letterSpacing: -1,
                 ),
                 child: Text(timeStr),
               ),
               const SizedBox(height: 2),
               Container(
                 padding: EdgeInsets.symmetric(
-                    horizontal: 10 * compactFactor,
-                    vertical: 3 * compactFactor),
+                    horizontal: 12 * compactFactor,
+                    vertical: 4 * compactFactor),
                 decoration: BoxDecoration(
-                  color: cycleBgColor,
-                  borderRadius: BorderRadius.circular(10 * compactFactor),
+                  color: cycleBgColor.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(12 * compactFactor),
+                  border: Border.all(
+                    color: cycleTextColor.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
                 ),
                 child: Text(
                   cycleText,
                   style: TextStyle(
-                    fontSize: 11 * compactFactor,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 12 * compactFactor,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
                     color: cycleTextColor,
                   ),
                 ),
@@ -282,6 +296,8 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

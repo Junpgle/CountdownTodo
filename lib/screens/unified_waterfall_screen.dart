@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
-import '../utils/timezone_utils.dart';
+import '../utils/time_utils.dart';
 import '../widgets/team_heatmap_widget.dart';
 import '../widgets/team_gantt_widget.dart';
 

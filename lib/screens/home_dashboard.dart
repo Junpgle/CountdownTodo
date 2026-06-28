@@ -4859,29 +4859,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               if (_wallpaperCopyright != null &&
                                                   _wallpaperCopyright!
                                                       .isNotEmpty)
-                                                Center(
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            top: 16.0,
-                                                            bottom: 32.0),
-                                                    child: Text(
-                                                      _wallpaperCopyright!,
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: isLight
-                                                            ? Colors.white
-                                                                .withValues(
-                                                                    alpha: 0.7)
-                                                            : Colors.grey[600],
-                                                        fontStyle:
-                                                            FontStyle.italic,
-                                                      ),
-                                                      textAlign:
-                                                          TextAlign.center,
-                                                    ),
-                                                  ),
-                                                ),
+                                                _buildWallpaperCopyright(
+                                                    isLight),
                                             ],
                                           ),
                                         ),
@@ -5117,19 +5096,119 @@ class _HomeDashboardState extends State<HomeDashboard>
     return Center(
       child: Padding(
         padding: const EdgeInsets.only(top: 16.0, bottom: 32.0),
-        child: Text(
-          _wallpaperCopyright!,
-          style: TextStyle(
-            fontSize: 12,
-            color: isLight
-                ? Colors.white.withValues(alpha: 0.7)
-                : Colors.grey[600],
-            fontStyle: FontStyle.italic,
-          ),
-          textAlign: TextAlign.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _wallpaperCopyright!,
+              style: TextStyle(
+                fontSize: 12,
+                color: isLight
+                    ? Colors.white.withValues(alpha: 0.7)
+                    : Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: _downloadWallpaper,
+              child: Text(
+                '喜欢该壁纸？点此下载',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isLight
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : Theme.of(context).colorScheme.primary,
+                  decoration: TextDecoration.underline,
+                  decorationColor: isLight
+                      ? Colors.white.withValues(alpha: 0.9)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _downloadWallpaper() async {
+    if (_wallpaperUrl == null) return;
+    try {
+      File? sourceFile;
+      if (_wallpaperUrl!.startsWith('http://') ||
+          _wallpaperUrl!.startsWith('https://')) {
+        final cached =
+            await WallpaperCacheService.cacheManager.getSingleFile(_wallpaperUrl!);
+        if (await cached.exists()) {
+          sourceFile = File(cached.path);
+        }
+      } else if (_isLocalFilePath(_wallpaperUrl!)) {
+        final f = File(_wallpaperUrl!);
+        if (await f.exists()) sourceFile = f;
+      } else if (_wallpaperUrl!.startsWith('assets/')) {
+        final data = await rootBundle.load(_wallpaperUrl!);
+        final ext = _wallpaperUrl!.split('.').last;
+        final downloadDir = await getDownloadsDirectory();
+        if (downloadDir == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('无法获取下载目录')),
+            );
+          }
+          return;
+        }
+        final targetDir = Directory('${downloadDir.path}/CountdownTodo');
+        if (!await targetDir.exists()) await targetDir.create(recursive: true);
+        final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+        final targetFile = File('${targetDir.path}/wallpaper_$ts.$ext');
+        await targetFile.writeAsBytes(data.buffer.asUint8List());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已保存到 ${targetFile.path}')),
+          );
+        }
+        return;
+      }
+
+      if (sourceFile == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('壁纸文件不存在或已过期')),
+          );
+        }
+        return;
+      }
+
+      final downloadDir = await getDownloadsDirectory();
+      if (downloadDir == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法获取下载目录')),
+          );
+        }
+        return;
+      }
+      final targetDir = Directory('${downloadDir.path}/CountdownTodo');
+      if (!await targetDir.exists()) await targetDir.create(recursive: true);
+      final ext = _wallpaperUrl!.split('.').last.split('?').first;
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final targetPath = '${targetDir.path}/wallpaper_$ts.$ext';
+      await sourceFile.copy(targetPath);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存到 $targetPath')),
+        );
+      }
+    } catch (e) {
+      debugPrint('下载壁纸失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {

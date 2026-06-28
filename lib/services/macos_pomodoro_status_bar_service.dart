@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 
+/// macOS 状态栏番茄钟操作事件
+enum MacPomodoroAction { togglePause, stopFocus }
+
 class MacPomodoroStatusBarService {
   static const MethodChannel _channel =
       MethodChannel('countdown_todo/macos_status_bar');
@@ -13,10 +16,18 @@ class MacPomodoroStatusBarService {
   static StreamSubscription<CrossDevicePomodoroState>? _remoteSub;
   static bool _initialized = false;
 
+  /// 状态栏操作事件流（暂停/继续/结束）
+  static final StreamController<MacPomodoroAction> _actionController =
+      StreamController<MacPomodoroAction>.broadcast();
+  static Stream<MacPomodoroAction> get onAction => _actionController.stream;
+
   static Future<void> init() async {
     if (!Platform.isMacOS) return;
     if (_initialized) return;
     _initialized = true;
+
+    // 设置 MethodCallHandler 接收 Swift 端消息
+    _channel.setMethodCallHandler(_handleMethodCall);
 
     // 监听本地专注状态
     try {
@@ -56,6 +67,16 @@ class MacPomodoroStatusBarService {
           _sendRemoteState(remote);
       }
     });
+  }
+
+  /// 处理 Swift 端发来的消息
+  static Future<dynamic> _handleMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'togglePomodoroPause':
+        _actionController.add(MacPomodoroAction.togglePause);
+      case 'stopPomodoroFocus':
+        _actionController.add(MacPomodoroAction.stopFocus);
+    }
   }
 
   static void _sendLocalState(PomodoroRunState state) {

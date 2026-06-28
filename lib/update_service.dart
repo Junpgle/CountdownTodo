@@ -905,6 +905,89 @@ class UpdateService {
     );
   }
 
+  /// 强制下载最新版本，忽略当前版本，下载完成后跳转安装
+  static Future<void> forceDownloadLatest(
+    BuildContext context, {
+    required Function(double) onProgress,
+    required Function(String) onComplete,
+    required Function(String) onError,
+  }) async {
+    final manifest = await checkManifest(
+        preferCache: false, refreshInBackground: false);
+    if (manifest == null) {
+      onError('获取版本信息失败，请检查网络');
+      return;
+    }
+
+    final downloadUrl = getDownloadUrlForArch(manifest);
+    if (downloadUrl.isEmpty) {
+      onError('未找到可用的下载链接');
+      return;
+    }
+
+    // 检查是否已下载
+    final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
+    if (existingPath != null) {
+      onComplete(existingPath);
+      return;
+    }
+
+    await _downloadSubscription?.cancel();
+
+    bool ready = await prepareForDownload(manifest.versionName);
+    if (!ready) {
+      onError('准备下载环境失败，请检查存储权限');
+      return;
+    }
+
+    final path = await getDownloadDirectory();
+    if (path == null) {
+      onError('无法获取下载保存目录');
+      return;
+    }
+
+    String fileName = getUpdateFileName(manifest.versionName);
+    String savePath = "$path/$fileName";
+    String tempPath = "$savePath.download";
+    File tempFile = File(tempPath);
+
+    try {
+      var client = HttpClient();
+      var request = await client.getUrl(Uri.parse(downloadUrl));
+      var response = await request.close();
+
+      if (response.statusCode == 200) {
+        int totalBytes = response.contentLength;
+        int receivedBytes = 0;
+        var sink = tempFile.openWrite();
+
+        _downloadSubscription = response.listen(
+          (List<int> chunk) {
+            receivedBytes += chunk.length;
+            sink.add(chunk);
+            if (totalBytes > 0) {
+              onProgress(receivedBytes / totalBytes);
+            }
+          },
+          onDone: () async {
+            await sink.close();
+            File finalFile = await tempFile.rename(savePath);
+            onComplete(finalFile.path);
+          },
+          onError: (e) async {
+            await sink.close();
+            onError("下载连接中断: $e");
+          },
+          cancelOnError: true,
+        );
+      } else {
+        onError("服务器响应异常: HTTP ${response.statusCode}");
+      }
+    } catch (e) {
+      onError("网络请求发生异常: $e");
+    }
+  }
+
   static Future<void> checkUpdateAndPrompt(BuildContext context,
       {bool isManual = false}) async {
     if (_isDialogShowing) return;

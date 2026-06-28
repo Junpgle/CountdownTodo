@@ -1123,14 +1123,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     );
   }
 
-  static String _formatDuration(int minutes) {
-    if (minutes <= 0) return '0分钟';
-    final hours = minutes ~/ 60;
-    final rest = minutes % 60;
-    if (hours == 0) return '$minutes分钟';
-    if (rest == 0) return '$hours小时';
-    return '$hours小时$rest分钟';
-  }
+  static String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   static List<Map<String, dynamic>> _scopeTodosByTime(
     List<Map<String, dynamic>> todos, {

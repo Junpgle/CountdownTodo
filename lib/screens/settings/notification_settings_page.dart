@@ -6,7 +6,7 @@ import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/storage/app_settings_storage.dart';
 import '../../utils/app_dialogs.dart';
-import '../../utils/app_time_formats.dart';
+import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
 

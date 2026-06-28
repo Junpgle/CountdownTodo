@@ -6,6 +6,7 @@ class MacPomodoroStatusBarController {
 
     private var statusItem: NSStatusItem?
     private var timer: Timer?
+    private var flutterChannel: FlutterMethodChannel?
 
     private var phase: String = "idle"
     private var targetEndMs: Int64 = 0
@@ -26,6 +27,10 @@ class MacPomodoroStatusBarController {
     // MARK: - Public
 
     func setup() {}
+
+    func setFlutterChannel(_ channel: FlutterMethodChannel) {
+        self.flutterChannel = channel
+    }
 
     func updatePomodoroStatus(args: [String: Any]) {
         phase = args["phase"] as? String ?? "idle"
@@ -167,12 +172,18 @@ class MacPomodoroStatusBarController {
     }
 
     private func calculatePausedMinutes() -> Int {
+        // 使用 pausedAtMs 或 pauseStartMs 作为暂停时间点
         let frozenMs = pausedAtMs > 0 ? pausedAtMs : (pauseStartMs > 0 ? pauseStartMs : Int64(Date().timeIntervalSince1970 * 1000))
+        
         if mode == "countdown" {
+            // 倒计时模式：显示剩余时间（暂停时冻结）
+            // remaining = targetEndMs - frozenMs + accumulatedMs
             let remainingMs = targetEndMs - frozenMs + accumulatedMs
             guard remainingMs > 0 else { return 0 }
-            return Int(ceil(Double(remainingMs) / 60000.0))
+            return max(Int(ceil(Double(remainingMs) / 60000.0)), 1)
         } else {
+            // 正计时模式：显示已专注时间（暂停时冻结）
+            // elapsed = frozenMs - sessionStartMs - accumulatedMs
             let elapsedMs = frozenMs - sessionStartMs - accumulatedMs
             guard elapsedMs > 0 else { return 0 }
             return Int(floor(Double(elapsedMs) / 60000.0))
@@ -213,6 +224,11 @@ class MacPomodoroStatusBarController {
     }
 
     @objc private func timerFired() {
+        // 暂停状态下不更新显示，直接返回
+        guard !isPaused else {
+            cancelTimer()
+            return
+        }
         refreshDisplay()
         scheduleNextUpdate()
     }
@@ -225,11 +241,13 @@ class MacPomodoroStatusBarController {
     }
 
     @objc private func togglePause() {
-        // TODO: 通过 Flutter channel 通知 Dart 层暂停/继续
+        guard !isRemote else { return }
+        flutterChannel?.invokeMethod("togglePomodoroPause", arguments: nil)
     }
 
     @objc private func stopFocus() {
-        // TODO: 通过 Flutter channel 通知 Dart 层结束专注
+        guard !isRemote else { return }
+        flutterChannel?.invokeMethod("stopPomodoroFocus", arguments: nil)
     }
 
     @objc private func quitApp() {

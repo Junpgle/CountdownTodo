@@ -386,20 +386,17 @@ class FloatWindowService {
     // Save record in background
     if (action == 'finish') {
       final isCountUp = saved.mode == TimerMode.countUp;
-      final actualSecs =
-          isCountUp ? secs : ((now - saved.sessionStartMs) ~/ 1000);
+      final actualSecs = isCountUp
+          ? secs
+          : PomodoroRunState.computeActualSeconds(
+              saved.sessionStartMs, saved.accumulatedMs,
+              endMs: now);
 
-      final record = PomodoroRecord(
-        uuid: saved.sessionUuid,
-        todoUuid: saved.todoUuid,
-        todoTitle: saved.todoTitle,
-        tagUuids: saved.tagUuids,
-        startTime: saved.sessionStartMs,
-        endTime: now,
-        plannedDuration: saved.plannedFocusSeconds,
-        actualDuration: actualSecs,
+      final record = PomodoroRecord.fromRunState(
+        state: saved,
         status: PomodoroRecordStatus.completed,
-        note: saved.note,
+        endMs: now,
+        actualDuration: actualSecs,
       );
 
       await PomodoroService.addRecord(record);
@@ -416,19 +413,14 @@ class FloatWindowService {
         }
       }
     } else if (action == 'abandon') {
-      final actualSecs = ((now - saved.sessionStartMs) ~/ 1000);
+      final actualSecs = PomodoroRunState.computeActualSeconds(
+          saved.sessionStartMs, saved.accumulatedMs,
+          endMs: now);
       if (actualSecs > 5) {
-        await PomodoroService.addRecord(PomodoroRecord(
-          uuid: saved.sessionUuid,
-          todoUuid: saved.todoUuid,
-          todoTitle: saved.todoTitle,
-          tagUuids: saved.tagUuids,
-          startTime: saved.sessionStartMs,
-          endTime: now,
-          plannedDuration: saved.plannedFocusSeconds,
-          actualDuration: actualSecs,
+        await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+          state: saved,
           status: PomodoroRecordStatus.interrupted,
-          note: saved.note,
+          endMs: now,
         ));
       }
       PomodoroSyncService().sendStopSignal();

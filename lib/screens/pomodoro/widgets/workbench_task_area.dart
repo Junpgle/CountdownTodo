@@ -65,48 +65,31 @@ class WorkbenchTaskArea extends StatelessWidget {
     if (isFocusing) {
       return GestureDetector(
         onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context)
-                .colorScheme
-                .surfaceContainerHighest
-                .withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(16),
-            border:
-                Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 boundTodo != null
                     ? Icons.track_changes_outlined
                     : Icons.add_task,
-                size: 16,
-                color: boundTodo != null
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 14,
+                color: contentColor.withValues(alpha: 0.5),
               ),
-              const SizedBox(width: 10),
-              Expanded(
+              const SizedBox(width: 6),
+              Flexible(
                 child: Text(
-                  boundTodo?.title ?? '点击绑定任务',
+                  boundTodo?.title ?? '无任务',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontWeight:
-                        boundTodo != null ? FontWeight.w500 : FontWeight.normal,
-                    color: boundTodo != null
-                        ? contentColor
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: contentColor.withValues(alpha: 0.6),
                   ),
                 ),
-              ),
-              Icon(
-                boundTodo != null ? Icons.swap_horiz : Icons.chevron_right,
-                size: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ],
           ),

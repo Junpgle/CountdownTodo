@@ -11,6 +11,22 @@ class AppDelegate: FlutterAppDelegate {
     return true
   }
 
+  override func applicationDidFinishLaunching(_ notification: Notification) {
+    super.applicationDidFinishLaunching(notification)
+    setupPomodoroStatusBarChannel()
+  }
+
+  private func setupPomodoroStatusBarChannel() {
+    guard let controller = mainFlutterWindow?.contentViewController as? FlutterViewController else {
+      return
+    }
+    let channel = FlutterMethodChannel(
+      name: "countdown_todo/macos_status_bar",
+      binaryMessenger: controller.engine.binaryMessenger
+    )
+    MacPomodoroStatusBarController.shared.setFlutterChannel(channel)
+  }
+
   override func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
       if url.scheme == "countdowntodo" {

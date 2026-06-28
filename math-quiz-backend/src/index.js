@@ -1,4 +1,5 @@
 /**
+ * 该服务器已废弃
  * Math Quiz App Backend - Cloudflare Worker
  * 终极生产级：Delta Sync (增量同步) + 彻底解决 UUID 映射问题 + 密码重置
  * [新增] 忘记密码 / 重置密码完整流程
@@ -1083,7 +1084,7 @@ export default {
               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(uuid) DO UPDATE SET
                 content=excluded.content, is_completed=excluded.is_completed, is_deleted=excluded.is_deleted, version=excluded.version, device_id=excluded.device_id, updated_at=excluded.updated_at, due_date=excluded.due_date, created_date=excluded.created_date, recurrence=excluded.recurrence, custom_interval_days=excluded.custom_interval_days, recurrence_end_date=excluded.recurrence_end_date, remark=excluded.remark, group_id=excluded.group_id
-              WHERE excluded.updated_at > todos.updated_at 
+              WHERE excluded.updated_at > todos.updated_at
                  OR (excluded.updated_at = todos.updated_at AND excluded.version > todos.version)
                  OR (todos.group_id IS NULL AND excluded.group_id IS NOT NULL)
             `).bind(t.uuid, getMappedUserId(t.user_id), t.content, t.is_completed, t.is_deleted, t.version, t.device_id, t.created_at, t.updated_at, t.due_date, t.created_date, t.recurrence, t.custom_interval_days, t.recurrence_end_date, t.remark, t.group_id));
@@ -1299,7 +1300,7 @@ export default {
         if (!authUserId) return errorResponse("未授权", 401);
         const teamUuid = url.searchParams.get("team_uuid");
         const { results } = await DB.prepare(`
-          SELECT u.username, u.email, u.avatar_url, tm.role, tm.joined_at 
+          SELECT u.username, u.email, u.avatar_url, tm.role, tm.joined_at
           FROM users u JOIN team_members tm ON u.id = tm.user_id WHERE tm.team_uuid = ?
         `).bind(teamUuid).all();
         return jsonResponse({ success: true, members: results });

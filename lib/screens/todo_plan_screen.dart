@@ -1202,14 +1202,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     super.dispose();
   }
 
-  String _formatDuration(int minutes) {
-    if (minutes >= 60) {
-      final h = minutes ~/ 60;
-      final m = minutes % 60;
-      return m > 0 ? '$h小时$m分钟' : '$h小时';
-    }
-    return '$minutes分钟';
-  }
+  String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   Future<void> _prefillEstimate(String todoId) async {
     final todo = widget.todos.cast<TodoItem?>().firstWhere(

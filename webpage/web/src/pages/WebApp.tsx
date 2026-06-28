@@ -22,6 +22,11 @@ interface RemotePomData {
   tags: string[];
   note: string;
   duration: number;
+  // 🚀 暂停状态字段
+  isPaused?: boolean;
+  pausedAtMs?: number;
+  accumulatedMs?: number;
+  pauseStartMs?: number;
 }
 
 import {
@@ -310,6 +315,36 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       remotePomRef.current = updated;
       setRemotePomData(updated);
     });
+    // 🚀 新增：暂停信号处理
+    const unsubPause = ws.on('PAUSE', (data) => {
+      if (data.sourceDevice === ApiService.getDeviceId()) return;
+      console.log('[POM] PAUSE');
+      const updated = {
+        ...remotePomRef.current,
+        isPaused: true,
+        pausedAtMs: (data.pausedAtMs as number) || Date.now(),
+        accumulatedMs: (data.accumulatedMs as number) || 0,
+        pauseStartMs: (data.pauseStartMs as number) || Date.now(),
+      };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
+    // 🚀 新增：恢复信号处理
+    const unsubResume = ws.on('RESUME', (data) => {
+      if (data.sourceDevice === ApiService.getDeviceId()) return;
+      console.log('[POM] RESUME');
+      const targetEnd = (data.target_end_ms as number) || (data.targetEndMs as number) || remotePomRef.current.targetEnd;
+      const updated = {
+        ...remotePomRef.current,
+        isPaused: false,
+        pausedAtMs: undefined,
+        pauseStartMs: undefined,
+        accumulatedMs: (data.accumulatedMs as number) || remotePomRef.current.accumulatedMs,
+        targetEnd,
+      };
+      remotePomRef.current = updated;
+      setRemotePomData(updated);
+    });
 
     const unsubSyncData = ws.on('SYNC_DATA', () => {
       const now = Date.now();
@@ -370,6 +405,8 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
       unsubClear();
       unsubUpdateNote();
       unsubUpdateTags();
+      unsubPause();
+      unsubResume();
       unsubSyncData();
       unsubTeamUpdate();
       unsubNewAnnouncement();

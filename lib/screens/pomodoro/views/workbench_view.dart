@@ -15,8 +15,10 @@ import '../../../services/pomodoro_sync_service.dart';
 import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
+import '../../../services/macos_pomodoro_status_bar_service.dart';
 import '../../../update_service.dart';
-import '../pomodoro_utils.dart';
+import '../../../utils/app_color_utils.dart';
+import '../../../utils/time_utils.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
@@ -68,6 +70,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   int _pauseStartMs = 0;
   int _pauseElapsedSecs = 0;
   Timer? _pauseTicker;
+  final List<PauseInterval> _pauseIntervals = [];
 
   // ── 任务绑定 ──
   TodoItem? _boundTodo;
@@ -133,6 +136,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   StreamSubscription? _islandSub;
   StreamSubscription? _bandSub;
+  StreamSubscription? _macStatusBarSub;
   void _listenToIslandActions() {
     _islandSub = IslandChannel.actionStream.listen((actionData) {
       if (!mounted) return;
@@ -170,6 +174,22 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         }
       }
     });
+    // 监听 macOS 状态栏操作
+    if (Platform.isMacOS) {
+      _macStatusBarSub = MacPomodoroStatusBarService.onAction.listen((action) {
+        if (!mounted) return;
+        switch (action) {
+          case MacPomodoroAction.togglePause:
+            if (_isPaused) {
+              _resumeFocus();
+            } else {
+              _pauseFocus();
+            }
+          case MacPomodoroAction.stopFocus:
+            _finishEarly();
+        }
+      });
+    }
   }
 
   StreamSubscription? _runStateSub;
@@ -226,6 +246,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _runStateSub?.cancel();
     _islandSub?.cancel();
     _bandSub?.cancel();
+    _macStatusBarSub?.cancel();
     _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -891,6 +912,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _accumulatedMs = saved.accumulatedMs ?? 0;
           _pauseStartMs = saved.pauseStartMs;
           _currentNote = saved.note ?? '';
+          _pauseIntervals
+            ..clear()
+            ..addAll(saved.pauseIntervals);
         });
         _syncService.setLocalFocusing(true);
         widget.onPhaseChanged(_phase);
@@ -1149,6 +1173,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     //     '[Pause] Ticker cancelled, setting _pausedAtMs and _pauseStartMs');
     _pausedAtMs = DateTime.now().millisecondsSinceEpoch;
     _pauseStartMs = DateTime.now().millisecondsSinceEpoch;
+    _pauseIntervals.add(PauseInterval(startMs: _pausedAtMs));
 
     if (_settings.mode == TimerMode.countUp) {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -1167,28 +1192,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     debugPrint('[Pause] After setState, calling notifications');
     _pushPomodoroNotification();
     _showLocalFloat();
-    PomodoroService.saveRunState(PomodoroRunState(
-      phase: _phase,
-      sessionUuid: _currentSessionUuid,
-      targetEndMs: _targetEndMs,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      focusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      breakSeconds: _settings.breakMinutes * 60,
-      todoUuid: _boundTodo?.id,
-      todoTitle: _boundTodo?.title,
-      tagUuids: _selectedTagUuids,
-      sessionStartMs: _sessionStartMs,
-      plannedFocusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      mode: _settings.mode,
-      isPaused: true,
-      pausedAtMs: _pausedAtMs,
-      accumulatedMs: _accumulatedMs,
-      pauseStartMs: _pauseStartMs,
-      note: _currentNote.isNotEmpty ? _currentNote : null,
-    ));
+    PomodoroService.saveRunState(_buildCurrentRunState());
     _syncService.sendPauseSignal(
       sessionUuid: _currentSessionUuid,
       pausedAtMs: _pausedAtMs,
@@ -1203,6 +1207,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_pausedAtMs > 0) {
       final pauseDuration = now - _pausedAtMs;
       _accumulatedMs += pauseDuration;
+      if (_pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = now;
+      }
       debugPrint(
           '[Resume] UPDATED. pauseDuration: $pauseDuration, new _accumulatedMs: $_accumulatedMs');
 
@@ -1242,27 +1249,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       todoTitle: _boundTodo?.title,
       note: _currentNote.isNotEmpty ? _currentNote : null,
     );
-    await PomodoroService.saveRunState(PomodoroRunState(
-      phase: _phase,
-      sessionUuid: _currentSessionUuid,
-      targetEndMs: _targetEndMs,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      focusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      breakSeconds: _settings.breakMinutes * 60,
-      todoUuid: _boundTodo?.id,
-      todoTitle: _boundTodo?.title,
-      tagUuids: _selectedTagUuids,
-      sessionStartMs: _sessionStartMs,
-      plannedFocusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      mode: _settings.mode,
-      isPaused: false,
-      pausedAtMs: 0,
-      accumulatedMs: _accumulatedMs,
-      note: _currentNote.isNotEmpty ? _currentNote : null,
-    ));
+    await PomodoroService.saveRunState(_buildCurrentRunState());
   }
 
   void _showPauseDialog() {
@@ -1288,9 +1275,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     ? '已累计专注: ${_formatSeconds(_remainingSeconds)}'
                     : '还需持续专注: ${_formatSeconds(_remainingSeconds)}'),
                 const SizedBox(height: 8),
-                // 使用外部已经有的 _pauseElapsedSecs，
-                // 但为了让弹窗自刷新，我们需要在弹窗建立时也跑一个微型 Timer
                 _PauseTimerText(pauseStartMs: _pauseStartMs),
+                if (_pauseIntervals.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '历史暂停 ${_pauseIntervals.length - 1} 次，累计 ${_formatSeconds((_accumulatedMs / 1000).round())}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                  ),
+                ],
               ],
             ),
             actions: [
@@ -1306,7 +1300,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     backgroundColor: Colors.red.shade400),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _abandonFocus();
+                  _showPauseEndChoiceDialog();
                 },
                 child: const Text('结束专注'),
               ),
@@ -1317,14 +1311,52 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
-  String _formatSeconds(int totalSeconds) {
-    final h = totalSeconds ~/ 3600;
-    final m = (totalSeconds % 3600) ~/ 60;
-    final s = totalSeconds % 60;
-    if (h > 0) return '$h小时${m > 0 ? "$m分" : ""}';
-    if (m > 0) return '$m分${s > 0 ? "$s秒" : ""}';
-    return '$s秒';
+  void _showPauseEndChoiceDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('结束专注'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_boundTodo != null
+                ? '正在专注: "${_boundTodo!.title}"'
+                : '自由专注中'),
+            const SizedBox(height: 12),
+            Text(
+              '已累计专注: ${_formatSeconds(PomodoroRunState.computeActualSeconds(_sessionStartMs, _accumulatedMs, endMs: _pausedAtMs > 0 ? _pausedAtMs : DateTime.now().millisecondsSinceEpoch))}',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            const Text('请选择结束方式：'),
+          ],
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _abandonFocus(true);
+            },
+            child: const Text('放弃专注'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _finishEarly();
+            },
+            child: const Text('提前结束'),
+          ),
+        ],
+      ),
+    );
   }
+
+  String _formatSeconds(int totalSeconds) => formatDurationChinese(totalSeconds);
 
   Future<void> _startFocus() async {
     if (_phase == PomodoroPhase.remoteWatching) {
@@ -1353,6 +1385,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isPaused = false;
     _pausedAtMs = 0;
     _accumulatedMs = 0;
+    _pauseIntervals.clear();
 
     _suppressRunStateEvents = true;
     final PomodoroStartResult startResult;
@@ -1388,7 +1421,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Future<void> _switchTask(TodoItem? newTodo) async {
     if (_phase != PomodoroPhase.focusing) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+    final actualSeconds = PomodoroRunState.computeActualSeconds(
+        _sessionStartMs, _accumulatedMs,
+        endMs: now);
 
     final oldTodo = _boundTodo;
     final oldTagUuids = List<String>.from(_selectedTagUuids);
@@ -1408,6 +1443,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     if (actualSeconds > 5) {
       final isCountUp = _settings.mode == TimerMode.countUp;
+      final pauseSecs = (_accumulatedMs / 1000).round();
+      final intervals = List<PauseInterval>.from(_pauseIntervals);
       await PomodoroService.addRecord(PomodoroRecord(
         uuid: _currentSessionUuid,
         todoUuid: oldTodo?.id,
@@ -1420,12 +1457,19 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         status: PomodoroRecordStatus.switched,
         deviceId: _deviceId.isNotEmpty ? _deviceId : null,
         note: _currentNote.isNotEmpty ? _currentNote : null,
+        totalPauseSeconds: pauseSecs,
+        pauseIntervals: intervals,
       ));
       widget.onRecordAdded?.call();
     }
 
     _currentNote = '';
     _currentSessionUuid = const Uuid().v4();
+    _pauseIntervals.clear();
+    _accumulatedMs = 0;
+    _isPaused = false;
+    _pausedAtMs = 0;
+    _pauseStartMs = 0;
     final isCountUpNow = _settings.mode == TimerMode.countUp;
     if (isCountUpNow) {
       setState(() => _remainingSeconds = 0); // 🚀 本端也显式清零
@@ -1458,14 +1502,23 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _isHandlingEnd = true;
     try {
       _ticker?.cancel();
-      _isPaused = false;
-      _pausedAtMs = 0;
-      _accumulatedMs = 0;
+      _pauseTicker?.cancel();
       NotificationService.cancelNotification();
       NotificationService.cancelReminder(40001);
       NotificationService.cancelReminder(40002);
       final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds = ((now - _sessionStartMs) / 1000).round();
+      
+      // 如果正在暂停，关闭最后一个暂停区间
+      if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = now;
+      }
+      
+      final actualSeconds = PomodoroRunState.computeActualSeconds(
+          _sessionStartMs, _accumulatedMs,
+          endMs: now);
+      _isPaused = false;
+      _pausedAtMs = 0;
+      _pauseStartMs = 0;
       final isCountUp = _settings.mode == TimerMode.countUp;
 
       await _persistIdleBoundTodo(_boundTodo);
@@ -1482,6 +1535,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         endMs: now,
         isCountUp: isCountUp,
       );
+      _accumulatedMs = 0;
+      _pauseIntervals.clear();
       NotificationService.sendPomodoroEndAlert(
           alertKey: 'pomo_end_$now',
           todoTitle: _boundTodo?.title,
@@ -1496,9 +1551,16 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
+      _pauseTicker?.cancel();
       NotificationService.cancelReminder(40001);
       final now = DateTime.now().millisecondsSinceEpoch;
       final isCountUp = _settings.mode == TimerMode.countUp;
+      
+      // 如果正在暂停，关闭最后一个暂停区间
+      if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = now;
+      }
+      
       await _persistIdleBoundTodo(_boundTodo);
       await _clearRunStateSilently();
       _syncService.sendStopSignal(todoUuid: _boundTodo?.id);
@@ -1508,7 +1570,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       await _askCompletionAndRecord(
         sessionUuid: _currentSessionUuid,
         durationSeconds: isCountUp
-            ? ((now - _sessionStartMs) / 1000).round()
+            ? PomodoroRunState.computeActualSeconds(
+                _sessionStartMs, _accumulatedMs,
+                endMs: now)
             : _settings.focusMinutes * 60,
         startMs: _sessionStartMs,
         endMs: now,
@@ -1589,18 +1653,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         ],
       ),
     );
-    final record = PomodoroRecord(
-      uuid: sessionUuid,
-      todoUuid: (_boundTodo?.id.isNotEmpty == true) ? _boundTodo!.id : null,
-      todoTitle: _boundTodo?.title,
-      tagUuids: List.from(_selectedTagUuids),
-      startTime: startMs,
-      endTime: isCountUp ? startMs + editedDuration * 1000 : endMs,
-      plannedDuration: isCountUp ? 0 : _settings.focusMinutes * 60,
-      actualDuration: editedDuration,
+    final record = PomodoroRecord.fromRunState(
+      state: _buildCurrentRunState(),
       status: PomodoroRecordStatus.completed,
+      endMs: isCountUp ? startMs + editedDuration * 1000 : endMs,
+      actualDuration: editedDuration,
       deviceId: _deviceId.isNotEmpty ? _deviceId : null,
-      note: _currentNote.isNotEmpty ? _currentNote : null,
     );
     await PomodoroService.addRecord(record);
     widget.onRecordAdded?.call();
@@ -1701,6 +1759,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     try {
       _ticker?.cancel();
       _ticker = null;
+      _pauseTicker?.cancel();
       bool confirm = skipDialog;
       if (!skipDialog) {
         final res = await showDialog<bool>(
@@ -1726,23 +1785,22 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
       if (confirm) {
         final now = DateTime.now().millisecondsSinceEpoch;
-        final actualSeconds =
-            ((now - _sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+        
+        // 如果正在暂停，关闭最后一个暂停区间
+        if (_isPaused && _pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+          _pauseIntervals.last.endMs = now;
+        }
+        
+        final actualSeconds = PomodoroRunState.computeActualSeconds(
+            _sessionStartMs, _accumulatedMs,
+            endMs: now);
         final isCountUpMode = _settings.mode == TimerMode.countUp;
         if (actualSeconds > 5) {
-          await PomodoroService.addRecord(PomodoroRecord(
-            uuid: _currentSessionUuid,
-            todoUuid:
-                (_boundTodo?.id.isNotEmpty == true) ? _boundTodo!.id : null,
-            todoTitle: _boundTodo?.title,
-            tagUuids: List.from(_selectedTagUuids),
-            startTime: _sessionStartMs,
-            endTime: now,
-            plannedDuration: isCountUpMode ? 0 : _settings.focusMinutes * 60,
-            actualDuration: actualSeconds,
+          await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+            state: _buildCurrentRunState(),
             status: PomodoroRecordStatus.interrupted,
+            endMs: now,
             deviceId: _deviceId.isNotEmpty ? _deviceId : null,
-            note: _currentNote.isNotEmpty ? _currentNote : null,
           ));
           widget.onRecordAdded?.call();
         }
@@ -2104,34 +2162,38 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
+  /// 从当前 widget 状态构建 PomodoroRunState，统一各调用点
+  PomodoroRunState _buildCurrentRunState() => PomodoroRunState(
+        phase: _phase,
+        sessionUuid: _currentSessionUuid,
+        targetEndMs: _targetEndMs,
+        currentCycle: _currentCycle,
+        totalCycles: _settings.cycles,
+        focusSeconds:
+            _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+        breakSeconds: _settings.breakMinutes * 60,
+        todoUuid: _boundTodo?.id,
+        todoTitle: _boundTodo?.title,
+        tagUuids: _selectedTagUuids,
+        sessionStartMs: _sessionStartMs,
+        plannedFocusSeconds:
+            _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
+        mode: _settings.mode,
+        isPaused: _isPaused,
+        pausedAtMs: _pausedAtMs,
+        accumulatedMs: _accumulatedMs,
+        pauseStartMs: _pauseStartMs,
+        pauseIntervals: _pauseIntervals,
+        note: _currentNote.isNotEmpty ? _currentNote : null,
+      );
+
   Future<void> _saveCurrentRunState() async {
     if (_phase == PomodoroPhase.idle ||
         _phase == PomodoroPhase.finished ||
         _phase == PomodoroPhase.remoteWatching) {
       return;
     }
-    await PomodoroService.saveRunState(PomodoroRunState(
-      phase: _phase,
-      sessionUuid: _currentSessionUuid,
-      targetEndMs: _targetEndMs,
-      currentCycle: _currentCycle,
-      totalCycles: _settings.cycles,
-      focusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      breakSeconds: _settings.breakMinutes * 60,
-      todoUuid: _boundTodo?.id,
-      todoTitle: _boundTodo?.title,
-      tagUuids: _selectedTagUuids,
-      sessionStartMs: _sessionStartMs,
-      plannedFocusSeconds:
-          _settings.mode == TimerMode.countUp ? 0 : _settings.focusMinutes * 60,
-      mode: _settings.mode,
-      isPaused: _isPaused,
-      pausedAtMs: _pausedAtMs,
-      accumulatedMs: _accumulatedMs,
-      pauseStartMs: _pauseStartMs,
-      note: _currentNote.isNotEmpty ? _currentNote : null,
-    ));
+    await PomodoroService.saveRunState(_buildCurrentRunState());
   }
 
   Future<void> _showLocalFloat() async {
@@ -2636,33 +2698,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildNoteButton(Color contentColor) {
-    return InkWell(
+    return GestureDetector(
       onTap: _showNoteDialog,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: _currentNote.isEmpty
-              ? contentColor.withValues(alpha: 0.08)
-              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _currentNote.isEmpty
-                ? contentColor.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _currentNote.isEmpty
-                  ? Icons.note_add_outlined
-                  : Icons.note_rounded,
-              size: 16,
-              color: _currentNote.isEmpty
-                  ? contentColor.withValues(alpha: 0.6)
-                  : Theme.of(context).colorScheme.primary,
+              _currentNote.isEmpty ? Icons.edit_note_rounded : Icons.note_rounded,
+              size: 14,
+              color: contentColor.withValues(alpha: 0.4),
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -2671,10 +2718,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 13,
-                  color: _currentNote.isEmpty
-                      ? contentColor.withValues(alpha: 0.6)
-                      : Theme.of(context).colorScheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: contentColor.withValues(alpha: 0.5),
                 ),
               ),
             ),
@@ -2726,7 +2772,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         spacing: 6,
         runSpacing: 4,
         children: activeTags
-            .map((t) => _SimpleTag(name: t.name, color: hexToColor(t.color)))
+            .map((t) => _SimpleTag(name: t.name, color: AppColorUtils.parseHex(t.color)))
             .toList());
   }
 
@@ -2742,7 +2788,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               alignment: WrapAlignment.center,
               children: _tags.map((tag) {
                 final selected = _selectedTagUuids.contains(tag.uuid);
-                final color = hexToColor(tag.color);
+                final color = AppColorUtils.parseHex(tag.color);
                 return FilterChip(
                   label: Text(tag.name, style: const TextStyle(fontSize: 13)),
                   selected: selected,
@@ -2819,19 +2865,14 @@ class _SimpleTag extends StatelessWidget {
   final String name;
   final Color color;
   const _SimpleTag({required this.name, required this.color});
-  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.4))),
-      child: Text(name,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Text('#$name',
           style: TextStyle(
               fontSize: 12,
-              color: color.withValues(alpha: 0.9),
-              fontWeight: FontWeight.w500)),
+              color: color.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w400)),
     );
   }
 }
@@ -2868,12 +2909,7 @@ class _PauseTimerTextState extends State<_PauseTimerText> {
     super.dispose();
   }
 
-  String _format(int s) {
-    if (s < 0) s = 0;
-    final mm = (s ~/ 60).toString().padLeft(2, '0');
-    final ss = (s % 60).toString().padLeft(2, '0');
-    return '$mm:$ss';
-  }
+  String _format(int s) => formatTimerMMSS(s);
 
   @override
   Widget build(BuildContext context) {

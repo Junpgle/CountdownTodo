@@ -247,6 +247,11 @@ export interface PomodoroState {
   startTimeMs: number;      // when current focus session began
   recordUuid: string;
   teamUuid?: string | null;
+  // 🚀 暂停状态字段
+  isPaused?: boolean;
+  pausedAtMs?: number;      // 暂停时的时间戳
+  accumulatedMs?: number;   // 累计暂停毫秒数
+  pauseStartMs?: number;    // 当前暂停开始时间
 }
 
 export function loadPomodoroState(userId: number): PomodoroState | null {

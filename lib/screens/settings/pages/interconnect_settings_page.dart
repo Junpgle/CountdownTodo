@@ -5,6 +5,8 @@ import '../../band_sync_screen.dart';
 import '../lan_sync_screen.dart';
 import '../calendar_sync_page.dart';
 import '../batch_tag_page.dart';
+import 'data_export_page.dart';
+import 'data_import_page.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -73,12 +75,10 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
     required IconData icon,
     required String title,
     required String subtitle,
-    required Color color,
     required VoidCallback onTap,
   }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
+    final colorScheme = Theme.of(context).colorScheme;
+
     return _buildTile(
       targetId: id,
       child: GestureDetector(
@@ -86,12 +86,12 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+            color: colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
             boxShadow: [
               BoxShadow(
-                color: color.withValues(alpha: 0.05),
+                color: colorScheme.primary.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -103,22 +103,22 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: colorScheme.primaryContainer,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 28),
+                child: Icon(icon, color: colorScheme.onPrimaryContainer, size: 28),
               ),
               const Spacer(),
               Text(
                 title,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -140,9 +140,9 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16.0, left: 4.0),
-              child: Text('设备互联向导', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0, left: 4.0),
+              child: Text('设备互联向导', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
             GridView.count(
               shrinkWrap: true,
@@ -157,7 +157,6 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   icon: Icons.wifi_tethering,
                   title: '局域网同步',
                   subtitle: '同账号设备间无缝互传数据',
-                  color: Colors.blue,
                   onTap: () {
                     Navigator.push(
                       context, 
@@ -173,7 +172,6 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   icon: Icons.watch_outlined,
                   title: '小米手环',
                   subtitle: '借助快应用将待办同步至手环',
-                  color: Colors.orange,
                   onTap: () {
                     Navigator.push(
                       context, 
@@ -189,7 +187,6 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   icon: Icons.calendar_month,
                   title: '系统日历',
                   subtitle: '将软件内课表双向同步至系统',
-                  color: Colors.redAccent,
                   onTap: () {
                     Navigator.push(
                       context,
@@ -205,7 +202,6 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   icon: Icons.label_outlined,
                   title: '批量标签',
                   subtitle: '为番茄钟和时间日志批量添加标签',
-                  color: Colors.teal,
                   onTap: () {
                     Navigator.push(
                       context,
@@ -215,6 +211,36 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                           isEmbedded: widget.isEmbedded,
                         ),
                         settings: const RouteSettings(name: '批量添加标签'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'data_export',
+                  icon: Icons.upload_file,
+                  title: '数据导出',
+                  subtitle: '将待办、课程、倒计时等数据导出为文件',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        DataExportPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '数据导出'),
+                      ),
+                    );
+                  },
+                ),
+                _buildFeatureCard(
+                  id: 'data_import',
+                  icon: Icons.download,
+                  title: '数据导入',
+                  subtitle: '从备份文件恢复或合并数据',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                        DataImportPage(isEmbedded: widget.isEmbedded),
+                        settings: const RouteSettings(name: '数据导入'),
                       ),
                     );
                   },

@@ -19,20 +19,6 @@ String _periodToTime(int hhmm) {
   return '$h:${m.toString().padLeft(2, '0')}';
 }
 
-const List<String> _weekdayNames = [
-  '',
-  '周一',
-  '周二',
-  '周三',
-  '周四',
-  '周五',
-  '周六',
-  '周日'
-];
-
-String _weekdayLabel(int weekday) =>
-    (weekday >= 1 && weekday <= 7) ? _weekdayNames[weekday] : '';
-
 String _lessonTypeLabel(String? type) {
   if (type == 'EXPERIMENT') return '实验';
   if (type == 'THEORY') return '理论';
@@ -62,162 +48,11 @@ class CourseSectionWidget extends StatelessWidget {
 
   void _showCourseDetail(
       BuildContext context, CourseItem course, GlobalKey cardKey) {
-    final renderBox = cardKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) {
-      _showCourseDetailFallback(context, course);
-      return;
-    }
-    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-    final color = Theme.of(context).colorScheme.surface;
-
-    Navigator.push(
-      context,
-      ContainerTransformRoute(
-        page: _CourseDetailPage(course: course),
-        sourceRect: rect,
-        sourceColor: color,
-        sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
-      ),
-    );
-  }
-
-  void _showCourseDetailFallback(BuildContext context, CourseItem course) {
-    final String typeLabel = _lessonTypeLabel(course.lessonType);
-    showModalBottomSheet(
+    PageTransitions.pushFromRect(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
-        return Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colorScheme.onSurface.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(children: [
-                  Container(
-                      width: 4,
-                      height: 44,
-                      decoration: BoxDecoration(
-                          color: colorScheme.primary,
-                          borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Row(children: [
-                          Expanded(
-                              child: Text(course.courseName,
-                                  style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.onSurface,
-                                      height: 1.2))),
-                          if (typeLabel.isNotEmpty)
-                            Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                    color: colorScheme.secondaryContainer,
-                                    borderRadius: BorderRadius.circular(8)),
-                                child: Text(typeLabel,
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color:
-                                            colorScheme.onSecondaryContainer))),
-                        ]),
-                        const SizedBox(height: 4),
-                        Text(
-                            '${_periodToTime(course.startTime)} – ${_periodToTime(course.endTime)}',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w600)),
-                      ])),
-                ]),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Column(children: [
-                  _DetailRow(
-                      icon: Icons.location_on_outlined,
-                      label: "教室",
-                      value: course.roomName,
-                      colorScheme: colorScheme),
-                  _DetailRow(
-                      icon: Icons.person_outline_rounded,
-                      label: "教师",
-                      value: course.teacherName,
-                      colorScheme: colorScheme),
-                  _DetailRow(
-                      icon: Icons.calendar_today_outlined,
-                      label: "日期",
-                      value: '${course.date}  ${_weekdayLabel(course.weekday)}',
-                      colorScheme: colorScheme),
-                  _DetailRow(
-                      icon: Icons.view_week_outlined,
-                      label: "周次",
-                      value: '第 ${course.weekIndex} 周',
-                      colorScheme: colorScheme),
-                ]),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                    16, 4, 16, MediaQuery.of(ctx).padding.bottom + 16),
-                child: Row(children: [
-                  Expanded(
-                      child: FilledButton.tonal(
-                          style: FilledButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
-                              minimumSize: const Size.fromHeight(44)),
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text("关闭"))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: FilledButton(
-                          style: FilledButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
-                              minimumSize: const Size.fromHeight(44)),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            Navigator.push(
-                                context,
-                                PageTransitions.slideHorizontal(
-                                    CourseDetailScreen(course: course)));
-                          },
-                          child: const Text("查看详情"))),
-                ]),
-              ),
-            ],
-          ),
-        );
-      },
+      page: CourseDetailScreen(course: course),
+      sourceKey: cardKey,
+      sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
     );
   }
 
@@ -455,14 +290,24 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
-    final plannedTodoIds = _blocks
+    final todayPlannedTodoIds = _blocks
         .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
         .map((block) => block.todoId)
         .toSet();
+    final tomorrowPlannedTodoIds = _tomorrowBlocks
+        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
+        .map((block) => block.todoId)
+        .toSet();
+    final allPlannedTodoIds = <String>{...todayPlannedTodoIds, ...tomorrowPlannedTodoIds};
     final todayTimedTodos = _todayTimedTodos(
       widget.todos,
       DateTime.now(),
-      excludeTodoIds: plannedTodoIds,
+      excludeTodoIds: allPlannedTodoIds,
+    );
+    final tomorrowTimedTodos = _todayTimedTodos(
+      widget.todos,
+      DateTime.now().add(const Duration(days: 1)),
+      excludeTodoIds: allPlannedTodoIds,
     );
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
@@ -478,6 +323,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowItems = <_TodayScheduleItem>[
       ..._tomorrowCourses.map(_TodayScheduleItem.course),
       ..._tomorrowBlocks.map(_TodayScheduleItem.plan),
+      ...tomorrowTimedTodos.map(_TodayScheduleItem.todo),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
     final showingTomorrow = activeItems.isEmpty &&
@@ -558,10 +404,11 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       return _TodoCompactCard(
         todo: todo,
         isLight: widget.isLight,
-        onTap: () => Navigator.of(context).push(
-          PageTransitions.material(
-            builder: (_) => TodoDetailScreen(todo: todo),
-          ),
+        onTap: (cardKey) => PageTransitions.pushFromRect(
+          context: context,
+          page: TodoDetailScreen(todo: todo),
+          sourceKey: cardKey,
+          sourceBorderRadius: const BorderRadius.all(Radius.circular(14)),
         ),
       );
     }
@@ -699,131 +546,6 @@ class _TodayScheduleSkeleton extends StatelessWidget {
   }
 }
 
-class _CourseDetailPage extends StatefulWidget {
-  final CourseItem course;
-  const _CourseDetailPage({required this.course});
-  @override
-  State<_CourseDetailPage> createState() => _CourseDetailPageState();
-}
-
-class _CourseDetailPageState extends State<_CourseDetailPage> {
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final String typeLabel = _lessonTypeLabel(widget.course.lessonType);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.course.courseName),
-        centerTitle: true,
-        actions: [
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                PageTransitions.slideHorizontal(
-                    CourseDetailScreen(course: widget.course)),
-              );
-            },
-            icon: const Icon(Icons.visibility_outlined, size: 18),
-            label: const Text('详情'),
-            style: FilledButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Expanded(
-                              child: Text(widget.course.courseName,
-                                  style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.onSurface,
-                                      height: 1.2))),
-                          if (typeLabel.isNotEmpty)
-                            Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                    color: colorScheme.secondaryContainer,
-                                    borderRadius: BorderRadius.circular(8)),
-                                child: Text(typeLabel,
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color:
-                                            colorScheme.onSecondaryContainer))),
-                        ]),
-                        const SizedBox(height: 4),
-                        Text(
-                            '${_periodToTime(widget.course.startTime)} – ${_periodToTime(widget.course.endTime)}',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w600)),
-                      ]),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          _DetailRow(
-              icon: Icons.location_on_outlined,
-              label: "教室",
-              value: widget.course.roomName,
-              colorScheme: colorScheme),
-          _DetailRow(
-              icon: Icons.person_outline_rounded,
-              label: "教师",
-              value: widget.course.teacherName,
-              colorScheme: colorScheme),
-          _DetailRow(
-              icon: Icons.calendar_today_outlined,
-              label: "日期",
-              value:
-                  '${widget.course.date}  ${_weekdayLabel(widget.course.weekday)}',
-              colorScheme: colorScheme),
-          _DetailRow(
-              icon: Icons.view_week_outlined,
-              label: "周次",
-              value: '第 ${widget.course.weekIndex} 周',
-              colorScheme: colorScheme),
-        ]),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-// 紧凑卡片（与待办风格对齐）
-// ─────────────────────────────────────────────
 class _CourseCompactCard extends StatefulWidget {
   final CourseItem course;
   final bool isLight;
@@ -1187,7 +909,7 @@ class _PlanCompactCard extends StatelessWidget {
   }
 }
 
-class _TodoCompactCard extends StatelessWidget {
+class _TodoCompactCard extends StatefulWidget {
   const _TodoCompactCard({
     required this.todo,
     required this.isLight,
@@ -1196,31 +918,39 @@ class _TodoCompactCard extends StatelessWidget {
 
   final TodoItem todo;
   final bool isLight;
-  final VoidCallback onTap;
+  final Function(GlobalKey cardKey) onTap;
+
+  @override
+  State<_TodoCompactCard> createState() => _TodoCompactCardState();
+}
+
+class _TodoCompactCardState extends State<_TodoCompactCard> {
+  late final GlobalKey _cardKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final start = DateTime.fromMillisecondsSinceEpoch(
-      todo.createdDate ?? todo.createdAt,
+      widget.todo.createdDate ?? widget.todo.createdAt,
     ).toLocal();
-    final end = todo.dueDate!.toLocal();
+    final end = widget.todo.dueDate!.toLocal();
     final now = DateTime.now();
-    final statusColor = todo.isDone
+    final statusColor = widget.todo.isDone
         ? Colors.green
         : (end.isBefore(now) ? Colors.redAccent : Colors.amber.shade700);
     final minutes = end.difference(start).inMinutes;
 
     return Container(
+      key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        color: colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: statusColor.withValues(alpha: isLight ? 0.16 : 0.24),
+          color: statusColor.withValues(alpha: widget.isLight ? 0.16 : 0.24),
           width: 1,
         ),
-        boxShadow: isLight
+        boxShadow: widget.isLight
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -1235,9 +965,9 @@ class _TodoCompactCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
+          onTap: () => widget.onTap(_cardKey),
           onLongPress: () =>
-              VersionHistorySheet.show(context, todo.id, 'todos', todo.title),
+              VersionHistorySheet.show(context, widget.todo.id, 'todos', widget.todo.title),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(
@@ -1286,7 +1016,7 @@ class _TodoCompactCard extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            todo.isDone
+                            widget.todo.isDone
                                 ? Icons.check_circle_rounded
                                 : Icons.task_alt_rounded,
                             size: 14,
@@ -1295,14 +1025,14 @@ class _TodoCompactCard extends StatelessWidget {
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
-                              todo.title,
+                              widget.todo.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w600,
                                 color: colorScheme.onSurface,
-                                decoration: todo.isDone
+                                decoration: widget.todo.isDone
                                     ? TextDecoration.lineThrough
                                     : null,
                                 height: 1.2,
@@ -1321,7 +1051,7 @@ class _TodoCompactCard extends StatelessWidget {
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
-                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${todo.remark?.isNotEmpty == true ? ' · ${todo.remark}' : ''}',
+                              '${minutes > 0 ? '$minutes 分钟' : '定时待办'}${widget.todo.remark?.isNotEmpty == true ? ' · ${widget.todo.remark}' : ''}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -1345,57 +1075,6 @@ class _TodoCompactCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-// 详情行
-// ─────────────────────────────────────────────
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final ColorScheme colorScheme;
-
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.colorScheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon,
-              size: 16, color: colorScheme.onSurface.withValues(alpha: 0.45)),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurface.withValues(alpha: 0.85),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

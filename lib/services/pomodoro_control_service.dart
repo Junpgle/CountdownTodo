@@ -233,22 +233,15 @@ class PomodoroControlService {
     await NotificationService.cancelReminder(40002);
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds =
-        ((now - state.sessionStartMs) / 1000).round().clamp(0, 24 * 3600);
+    final actualSeconds = PomodoroRunState.computeActualSeconds(
+        state.sessionStartMs, state.accumulatedMs,
+        endMs: now);
 
-    await PomodoroService.addRecord(PomodoroRecord(
-      uuid: state.sessionUuid,
-      todoUuid: state.todoUuid,
-      todoTitle: state.todoTitle,
-      tagUuids: state.tagUuids,
-      startTime: state.sessionStartMs,
-      endTime: now,
-      plannedDuration: state.plannedFocusSeconds,
-      actualDuration: actualSeconds,
+    await PomodoroService.addRecord(PomodoroRecord.fromRunState(
+      state: state,
       status: status,
+      endMs: now,
       deviceId: deviceId,
-      planBlockId: state.planBlockId,
-      note: state.note,
     ));
 
     if (markTodoComplete && state.todoUuid?.isNotEmpty == true) {

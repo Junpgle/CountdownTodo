@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
-import '../pomodoro_utils.dart';
+import '../../../utils/app_color_utils.dart';
 
 class TagManagerSheet extends StatefulWidget {
   final List<PomodoroTag> allTags;
@@ -70,7 +70,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                 spacing: 12,
                 runSpacing: 12,
                 children: _presetColors.map((c) {
-                  final col = hexToColor(c);
+                  final col = AppColorUtils.parseHex(c);
                   return GestureDetector(
                     onTap: () => sd(() => pickedColor = c),
                     child: CircleAvatar(
@@ -150,7 +150,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                 initialItemCount: _tags.length,
                 itemBuilder: (_, index, animation) {
                   final tag = _tags[index];
-                  final color = hexToColor(tag.color);
+                  final color = AppColorUtils.parseHex(tag.color);
                   return SizeTransition(
                     sizeFactor: CurvedAnimation(
                       parent: animation,
@@ -215,7 +215,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                             key: ValueKey(removedTag.uuid),
                                             leading: CircleAvatar(
                                                 radius: 8,
-                                                backgroundColor: hexToColor(
+                                                backgroundColor: AppColorUtils.parseHex(
                                                     removedTag.color)),
                                             title: Text(removedTag.name),
                                             trailing: Row(
@@ -224,7 +224,7 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                                 Checkbox(
                                                   value: _selected.contains(
                                                       removedTag.uuid),
-                                                  activeColor: hexToColor(
+                                                  activeColor: AppColorUtils.parseHex(
                                                       removedTag.color),
                                                   onChanged: null,
                                                 ),

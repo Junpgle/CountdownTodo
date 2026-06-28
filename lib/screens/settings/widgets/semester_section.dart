@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../utils/app_time_formats.dart';
+import '../../../utils/time_utils.dart';
 import '../../../widgets/app_settings_widgets.dart';
 
 class SemesterSection extends StatelessWidget {

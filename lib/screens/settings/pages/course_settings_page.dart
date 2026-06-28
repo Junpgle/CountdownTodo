@@ -97,6 +97,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       semesterStart: sStart,
       onRescheduleReminders: _rescheduleReminders,
       showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      onSemesterStartChanged: (date) {
+        if (mounted) setState(() => _semesterStart = date);
+      },
     );
 
     if (mounted) {
@@ -312,6 +315,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
         showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+        onSemesterStartChanged: (date) {
+          if (mounted) setState(() => _semesterStart = date);
+        },
       );
 
       if (_userId != null) {

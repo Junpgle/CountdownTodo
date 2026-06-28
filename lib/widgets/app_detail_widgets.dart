@@ -224,6 +224,126 @@ class AppDetailDivider extends StatelessWidget {
   }
 }
 
+class AppDetailScreen extends StatelessWidget {
+  final String appBarTitle;
+  final IconData icon;
+  final String title;
+  final String? headerSubtitle;
+  final Color? color;
+  final double iconSize;
+  final double titleSize;
+  final TextDecoration? titleDecoration;
+  final Color? titleColor;
+  final double? progress;
+  final Color? progressColor;
+  final List<Widget> sections;
+  final List<Widget>? appBarActions;
+  final EdgeInsetsGeometry padding;
+  final ScrollPhysics? scrollPhysics;
+  final Color? backgroundColor;
+
+  const AppDetailScreen({
+    super.key,
+    required this.appBarTitle,
+    required this.icon,
+    required this.title,
+    this.headerSubtitle,
+    this.color,
+    this.iconSize = 72,
+    this.titleSize = 24,
+    this.titleDecoration,
+    this.titleColor,
+    this.progress,
+    this.progressColor,
+    required this.sections,
+    this.appBarActions,
+    this.padding = const EdgeInsets.all(24),
+    this.scrollPhysics,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      appBar: AppBar(
+        title: Text(appBarTitle),
+        actions: appBarActions,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 700;
+
+          if (isWide) {
+            final contentWidth = constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
+            final horizontalInset = (constraints.maxWidth - contentWidth) / 2;
+            final resolvedPadding = padding.resolve(Directionality.of(context));
+
+            return Center(
+              child: SingleChildScrollView(
+                physics: scrollPhysics,
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalInset + resolvedPadding.left,
+                  vertical: 48,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: AppDetailHeader(
+                        icon: icon,
+                        title: title,
+                        subtitle: headerSubtitle,
+                        color: color,
+                        iconSize: iconSize,
+                        titleSize: titleSize,
+                        titleDecoration: titleDecoration,
+                        titleColor: titleColor,
+                        progress: progress,
+                        progressColor: progressColor,
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+                    Expanded(
+                      flex: 6,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: sections,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return ListView(
+            padding: padding,
+            physics: scrollPhysics,
+            children: [
+              AppDetailHeader(
+                icon: icon,
+                title: title,
+                subtitle: headerSubtitle,
+                color: color,
+                iconSize: iconSize,
+                titleSize: titleSize,
+                titleDecoration: titleDecoration,
+                titleColor: titleColor,
+                progress: progress,
+                progressColor: progressColor,
+              ),
+              const SizedBox(height: 20),
+              ...sections,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class AppMetricChip extends StatelessWidget {
   final String label;
   final Color color;
