@@ -165,7 +165,7 @@ class PomodoroRecord {
     this.planBlockId,
     this.note,
     this.totalPauseSeconds,
-    List<PauseInterval>? pauseIntervals,
+    this.pauseIntervals,
     this.isDeleted = false,
     this.version = 1,
     int? createdAt,
@@ -174,7 +174,6 @@ class PomodoroRecord {
     this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [],
-        pauseIntervals = pauseIntervals ?? [],
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
