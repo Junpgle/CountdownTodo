@@ -10,7 +10,7 @@
     <!-- 列表区域 -->
     <block if="{{countdownList.length > 0}}">
       <!-- 未过期的倒数日 -->
-      <div for="{{countdownList}}" class="item" if="{{$item.remainingDays >= 0}}">
+      <div for="{{upcomingList}}" class="item">
         <div class="item-left">
           <div class="days-badge {{getDaysClass($item.remainingDays)}}">
             <text class="days-num">{{$item.remainingDays}}</text>
@@ -31,7 +31,7 @@
           <text class="passed-arrow">{{showPassed ? '▼' : '▶'}}</text>
         </div>
         <block if="{{showPassed}}">
-          <div for="{{countdownList}}" class="item passed-item" if="{{$item.remainingDays < 0}}">
+          <div for="{{passedList}}" class="item passed-item">
             <div class="item-left">
               <div class="days-badge {{getDaysClass($item.remainingDays)}}">
                 <text class="days-num">{{$item.remainingDays}}</text>
@@ -63,6 +63,8 @@ import prompt from '@system.prompt'
 export default {
   data: {
     countdownList: [],
+    upcomingList: [],
+    passedList: [],
     hasPassed: false,
     showPassed: false
   },
@@ -88,17 +90,25 @@ export default {
       key: 'sync_countdown',
       success: (data) => {
         if (data) {
-          let list = JSON.parse(data)
-          list = this.removeDuplicates(list)
-          this.calculateRemainingDaysForList(list)
-          this.formatTargetDatesForList(list)
-          const upcoming = list.filter(item => item.remainingDays >= 0)
-          const passed = list.filter(item => item.remainingDays < 0)
-          upcoming.sort((a, b) => a.remainingDays - b.remainingDays)
-          passed.sort((a, b) => b.remainingDays - a.remainingDays)
-          this.countdownList = [...upcoming, ...passed]
-          this.hasPassed = passed.length > 0
-          this.showPassed = false
+          try {
+            let list = JSON.parse(data)
+            list = this.removeDuplicates(list)
+            this.calculateRemainingDaysForList(list)
+            this.formatTargetDatesForList(list)
+            const upcoming = list.filter(item => item.remainingDays >= 0)
+            const passed = list.filter(item => item.remainingDays < 0)
+            upcoming.sort((a, b) => a.remainingDays - b.remainingDays)
+            passed.sort((a, b) => b.remainingDays - a.remainingDays)
+            this.countdownList = [...upcoming, ...passed]
+            this.upcomingList = upcoming
+            this.passedList = passed
+            this.hasPassed = passed.length > 0
+            this.showPassed = false
+          } catch (e) {
+            this.countdownList = []
+            this.upcomingList = []
+            this.passedList = []
+          }
         }
       },
       fail: () => {}
@@ -175,6 +185,9 @@ export default {
     const index = this.countdownList.findIndex(i => i.id === item.id)
     if (index !== -1) {
       this.countdownList.splice(index, 1)
+      this.upcomingList = this.countdownList.filter(i => i.remainingDays >= 0)
+      this.passedList = this.countdownList.filter(i => i.remainingDays < 0)
+      this.hasPassed = this.passedList.length > 0
       this.saveCountdownData()
     }
     prompt.showToast({
