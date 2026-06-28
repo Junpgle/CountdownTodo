@@ -738,10 +738,11 @@ class PomodoroStatsState extends State<PomodoroStats> {
         builder: (ctx, sd) {
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -958,6 +959,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 ),
                 const SizedBox(height: 16),
               ],
+            ),
             ),
           );
         },
