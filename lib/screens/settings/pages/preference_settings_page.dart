@@ -42,6 +42,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'cache': GlobalKey(),
     'storage': GlobalKey(),
     'update': GlobalKey(),
+    'force_download': GlobalKey(),
     'feature_guide': GlobalKey(),
   };
 
@@ -56,6 +57,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   String _username = '';
 
   bool _isCheckingUpdate = false;
+  bool _isForceDownloading = false;
+  double _forceDownloadProgress = 0.0;
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
   String _updateSource = 'server'; // 更新源偏好
@@ -150,6 +153,87 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     setState(() => _isCheckingUpdate = true);
     await UpdateService.checkUpdateAndPrompt(context, isManual: true);
     if (mounted) setState(() => _isCheckingUpdate = false);
+  }
+
+  Future<void> _forceDownloadLatest() async {
+    if (_isForceDownloading) return;
+
+    final currentContext = context;
+
+    // 确认对话框
+    final confirmed = await showDialog<bool>(
+      context: currentContext,
+      builder: (ctx) => AlertDialog(
+        title: const Text('强制下载最新版本'),
+        content: const Text(
+          '强制下载最新版本可能会获取到尚未公开发布的版本，可能存在不稳定或兼容性问题。\n\n确认下载吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认下载'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final downloadContext = context;
+    setState(() {
+      _isForceDownloading = true;
+      _forceDownloadProgress = 0.0;
+    });
+
+    await UpdateService.forceDownloadLatest(
+      downloadContext,
+      onProgress: (progress) {
+        if (mounted) setState(() => _forceDownloadProgress = progress);
+      },
+      onComplete: (path) async {
+        if (!mounted) return;
+        setState(() {
+          _isForceDownloading = false;
+          _forceDownloadProgress = 1.0;
+        });
+
+        // 显示安装确认对话框
+        final shouldInstall = await showDialog<bool>(
+          context: currentContext,
+          builder: (ctx) => AlertDialog(
+            title: const Text('下载完成'),
+            content: Text(Platform.isMacOS
+                ? '安装包已下载完成，是否打开下载目录？'
+                : '最新版本已下载完成，是否立即安装？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('稍后'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(Platform.isMacOS ? '打开目录' : '立即安装'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldInstall == true) {
+          await UpdateService.installPackage(path);
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() => _isForceDownloading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      },
+    );
   }
 
   Future<void> _handleThemeColorModeChanged(String? val) async {
@@ -287,6 +371,37 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ? const AppLoadingIndicator()
                   : const Icon(Icons.chevron_right),
               onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
+            ),
+          ),
+          const AppSettingsDivider(indent: 72),
+          _buildTile(
+            targetId: 'force_download',
+            child: ListTile(
+              leading: Icon(Icons.download_rounded,
+                  color: colorScheme.primary),
+              title: const Text('强制下载最新版本'),
+              subtitle: _isForceDownloading
+                  ? Text(
+                      '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                          fontSize: 12, color: colorScheme.primary),
+                    )
+                  : const Text('未正式发布的版本可能不稳定，请谨慎下载'),
+              trailing: _isForceDownloading
+                  ? SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        value: _forceDownloadProgress > 0
+                            ? _forceDownloadProgress
+                            : null,
+                        color: colorScheme.primary,
+                      ),
+                    )
+                  : Icon(Icons.file_download_outlined,
+                      color: colorScheme.onSurfaceVariant),
+              onTap: _isForceDownloading ? null : _forceDownloadLatest,
             ),
           ),
           const AppSettingsDivider(),
