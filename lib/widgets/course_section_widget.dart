@@ -290,14 +290,24 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final todayCourses = _todayCourses.isNotEmpty
         ? _todayCourses
         : (_loading ? fallbackCourses : <CourseItem>[]);
-    final plannedTodoIds = _blocks
+    final todayPlannedTodoIds = _blocks
         .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
         .map((block) => block.todoId)
         .toSet();
+    final tomorrowPlannedTodoIds = _tomorrowBlocks
+        .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
+        .map((block) => block.todoId)
+        .toSet();
+    final allPlannedTodoIds = <String>{...todayPlannedTodoIds, ...tomorrowPlannedTodoIds};
     final todayTimedTodos = _todayTimedTodos(
       widget.todos,
       DateTime.now(),
-      excludeTodoIds: plannedTodoIds,
+      excludeTodoIds: allPlannedTodoIds,
+    );
+    final tomorrowTimedTodos = _todayTimedTodos(
+      widget.todos,
+      DateTime.now().add(const Duration(days: 1)),
+      excludeTodoIds: allPlannedTodoIds,
     );
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
@@ -313,6 +323,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     final tomorrowItems = <_TodayScheduleItem>[
       ..._tomorrowCourses.map(_TodayScheduleItem.course),
       ..._tomorrowBlocks.map(_TodayScheduleItem.plan),
+      ...tomorrowTimedTodos.map(_TodayScheduleItem.todo),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
 
     final showingTomorrow = activeItems.isEmpty &&
