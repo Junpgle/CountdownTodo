@@ -1300,13 +1300,58 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     backgroundColor: Colors.red.shade400),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _abandonFocus();
+                  _showPauseEndChoiceDialog();
                 },
                 child: const Text('结束专注'),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _showPauseEndChoiceDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('结束专注'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_boundTodo != null
+                ? '正在专注: "${_boundTodo!.title}"'
+                : '自由专注中'),
+            const SizedBox(height: 12),
+            Text(
+              '已累计专注: ${_formatSeconds(PomodoroRunState.computeActualSeconds(_sessionStartMs, _accumulatedMs, endMs: _pausedAtMs > 0 ? _pausedAtMs : DateTime.now().millisecondsSinceEpoch))}',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            const Text('请选择结束方式：'),
+          ],
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _abandonFocus(true);
+            },
+            child: const Text('放弃专注'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _finishEarly();
+            },
+            child: const Text('提前结束'),
+          ),
+        ],
       ),
     );
   }
@@ -2653,33 +2698,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Widget _buildNoteButton(Color contentColor) {
-    return InkWell(
+    return GestureDetector(
       onTap: _showNoteDialog,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: _currentNote.isEmpty
-              ? contentColor.withValues(alpha: 0.08)
-              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _currentNote.isEmpty
-                ? contentColor.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              _currentNote.isEmpty
-                  ? Icons.note_add_outlined
-                  : Icons.note_rounded,
-              size: 16,
-              color: _currentNote.isEmpty
-                  ? contentColor.withValues(alpha: 0.6)
-                  : Theme.of(context).colorScheme.primary,
+              _currentNote.isEmpty ? Icons.edit_note_rounded : Icons.note_rounded,
+              size: 14,
+              color: contentColor.withValues(alpha: 0.4),
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -2688,10 +2718,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 13,
-                  color: _currentNote.isEmpty
-                      ? contentColor.withValues(alpha: 0.6)
-                      : Theme.of(context).colorScheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                  color: contentColor.withValues(alpha: 0.5),
                 ),
               ),
             ),
@@ -2836,19 +2865,14 @@ class _SimpleTag extends StatelessWidget {
   final String name;
   final Color color;
   const _SimpleTag({required this.name, required this.color});
-  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.4))),
-      child: Text(name,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Text('#$name',
           style: TextStyle(
               fontSize: 12,
-              color: color.withValues(alpha: 0.9),
-              fontWeight: FontWeight.w500)),
+              color: color.withValues(alpha: 0.7),
+              fontWeight: FontWeight.w400)),
     );
   }
 }

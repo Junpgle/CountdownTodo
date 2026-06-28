@@ -230,74 +230,48 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
     }
 
     if (widget.isFocusing) {
-      final isLandscape =
-          MediaQuery.of(context).orientation == Orientation.landscape;
-      return Column(
+      return Padding(
         key: const ValueKey('focus_btns'),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: widget.onFinishEarly,
-                  icon: Icon(Icons.check_circle_outline,
-                      size: widget.isCompact ? 18 : 20),
-                  label: Text('提前完成',
-                      style: TextStyle(
-                          fontSize: widget.isCompact ? 14 : 15,
-                          fontWeight: FontWeight.bold)),
-                  style: FilledButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                        vertical: widget.isCompact ? 12 : 14),
-                    backgroundColor: const Color(0xFF4CAF50),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
+        padding: EdgeInsets.only(top: widget.isCompact ? 8 : 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton.icon(
+              onPressed: widget.onAbandonFocus,
+              icon: Icon(Icons.stop_rounded, size: widget.isCompact ? 16 : 18),
+              label: Text('放弃', style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 12 : 16, vertical: 12),
               ),
-              SizedBox(width: widget.isCompact ? 8 : 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: widget.onAbandonFocus,
-                  icon: Icon(Icons.stop_circle_outlined,
-                      size: widget.isCompact ? 18 : 20),
-                  label: Text('放弃专注',
-                      style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                        vertical: widget.isCompact ? 12 : 14),
-                    foregroundColor:
-                        Theme.of(context).colorScheme.onSurfaceVariant,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
+            ),
+            SizedBox(width: widget.isCompact ? 8 : 16),
+            TextButton.icon(
               onPressed: widget.onShowPauseDialog,
               icon: Icon(
                   widget.onPauseFocus == null
-                      ? Icons.play_circle_outline
-                      : Icons.pause_circle_outline,
+                      ? Icons.play_arrow_rounded
+                      : Icons.pause_rounded,
                   size: widget.isCompact ? 18 : 20),
-              label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
-                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
-              style: OutlinedButton.styleFrom(
-                padding:
-                    EdgeInsets.symmetric(vertical: widget.isCompact ? 10 : 12),
-                foregroundColor: Colors.orange.shade700,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+              label: Text(widget.onPauseFocus == null ? '继续' : '暂停', style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 20 : 24, vertical: 12),
               ),
             ),
-          ),
-        ],
+            SizedBox(width: widget.isCompact ? 8 : 16),
+            TextButton.icon(
+              onPressed: widget.onFinishEarly,
+              icon: Icon(Icons.check_rounded, size: widget.isCompact ? 16 : 18),
+              label: Text('完成', style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 12 : 16, vertical: 12),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
