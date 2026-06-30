@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../storage_service.dart';
+import '../utils/app_platform.dart';
 import 'course_service.dart';
 
 enum CalendarSyncEntryType { todo, course, countdown, planBlock }
@@ -104,7 +103,7 @@ class CalendarSyncService {
   static const MethodChannel _channel =
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
 
-  static bool get isSupported => Platform.isAndroid;
+  static bool get isSupported => AppPlatform.isAndroid;
 
   static Future<bool> checkPermission() async {
     if (!isSupported) return false;

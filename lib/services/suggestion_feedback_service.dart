@@ -50,7 +50,11 @@ class SuggestionFeedbackService {
         WHERE keyword IN ($placeholders)
           AND suggestion_type = ?
           AND suggested_value = ?
-      ''', [...keywords.map((k) => k.toLowerCase()), suggestionType, suggestedValue]);
+      ''', [
+        ...keywords.map((k) => k.toLowerCase()),
+        suggestionType,
+        suggestedValue
+      ]);
 
       if (rows.isEmpty) return null;
       final acceptedCount = (rows.first['accepted_count'] as int?) ?? 0;

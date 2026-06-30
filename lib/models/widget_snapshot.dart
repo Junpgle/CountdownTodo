@@ -31,7 +31,8 @@ class WidgetSnapshot {
           ? DateTime.tryParse(json['updatedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
       countdowns: (json['countdowns'] as List<dynamic>?)
-              ?.map((e) => WidgetCountdownItem.fromJson(e as Map<String, dynamic>))
+              ?.map((e) =>
+                  WidgetCountdownItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       todos: (json['todos'] as List<dynamic>?)

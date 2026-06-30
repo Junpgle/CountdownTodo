@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 import 'models.dart';
 
 import 'services/api_service.dart';
@@ -4354,27 +4352,19 @@ class StorageService {
     return null;
   }
 
-  // Island bounds persistence helpers — uses file-based storage instead of
-  // SharedPreferences because the island runs in a separate Flutter engine
-  // and SharedPreferences is engine-isolated.
-  static Future<File> _islandBoundsFile(String islandId) async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/island_bounds_$islandId.json');
-  }
-
   static Future<void> saveIslandBounds(
       String islandId, Map<String, dynamic> bounds) async {
     try {
-      final file = await _islandBoundsFile(islandId);
-      await file.writeAsString(jsonEncode(bounds));
+      final prefs = await StorageService.prefs;
+      await prefs.setString('island_bounds_$islandId', jsonEncode(bounds));
     } catch (_) {}
   }
 
   static Future<Map<String, dynamic>?> getIslandBounds(String islandId) async {
     try {
-      final file = await _islandBoundsFile(islandId);
-      if (!await file.exists()) return null;
-      final s = await file.readAsString();
+      final prefs = await StorageService.prefs;
+      final s = prefs.getString('island_bounds_$islandId');
+      if (s == null || s.isEmpty) return null;
       final m = jsonDecode(s);
       if (m is Map && m.isNotEmpty) return Map<String, dynamic>.from(m);
     } catch (_) {}

@@ -1,11 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import '../../services/storage/app_settings_storage.dart';
 import '../../storage_service.dart';
+import '../../utils/local_image_provider.dart';
+import '../../utils/persistent_image_storage.dart';
 
 class WallpaperSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -94,23 +93,10 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
           'ImageCropper not supported on this platform, using original image: $e');
     }
 
-    final appDir = await getApplicationDocumentsDirectory();
-    final wallpaperDir = Directory(p.join(appDir.path, 'wallpaper'));
-    if (!await wallpaperDir.exists()) {
-      await wallpaperDir.create(recursive: true);
-    }
+    final savedPath = await persistImagePath(sourcePath, 'wallpaper');
+    if (savedPath == null) return;
 
-    final fileName =
-        'custom_wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final savedPath = p.join(wallpaperDir.path, fileName);
-    await File(sourcePath).copy(savedPath);
-
-    if (_customWallpaperPath != null) {
-      try {
-        final oldFile = File(_customWallpaperPath!);
-        if (await oldFile.exists()) await oldFile.delete();
-      } catch (_) {}
-    }
+    await deletePersistedImagePath(_customWallpaperPath);
 
     await AppSettingsStorage.saveWallpaperCustomPath(savedPath);
     StorageService.triggerWallpaperRefresh();
@@ -123,10 +109,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
 
   Future<void> _clearCustomWallpaper() async {
     if (_customWallpaperPath != null) {
-      try {
-        final oldFile = File(_customWallpaperPath!);
-        if (await oldFile.exists()) await oldFile.delete();
-      } catch (_) {}
+      await deletePersistedImagePath(_customWallpaperPath);
     }
     await AppSettingsStorage.clearWallpaperCustomPath();
     StorageService.triggerWallpaperRefresh();
@@ -286,8 +269,7 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
   }
 
   Widget _buildCustomWallpaperSection() {
-    final hasCustom = _customWallpaperPath != null &&
-        File(_customWallpaperPath!).existsSync();
+    final hasCustom = localImageExists(_customWallpaperPath);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,11 +285,9 @@ class _WallpaperSettingsPageState extends State<WallpaperSettingsPage> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.file(
-                          File(_customWallpaperPath!),
+                        localImageWidget(
+                          _customWallpaperPath!,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildPlaceholder(),
                         ),
                         Positioned.fill(
                           child: Container(

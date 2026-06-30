@@ -298,7 +298,10 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         .where((block) => !block.isDeleted && block.todoId.isNotEmpty)
         .map((block) => block.todoId)
         .toSet();
-    final allPlannedTodoIds = <String>{...todayPlannedTodoIds, ...tomorrowPlannedTodoIds};
+    final allPlannedTodoIds = <String>{
+      ...todayPlannedTodoIds,
+      ...tomorrowPlannedTodoIds
+    };
     final todayTimedTodos = _todayTimedTodos(
       widget.todos,
       DateTime.now(),
@@ -944,7 +947,8 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
       key: _cardKey,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
+        color:
+            colorScheme.surface.withValues(alpha: widget.isLight ? 0.97 : 0.75),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: statusColor.withValues(alpha: widget.isLight ? 0.16 : 0.24),
@@ -966,8 +970,8 @@ class _TodoCompactCardState extends State<_TodoCompactCard> {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => widget.onTap(_cardKey),
-          onLongPress: () =>
-              VersionHistorySheet.show(context, widget.todo.id, 'todos', widget.todo.title),
+          onLongPress: () => VersionHistorySheet.show(
+              context, widget.todo.id, 'todos', widget.todo.title),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             child: Row(

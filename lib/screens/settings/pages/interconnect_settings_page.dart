@@ -12,10 +12,15 @@ class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
   final String username;
-  const InterconnectSettingsPage({super.key, this.initialTarget, this.isEmbedded = false, required this.username});
+  const InterconnectSettingsPage(
+      {super.key,
+      this.initialTarget,
+      this.isEmbedded = false,
+      required this.username});
 
   @override
-  State<InterconnectSettingsPage> createState() => _InterconnectSettingsPageState();
+  State<InterconnectSettingsPage> createState() =>
+      _InterconnectSettingsPageState();
 }
 
 class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
@@ -88,7 +93,8 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
             boxShadow: [
               BoxShadow(
                 color: colorScheme.primary.withValues(alpha: 0.05),
@@ -106,19 +112,24 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   color: colorScheme.primaryContainer,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: colorScheme.onPrimaryContainer, size: 28),
+                child:
+                    Icon(icon, color: colorScheme.onPrimaryContainer, size: 28),
               ),
               const Spacer(),
               Text(
                 title,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: colorScheme.onSurface),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                    fontSize: 12, color: colorScheme.onSurfaceVariant),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -132,9 +143,11 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('数据与互联'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('数据与互联'),
+            ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -142,7 +155,11 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 16.0, left: 4.0),
-              child: Text('设备互联向导', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              child: Text('设备互联向导',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
             GridView.count(
               shrinkWrap: true,
@@ -159,7 +176,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   subtitle: '同账号设备间无缝互传数据',
                   onTap: () {
                     Navigator.push(
-                      context, 
+                      context,
                       PageTransitions.slideHorizontal(
                         LanSyncScreen(isEmbedded: widget.isEmbedded),
                         settings: const RouteSettings(name: '局域网互传与同步'),
@@ -174,7 +191,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                   subtitle: '借助快应用将待办同步至手环',
                   onTap: () {
                     Navigator.push(
-                      context, 
+                      context,
                       PageTransitions.slideHorizontal(
                         BandSyncScreen(isEmbedded: widget.isEmbedded),
                         settings: const RouteSettings(name: '智能手环同步'),

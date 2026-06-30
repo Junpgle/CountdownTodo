@@ -70,13 +70,16 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('学校适配申请', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('学校适配申请',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              centerTitle: true,
+              backgroundColor: colorScheme.surface,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+            ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         child: Column(
@@ -122,8 +125,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                         ],
                       ),
                       borderRadius: BorderRadius.circular(16),
-                      border:
-                          Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
+                      border: Border.all(
+                          color: colorScheme.primary.withValues(alpha: 0.2)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -166,8 +169,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                       isFirst: true),
                   _buildStepTile(2, '右键另存为', '点击页面空白处，选择“另存为”。'),
                   _buildStepTile(3, '选择格式', '保存类型选“网页，单个文件 (*.mhtml)”。'),
-                  _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。',
-                      isLast: true),
+                  _buildStepTile(4, '发送文件', '通过下方联系方式将文件发给开发者。', isLast: true),
 
                   const SizedBox(height: 32),
 
@@ -348,8 +350,8 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
                       fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 4),
               Text(value,
-                  style:
-                      TextStyle(fontSize: 11, color: color.withValues(alpha: 0.8))),
+                  style: TextStyle(
+                      fontSize: 11, color: color.withValues(alpha: 0.8))),
             ],
           ),
         ),

@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models.dart';
+import '../utils/app_platform.dart';
+import 'database_path_resolver.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -233,7 +232,7 @@ class DatabaseHelper {
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
-            if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+            if (!kIsWeb && (AppPlatform.isWindows || AppPlatform.isLinux)) {
               try {
                 await db.execute('PRAGMA journal_mode = WAL');
               } catch (e) {
@@ -267,7 +266,8 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'is_archived')) {
                   await db.execute(
                       "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;");
-                  debugPrint('✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
+                  debugPrint(
+                      '✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
                 }
               } catch (e) {
                 debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
@@ -865,46 +865,7 @@ class DatabaseHelper {
   }
 
   Future<String> _resolveDatabasePath(String targetName) async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
-      final supportDir = await getApplicationSupportDirectory();
-      final dbDir = Directory(join(supportDir.path, 'databases'));
-      if (!await dbDir.exists()) {
-        await dbDir.create(recursive: true);
-      }
-
-      final targetPath = join(dbDir.path, targetName);
-      await _migrateLegacyFfiDatabaseIfNeeded(targetName, targetPath);
-      debugPrint('📁 Database path: $targetPath');
-      return targetPath;
-    }
-
-    final dbPath = await getDatabasesPath();
-    return join(dbPath, targetName);
-  }
-
-  Future<void> _migrateLegacyFfiDatabaseIfNeeded(
-      String targetName, String targetPath) async {
-    try {
-      final targetFile = File(targetPath);
-      if (await targetFile.exists()) return;
-
-      final legacyPath = absolute(
-        join('.dart_tool', 'sqflite_common_ffi', 'databases', targetName),
-      );
-      final legacyFile = File(legacyPath);
-      if (!await legacyFile.exists()) return;
-
-      await legacyFile.copy(targetPath);
-      for (final suffix in const ['-wal', '-shm']) {
-        final sidecar = File('$legacyPath$suffix');
-        if (await sidecar.exists()) {
-          await sidecar.copy('$targetPath$suffix');
-        }
-      }
-      debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
-    } catch (e) {
-      debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
-    }
+    return resolveDatabasePath(targetName);
   }
 
   /// 执行本地回滚 (离线模式)
@@ -1822,7 +1783,7 @@ class DatabaseHelper {
     String column = 'morning_count';
     if (hour >= 12 && hour < 18) {
       column = 'afternoon_count';
-    } else if (hour >= 18 && hour < 24){
+    } else if (hour >= 18 && hour < 24) {
       column = 'evening_count';
     } else if (hour >= 0 && hour < 6) {
       column = 'night_count';
@@ -1852,7 +1813,7 @@ class DatabaseHelper {
       timeWeightCol = 'afternoon_count';
     } else if (hour >= 18 && hour < 24) {
       timeWeightCol = 'evening_count';
-    }else if (hour >= 0 && hour < 6) {
+    } else if (hour >= 0 && hour < 6) {
       timeWeightCol = 'night_count';
     }
 

@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../services/calendar_sync_service.dart';
 import '../../storage_service.dart';
+import '../../utils/app_platform.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   final bool isEmbedded;
@@ -32,7 +31,7 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _load() async {
-    if (!Platform.isAndroid) {
+    if (!AppPlatform.isAndroid) {
       setState(() {
         _loading = false;
         _error = '当前仅支持写入 Android 系统日历';
@@ -257,16 +256,18 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('写入系统日历'),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _working ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('写入系统日历'),
+              actions: [
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: _working ? null : _load,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
       body: _buildBody(),
       bottomNavigationBar: _loading || _error != null
           ? null

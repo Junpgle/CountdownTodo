@@ -15,7 +15,8 @@ import '../../../utils/page_transitions.dart';
 class CourseSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const CourseSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+  const CourseSettingsPage(
+      {super.key, this.initialTarget, this.isEmbedded = false});
 
   @override
   State<CourseSettingsPage> createState() => _CourseSettingsPageState();
@@ -96,7 +97,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       username: _username,
       semesterStart: sStart,
       onRescheduleReminders: _rescheduleReminders,
-      showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg))),
       onSemesterStartChanged: (date) {
         if (mounted) setState(() => _semesterStart = date);
       },
@@ -114,7 +116,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   Future<void> _rescheduleReminders() async {
-    if (_username.isEmpty || _username == "未登录" || _username == "加载中...") return;
+    if (_username.isEmpty || _username == "未登录" || _username == "加载中...")
+      return;
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
@@ -146,13 +149,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   Future<void> _uploadCoursesToCloud() async {
     if (_userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先登录账号')));
       return;
     }
 
     final allCourses = await CourseService.getAllCourses(_username);
     if (allCourses.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前没有课表数据可上传')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('当前没有课表数据可上传')));
       return;
     }
 
@@ -162,8 +167,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             title: const Text("上传课表到云端"),
             content: const Text("这将覆盖你云端的所有课表数据。\n\n用于与电脑或其他设备同步。\n\n是否继续？"),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("上传")),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text("取消")),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text("上传")),
             ],
           ),
         ) ??
@@ -177,29 +186,37 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
     if (result['success'] == true) {
       final startMs = _semesterStart != null
-          ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+          ? DateTime(_semesterStart!.year, _semesterStart!.month,
+                  _semesterStart!.day)
+              .millisecondsSinceEpoch
           : null;
       final endMs = _semesterEnd != null
-          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+          ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+              .millisecondsSinceEpoch
           : null;
-      await ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+      await ApiService.uploadUserSettings(
+          semesterStartMs: startMs, semesterEndMs: endMs);
     }
 
     if (!mounted) return;
     _closeLoadingDialog(context);
 
     if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ 课表已成功同步到云端')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('✅ 课表已成功同步到云端')));
     } else if (result['isLimitExceeded'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? '今日同步次数已达上限')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? '同步失败')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(result['message'] ?? '同步失败')));
     }
   }
 
   Future<void> _fetchCoursesFromCloud() async {
     if (_userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先登录账号')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先登录账号')));
       return;
     }
 
@@ -209,8 +226,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         title: const Text('从云端获取课表'),
         content: const Text('这将用云端课表数据覆盖本地课表。\n\n本地已有的课表数据将被替换。\n\n是否继续？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('获取')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('获取')),
         ],
       ),
     );
@@ -223,7 +244,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       final coursesFuture = ApiService.fetchCourses(_userId!);
 
       final results = await Future.wait([userSettingsFuture, coursesFuture]);
-      final Map<String, dynamic>? userSettings = results[0] as Map<String, dynamic>?;
+      final Map<String, dynamic>? userSettings =
+          results[0] as Map<String, dynamic>?;
       final List<dynamic> data = results[1] as List<dynamic>;
 
       if (!mounted) return;
@@ -231,12 +253,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       if (userSettings != null) {
         final prefs = await SharedPreferences.getInstance();
         if (userSettings['semester_start'] != null) {
-          _semesterStart = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_start']);
-          await prefs.setString(StorageService.KEY_SEMESTER_START, _semesterStart!.toIso8601String());
+          _semesterStart = DateTime.fromMillisecondsSinceEpoch(
+              userSettings['semester_start']);
+          await prefs.setString(StorageService.KEY_SEMESTER_START,
+              _semesterStart!.toIso8601String());
         }
         if (userSettings['semester_end'] != null) {
-          _semesterEnd = DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
-          await prefs.setString(StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
+          _semesterEnd =
+              DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
+          await prefs.setString(
+              StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
         }
         setState(() {});
       }
@@ -245,17 +271,20 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
       if (data.isNotEmpty) {
         if (_semesterStart == null) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ 云端与本地均未配置开学日期，无法计算课表具体日期')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('⚠️ 云端与本地均未配置开学日期，无法计算课表具体日期')));
           return;
         }
 
-        final DateTime semesterMonday = _semesterStart!.subtract(Duration(days: _semesterStart!.weekday - 1));
+        final DateTime semesterMonday = _semesterStart!
+            .subtract(Duration(days: _semesterStart!.weekday - 1));
 
         final courses = data.map<CourseItem>((c) {
           final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
           final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
 
-          final DateTime courseDate = semesterMonday.add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
+          final DateTime courseDate = semesterMonday
+              .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
           final String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
 
           return CourseItem(
@@ -275,21 +304,25 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
         if (mounted) {
           _rescheduleReminders();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ 成功从云端同步 ${courses.length} 条课程与学期设置')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('✅ 成功从云端同步 ${courses.length} 条课程与学期设置')));
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
       }
     } catch (e) {
       if (mounted) {
         _closeLoadingDialog(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ 发生错误: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('❌ 发生错误: $e')));
       }
     }
   }
 
   Future<void> _pickSemesterDate(bool isStart) async {
-    DateTime initialDate = (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
+    DateTime initialDate =
+        (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -302,10 +335,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       setState(() {
         if (isStart) {
           _semesterStart = picked;
-          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_START, picked.toIso8601String());
+          StorageService.saveAppSetting(
+              StorageService.KEY_SEMESTER_START, picked.toIso8601String());
         } else {
           _semesterEnd = picked;
-          StorageService.saveAppSetting(StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+          StorageService.saveAppSetting(
+              StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
 
@@ -314,7 +349,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         username: _username,
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
-        showMessage: (msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))),
+        showMessage: (msg) => ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg))),
         onSemesterStartChanged: (date) {
           if (mounted) setState(() => _semesterStart = date);
         },
@@ -322,12 +358,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
       if (_userId != null) {
         final startMs = _semesterStart != null
-            ? DateTime(_semesterStart!.year, _semesterStart!.month, _semesterStart!.day).millisecondsSinceEpoch
+            ? DateTime(_semesterStart!.year, _semesterStart!.month,
+                    _semesterStart!.day)
+                .millisecondsSinceEpoch
             : null;
         final endMs = _semesterEnd != null
-            ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day).millisecondsSinceEpoch
+            ? DateTime(
+                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
+                .millisecondsSinceEpoch
             : null;
-        ApiService.uploadUserSettings(semesterStartMs: startMs, semesterEndMs: endMs);
+        ApiService.uploadUserSettings(
+            semesterStartMs: startMs, semesterEndMs: endMs);
       }
     }
   }
@@ -355,14 +396,20 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('课表与学期'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('课表与学期'),
+            ),
       body: ListView(
         children: [
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
-            child: Text('学期设置', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('学期设置',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           _buildTile(
             targetId: 'semester_progress',
@@ -372,14 +419,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               value: _semesterEnabled,
               onChanged: (val) {
                 setState(() => _semesterEnabled = val);
-                StorageService.saveAppSetting(StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+                StorageService.saveAppSetting(
+                    StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
               },
             ),
           ),
           _buildTile(
             targetId: 'semester_start', // Keep target ID for scrolling
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
                 children: [
                   Expanded(
@@ -393,7 +442,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12.0),
-                    child: Icon(Icons.arrow_forward, color: Colors.grey, size: 20),
+                    child:
+                        Icon(Icons.arrow_forward, color: Colors.grey, size: 20),
                   ),
                   Expanded(
                     child: _buildDateCard(
@@ -412,15 +462,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           _buildTile(
             targetId: 'course_calendar_adjustment',
             child: ListTile(
-              leading: const Icon(Icons.event_repeat_outlined, color: Colors.deepPurple),
+              leading: const Icon(Icons.event_repeat_outlined,
+                  color: Colors.deepPurple),
               title: const Text('放假与调休'),
               subtitle: const Text('设置停课日期，以及补哪一天的课'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
                 await Navigator.push(
-                  context, 
+                  context,
                   PageTransitions.slideHorizontal(
-                    CourseCalendarAdjustmentScreen(isEmbedded: widget.isEmbedded),
+                    CourseCalendarAdjustmentScreen(
+                        isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '校历偏移动态调整'),
                   ),
                 );
@@ -428,13 +480,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               },
             ),
           ),
-
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('课程导入与同步', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('课程导入与同步',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -478,35 +534,48 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               ],
             ),
           ),
-
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('无课时板块行为', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('无课时板块行为',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           _buildTile(
             targetId: 'no_course_behavior',
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _buildBehaviorCard('keep', '保持原位', Icons.align_vertical_top_outlined)),
+                      Expanded(
+                          child: _buildBehaviorCard('keep', '保持原位',
+                              Icons.align_vertical_top_outlined)),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildBehaviorCard('bottom', '排到最后', Icons.align_vertical_bottom_outlined)),
+                      Expanded(
+                          child: _buildBehaviorCard('bottom', '排到最后',
+                              Icons.align_vertical_bottom_outlined)),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildBehaviorCard('hide', '自动隐藏', Icons.visibility_off_outlined)),
+                      Expanded(
+                          child: _buildBehaviorCard(
+                              'hide', '自动隐藏', Icons.visibility_off_outlined)),
                     ],
                   ),
                 ],
               ),
             ),
           ),
-
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('请求课表适配', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('请求课表适配',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           _buildTile(
             targetId: 'course_adapt',
@@ -520,11 +589,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   color: Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Text('推荐', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                child: const Text('推荐',
+                    style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold)),
               ),
               onTap: () {
                 Navigator.push(
-                  context, 
+                  context,
                   PageTransitions.slideHorizontal(
                     CourseAdaptationScreen(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '课程表适配机制'),
@@ -539,7 +612,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     );
   }
 
-  Widget _buildDateCard({required String title, required DateTime? date, required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _buildDateCard(
+      {required String title,
+      required DateTime? date,
+      required IconData icon,
+      required Color color,
+      required VoidCallback onTap}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     return GestureDetector(
@@ -555,11 +633,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           children: [
             Icon(icon, color: color, size: 28),
             const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(title,
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 4),
             Text(
               date == null ? "未设置" : DateFormat('yyyy/MM/dd').format(date),
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: date == null ? Colors.grey : null),
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: date == null ? Colors.grey : null),
             ),
           ],
         ),
@@ -567,7 +649,13 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     );
   }
 
-  Widget _buildActionCard({required String id, required IconData icon, required String title, required String subtitle, required Color color, required VoidCallback onTap}) {
+  Widget _buildActionCard(
+      {required String id,
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required Color color,
+      required VoidCallback onTap}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     return _buildTile(
@@ -579,7 +667,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           decoration: BoxDecoration(
             color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+            border:
+                Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
           ),
           child: Row(
             children: [
@@ -597,9 +686,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(subtitle,
+                        style:
+                            const TextStyle(fontSize: 10, color: Colors.grey),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -626,7 +723,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primary.withValues(alpha: 0.1) : (Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? colorScheme.primary : Colors.transparent,
@@ -635,13 +736,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ),
         child: Column(
           children: [
-            Icon(icon, color: isSelected ? colorScheme.primary : Colors.grey, size: 24),
+            Icon(icon,
+                color: isSelected ? colorScheme.primary : Colors.grey,
+                size: 24),
             const SizedBox(height: 6),
-            Text(title, style: TextStyle(
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? colorScheme.primary : Colors.grey.shade600,
-            )),
+            Text(title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color:
+                      isSelected ? colorScheme.primary : Colors.grey.shade600,
+                )),
           ],
         ),
       ),

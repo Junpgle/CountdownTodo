@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,6 +13,7 @@ import 'package:video_player/video_player.dart';
 import '../storage_service.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
@@ -128,7 +128,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _isFirstLaunch = false;
       _pagesBuilder = [
         _buildChangelogPage,
-        if (Platform.isWindows) ...[
+        if (AppPlatform.isWindows) ...[
           _buildWinFeaturePage1,
           _buildWinFeaturePage2,
           _buildTaiSetupPage,
@@ -177,7 +177,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     // 只有在首次启动，或者用户手动在设置中点击查看引导时，才展示完整特性引导
     if (isFirstLaunch || widget.isManualReview) {
-      if (Platform.isWindows) {
+      if (AppPlatform.isWindows) {
         pages.addAll([
           _buildWinFeaturePage1,
           _buildWinFeaturePage2,
@@ -302,10 +302,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     setState(() => _importingSemester = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          StorageService.KEY_SEMESTER_START, _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(
-          StorageService.KEY_SEMESTER_END, _cloudSemesterEnd!.toIso8601String());
+      await prefs.setString(StorageService.KEY_SEMESTER_START,
+          _cloudSemesterStart!.toIso8601String());
+      await prefs.setString(StorageService.KEY_SEMESTER_END,
+          _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
           _semesterStart = _cloudSemesterStart;
@@ -514,7 +514,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Future<void> _checkPermissions() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
 
     final notifStatus = await Permission.notification.status;
 
@@ -522,7 +522,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     bool hasExact = false;
     bool ignoringBattery = false;
 
-    if (Platform.isAndroid) {
+    if (AppPlatform.isAndroid) {
       try {
         hasUsage =
             await screenTimeChannel.invokeMethod('checkUsagePermission') ??

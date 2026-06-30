@@ -1,6 +1,7 @@
 import 'package:package_info_plus/package_info_plus.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
+import 'turnstile_site_key_resolver.dart';
 
 /// 🚀 Uni-Sync 4.0: 环境与隔离管理服务
 class EnvironmentService {
@@ -25,6 +26,14 @@ class EnvironmentService {
     defaultValue: '1x00000000000000000000AA', // Cloudflare 官方测试 key
   );
 
+  /// 本地 Web 调试默认用测试 key 避免 localhost 触发 110200。
+  /// 若已在 Turnstile Hostname Management 允许本地域名，可通过 dart-define
+  /// TURNSTILE_USE_PRODUCTION_ON_LOCAL_WEB=true 强制使用生产 key。
+  static const bool _useProductionTurnstileOnLocalWeb = bool.fromEnvironment(
+    'TURNSTILE_USE_PRODUCTION_ON_LOCAL_WEB',
+    defaultValue: false,
+  );
+
   /// Turnstile 验证页面 URL（WebView 使用）
   /// 生产环境必须配置为后端地址，例如 https://api-cdt.junpgle.me/turnstile
   static const String _turnstileVerifyPageUrl = String.fromEnvironment(
@@ -33,8 +42,12 @@ class EnvironmentService {
   );
 
   /// 获取 Turnstile Site Key（根据环境自动选择）
-  static String get turnstileSiteKey =>
-      _isTest ? _testSiteKey : _turnstileSiteKey;
+  static String get turnstileSiteKey => resolveTurnstileSiteKey(
+        isTest: _isTest,
+        testSiteKey: _testSiteKey,
+        productionSiteKey: _turnstileSiteKey,
+        useProductionOnLocalWeb: _useProductionTurnstileOnLocalWeb,
+      );
 
   /// 获取 Turnstile 验证页面完整 URL
   /// 必须是后端 Express 服务器的 /turnstile 路由，不是 Cloudflare Worker
@@ -74,7 +87,8 @@ class EnvironmentService {
   static bool get isTest => _isTest;
 
   /// 根据环境返回对应的数据库文件名
-  static String get dbName => _isTest ? 'uni_sync_test_v5.db' : 'uni_sync_v4.db';
+  static String get dbName =>
+      _isTest ? 'uni_sync_test_v5.db' : 'uni_sync_v4.db';
 
   /// 环境标签名
   static String get envLabel => _isTest ? "测试版" : "正式版";

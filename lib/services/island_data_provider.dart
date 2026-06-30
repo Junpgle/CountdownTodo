@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'island_slot_provider.dart';
-import '../windows_island/island_payload.dart';
+import 'island_payload_model.dart';
 
 /// Cache entry for island data
 class _CacheEntry<T> {

@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 
@@ -48,7 +48,7 @@ class AdvancedSection extends StatelessWidget {
     return AppSettingsSection(
       title: '高级设置',
       children: [
-        if (Platform.isAndroid) ...[
+        if (AppPlatform.isAndroid) ...[
           _buildTile(
             context: context,
             targetId: 'test_notification',
@@ -154,7 +154,7 @@ class AdvancedSection extends StatelessWidget {
           ],
         ],
         if (onOpenLanSync != null) ...[
-          if (Platform.isAndroid) const AppSettingsDivider(),
+          if (AppPlatform.isAndroid) const AppSettingsDivider(),
           _buildTile(
             context: context,
             targetId: 'lan_sync',

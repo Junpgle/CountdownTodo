@@ -6,14 +6,13 @@ import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
-import 'package:path_provider/path_provider.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
@@ -32,6 +31,8 @@ import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
+import '../services/browser_file_service.dart';
+import '../services/island_todo_snapshot.dart';
 import '../services/wallpaper_cache_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
@@ -40,6 +41,8 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../utils/app_platform.dart';
+import '../utils/local_image_provider.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -159,7 +162,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
-  
+
   // 🚀 新增：首页引导用的新增 Keys
   final GlobalKey _todoFolderKey = GlobalKey();
   final GlobalKey _todoHistoryKey = GlobalKey();
@@ -383,7 +386,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
         debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
         final args = call.arguments;
@@ -716,17 +719,9 @@ class _HomeDashboardState extends State<HomeDashboard>
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text(
-                      "图片加载失败，文件可能已过期删除",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                },
               ),
             ),
           ),
@@ -1094,7 +1089,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
         _startRemotePomodoroTicker(endMs, isCountUp);
 
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getBool('float_window_enabled') ?? true) {
             await FloatWindowService.update(
@@ -1118,7 +1113,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         // 远端专注结束/断连后，将本地仍为 focusing 状态的规划块重置
         _resetStalePlanBlockFocus();
 
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(endMs: 0, isLocal: false);
         }
         break;
@@ -1147,7 +1142,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (isCountUp) {
           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
         }
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
@@ -1184,7 +1179,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             note: signal.note ?? '',
           );
         });
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
@@ -1391,23 +1386,14 @@ class _HomeDashboardState extends State<HomeDashboard>
                       ),
                     ),
                   )
-                else if (imagePath != null && File(imagePath).existsSync())
+                else if (localImageExists(imagePath))
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      File(imagePath),
+                    child: localImageWidget(
+                      imagePath!,
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.image, color: Colors.grey),
-                      ),
                     ),
                   )
                 else
@@ -2503,7 +2489,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
     if (saved.mode == TimerMode.countdown && remaining <= 0) return;
 
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool('float_window_enabled') ?? true) {
         final allTags = await PomodoroService.getTags();
@@ -2537,7 +2523,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   /// 启动时自动初始化灵动岛（如果用户已开启）
   Future<void> _initIslandOnStartup() async {
-    if (!Platform.isWindows) return;
+    if (!AppPlatform.isWindows) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final style = prefs.getInt('float_window_style') ?? 0;
@@ -2878,7 +2864,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _initNotifications() async {
     await NotificationService.init();
     // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       if (await Permission.notification.isDenied) {
         await Permission.notification.request();
       }
@@ -2888,7 +2874,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _initScreenTime() async {
     if (mounted) setState(() => _isLoadingScreenTime = true);
 
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
       // 桌面端：直接走缓存读取+Tai同步，不需要权限检查
       if (mounted) setState(() => _hasUsagePermission = true);
       await _loadCachedScreenTime();
@@ -3337,21 +3323,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Future<void> _saveTodosToSharedFile(List<TodoItem> todos) async {
     try {
-      final dir = await getApplicationSupportDirectory();
-      final file = File('${dir.path}/island_todos.json');
-      final todosJson = todos
-          .map((t) => {
-                'id': t.id,
-                'title': t.title,
-                'remark': t.remark,
-                'dueDate': t.dueDate?.toUtc().millisecondsSinceEpoch,
-                'createdDate': t.createdDate,
-                'createdAt': t.createdAt,
-                'isDone': t.isDone,
-                'isDeleted': t.isDeleted,
-              })
-          .toList();
-      await file.writeAsString(jsonEncode(todosJson));
+      await saveIslandTodoSnapshot(todos);
       // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
     } catch (e) {
       debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
@@ -3675,7 +3647,8 @@ class _HomeDashboardState extends State<HomeDashboard>
               ),
               TextButton.icon(
                 onPressed: () async {
-                  final uri = Uri.parse('https://github.com/Junpgle/math_quiz_app/issues');
+                  final uri = Uri.parse(
+                      'https://github.com/Junpgle/math_quiz_app/issues');
                   if (await canLaunchUrl(uri)) {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }
@@ -3886,8 +3859,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isLocalFilePath(String path) {
     return !path.startsWith('http://') &&
         !path.startsWith('https://') &&
-        !path.startsWith('assets/') &&
-        !path.startsWith('data:');
+        !path.startsWith('assets/');
   }
 
   void _handleWallpaperError() {
@@ -4017,8 +3989,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (provider == 'custom') {
       final customPath = await StorageService.getWallpaperCustomPath();
       if (customPath != null && customPath.isNotEmpty) {
-        final file = File(customPath);
-        if (await file.exists() && mounted) {
+        if (localImageExists(customPath) && mounted) {
           setState(() {
             _wallpaperShow = true;
             _wallpaperDominantColor = null;
@@ -4205,7 +4176,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final mainScreen = Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
-      backgroundColor: (showWallpaper && !Platform.isWindows)
+      backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
       body: Stack(
@@ -4227,21 +4198,21 @@ class _HomeDashboardState extends State<HomeDashboard>
                         );
                       },
                     )
-                  : _isLocalFilePath(_wallpaperUrl!)
+                  : _isLocalFilePath(_wallpaperUrl!) &&
+                          localImageProvider(_wallpaperUrl!) != null
                       ? Builder(
                           builder: (context) {
+                            final provider =
+                                localImageProvider(_wallpaperUrl!)!;
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_wallpaperDominantColor == null) {
                                 _extractColorFromProvider(
-                                    FileImage(File(_wallpaperUrl!)),
-                                    _wallpaperUrl!);
+                                    provider, _wallpaperUrl!);
                               }
                             });
-                            return Image.file(
-                              File(_wallpaperUrl!),
+                            return Image(
+                              image: provider,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const SizedBox.shrink(),
                             );
                           },
                         )
@@ -4480,8 +4451,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               isLoading: _isLoadingScreenTime,
                                               lastSyncTime: _lastScreenTimeSync,
                                               onOpenSettings: () async {
-                                                if (Platform.isAndroid ||
-                                                    Platform.isIOS) {
+                                                if (AppPlatform.isAndroid ||
+                                                    AppPlatform.isIOS) {
                                                   await ScreenTimeService
                                                       .openSettings();
                                                 }
@@ -5136,69 +5107,41 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _downloadWallpaper() async {
     if (_wallpaperUrl == null) return;
     try {
-      File? sourceFile;
+      final wallpaperUrl = _wallpaperUrl!;
+      late final List<int> bytes;
+      late final String ext;
+
       if (_wallpaperUrl!.startsWith('http://') ||
           _wallpaperUrl!.startsWith('https://')) {
-        final cached =
-            await WallpaperCacheService.cacheManager.getSingleFile(_wallpaperUrl!);
-        if (await cached.exists()) {
-          sourceFile = File(cached.path);
+        final response = await http.get(Uri.parse(wallpaperUrl));
+        if (response.statusCode != 200) {
+          throw Exception('HTTP ${response.statusCode}');
         }
+        bytes = response.bodyBytes;
+        ext = _wallpaperExtension(wallpaperUrl);
+      } else if (wallpaperUrl.startsWith('assets/')) {
+        final data = await rootBundle.load(wallpaperUrl);
+        bytes = data.buffer.asUint8List();
+        ext = _wallpaperExtension(wallpaperUrl);
+      } else if (wallpaperUrl.startsWith('data:')) {
+        final data = UriData.parse(wallpaperUrl);
+        bytes = data.contentAsBytes();
+        ext = data.mimeType.split('/').last;
       } else if (_isLocalFilePath(_wallpaperUrl!)) {
-        final f = File(_wallpaperUrl!);
-        if (await f.exists()) sourceFile = f;
-      } else if (_wallpaperUrl!.startsWith('assets/')) {
-        final data = await rootBundle.load(_wallpaperUrl!);
-        final ext = _wallpaperUrl!.split('.').last;
-        final downloadDir = await getDownloadsDirectory();
-        if (downloadDir == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('无法获取下载目录')),
-            );
-          }
-          return;
-        }
-        final targetDir = Directory('${downloadDir.path}/CountdownTodo');
-        if (!await targetDir.exists()) await targetDir.create(recursive: true);
-        final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-        final targetFile = File('${targetDir.path}/wallpaper_$ts.$ext');
-        await targetFile.writeAsBytes(data.buffer.asUint8List());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已保存到 ${targetFile.path}')),
-          );
-        }
-        return;
+        throw Exception('当前平台无法直接下载本地路径壁纸');
+      } else {
+        throw Exception('不支持的壁纸来源');
       }
 
-      if (sourceFile == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('壁纸文件不存在或已过期')),
-          );
-        }
-        return;
-      }
-
-      final downloadDir = await getDownloadsDirectory();
-      if (downloadDir == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法获取下载目录')),
-          );
-        }
-        return;
-      }
-      final targetDir = Directory('${downloadDir.path}/CountdownTodo');
-      if (!await targetDir.exists()) await targetDir.create(recursive: true);
-      final ext = _wallpaperUrl!.split('.').last.split('?').first;
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final targetPath = '${targetDir.path}/wallpaper_$ts.$ext';
-      await sourceFile.copy(targetPath);
+      final savedPath = await BrowserFileService.saveBytesFile(
+        Uint8List.fromList(bytes),
+        'wallpaper_$ts.$ext',
+        mimeType: 'image/$ext',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已保存到 $targetPath')),
+          SnackBar(content: Text('已保存到 $savedPath')),
         );
       }
     } catch (e) {
@@ -5209,6 +5152,12 @@ class _HomeDashboardState extends State<HomeDashboard>
         );
       }
     }
+  }
+
+  String _wallpaperExtension(String url) {
+    final ext = url.split('?').first.split('.').last.toLowerCase();
+    if (ext == 'png' || ext == 'webp' || ext == 'gif') return ext;
+    return 'jpg';
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {

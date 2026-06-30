@@ -8,14 +8,16 @@ import '../widgets/permission_section.dart';
 class PermissionSettingsPage extends StatefulWidget {
   final String? initialTarget;
   final bool isEmbedded;
-  const PermissionSettingsPage({super.key, this.initialTarget, this.isEmbedded = false});
+  const PermissionSettingsPage(
+      {super.key, this.initialTarget, this.isEmbedded = false});
 
   @override
   State<PermissionSettingsPage> createState() => _PermissionSettingsPageState();
 }
 
 class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
-  static const platform = MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
+  static const platform =
+      MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
 
   final Map<String, GlobalKey> _itemKeys = {
     'permissions': GlobalKey(),
@@ -73,9 +75,11 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('权限管理'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('权限管理'),
+            ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Container(
@@ -85,7 +89,8 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
             permissionStatuses: _permissionStatuses,
             isCheckingPermissions: _isCheckingPermissions,
             onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-            onRequestOrOpenPermission: _permissionHandler.requestOrOpenPermission,
+            onRequestOrOpenPermission:
+                _permissionHandler.requestOrOpenPermission,
           ),
         ),
       ),

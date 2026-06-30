@@ -100,16 +100,22 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('动画设置'),
-        centerTitle: true,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('动画设置'),
+              centerTitle: true,
+            ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-            child: Text('核心特效开关', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('核心特效开关',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           GridView.count(
             shrinkWrap: true,
@@ -183,23 +189,33 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
           ),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
-            child: Text('参数微调', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            child: Text('参数微调',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
           ),
           Card(
             elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('动画时长', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('${_animationDuration}ms', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
+                          const Text('动画时长',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('${_animationDuration}ms',
+                              style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -217,8 +233,14 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('快', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                          Text('慢', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('快',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                          Text('慢',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
@@ -226,19 +248,27 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('层级深度', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_pageLayerDepth%', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
+                          const Text('层级深度',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_pageLayerDepth%',
+                              style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('控制背景页缩小、压暗和层级模糊强度', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                      Text('控制背景页缩小、压暗和层级模糊强度',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 8),
                       Slider(
                         value: _pageLayerDepth.toDouble(),
@@ -255,8 +285,14 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('轻', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                          Text('强', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('轻',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                          Text('强',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
@@ -264,19 +300,27 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('元素展开内容显现', style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_containerContentStart%', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
+                          const Text('元素展开内容显现',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text('$_containerContentStart%',
+                              style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('控制从卡片、按钮展开页面时内容出现的早晚', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                      Text('控制从卡片、按钮展开页面时内容出现的早晚',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 8),
                       Slider(
                         value: _containerContentStart.toDouble(),
@@ -293,8 +337,14 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('早', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                          Text('晚', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                          Text('早',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                          Text('晚',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ],
@@ -319,7 +369,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = value;
-    
+
     return GestureDetector(
       onTap: () => onChanged(!value),
       child: AnimatedContainer(
@@ -327,7 +377,11 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primary.withValues(alpha: 0.1) : (theme.brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade100),
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.1)
+              : (theme.brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? colorScheme.primary : Colors.transparent,
@@ -344,11 +398,13 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   duration: const Duration(milliseconds: 400),
                   switchInCurve: Curves.easeOutBack,
                   switchOutCurve: Curves.easeInBack,
-                  transitionBuilder: (Widget child, Animation<double> animation) {
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
                     return ScaleTransition(
                       scale: animation,
                       child: RotationTransition(
-                        turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+                        turns: Tween<double>(begin: -0.1, end: 0.0)
+                            .animate(animation),
                         child: child,
                       ),
                     );
@@ -377,17 +433,22 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 300),
               style: TextStyle(
-                fontWeight: FontWeight.bold, 
-                fontSize: 14, 
-                color: isSelected ? colorScheme.primary : theme.textTheme.bodyMedium?.color,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: isSelected
+                    ? colorScheme.primary
+                    : theme.textTheme.bodyMedium?.color,
                 fontFamily: theme.textTheme.bodyMedium?.fontFamily,
               ),
-              maxLines: 1, 
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               child: Text(title),
             ),
             const SizedBox(height: 2),
-            Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(subtitle,
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
           ],
         ),
       ),

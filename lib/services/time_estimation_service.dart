@@ -44,22 +44,81 @@ class TimeEstimationService {
 
   // Complexity keyword dictionaries
   static const _highComplexityKeywords = [
-    '复杂', '项目', '设计', '开发', '研究', '调研', '报告', '论文',
-    '方案', '架构', '系统', '分析', '规划', '重构', '优化', '算法',
-    '数据库', '部署', '迁移', '实现', '编写', '撰写', '策划',
-    '毕业', '考试', '竞赛', '实验', '建模', '仿真',
+    '复杂',
+    '项目',
+    '设计',
+    '开发',
+    '研究',
+    '调研',
+    '报告',
+    '论文',
+    '方案',
+    '架构',
+    '系统',
+    '分析',
+    '规划',
+    '重构',
+    '优化',
+    '算法',
+    '数据库',
+    '部署',
+    '迁移',
+    '实现',
+    '编写',
+    '撰写',
+    '策划',
+    '毕业',
+    '考试',
+    '竞赛',
+    '实验',
+    '建模',
+    '仿真',
   ];
 
   static const _mediumComplexityKeywords = [
-    '学习', '练习', '复习', '整理', '准备', '检查', '测试',
-    '阅读', '翻译', '总结', '修改', '更新', '配置', '安装',
-    '调试', 'review', '巩固', '梳理', '作业', '课程',
+    '学习',
+    '练习',
+    '复习',
+    '整理',
+    '准备',
+    '检查',
+    '测试',
+    '阅读',
+    '翻译',
+    '总结',
+    '修改',
+    '更新',
+    '配置',
+    '安装',
+    '调试',
+    'review',
+    '巩固',
+    '梳理',
+    '作业',
+    '课程',
   ];
 
   static const _lowComplexityKeywords = [
-    '购买', '打印', '发送', '回复', '简单', '快速', '顺便',
-    '清理', '备份', '下载', '上传', '提交', '确认', '浏览',
-    '签收', '签到', '打卡', '取快递', '买东西', '发消息',
+    '购买',
+    '打印',
+    '发送',
+    '回复',
+    '简单',
+    '快速',
+    '顺便',
+    '清理',
+    '备份',
+    '下载',
+    '上传',
+    '提交',
+    '确认',
+    '浏览',
+    '签收',
+    '签到',
+    '打卡',
+    '取快递',
+    '买东西',
+    '发消息',
   ];
 
   // Decay factor for recency weighting (30-day half-life)
@@ -165,7 +224,8 @@ class TimeEstimationService {
         final actualSecs = row['actual_focus_seconds'] as int? ?? 0;
         final plannedMins = row['planned_minutes'] as int? ?? 0;
         // Prefer actual, fall back to planned
-        final minutes = actualSecs > 0 ? (actualSecs / 60).round() : plannedMins;
+        final minutes =
+            actualSecs > 0 ? (actualSecs / 60).round() : plannedMins;
         if (title != null && title.isNotEmpty && minutes > 0) {
           records.add(_HistoricalRecord(
             title: title,
@@ -232,7 +292,8 @@ class TimeEstimationService {
     if (queryTokens.isEmpty) return (0.0, 0.0, []);
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final scored = <(double, double, String)>[]; // (similarity, recencyWeight, title)
+    final scored =
+        <(double, double, String)>[]; // (similarity, recencyWeight, title)
 
     for (final r in records) {
       final rTokens = _tokenize(r.title);
@@ -335,10 +396,9 @@ class TimeEstimationService {
       }).toList();
 
       if (tagRecords.length >= 3) {
-        final avg = tagRecords
-                .map((r) => r.actualMinutes)
-                .reduce((a, b) => a + b) /
-            tagRecords.length;
+        final avg =
+            tagRecords.map((r) => r.actualMinutes).reduce((a, b) => a + b) /
+                tagRecords.length;
         return (avg, 0.5);
       }
     }
@@ -353,8 +413,7 @@ class TimeEstimationService {
           where: 'group_id = ? AND is_deleted = 0',
           whereArgs: [groupId],
         );
-        final groupUuids =
-            groupTodos.map((r) => r['uuid'] as String).toSet();
+        final groupUuids = groupTodos.map((r) => r['uuid'] as String).toSet();
 
         if (groupUuids.isNotEmpty) {
           final groupRecords = records

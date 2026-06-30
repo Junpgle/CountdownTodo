@@ -210,7 +210,8 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
     super.dispose();
   }
 
-  String _formatSeconds(int totalSeconds) => formatDurationEnglish(totalSeconds);
+  String _formatSeconds(int totalSeconds) =>
+      formatDurationEnglish(totalSeconds);
 
   Widget _buildShimmerLoading(bool isTablet) {
     return Container(

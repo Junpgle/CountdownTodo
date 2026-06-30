@@ -14,7 +14,7 @@ class FeatureTipService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('$_prefix$tipId', true);
   }
-  
+
   /// 重置所有引导状态（用于调试）
   static Future<void> resetAllTips() async {
     final prefs = await SharedPreferences.getInstance();

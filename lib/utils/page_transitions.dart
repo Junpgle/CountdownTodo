@@ -761,9 +761,9 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         _lastT = t;
 
         final route = ModalRoute.of(context);
-        final isReverse = widget.animation.status == AnimationStatus.reverse || 
-                          (route != null && route.popGestureInProgress) || 
-                          _isReversing;
+        final isReverse = widget.animation.status == AnimationStatus.reverse ||
+            (route != null && route.popGestureInProgress) ||
+            _isReversing;
 
         Widget content = RepaintBoundary(child: widget.child);
 

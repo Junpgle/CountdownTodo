@@ -10,7 +10,8 @@ class LeaderboardScreen extends StatefulWidget {
   State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState extends State<LeaderboardScreen> with SingleTickerProviderStateMixin {
+class _LeaderboardScreenState extends State<LeaderboardScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -104,7 +105,8 @@ class _LeaderboardListState extends State<_LeaderboardList> {
 
           var list = snapshot.data ?? [];
           if (list.isEmpty) {
-            return const Center(child: Text("暂无排名数据", style: TextStyle(color: Colors.grey)));
+            return const Center(
+                child: Text("暂无排名数据", style: TextStyle(color: Colors.grey)));
           }
 
           return ListView.separated(
@@ -116,24 +118,33 @@ class _LeaderboardListState extends State<_LeaderboardList> {
               Color? rankColor;
               if (i == 0) {
                 rankColor = Colors.amber; // 金
-              } else if (i == 1) rankColor = Colors.grey; // 银
+              } else if (i == 1)
+                rankColor = Colors.grey; // 银
               else if (i == 2) rankColor = Colors.orange; // 铜
 
               // 兼容云端字段 (duration) 和 本地字段 (time)
               // API: {username, score, duration}
               // Local: {username, score, time}
-              String timeStr = (item['duration'] ?? item['time'] ?? 0).toString();
+              String timeStr =
+                  (item['duration'] ?? item['time'] ?? 0).toString();
 
               return ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: rankColor ?? Theme.of(context).colorScheme.primary,
-                  foregroundColor: rankColor != null ? Colors.white : Colors.black87,
-                  child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor:
+                      rankColor ?? Theme.of(context).colorScheme.primary,
+                  foregroundColor:
+                      rankColor != null ? Colors.white : Colors.black87,
+                  child: Text("${i + 1}",
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
-                title: Text(item['username'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text(item['username'] ?? 'Unknown',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text("用时: $timeStr秒"),
                 trailing: Text("${item['score']}分",
-                    style: const TextStyle(fontSize: 20, color: Colors.indigo, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(
+                        fontSize: 20,
+                        color: Colors.indigo,
+                        fontWeight: FontWeight.bold)),
               );
             },
           );
@@ -155,7 +166,8 @@ class HistoryScreen extends StatelessWidget {
       body: FutureBuilder<List<String>>(
         future: StorageService.getHistory(username),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
           var list = snapshot.data!;
           if (list.isEmpty) return const Center(child: Text("暂无历史记录"));
 
@@ -168,7 +180,8 @@ class HistoryScreen extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
-                  child: Text(list[i], style: const TextStyle(fontSize: 14, height: 1.5)),
+                  child: Text(list[i],
+                      style: const TextStyle(fontSize: 14, height: 1.5)),
                 ),
               );
             },

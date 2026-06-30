@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -295,7 +295,7 @@ class PreferenceSection extends StatelessWidget {
             },
           ),
         ),
-        if (Platform.isWindows) ...[
+        if (AppPlatform.isWindows) ...[
           const AppSettingsDivider(),
           _buildTile(
             context: context,

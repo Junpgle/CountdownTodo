@@ -58,7 +58,8 @@ class _CoachMarkOverlayWidget extends StatefulWidget {
   });
 
   @override
-  State<_CoachMarkOverlayWidget> createState() => _CoachMarkOverlayWidgetState();
+  State<_CoachMarkOverlayWidget> createState() =>
+      _CoachMarkOverlayWidgetState();
 }
 
 class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
@@ -91,14 +92,16 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
       if (!mounted) return;
 
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
-      
+
       // 🚀 获取根 Overlay 的 RenderBox 作为坐标系参考
       final OverlayState overlay = Overlay.of(context, rootOverlay: true);
-      final RenderBox overlayRenderBox = overlay.context.findRenderObject() as RenderBox;
-      
+      final RenderBox overlayRenderBox =
+          overlay.context.findRenderObject() as RenderBox;
+
       // 计算相对于根 Overlay 的精确坐标
-      final offset = renderBox.localToGlobal(Offset.zero, ancestor: overlayRenderBox);
-      
+      final offset =
+          renderBox.localToGlobal(Offset.zero, ancestor: overlayRenderBox);
+
       setState(() {
         _targetRect = offset & renderBox.size;
         _isCalculating = false;
@@ -119,7 +122,8 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         _isCalculating = true; // 🚀 标记为正在计算
         // _targetRect = null; // 不再清空，避免中间态闪烁
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _calculateTargetRect());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _calculateTargetRect());
     } else {
       widget.onFinish();
     }
@@ -143,20 +147,20 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
               child: Container(),
             ),
           ),
-          
+
           // 2. Skip Button
           Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             right: 16,
             child: TextButton(
               onPressed: widget.onSkip,
-              child: const Text('跳过教程', style: TextStyle(color: Colors.white70)),
+              child:
+                  const Text('跳过教程', style: TextStyle(color: Colors.white70)),
             ),
           ),
 
           // 3. Tooltip Bubble
-          if (!_isCalculating)
-            _buildTooltip(step, _targetRect),
+          if (!_isCalculating) _buildTooltip(step, _targetRect),
         ],
       ),
     );
@@ -164,14 +168,18 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
 
   Widget _buildTooltip(CoachMarkStep step, Rect? targetRect) {
     final screenSize = MediaQuery.of(context).size;
-    final isBottomSpaceAvailable = targetRect != null ? ((screenSize.height - targetRect.bottom) > 220) : true;
-    
+    final isBottomSpaceAvailable = targetRect != null
+        ? ((screenSize.height - targetRect.bottom) > 220)
+        : true;
+
     return Positioned(
-      top: targetRect != null 
+      top: targetRect != null
           ? (isBottomSpaceAvailable ? targetRect.bottom + 16 : null)
           : screenSize.height / 2 - 100, // 默认居中显示
-      bottom: targetRect != null 
-          ? (!isBottomSpaceAvailable ? screenSize.height - targetRect.top + 16 : null)
+      bottom: targetRect != null
+          ? (!isBottomSpaceAvailable
+              ? screenSize.height - targetRect.top + 16
+              : null)
           : null,
       left: 16,
       right: 16,
@@ -207,7 +215,10 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                 step.description,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.75),
                   height: 1.5,
                 ),
               ),
@@ -220,7 +231,10 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.4),
                     ),
                   ),
                   Row(

@@ -1,11 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
+import 'http_client_factory.dart';
 import '../storage_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
@@ -18,11 +17,7 @@ class ApiService {
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
   static http.Client? _clientInstance;
   static http.Client get _client {
-    _clientInstance ??= IOClient(
-      HttpClient()
-        ..badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true,
-    );
+    _clientInstance ??= createApiHttpClient();
     return _clientInstance!;
   }
 
@@ -141,8 +136,7 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> login(
-      String email, String password,
+  static Future<Map<String, dynamic>> login(String email, String password,
       {String? turnstileToken}) async {
     try {
       final Map<String, dynamic> bodyMap = {
@@ -332,7 +326,8 @@ class ApiService {
           'server_tags': data['server_pomodoro_tags'] ?? [],
           'server_plan_blocks': data['server_plan_blocks'] ?? [],
           'joined_team_uuids': data['joined_team_uuids'],
-          'independent_completions': data['independent_completions'], // 🚀 独立完成状态
+          'independent_completions':
+              data['independent_completions'], // 🚀 独立完成状态
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {
@@ -748,9 +743,11 @@ class ApiService {
   /// 获取当前在线设备分布统计
   static Future<Map<String, dynamic>?> fetchOnlineStats() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/online_stats'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await _client
+          .get(
+            Uri.parse('$_effectiveBaseUrl/api/online_stats'),
+          )
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -763,9 +760,11 @@ class ApiService {
   /// 获取所有设备历史版本分布统计（含离线设备）
   static Future<Map<String, dynamic>?> fetchDeviceVersionStats() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await _client
+          .get(
+            Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
+          )
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }

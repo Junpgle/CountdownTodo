@@ -412,9 +412,7 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: widget.isLight
-                      ? Colors.white70
-                      : colorScheme.outline,
+                  color: widget.isLight ? Colors.white70 : colorScheme.outline,
                 ),
               ),
               const SizedBox(height: 8),
@@ -432,8 +430,9 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
         DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
             .toLocal();
     final durationMin = record.effectiveDuration ~/ 60;
-    final statusIcon =
-        record.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
+    final statusIcon = record.isCompleted
+        ? Icons.check_circle_rounded
+        : Icons.timer_off_rounded;
     final statusColor = record.isCompleted
         ? (widget.isLight ? Colors.greenAccent : colorScheme.cdtSuccess)
         : (widget.isLight ? Colors.amber : colorScheme.cdtWarning);

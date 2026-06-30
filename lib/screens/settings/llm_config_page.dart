@@ -1705,46 +1705,48 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('大模型API配置'),
-        actions: [
-          IconButton(
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('清除配置'),
-                  content: const Text('确定要清除所有大模型配置吗？'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('大模型API配置'),
+              actions: [
+                IconButton(
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('清除配置'),
+                        content: const Text('确定要清除所有大模型配置吗？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            child: const Text('清除'),
+                          ),
+                        ],
                       ),
-                      child: const Text('清除'),
-                    ),
-                  ],
+                    );
+                    if (confirmed == true) {
+                      await LLMService.clearConfig();
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已清除大模型配置')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: '清除配置',
                 ),
-              );
-              if (confirmed == true) {
-                await LLMService.clearConfig();
-                if (context.mounted) {
-                  Navigator.pop(context, true);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已清除大模型配置')),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '清除配置',
-          ),
-        ],
-      ),
+              ],
+            ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(

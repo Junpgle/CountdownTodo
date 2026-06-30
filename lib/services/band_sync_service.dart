@@ -290,7 +290,6 @@ class BandSyncService {
     }
   }
 
-
   /// 同步待办事项
   static Future<bool> syncTodos(List<Map<String, dynamic>> todos) async {
     final success = await _sendListData('todo', todos);
@@ -393,7 +392,8 @@ class BandSyncService {
     return allSuccess;
   }
 
-  static int _estimatePayloadBytes(String type, List<Map<String, dynamic>> data) {
+  static int _estimatePayloadBytes(
+      String type, List<Map<String, dynamic>> data) {
     final payload = {
       'type': type,
       'data': data,

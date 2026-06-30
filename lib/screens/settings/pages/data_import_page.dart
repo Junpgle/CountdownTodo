@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,6 +8,7 @@ import '../../../models/data_export_models.dart';
 import '../../../services/api_service.dart';
 import '../../../services/data_import_service.dart';
 import '../../../storage_service.dart';
+import '../../../utils/text_file_reader.dart';
 
 class DataImportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -21,12 +21,14 @@ class DataImportPage extends StatefulWidget {
 
 class _DataImportPageState extends State<DataImportPage> {
   String? _filePath;
+  String? _fileName;
+  String? _fileContent;
   ImportPreview? _preview;
   bool _isParsing = false;
   bool _isImporting = false;
   ImportResult? _result;
   bool? _isSameAccount;
-  
+
   // 导入选项
   TeamDataStrategy _teamStrategy = TeamDataStrategy.skip;
 
@@ -34,15 +36,24 @@ class _DataImportPageState extends State<DataImportPage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
+      withData: true,
     );
 
     if (result == null || result.files.isEmpty) return;
 
-    final filePath = result.files.single.path;
-    if (filePath == null) return;
+    final pickedFile = result.files.single;
+    final filePath = pickedFile.path;
+    final fileName = pickedFile.name;
+    final bytes = pickedFile.bytes;
+    final jsonString = bytes != null
+        ? utf8.decode(bytes)
+        : (filePath != null ? await readTextFile(filePath) : null);
+    if (jsonString == null) return;
 
     setState(() {
       _filePath = filePath;
+      _fileName = fileName;
+      _fileContent = jsonString;
       _preview = null;
       _result = null;
       _isParsing = true;
@@ -50,17 +61,15 @@ class _DataImportPageState extends State<DataImportPage> {
     });
 
     try {
-      final preview = await DataImportService.parseFile(filePath);
-      
+      final preview = await DataImportService.parseJsonString(jsonString);
+
       // 多重检测是否是同账号
       final currentUserId = ApiService.currentUserId;
       final currentUsername = await StorageService.getCurrentUsername();
-      final file = File(filePath);
-      final jsonString = await file.readAsString();
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
       final fileUserId = json['userId'] as int?;
       final fileUsername = json['username']?.toString();
-      
+
       // 判断逻辑（优先使用 userId）
       final bool isSameAccount;
       if (fileUserId != null && fileUserId > 0) {
@@ -73,14 +82,14 @@ class _DataImportPageState extends State<DataImportPage> {
         // 旧版本导出的文件，无法判断，默认同账号
         isSameAccount = true;
       }
-      
+
       if (mounted) {
         setState(() {
           _preview = preview;
           _isParsing = false;
           _isSameAccount = isSameAccount;
         });
-        
+
         // 如果是不同账号，显示提示
         if (!isSameAccount) {
           _showDifferentAccountDialog(fileUserId, fileUsername);
@@ -107,7 +116,7 @@ class _DataImportPageState extends State<DataImportPage> {
     } else {
       message = '检测到备份文件来自不同账号，导入时将自动重新生成所有数据的 UUID 以避免冲突。';
     }
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -119,6 +128,8 @@ class _DataImportPageState extends State<DataImportPage> {
               Navigator.pop(context);
               setState(() {
                 _filePath = null;
+                _fileName = null;
+                _fileContent = null;
                 _preview = null;
                 _isSameAccount = null;
               });
@@ -135,7 +146,7 @@ class _DataImportPageState extends State<DataImportPage> {
   }
 
   Future<void> _import() async {
-    if (_filePath == null) return;
+    if (_filePath == null && _fileContent == null) return;
 
     setState(() => _isImporting = true);
 
@@ -153,14 +164,21 @@ class _DataImportPageState extends State<DataImportPage> {
     final uuidStrategy = _isSameAccount == false
         ? UuidStrategy.regenerate
         : UuidStrategy.keepOriginal;
-    final result = await DataImportService.importData(
-      username: username,
-      filePath: _filePath!,
-      options: ImportOptions(
-        teamStrategy: _teamStrategy,
-        uuidStrategy: uuidStrategy,
-      ),
+    final importOptions = ImportOptions(
+      teamStrategy: _teamStrategy,
+      uuidStrategy: uuidStrategy,
     );
+    final result = _fileContent != null
+        ? await DataImportService.importDataFromJsonString(
+            username: username,
+            jsonString: _fileContent!,
+            options: importOptions,
+          )
+        : await DataImportService.importData(
+            username: username,
+            filePath: _filePath!,
+            options: importOptions,
+          );
 
     if (mounted) {
       setState(() {
@@ -190,13 +208,12 @@ class _DataImportPageState extends State<DataImportPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     final isWideScreen = screenWidth > 600;
 
     return Scaffold(
-      appBar: widget.isEmbedded
-          ? null
-          : AppBar(title: const Text('数据导入')),
+      appBar: widget.isEmbedded ? null : AppBar(title: const Text('数据导入')),
       body: _buildBody(colorScheme, isLandscape || isWideScreen),
     );
   }
@@ -303,8 +320,7 @@ class _DataImportPageState extends State<DataImportPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.folder_open,
-                    color: colorScheme.primary, size: 20),
+                Icon(Icons.folder_open, color: colorScheme.primary, size: 20),
                 const SizedBox(width: 8),
                 const Text(
                   '选择备份文件',
@@ -313,7 +329,7 @@ class _DataImportPageState extends State<DataImportPage> {
               ],
             ),
             const SizedBox(height: 12),
-            if (_filePath != null) ...[
+            if (_filePath != null || _fileContent != null) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -327,7 +343,7 @@ class _DataImportPageState extends State<DataImportPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _filePath!.split('/').last,
+                        _fileName ?? _filePath!.split('/').last,
                         style: const TextStyle(fontSize: 13),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -337,6 +353,8 @@ class _DataImportPageState extends State<DataImportPage> {
                       onPressed: () {
                         setState(() {
                           _filePath = null;
+                          _fileName = null;
+                          _fileContent = null;
                           _preview = null;
                           _result = null;
                         });
@@ -352,7 +370,9 @@ class _DataImportPageState extends State<DataImportPage> {
               child: OutlinedButton.icon(
                 onPressed: _isParsing ? null : _pickFile,
                 icon: const Icon(Icons.file_upload_outlined),
-                label: Text(_filePath == null ? '选择文件' : '更换文件'),
+                label: Text((_filePath == null && _fileContent == null)
+                    ? '选择文件'
+                    : '更换文件'),
               ),
             ),
           ],
@@ -372,8 +392,7 @@ class _DataImportPageState extends State<DataImportPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.preview,
-                    color: colorScheme.primary, size: 20),
+                Icon(Icons.preview, color: colorScheme.primary, size: 20),
                 const SizedBox(width: 8),
                 const Text(
                   '文件预览',
@@ -490,8 +509,7 @@ class _DataImportPageState extends State<DataImportPage> {
                 const SizedBox(width: 8),
                 const Text(
                   '导入选项',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -500,8 +518,8 @@ class _DataImportPageState extends State<DataImportPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _isSameAccount! 
-                      ? colorScheme.primaryContainer 
+                  color: _isSameAccount!
+                      ? colorScheme.primaryContainer
                       : colorScheme.errorContainer,
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -509,22 +527,22 @@ class _DataImportPageState extends State<DataImportPage> {
                   children: [
                     Icon(
                       _isSameAccount! ? Icons.check_circle : Icons.swap_horiz,
-                      color: _isSameAccount! 
-                          ? colorScheme.onPrimaryContainer 
+                      color: _isSameAccount!
+                          ? colorScheme.onPrimaryContainer
                           : colorScheme.onErrorContainer,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _isSameAccount! 
+                        _isSameAccount!
                             ? '同账号数据，将保留原始 UUID'
                             : '跨账号导入，将重新生成 UUID',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: _isSameAccount! 
-                              ? colorScheme.onPrimaryContainer 
+                          color: _isSameAccount!
+                              ? colorScheme.onPrimaryContainer
                               : colorScheme.onErrorContainer,
                         ),
                       ),

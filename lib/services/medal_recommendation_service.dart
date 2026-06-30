@@ -11,10 +11,11 @@ class MedalInfo {
   final String description;
   final IconData icon;
   final Color color;
-  final String category; // 'focus', 'completion', 'persistence', 'efficiency', 'breadth'
+  final String
+      category; // 'focus', 'completion', 'persistence', 'efficiency', 'breadth'
   final int priority; // 1 (most motivating) to 5
   final bool isRepeatable;
-  
+
   MedalInfo({
     required this.id,
     required this.title,
@@ -52,7 +53,7 @@ class MedalProgress {
 
 /// 勋章推荐结果
 class MedalRecommendation {
-  final List<MedalProgress> topRecommendations; // 前6个最容易达成的
+  final List<MedalProgress> topRecommendations; // 前3个最容易达成的
   final List<MedalProgress> allMedals; // 所有勋章及进度
   final List<MedalProgress> earnedMedals; // 已获得的勋章
   final bool isML; // 是否使用了 ML 推荐
@@ -1050,7 +1051,8 @@ class MedalRecommendationService {
       // === 原有勋章逻辑 ===
       case 'focus_starter':
         earned = summary.pomodoroCount >= 1;
-        progress = earned ? 1.0 : (summary.pomodoroCount.clamp(0, 1).toDouble());
+        progress =
+            earned ? 1.0 : (summary.pomodoroCount.clamp(0, 1).toDouble());
         stepsRemaining = earned ? 0 : 1;
         nextMilestone = earned ? '已获得' : '需要 1 次 Pomodoro';
         if (earned) {
@@ -1078,14 +1080,16 @@ class MedalRecommendationService {
         earned = summary.longestPomodoroMinutes >= 60;
         progress = (summary.longestPomodoroMinutes / 60).clamp(0.0, 1.0);
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得' : '单次最长已达 ${summary.longestPomodoroMinutes} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '单次最长已达 ${summary.longestPomodoroMinutes} 分钟';
         break;
 
       case 'long_focus_specialist':
         earned = summary.longestPomodoroMinutes >= 90;
         progress = (summary.longestPomodoroMinutes / 90).clamp(0.0, 1.0);
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得' : '单次最长已达 ${summary.longestPomodoroMinutes} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '单次最长已达 ${summary.longestPomodoroMinutes} 分钟';
         break;
 
       case 'stable_output':
@@ -1093,7 +1097,9 @@ class MedalRecommendationService {
         earned = lowInterruption && summary.pomodoroCount >= 3;
         progress = earned ? 1.0 : (summary.pomodoroCount / 3).clamp(0.0, 0.9);
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得' : '中断率 ${(summary.interruptionRate * 100).toStringAsFixed(1)}%，需 ≤10%';
+        nextMilestone = earned
+            ? '已获得'
+            : '中断率 ${(summary.interruptionRate * 100).toStringAsFixed(1)}%，需 ≤10%';
         break;
 
       case 'task_harvester':
@@ -1113,7 +1119,8 @@ class MedalRecommendationService {
         progress = (rate / 0.8).clamp(0.0, 1.0);
         earned = rate >= 0.8 && totalCount >= 3;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得' : '当前完成率 ${(rate * 100).toStringAsFixed(0)}%，需达 80%';
+        nextMilestone =
+            earned ? '已获得' : '当前完成率 ${(rate * 100).toStringAsFixed(0)}%，需达 80%';
         break;
 
       case 'early_deliverer':
@@ -1135,21 +1142,24 @@ class MedalRecommendationService {
         earned = isNightOwl && totalFocusMinutes > 30;
         progress = earned ? 1.0 : 0.0;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得 (高峰: ${summary.peakHour}:00)' : '探索你的高效时段';
+        nextMilestone =
+            earned ? '已获得 (高峰: ${summary.peakHour}:00)' : '探索你的高效时段';
         break;
 
       case 'golden_hour':
         earned = summary.peakHour > 0;
         progress = earned ? 1.0 : 0.0;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得 (高峰: ${summary.peakHour}:00)' : '分析你的专注规律';
+        nextMilestone =
+            earned ? '已获得 (高峰: ${summary.peakHour}:00)' : '分析你的专注规律';
         break;
 
       case 'long_distance_runner':
         progress = (summary.consecutiveActiveDays / 3).clamp(0.0, 1.0);
         earned = summary.consecutiveActiveDays >= 3;
         stepsRemaining = earned ? 0 : (3 - summary.consecutiveActiveDays);
-        nextMilestone = earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
         break;
 
       case 'learning_polymath':
@@ -1165,7 +1175,8 @@ class MedalRecommendationService {
         progress = (ratio / 45).clamp(0.0, 1.0);
         earned = ratio >= 45 && totalFocusMinutes > 60;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得' : '最高主题占比 ${ratio.toStringAsFixed(0)}%，需达 45%';
+        nextMilestone =
+            earned ? '已获得' : '最高主题占比 ${ratio.toStringAsFixed(0)}%，需达 45%';
         break;
 
       case 'knowledge_scout':
@@ -1179,7 +1190,8 @@ class MedalRecommendationService {
         progress = (summary.examPrepCount / 3).clamp(0.0, 1.0);
         earned = summary.examPrepCount >= 3;
         stepsRemaining = earned ? 0 : (3 - summary.examPrepCount);
-        nextMilestone = earned ? '已获得' : '当前备考 ${summary.examPrepCount} 次，需 3 次';
+        nextMilestone =
+            earned ? '已获得' : '当前备考 ${summary.examPrepCount} 次，需 3 次';
         break;
 
       case 'course_companion':
@@ -1197,19 +1209,27 @@ class MedalRecommendationService {
         break;
 
       case 'screen_master':
-        final masterRatio = screenTimeSeconds > 0 ? (productiveScreenSeconds / screenTimeSeconds) * 100 : 0.0;
+        final masterRatio = screenTimeSeconds > 0
+            ? (productiveScreenSeconds / screenTimeSeconds) * 100
+            : 0.0;
         progress = (masterRatio / 50).clamp(0.0, 1.0);
         earned = masterRatio >= 50;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得 (生产力 ${masterRatio.toStringAsFixed(0)}%)' : '生产力应用占比 ${masterRatio.toStringAsFixed(0)}%，需达 50%';
+        nextMilestone = earned
+            ? '已获得 (生产力 ${masterRatio.toStringAsFixed(0)}%)'
+            : '生产力应用占比 ${masterRatio.toStringAsFixed(0)}%，需达 50%';
         break;
 
       case 'low_distraction_mode':
-        final distractionRatio = screenTimeSeconds > 0 ? (distractionScreenSeconds / screenTimeSeconds) * 100 : 0.0;
+        final distractionRatio = screenTimeSeconds > 0
+            ? (distractionScreenSeconds / screenTimeSeconds) * 100
+            : 0.0;
         progress = ((100 - distractionRatio) / 85).clamp(0.0, 1.0);
         earned = distractionRatio <= 15;
         stepsRemaining = earned ? 0 : 1;
-        nextMilestone = earned ? '已获得 (分心 ${distractionRatio.toStringAsFixed(0)}%)' : '分心应用占比 ${distractionRatio.toStringAsFixed(0)}%，需 ≤15%';
+        nextMilestone = earned
+            ? '已获得 (分心 ${distractionRatio.toStringAsFixed(0)}%)'
+            : '分心应用占比 ${distractionRatio.toStringAsFixed(0)}%，需 ≤15%';
         break;
 
       // === 新增扩展勋章逻辑 ===
@@ -1217,21 +1237,24 @@ class MedalRecommendationService {
         progress = (totalFocusMinutes / (24 * 60)).clamp(0.0, 1.0);
         earned = totalFocusMinutes >= 24 * 60;
         stepsRemaining = earned ? 0 : (24 * 60 - totalFocusMinutes);
-        nextMilestone = earned ? '已获得' : '还需要 ${(24 * 60 - totalFocusMinutes)} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '还需要 ${(24 * 60 - totalFocusMinutes)} 分钟';
         break;
 
       case 'focus_legend':
         progress = (totalFocusMinutes / (100 * 60)).clamp(0.0, 1.0);
         earned = totalFocusMinutes >= 100 * 60;
         stepsRemaining = earned ? 0 : (100 * 60 - totalFocusMinutes);
-        nextMilestone = earned ? '已获得' : '还需要 ${(100 * 60 - totalFocusMinutes)} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '还需要 ${(100 * 60 - totalFocusMinutes)} 分钟';
         break;
 
       case 'pomo_runner':
         progress = (summary.pomodoroCount / 50).clamp(0.0, 1.0);
         earned = summary.pomodoroCount >= 50;
         stepsRemaining = earned ? 0 : (50 - summary.pomodoroCount);
-        nextMilestone = earned ? '已获得' : '还需要 ${(50 - summary.pomodoroCount)} 个';
+        nextMilestone =
+            earned ? '已获得' : '还需要 ${(50 - summary.pomodoroCount)} 个';
         if (earned) earnedCount = summary.pomodoroCount ~/ 50;
         break;
 
@@ -1239,14 +1262,16 @@ class MedalRecommendationService {
         progress = (summary.pomodoroCount / 200).clamp(0.0, 1.0);
         earned = summary.pomodoroCount >= 200;
         stepsRemaining = earned ? 0 : (200 - summary.pomodoroCount);
-        nextMilestone = earned ? '已获得' : '还需要 ${(200 - summary.pomodoroCount)} 个';
+        nextMilestone =
+            earned ? '已获得' : '还需要 ${(200 - summary.pomodoroCount)} 个';
         if (earned) earnedCount = summary.pomodoroCount ~/ 200;
         break;
 
       case 'ultra_focus':
         earned = summary.longestPomodoroMinutes >= 120;
         progress = (summary.longestPomodoroMinutes / 120).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '单次最高 ${summary.longestPomodoroMinutes} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '单次最高 ${summary.longestPomodoroMinutes} 分钟';
         break;
 
       case 'distraction_immune':
@@ -1270,14 +1295,16 @@ class MedalRecommendationService {
         break;
 
       case 'early_bird':
-        int earlySessions = summary.hourlyDistribution.sublist(5, 8).fold(0, (a, b) => a + b);
+        int earlySessions =
+            summary.hourlyDistribution.sublist(5, 8).fold(0, (a, b) => a + b);
         progress = (earlySessions / 10).clamp(0.0, 1.0);
         earned = earlySessions >= 10;
         nextMilestone = earned ? '已获得' : '还需 ${(10 - earlySessions)} 次早起专注';
         break;
 
       case 'night_owl':
-        int lateSessions = summary.hourlyDistribution.sublist(0, 4).fold(0, (a, b) => a + b);
+        int lateSessions =
+            summary.hourlyDistribution.sublist(0, 4).fold(0, (a, b) => a + b);
         progress = (lateSessions / 10).clamp(0.0, 1.0);
         earned = lateSessions >= 10;
         nextMilestone = earned ? '已获得' : '还需 ${(10 - lateSessions)} 次深夜专注';
@@ -1292,7 +1319,8 @@ class MedalRecommendationService {
 
       case 'productivity_spike':
         earned = summary.mostProductiveDayCompletedCount >= 10;
-        progress = (summary.mostProductiveDayCompletedCount / 10).clamp(0.0, 1.0);
+        progress =
+            (summary.mostProductiveDayCompletedCount / 10).clamp(0.0, 1.0);
         stepsRemaining = earned ? 0 : 1;
         nextMilestone = earned ? '已获得' : '单日完成任务数量达标即可获得';
         break;
@@ -1300,19 +1328,22 @@ class MedalRecommendationService {
       case 'perfect_week':
         progress = (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
         earned = summary.consecutiveActiveDays >= 7;
-        nextMilestone = earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
         break;
 
       case 'persistence_hero':
         progress = (summary.consecutiveActiveDays / 30).clamp(0.0, 1.0);
         earned = summary.consecutiveActiveDays >= 30;
-        nextMilestone = earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续活跃 ${summary.consecutiveActiveDays} 天';
         break;
 
       case 'monthly_checkin':
         earned = summary.consecutiveActiveDays >= 20;
         progress = (summary.consecutiveActiveDays / 20).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '活跃天数还需 ${20 - summary.consecutiveActiveDays} 天';
+        nextMilestone =
+            earned ? '已获得' : '活跃天数还需 ${20 - summary.consecutiveActiveDays} 天';
         break;
 
       case 'steady_pulse':
@@ -1325,8 +1356,9 @@ class MedalRecommendationService {
             final mean = last5.fold<double>(0, (a, b) => a + b) / 5;
             if (mean > 0) {
               final variance = last5
-                  .map((v) => (v - mean) * (v - mean))
-                  .fold<double>(0, (a, b) => a + b) / 5;
+                      .map((v) => (v - mean) * (v - mean))
+                      .fold<double>(0, (a, b) => a + b) /
+                  5;
               final cv = sqrt(variance) / mean;
               stable = cv < 0.2;
             }
@@ -1336,16 +1368,20 @@ class MedalRecommendationService {
               ? 1.0
               : (streak / 5).clamp(0.0, 0.9) * (stable ? 1.0 : 0.6);
           stepsRemaining = earned ? 0 : 1;
-          nextMilestone = earned
-              ? '已获得'
-              : '每日专注时长波动较大，需连续 5 天保持稳定';
+          nextMilestone = earned ? '已获得' : '每日专注时长波动较大，需连续 5 天保持稳定';
         }
         break;
 
       case 'efficiency_demon':
         earned = summary.interruptionRate <= 0.05 && totalFocusMinutes > 120;
-        progress = earned ? 1.0 : ((summary.interruptionRate <= 0.05 && totalFocusMinutes > 60) ? 0.8 : 0.5);
-        nextMilestone = earned ? '已获得' : '中断率 ${(summary.interruptionRate * 100).toStringAsFixed(1)}%，专注需超 120 分钟';
+        progress = earned
+            ? 1.0
+            : ((summary.interruptionRate <= 0.05 && totalFocusMinutes > 60)
+                ? 0.8
+                : 0.5);
+        nextMilestone = earned
+            ? '已获得'
+            : '中断率 ${(summary.interruptionRate * 100).toStringAsFixed(1)}%，专注需超 120 分钟';
         break;
 
       case 'screen_time_slayer':
@@ -1377,7 +1413,8 @@ class MedalRecommendationService {
         progress = (summary.deepWorkCount / 10).clamp(0.0, 1.0);
         earned = summary.deepWorkCount >= 10;
         if (earned) earnedCount = summary.deepWorkCount ~/ 10;
-        nextMilestone = earned ? '已获得' : '还需深度专注 ${10 - summary.deepWorkCount} 次';
+        nextMilestone =
+            earned ? '已获得' : '还需深度专注 ${10 - summary.deepWorkCount} 次';
         break;
 
       case 'course_veteran':
@@ -1389,12 +1426,19 @@ class MedalRecommendationService {
 
       case 'no_skip_champion':
         earned = summary.todoCompletionRate >= 0.95 && totalCount > 5;
-        progress = earned ? 1.0 : (totalCount > 0 ? (summary.todoCompletionRate * (totalCount / 6).clamp(0.0, 1.0)) : 0.0);
-        nextMilestone = earned ? '已获得' : '完成率 ${(summary.todoCompletionRate * 100).toStringAsFixed(0)}%，需达 95% 且任务数 > 5';
+        progress = earned
+            ? 1.0
+            : (totalCount > 0
+                ? (summary.todoCompletionRate *
+                    (totalCount / 6).clamp(0.0, 1.0))
+                : 0.0);
+        nextMilestone = earned
+            ? '已获得'
+            : '完成率 ${(summary.todoCompletionRate * 100).toStringAsFixed(0)}%，需达 95% 且任务数 > 5';
         break;
 
       case 'sync_pioneer':
-        earned = true; 
+        earned = true;
         progress = 1.0;
         nextMilestone = '已开启云端生活';
         break;
@@ -1402,7 +1446,8 @@ class MedalRecommendationService {
       case 'island_resident':
         earned = totalFocusMinutes >= 600;
         progress = (totalFocusMinutes / 600).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '岛屿停留时长还需 ${600 - totalFocusMinutes} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '岛屿停留时长还需 ${600 - totalFocusMinutes} 分钟';
         break;
 
       case 'focus_streak_5':
@@ -1426,73 +1471,92 @@ class MedalRecommendationService {
         progress = (earlyCompletionCount / 50).clamp(0.0, 1.0);
         earned = earlyCompletionCount >= 50;
         if (earned) earnedCount = earlyCompletionCount ~/ 50;
-        nextMilestone = earned ? '已获得' : '还需提前完成 ${50 - earlyCompletionCount} 个任务';
+        nextMilestone =
+            earned ? '已获得' : '还需提前完成 ${50 - earlyCompletionCount} 个任务';
         break;
 
       case 'deadline_survivor_20':
         progress = (deadlineSprintCount / 20).clamp(0.0, 1.0);
         earned = deadlineSprintCount >= 20;
         if (earned) earnedCount = deadlineSprintCount ~/ 20;
-        nextMilestone = earned ? '已获得' : '还需在 DDL 当天完成 ${20 - deadlineSprintCount} 个任务';
+        nextMilestone =
+            earned ? '已获得' : '还需在 DDL 当天完成 ${20 - deadlineSprintCount} 个任务';
         break;
 
       // === Category: Subject Specialists (10个) ===
       case 'subject_mathematician':
-        final mathMins = (summary.subjectDistribution['数学'] ?? 0) + (summary.subjectDistribution['理科'] ?? 0);
+        final mathMins = (summary.subjectDistribution['数学'] ?? 0) +
+            (summary.subjectDistribution['理科'] ?? 0);
         progress = (mathMins / (20 * 60)).clamp(0.0, 1.0);
         earned = mathMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '数学理科类还需专注 ${(20 * 60 - mathMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '数学理科类还需专注 ${(20 * 60 - mathMins).toInt()} 分钟';
         break;
       case 'subject_linguist':
         final langMins = summary.subjectDistribution['语言'] ?? 0;
         progress = (langMins / (20 * 60)).clamp(0.0, 1.0);
         earned = langMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '语言类还需专注 ${(20 * 60 - langMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '语言类还需专注 ${(20 * 60 - langMins).toInt()} 分钟';
         break;
       case 'subject_coder':
-        final codeMins = (summary.subjectDistribution['编程'] ?? 0) + (summary.subjectDistribution['计算机'] ?? 0);
+        final codeMins = (summary.subjectDistribution['编程'] ?? 0) +
+            (summary.subjectDistribution['计算机'] ?? 0);
         progress = (codeMins / (20 * 60)).clamp(0.0, 1.0);
         earned = codeMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '编程类还需专注 ${(20 * 60 - codeMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '编程类还需专注 ${(20 * 60 - codeMins).toInt()} 分钟';
         break;
       case 'subject_artist':
-        final artMins = (summary.subjectDistribution['艺术'] ?? 0) + (summary.subjectDistribution['设计'] ?? 0);
+        final artMins = (summary.subjectDistribution['艺术'] ?? 0) +
+            (summary.subjectDistribution['设计'] ?? 0);
         progress = (artMins / (20 * 60)).clamp(0.0, 1.0);
         earned = artMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '艺术类还需专注 ${(20 * 60 - artMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '艺术类还需专注 ${(20 * 60 - artMins).toInt()} 分钟';
         break;
       case 'subject_scientist':
-        final sciMins = (summary.subjectDistribution['科学'] ?? 0) + (summary.subjectDistribution['实验'] ?? 0);
+        final sciMins = (summary.subjectDistribution['科学'] ?? 0) +
+            (summary.subjectDistribution['实验'] ?? 0);
         progress = (sciMins / (20 * 60)).clamp(0.0, 1.0);
         earned = sciMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '科学类还需专注 ${(20 * 60 - sciMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '科学类还需专注 ${(20 * 60 - sciMins).toInt()} 分钟';
         break;
       case 'subject_historian':
-        final histMins = (summary.subjectDistribution['历史'] ?? 0) + (summary.subjectDistribution['社科'] ?? 0);
+        final histMins = (summary.subjectDistribution['历史'] ?? 0) +
+            (summary.subjectDistribution['社科'] ?? 0);
         progress = (histMins / (20 * 60)).clamp(0.0, 1.0);
         earned = histMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '历史社科类还需专注 ${(20 * 60 - histMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '历史社科类还需专注 ${(20 * 60 - histMins).toInt()} 分钟';
         break;
       case 'subject_athlete':
-        final fitMins = (summary.subjectDistribution['体育'] ?? 0) + (summary.subjectDistribution['健身'] ?? 0);
+        final fitMins = (summary.subjectDistribution['体育'] ?? 0) +
+            (summary.subjectDistribution['健身'] ?? 0);
         progress = (fitMins / (20 * 60)).clamp(0.0, 1.0);
         earned = fitMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '体育健身类还需专注 ${(20 * 60 - fitMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '体育健身类还需专注 ${(20 * 60 - fitMins).toInt()} 分钟';
         break;
       case 'subject_musician':
         final musicMins = summary.subjectDistribution['音乐'] ?? 0;
         progress = (musicMins / (20 * 60)).clamp(0.0, 1.0);
         earned = musicMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '音乐类还需专注 ${(20 * 60 - musicMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '音乐类还需专注 ${(20 * 60 - musicMins).toInt()} 分钟';
         break;
       case 'subject_bookworm':
-        final readMins = (summary.subjectDistribution['阅读'] ?? 0) + (summary.subjectDistribution['文学'] ?? 0);
+        final readMins = (summary.subjectDistribution['阅读'] ?? 0) +
+            (summary.subjectDistribution['文学'] ?? 0);
         progress = (readMins / (20 * 60)).clamp(0.0, 1.0);
         earned = readMins >= 20 * 60;
-        nextMilestone = earned ? '已获得' : '文学类还需专注 ${(20 * 60 - readMins).toInt()} 分钟';
+        nextMilestone =
+            earned ? '已获得' : '文学类还需专注 ${(20 * 60 - readMins).toInt()} 分钟';
         break;
       case 'subject_polyglot':
-        final deepSubjects = summary.subjectDistribution.values.where((v) => v >= 5 * 60).length;
+        final deepSubjects =
+            summary.subjectDistribution.values.where((v) => v >= 5 * 60).length;
         progress = (deepSubjects / 5).clamp(0.0, 1.0);
         earned = deepSubjects >= 5;
         nextMilestone = earned ? '已获得' : '当前 $deepSubjects 个学科达 5 小时，需 5 个';
@@ -1501,20 +1565,28 @@ class MedalRecommendationService {
       // === Category: Habit Masters (10个) ===
       case 'habit_early_riser':
         // 假设通过 hourlyDistribution[5-7] 模拟晨间天数统计
-        int earlyDays = summary.hourlyDistribution.sublist(5, 8).fold(0, (a, b) => a + b) ~/ 2; // 近似
+        int earlyDays =
+            summary.hourlyDistribution.sublist(5, 8).fold(0, (a, b) => a + b) ~/
+                2; // 近似
         progress = (earlyDays / 30).clamp(0.0, 1.0);
         earned = earlyDays >= 30;
         nextMilestone = earned ? '已获得' : '还需早起专注 ${30 - earlyDays} 天';
         break;
       case 'habit_night_reader':
-        int nightDays = summary.hourlyDistribution.sublist(23).fold(0, (a, b) => a + (b > 0 ? 1 : 0)) + 
-                        summary.hourlyDistribution.sublist(0, 2).fold(0, (a, b) => a + (b > 0 ? 1 : 0));
+        int nightDays = summary.hourlyDistribution
+                .sublist(23)
+                .fold(0, (a, b) => a + (b > 0 ? 1 : 0)) +
+            summary.hourlyDistribution
+                .sublist(0, 2)
+                .fold(0, (a, b) => a + (b > 0 ? 1 : 0));
         progress = (nightDays / 30).clamp(0.0, 1.0);
         earned = nightDays >= 30;
         nextMilestone = earned ? '已获得' : '还需深夜专注 ${30 - nightDays} 天';
         break;
       case 'habit_lunch_warrior':
-        int lunchDays = summary.hourlyDistribution.sublist(12, 14).fold(0, (a, b) => a + (b > 0 ? 1 : 0));
+        int lunchDays = summary.hourlyDistribution
+            .sublist(12, 14)
+            .fold(0, (a, b) => a + (b > 0 ? 1 : 0));
         progress = (lunchDays / 20).clamp(0.0, 1.0);
         earned = lunchDays >= 20;
         nextMilestone = earned ? '已获得' : '还需午间专注 ${20 - lunchDays} 天';
@@ -1539,12 +1611,12 @@ class MedalRecommendationService {
         break;
       case 'habit_year_companion':
         {
-          final spanDays = summary.actualStartTime != null &&
-                  summary.actualEndTime != null
-              ? summary.actualEndTime!
-                  .difference(summary.actualStartTime!)
-                  .inDays
-              : 0;
+          final spanDays =
+              summary.actualStartTime != null && summary.actualEndTime != null
+                  ? summary.actualEndTime!
+                      .difference(summary.actualStartTime!)
+                      .inDays
+                  : 0;
           progress = (spanDays / 365).clamp(0.0, 1.0);
           earned = spanDays >= 365;
           stepsRemaining = earned ? 0 : 1;
@@ -1568,14 +1640,16 @@ class MedalRecommendationService {
       case 'habit_rhythm_master':
         earned = summary.consecutiveActiveDays >= 7;
         progress = (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
         break;
 
       // === Category: Productivity Ninja (10个) ===
       case 'ninja_speed_demon':
         earned = earlyCompletionCount > 5;
         progress = (earlyCompletionCount / 5).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '还需提前完成 ${5 - earlyCompletionCount} 个任务';
+        nextMilestone =
+            earned ? '已获得' : '还需提前完成 ${5 - earlyCompletionCount} 个任务';
         break;
       case 'ninja_bulk_completer':
         earned = completedCount >= 5;
@@ -1604,16 +1678,22 @@ class MedalRecommendationService {
         break;
       case 'ninja_inbox_zero':
         earned = totalCount > 0 && completedCount == totalCount;
-        progress = totalCount > 0 ? (completedCount / totalCount).clamp(0.0, 1.0) : 0.0;
-        nextMilestone = earned ? '已获得' : '还有 ${totalCount - completedCount} 个未完成';
+        progress = totalCount > 0
+            ? (completedCount / totalCount).clamp(0.0, 1.0)
+            : 0.0;
+        nextMilestone =
+            earned ? '已获得' : '还有 ${totalCount - completedCount} 个未完成';
         break;
       case 'ninja_consistency_king':
         earned = summary.consecutiveActiveDays >= 7;
         progress = (summary.consecutiveActiveDays / 7).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 7 天';
         break;
       case 'ninja_efficiency_max':
-        final effRatio = screenTimeSeconds > 0 ? (productiveScreenSeconds / screenTimeSeconds) : 0.0;
+        final effRatio = screenTimeSeconds > 0
+            ? (productiveScreenSeconds / screenTimeSeconds)
+            : 0.0;
         earned = effRatio >= 0.98;
         progress = effRatio;
         break;
@@ -1638,7 +1718,8 @@ class MedalRecommendationService {
       case 'academic_no_skip_month':
         earned = summary.consecutiveActiveDays >= 30;
         progress = (summary.consecutiveActiveDays / 30).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 30 天';
+        nextMilestone =
+            earned ? '已获得' : '当前连续 ${summary.consecutiveActiveDays} 天，需 30 天';
         break;
       case 'academic_full_house_7':
         earned = maxDailyCourseCount >= 7;
@@ -1646,8 +1727,11 @@ class MedalRecommendationService {
         break;
       case 'academic_bridge_builder':
         earned = summary.searchCount >= 20 && summary.pomodoroCount >= 20;
-        progress = ((summary.searchCount / 20 + summary.pomodoroCount / 20) / 2).clamp(0.0, 1.0);
-        nextMilestone = earned ? '已获得' : '检索 ${summary.searchCount}/20，专注 ${summary.pomodoroCount}/20';
+        progress = ((summary.searchCount / 20 + summary.pomodoroCount / 20) / 2)
+            .clamp(0.0, 1.0);
+        nextMilestone = earned
+            ? '已获得'
+            : '检索 ${summary.searchCount}/20，专注 ${summary.pomodoroCount}/20';
         break;
       case 'academic_library_phantom':
         final libMins = summary.subjectDistribution['图书馆'] ?? 0;
@@ -1699,7 +1783,8 @@ class MedalRecommendationService {
         nextMilestone = earned ? '已获得' : '还需探索 ${10 - summary.searchCount} 个领域';
         break;
       case 'explorer_night_watch':
-        int lateSessions = summary.hourlyDistribution.sublist(2, 5).fold(0, (a, b) => a + b);
+        int lateSessions =
+            summary.hourlyDistribution.sublist(2, 5).fold(0, (a, b) => a + b);
         earned = lateSessions > 0;
         progress = earned ? 1.0 : 0.0;
         break;
@@ -1730,17 +1815,20 @@ class MedalRecommendationService {
   /// 计算顶部主题的占比
   static double _calculateTopSubjectRatio(TimelineSummary summary) {
     if (summary.subjectDistribution.isEmpty) return 0.0;
-    final total = summary.subjectDistribution.values.fold<double>(0.0, (sum, val) => sum + val);
+    final total = summary.subjectDistribution.values
+        .fold<double>(0.0, (sum, val) => sum + val);
     if (total == 0) return 0.0;
-    final topValue = summary.subjectDistribution.values.fold<double>(0.0, (max, val) => val > max ? val : max);
+    final topValue = summary.subjectDistribution.values
+        .fold<double>(0.0, (max, val) => val > max ? val : max);
     return (topValue / total) * 100;
   }
 
   /// 生成推荐（获取未获得的勋章，按步数排序）
   static List<MedalProgress> recommendNext(List<MedalProgress> allProgresses) {
-    final unearned = allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
+    final unearned =
+        allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
     unearned.sort((a, b) => a.stepsRemaining.compareTo(b.stepsRemaining));
-    return unearned.take(6).toList();
+    return unearned.take(3).toList();
   }
 
   /// 完整推荐流程
@@ -1801,7 +1889,8 @@ class MedalRecommendationService {
     try {
       final earned = allProgresses.where((p) => p.earned).toList();
       // Exclude anomalies: progress >= 1.0 but not marked earned
-      final unearned = allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
+      final unearned =
+          allProgresses.where((p) => !p.earned && p.progress < 1.0).toList();
       if (unearned.isEmpty) {
         return MedalRecommendation(
           topRecommendations: [],
@@ -1827,7 +1916,8 @@ class MedalRecommendationService {
       // 2. Compute earned medals per category for diversity bonus
       final earnedPerCategory = <String, int>{};
       for (final p in earned) {
-        earnedPerCategory[p.medal.category] = (earnedPerCategory[p.medal.category] ?? 0) + 1;
+        earnedPerCategory[p.medal.category] =
+            (earnedPerCategory[p.medal.category] ?? 0) + 1;
       }
 
       // 3. Get bandit samples
@@ -1843,30 +1933,37 @@ class MedalRecommendationService {
       final scored = <_ScoredEntry>[];
       for (final progress in unearned) {
         final breakdown = MedalFeatureExtractor.scoreMedalWithBreakdown(
-          progress, features, earnedPerCategory,
+          progress,
+          features,
+          earnedPerCategory,
         );
         final banditSample = banditSamples[progress.medal.id] ?? 0.5;
-        final totalObs = await banditService.getObservationCount(progress.medal.id);
-        final combined = _combinedScore(breakdown.total, banditSample, totalObs);
-        final reason = _generateReason(breakdown, progress, banditSample, totalObs);
-        scored.add(_ScoredEntry(progress: progress, score: combined, reason: reason));
+        final totalObs =
+            await banditService.getObservationCount(progress.medal.id);
+        final combined =
+            _combinedScore(breakdown.total, banditSample, totalObs);
+        final reason =
+            _generateReason(breakdown, progress, banditSample, totalObs);
+        scored.add(
+            _ScoredEntry(progress: progress, score: combined, reason: reason));
       }
 
-      // 6. Sort by combined score descending, take top 6
+      // 6. Sort by combined score descending, take top 3
       scored.sort((a, b) => b.score.compareTo(a.score));
-      final top6 = scored.take(6).toList();
+      final top3 = scored.take(3).toList();
 
       // 7. Record impressions for bandit learning
-      await banditService.recordImpressions(top6.map((s) => s.progress.medal.id).toList());
+      await banditService
+          .recordImpressions(top3.map((s) => s.progress.medal.id).toList());
 
       // 8. Build reasons map
       final reasons = <String, String>{};
-      for (final entry in top6) {
+      for (final entry in top3) {
         reasons[entry.progress.medal.id] = entry.reason;
       }
 
       return MedalRecommendation(
-        topRecommendations: top6.map((s) => s.progress).toList(),
+        topRecommendations: top3.map((s) => s.progress).toList(),
         allMedals: allProgresses,
         earnedMedals: earned,
         isML: true,
@@ -1936,18 +2033,25 @@ class MedalRecommendationService {
 
   static String _categoryLabel(String category) {
     switch (category) {
-      case 'focus': return '专注';
-      case 'completion': return '完成';
-      case 'persistence': return '坚持';
-      case 'efficiency': return '效率';
-      case 'breadth': return '广度';
-      default: return category;
+      case 'focus':
+        return '专注';
+      case 'completion':
+        return '完成';
+      case 'persistence':
+        return '坚持';
+      case 'efficiency':
+        return '效率';
+      case 'breadth':
+        return '广度';
+      default:
+        return category;
     }
   }
 
   /// Blend feature score with bandit sample.
   /// Cold start: 100% feature. After 50+ observations: 60% feature / 40% bandit.
-  static double _combinedScore(double featureScore, double banditSample, int totalObservations) {
+  static double _combinedScore(
+      double featureScore, double banditSample, int totalObservations) {
     final banditConfidence = (totalObservations / 50.0).clamp(0.0, 1.0);
     final banditWeight = 0.4 * banditConfidence;
     final featureWeight = 1.0 - banditWeight;
@@ -1959,5 +2063,6 @@ class _ScoredEntry {
   final MedalProgress progress;
   final double score;
   final String reason;
-  const _ScoredEntry({required this.progress, required this.score, required this.reason});
+  const _ScoredEntry(
+      {required this.progress, required this.score, required this.reason});
 }

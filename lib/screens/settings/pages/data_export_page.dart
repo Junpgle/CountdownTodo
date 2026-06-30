@@ -19,7 +19,7 @@ class _DataExportPageState extends State<DataExportPage> {
   bool _isLoading = true;
   bool _isExporting = false;
   bool _saveToFile = true;
-  
+
   // 导出选项
   bool _removeTeamBinding = false;
   bool _removeImagePath = true;
@@ -43,7 +43,8 @@ class _DataExportPageState extends State<DataExportPage> {
     if (mounted) {
       setState(() {
         _types = types;
-        _selectedTypes.addAll(types.where((t) => t.count > 0).map((t) => t.key));
+        _selectedTypes
+            .addAll(types.where((t) => t.count > 0).map((t) => t.key));
         _isLoading = false;
       });
     }
@@ -53,7 +54,8 @@ class _DataExportPageState extends State<DataExportPage> {
     if (select == null) return;
     setState(() {
       if (select) {
-        _selectedTypes.addAll(_types.where((t) => t.count > 0).map((t) => t.key));
+        _selectedTypes
+            .addAll(_types.where((t) => t.count > 0).map((t) => t.key));
       } else {
         _selectedTypes.clear();
       }
@@ -97,7 +99,8 @@ class _DataExportPageState extends State<DataExportPage> {
           message += '\n已保存到: ${result.filePath}';
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+          SnackBar(
+              content: Text(message), duration: const Duration(seconds: 3)),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -112,13 +115,12 @@ class _DataExportPageState extends State<DataExportPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     final isWideScreen = screenWidth > 600;
 
     return Scaffold(
-      appBar: widget.isEmbedded
-          ? null
-          : AppBar(title: const Text('数据导出')),
+      appBar: widget.isEmbedded ? null : AppBar(title: const Text('数据导出')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildBody(colorScheme, isLandscape || isWideScreen),
@@ -203,21 +205,19 @@ class _DataExportPageState extends State<DataExportPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.info_outline,
-                    color: colorScheme.primary, size: 20),
+                Icon(Icons.info_outline, color: colorScheme.primary, size: 20),
                 const SizedBox(width: 8),
                 const Text(
                   '选择要导出的数据',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               '导出的数据将保存为 JSON 格式文件，可用于备份或在其他设备上导入。',
-              style: TextStyle(
-                  fontSize: 13, color: colorScheme.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -239,8 +239,7 @@ class _DataExportPageState extends State<DataExportPage> {
         const Spacer(),
         Text(
           '已选 ${_selectedTypes.length} 项',
-          style: TextStyle(
-              fontSize: 13, color: colorScheme.onSurfaceVariant),
+          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -255,8 +254,7 @@ class _DataExportPageState extends State<DataExportPage> {
           children: [
             const Text(
               '导出方式',
-              style: TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             RadioListTile<bool>(
@@ -294,16 +292,15 @@ class _DataExportPageState extends State<DataExportPage> {
                 const SizedBox(width: 8),
                 const Text(
                   '导出选项',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               '选择要清理的数据，使导出文件更适合跨设备或跨账号使用',
-              style: TextStyle(
-                  fontSize: 12, color: colorScheme.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
             CheckboxListTile(
@@ -348,9 +345,7 @@ class _DataExportPageState extends State<DataExportPage> {
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _selectedTypes.isEmpty || _isExporting
-            ? null
-            : _export,
+        onPressed: _selectedTypes.isEmpty || _isExporting ? null : _export,
         icon: _isExporting
             ? const SizedBox(
                 width: 18,

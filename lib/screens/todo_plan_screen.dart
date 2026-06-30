@@ -68,8 +68,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   void _checkCoachMarks() async {
     if (!mounted || _showCoachMarks) return;
 
-    final hasShown =
-        await FeatureTipService.hasTipBeenShown('todo_plan_guide');
+    final hasShown = await FeatureTipService.hasTipBeenShown('todo_plan_guide');
     if (hasShown || !mounted) return;
 
     await Future.delayed(const Duration(milliseconds: 600));

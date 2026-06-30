@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -20,6 +19,7 @@ import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
 import 'todo_group_widget.dart';
+import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
@@ -739,18 +739,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 _showFullImage(context, sharedImagePath),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(sharedImagePath),
+                              child: localImageWidget(
+                                sharedImagePath,
                                 height: 150,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    height: 100,
-                                    color: Colors.grey[300],
-                                    child: const Center(child: Text("图片加载失败")),
-                                  );
-                                },
                               ),
                             ),
                           ),
@@ -1406,17 +1399,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text(
-                      "图片加载失败",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                },
               ),
             ),
           ),
@@ -4270,17 +4255,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             const Text("原始分析来源",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            if (widget.todo.imagePath != null)
+            if (localImageExists(widget.todo.imagePath))
               GestureDetector(
                   onTap: () => _showFullImage(context, widget.todo.imagePath!),
                   child: Container(
                       height: 160,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          image: DecorationImage(
-                              image: FileImage(File(widget.todo.imagePath!)),
-                              fit: BoxFit.cover)))),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: localImageWidget(
+                        widget.todo.imagePath!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 160,
+                      ))),
             if (widget.todo.originalText != null &&
                 widget.todo.originalText!.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -4837,17 +4827,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text(
-                      "图片加载失败",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                },
               ),
             ),
           ),

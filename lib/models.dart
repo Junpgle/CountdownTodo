@@ -1,9 +1,9 @@
 import 'dart:math'; // test
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
+
+import 'utils/analysis_image_cleanup.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -372,32 +372,7 @@ class TodoItem {
 
   /// 🚀 静态方法：清理过期的图片分析文件（7天以上）
   static Future<void> cleanupAnalysisImages() async {
-    try {
-      final appDir = await getApplicationSupportDirectory();
-      final imageDir = Directory('${appDir.path}/analysis_images');
-      if (!await imageDir.exists()) return;
-
-      final now = DateTime.now();
-      final expiration = now.subtract(const Duration(days: 7));
-
-      final files = imageDir.listSync();
-      int deletedCount = 0;
-
-      for (var file in files) {
-        if (file is File) {
-          final stat = await file.stat();
-          if (stat.modified.isBefore(expiration)) {
-            await file.delete();
-            deletedCount++;
-          }
-        }
-      }
-      if (deletedCount > 0) {
-        debugPrint('🧹 清理了 $deletedCount 个过期的识别图片');
-      }
-    } catch (e) {
-      debugPrint('❌ 清理识别图片失败: $e');
-    }
+    await cleanupAnalysisImagesImpl();
   }
 }
 

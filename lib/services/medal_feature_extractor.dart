@@ -5,7 +5,13 @@ import 'timeline_service.dart';
 
 /// Extracts user behavior features and scores medals for ML-enhanced recommendations
 class MedalFeatureExtractor {
-  static const _categories = ['focus', 'completion', 'persistence', 'efficiency', 'breadth'];
+  static const _categories = [
+    'focus',
+    'completion',
+    'persistence',
+    'efficiency',
+    'breadth'
+  ];
 
   /// Extract user profile features from timeline summary + external params
   static UserProfileFeatures extractFeatures(
@@ -24,9 +30,11 @@ class MedalFeatureExtractor {
 
     // Layer 1: Category affinities
     affinity['focus'] = _focusAffinity(summary, totalFocusMinutes);
-    affinity['completion'] = _completionAffinity(summary, completedCount, totalCount, earlyCompletionCount, deadlineSprintCount);
+    affinity['completion'] = _completionAffinity(summary, completedCount,
+        totalCount, earlyCompletionCount, deadlineSprintCount);
     affinity['persistence'] = _persistenceAffinity(summary);
-    affinity['efficiency'] = _efficiencyAffinity(summary, screenTimeSeconds, productiveScreenSeconds, distractionScreenSeconds);
+    affinity['efficiency'] = _efficiencyAffinity(summary, screenTimeSeconds,
+        productiveScreenSeconds, distractionScreenSeconds);
     affinity['breadth'] = _breadthAffinity(summary);
 
     // Layer 2: Velocity = affinity * recencyFactor
@@ -71,16 +79,18 @@ class MedalFeatureExtractor {
     // Diversity bonus: encourage under-explored categories
     final maxEarned = earnedPerCategory.values.fold<int>(0, max);
     final earnedInCat = earnedPerCategory[medal.medal.category] ?? 0;
-    final diversity = maxEarned > 0 ? (1.0 - earnedInCat / maxEarned).clamp(0.0, 1.0) : 0.5;
+    final diversity =
+        maxEarned > 0 ? (1.0 - earnedInCat / maxEarned).clamp(0.0, 1.0) : 0.5;
 
     // Challenge bonus: match difficulty to preference
-    final challenge = _challengeBonus(medal.medal.priority, features.challengePreference);
+    final challenge =
+        _challengeBonus(medal.medal.priority, features.challengePreference);
 
-    final score = weights['proximity']! * proximity
-        + weights['affinity']! * affinity
-        + weights['velocity']! * vel
-        + weights['diversity']! * diversity
-        + weights['challenge']! * challenge;
+    final score = weights['proximity']! * proximity +
+        weights['affinity']! * affinity +
+        weights['velocity']! * vel +
+        weights['diversity']! * diversity +
+        weights['challenge']! * challenge;
 
     return score.clamp(0.0, 1.0);
   }
@@ -97,16 +107,19 @@ class MedalFeatureExtractor {
 
     final maxEarned = earnedPerCategory.values.fold<int>(0, max);
     final earnedInCat = earnedPerCategory[medal.medal.category] ?? 0;
-    final diversity = maxEarned > 0 ? (1.0 - earnedInCat / maxEarned).clamp(0.0, 1.0) : 0.5;
+    final diversity =
+        maxEarned > 0 ? (1.0 - earnedInCat / maxEarned).clamp(0.0, 1.0) : 0.5;
 
-    final challenge = _challengeBonus(medal.medal.priority, features.challengePreference);
+    final challenge =
+        _challengeBonus(medal.medal.priority, features.challengePreference);
 
     final weights = _getWeights(features.motivationType);
-    final total = (weights['proximity']! * proximity
-        + weights['affinity']! * affinity
-        + weights['velocity']! * vel
-        + weights['diversity']! * diversity
-        + weights['challenge']! * challenge).clamp(0.0, 1.0);
+    final total = (weights['proximity']! * proximity +
+            weights['affinity']! * affinity +
+            weights['velocity']! * vel +
+            weights['diversity']! * diversity +
+            weights['challenge']! * challenge)
+        .clamp(0.0, 1.0);
 
     return ScoreBreakdown(
       proximity: proximity,
@@ -125,18 +138,23 @@ class MedalFeatureExtractor {
     final depth = (s.deepWorkCount / 10).clamp(0.0, 1.0);
     final quality = (1.0 - s.interruptionRate).clamp(0.0, 1.0);
     final consistency = (s.pomodoroCount / 50).clamp(0.0, 1.0);
-    return (0.35 * volume + 0.25 * depth + 0.20 * quality + 0.20 * consistency).clamp(0.0, 1.0);
+    return (0.35 * volume + 0.25 * depth + 0.20 * quality + 0.20 * consistency)
+        .clamp(0.0, 1.0);
   }
 
   static double _completionAffinity(
-    TimelineSummary s, int completedCount, int totalCount,
-    int earlyCompletionCount, int deadlineSprintCount,
+    TimelineSummary s,
+    int completedCount,
+    int totalCount,
+    int earlyCompletionCount,
+    int deadlineSprintCount,
   ) {
     final rate = s.todoCompletionRate.clamp(0.0, 1.0);
     final early = (earlyCompletionCount / 10).clamp(0.0, 1.0);
     final volume = (completedCount / 50).clamp(0.0, 1.0);
     final sprint = (deadlineSprintCount / 10).clamp(0.0, 1.0);
-    return (0.40 * rate + 0.25 * early + 0.20 * volume + 0.15 * sprint).clamp(0.0, 1.0);
+    return (0.40 * rate + 0.25 * early + 0.20 * volume + 0.15 * sprint)
+        .clamp(0.0, 1.0);
   }
 
   static double _persistenceAffinity(TimelineSummary s) {
@@ -144,11 +162,18 @@ class MedalFeatureExtractor {
     final dailyRatio = _dailyActivityRatio(s);
     final weekend = _weekendActivityScore(s);
     final nightOwl = _nightOwlScore(s);
-    return (0.40 * streak + 0.20 * dailyRatio + 0.20 * weekend + 0.20 * nightOwl).clamp(0.0, 1.0);
+    return (0.40 * streak +
+            0.20 * dailyRatio +
+            0.20 * weekend +
+            0.20 * nightOwl)
+        .clamp(0.0, 1.0);
   }
 
   static double _efficiencyAffinity(
-    TimelineSummary s, int screenTimeSeconds, int productiveScreenSeconds, int distractionScreenSeconds,
+    TimelineSummary s,
+    int screenTimeSeconds,
+    int productiveScreenSeconds,
+    int distractionScreenSeconds,
   ) {
     final focus = (1.0 - s.interruptionRate).clamp(0.0, 1.0);
     final screenProd = screenTimeSeconds > 0
@@ -156,7 +181,11 @@ class MedalFeatureExtractor {
         : 0.5;
     final consistency = _consistencyScore(s);
     final completion = s.todoCompletionRate.clamp(0.0, 1.0);
-    return (0.30 * focus + 0.25 * screenProd + 0.25 * consistency + 0.20 * completion).clamp(0.0, 1.0);
+    return (0.30 * focus +
+            0.25 * screenProd +
+            0.25 * consistency +
+            0.20 * completion)
+        .clamp(0.0, 1.0);
   }
 
   static double _breadthAffinity(TimelineSummary s) {
@@ -164,7 +193,8 @@ class MedalFeatureExtractor {
     final search = (s.searchCount / 20).clamp(0.0, 1.0);
     final entropy = _subjectEntropy(s);
     final exam = (s.examPrepCount / 10).clamp(0.0, 1.0);
-    return (0.35 * subjectCount + 0.25 * search + 0.20 * entropy + 0.20 * exam).clamp(0.0, 1.0);
+    return (0.35 * subjectCount + 0.25 * search + 0.20 * entropy + 0.20 * exam)
+        .clamp(0.0, 1.0);
   }
 
   // === Helper Functions ===
@@ -202,9 +232,13 @@ class MedalFeatureExtractor {
     if (s.hourlyDistribution.length < 24) return 0.5;
     final activeHours = s.hourlyDistribution.where((h) => h > 0).toList();
     if (activeHours.length < 2) return 0.5;
-    final mean = activeHours.fold<double>(0, (a, b) => a + b) / activeHours.length;
+    final mean =
+        activeHours.fold<double>(0, (a, b) => a + b) / activeHours.length;
     if (mean == 0) return 0.5;
-    final variance = activeHours.map((h) => (h - mean) * (h - mean)).fold<double>(0, (a, b) => a + b) / activeHours.length;
+    final variance = activeHours
+            .map((h) => (h - mean) * (h - mean))
+            .fold<double>(0, (a, b) => a + b) /
+        activeHours.length;
     final stddev = sqrt(variance);
     return (1.0 - (stddev / (mean + 1))).clamp(0.0, 1.0);
   }
@@ -235,13 +269,17 @@ class MedalFeatureExtractor {
     return 0.3; // All-time data
   }
 
-  static String _deriveMotivationType(Map<String, double> affinity, TimelineSummary s) {
+  static String _deriveMotivationType(
+      Map<String, double> affinity, TimelineSummary s) {
     final focusCompletion = (affinity['focus']! + affinity['completion']!) / 2;
-    final breadthSearch = (affinity['breadth']! + (s.searchCount / 20).clamp(0.0, 1.0)) / 2;
+    final breadthSearch =
+        (affinity['breadth']! + (s.searchCount / 20).clamp(0.0, 1.0)) / 2;
     final efficiency = affinity['efficiency']!;
 
-    if (focusCompletion >= breadthSearch && focusCompletion >= efficiency) return 'achiever';
-    if (breadthSearch >= focusCompletion && breadthSearch >= efficiency) return 'explorer';
+    if (focusCompletion >= breadthSearch && focusCompletion >= efficiency)
+      return 'achiever';
+    if (breadthSearch >= focusCompletion && breadthSearch >= efficiency)
+      return 'explorer';
     return 'optimizer';
   }
 
@@ -256,7 +294,8 @@ class MedalFeatureExtractor {
     if (s.subjectDistribution.isEmpty) return 0.5;
     final total = s.subjectDistribution.values.fold<double>(0, (a, b) => a + b);
     if (total == 0) return 0.5;
-    final maxRatio = s.subjectDistribution.values.fold<double>(0, (m, v) => max(m, v / total));
+    final maxRatio = s.subjectDistribution.values
+        .fold<double>(0, (m, v) => max(m, v / total));
     return (1.0 - maxRatio).clamp(0.0, 1.0);
   }
 
@@ -271,13 +310,37 @@ class MedalFeatureExtractor {
   static Map<String, double> _getWeights(String motivationType) {
     switch (motivationType) {
       case 'achiever':
-        return {'proximity': 0.45, 'affinity': 0.20, 'velocity': 0.15, 'diversity': 0.08, 'challenge': 0.12};
+        return {
+          'proximity': 0.45,
+          'affinity': 0.20,
+          'velocity': 0.15,
+          'diversity': 0.08,
+          'challenge': 0.12
+        };
       case 'explorer':
-        return {'proximity': 0.30, 'affinity': 0.15, 'velocity': 0.15, 'diversity': 0.25, 'challenge': 0.15};
+        return {
+          'proximity': 0.30,
+          'affinity': 0.15,
+          'velocity': 0.15,
+          'diversity': 0.25,
+          'challenge': 0.15
+        };
       case 'optimizer':
-        return {'proximity': 0.35, 'affinity': 0.20, 'velocity': 0.20, 'diversity': 0.10, 'challenge': 0.15};
+        return {
+          'proximity': 0.35,
+          'affinity': 0.20,
+          'velocity': 0.20,
+          'diversity': 0.10,
+          'challenge': 0.15
+        };
       default:
-        return {'proximity': 0.40, 'affinity': 0.25, 'velocity': 0.15, 'diversity': 0.10, 'challenge': 0.10};
+        return {
+          'proximity': 0.40,
+          'affinity': 0.25,
+          'velocity': 0.15,
+          'diversity': 0.10,
+          'challenge': 0.10
+        };
     }
   }
 }

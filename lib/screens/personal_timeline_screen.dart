@@ -3,21 +3,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
-import 'dart:io';
 import '../models.dart';
+import '../services/browser_file_service.dart';
+import '../services/file_open_service.dart';
 import '../services/timeline_service.dart';
 import '../services/pomodoro_service.dart';
-import '../services/app_report_launch_service.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import 'medal_wall_page.dart';
 
@@ -1006,46 +1004,50 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         throw StateError('PNG 编码失败');
       }
 
-      final dir = await getDownloadsDirectory() ??
-          await getApplicationDocumentsDirectory();
       final safePeriod = _getPeriodName();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final file = File('${dir.path}${Platform.pathSeparator}'
-          'CountDownTodo_${safePeriod}_timeline_$timestamp.png');
-      await file.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+      final fileName = 'CountDownTodo_${safePeriod}_timeline_$timestamp.png';
+      final pngBytes = bytes.buffer.asUint8List();
+      final filePath = await BrowserFileService.saveBytesFile(
+        pngBytes,
+        fileName,
+        mimeType: 'image/png',
+      );
 
       if (!mounted) return;
       if (action == _TimelinePosterAction.share) {
         try {
-          await SharePlus.instance.share(ShareParams(
-            files: [XFile(file.path)],
+          await BrowserFileService.shareBytesFile(
+            pngBytes,
+            fileName,
+            mimeType: 'image/png',
             text: 'CountDownTodo ${_getPeriodName()} 总结',
-          ));
+          );
         } catch (e) {
           messenger.showSnackBar(
             SnackBar(content: Text('打开分享失败：$e')),
           );
         }
         messenger.showSnackBar(
-          SnackBar(content: Text('长图已保存，可从本地文件继续使用：${file.path}')),
+          SnackBar(content: Text('长图已保存，可从本地文件继续使用：$filePath')),
         );
       }
 
       if (action == _TimelinePosterAction.save) {
-        if (!kIsWeb && Platform.isAndroid) {
+        if (!kIsWeb && AppPlatform.isAndroid) {
           await _nativeChannel.invokeMethod('saveImageToGallery', {
-            'path': file.path,
+            'path': filePath,
           });
         }
         messenger.showSnackBar(
           SnackBar(
-            content: Text(!kIsWeb && Platform.isAndroid
+            content: Text(!kIsWeb && AppPlatform.isAndroid
                 ? '长图已保存到相册'
-                : '长图已保存：${file.path}'),
+                : '长图已保存：$filePath'),
             action: !kIsWeb
                 ? SnackBarAction(
                     label: '打开',
-                    onPressed: () => OpenFile.open(file.path),
+                    onPressed: () => FileOpenService.open(filePath),
                   )
                 : null,
           ),
@@ -1476,15 +1478,6 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
-        if (kIsWeb)
-          TextButton.icon(
-            onPressed: () => AppReportLaunchService.openTimelineReportInApp(
-              dimension: _dimension,
-              date: _selectedDate,
-            ),
-            icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            label: const Text('前往App查看报告'),
-          ),
         IconButton(
           tooltip: '保存分享长图',
           icon: _isExportingPoster

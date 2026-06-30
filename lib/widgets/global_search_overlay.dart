@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/search_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
 import 'dart:async';
@@ -247,8 +247,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
 
     // 桌面平台 (Windows/Linux/macOS) 窗口本身是透明的，
     // BackdropFilter 会模糊桌面而非 App 内容，必须改用纯色覆盖方案。
-    final bool isDesktop =
-        !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+    final bool isDesktop = !kIsWeb && AppPlatform.isDesktop;
 
     // 移动端/Web 磨砂遮罩色
     final mobileBackdropColor = isDark

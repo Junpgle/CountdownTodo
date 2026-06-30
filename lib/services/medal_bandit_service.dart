@@ -79,22 +79,27 @@ class MedalBanditService {
 
         // Reset stale entries (not shown in 90 days)
         if (lastShownAt < ninetyDaysAgo && lastShownAt > 0) {
-          await db.update('medal_recommendations', {
-            'alpha': 1.0,
-            'beta_': 1.0,
-            'impression_count': 0,
-            'success_count': 0,
-            'last_shown_at': 0,
-            'last_outcome_at': now,
-            'updated_at': now,
-          }, where: 'medal_id = ?', whereArgs: [medalId]);
+          await db.update(
+              'medal_recommendations',
+              {
+                'alpha': 1.0,
+                'beta_': 1.0,
+                'impression_count': 0,
+                'success_count': 0,
+                'last_shown_at': 0,
+                'last_outcome_at': now,
+                'updated_at': now,
+              },
+              where: 'medal_id = ?',
+              whereArgs: [medalId]);
           continue;
         }
 
         // Only process if shown after last outcome check
         if (lastShownAt <= lastOutcomeAt) continue;
 
-        final progress = allProgresses.where((p) => p.medal.id == medalId).firstOrNull;
+        final progress =
+            allProgresses.where((p) => p.medal.id == medalId).firstOrNull;
         if (progress == null) continue;
 
         double alphaDelta = 0;
@@ -113,13 +118,17 @@ class MedalBanditService {
         final currentAlpha = (record['alpha'] as num?)?.toDouble() ?? 1.0;
         final currentBeta = (record['beta_'] as num?)?.toDouble() ?? 1.0;
 
-        await db.update('medal_recommendations', {
-          'alpha': max(1.0, currentAlpha + alphaDelta),
-          'beta_': max(1.0, currentBeta + betaDelta),
-          'success_count': (record['success_count'] as int) + successDelta,
-          'last_outcome_at': now,
-          'updated_at': now,
-        }, where: 'medal_id = ?', whereArgs: [medalId]);
+        await db.update(
+            'medal_recommendations',
+            {
+              'alpha': max(1.0, currentAlpha + alphaDelta),
+              'beta_': max(1.0, currentBeta + betaDelta),
+              'success_count': (record['success_count'] as int) + successDelta,
+              'last_outcome_at': now,
+              'updated_at': now,
+            },
+            where: 'medal_id = ?',
+            whereArgs: [medalId]);
       }
     } catch (e) {
       debugPrint('Bandit updateOutcomes failed: $e');
@@ -152,11 +161,16 @@ class MedalBanditService {
             'updated_at': now,
           });
         } else {
-          await db.update('medal_recommendations', {
-            'impression_count': (existing.first['impression_count'] as int) + 1,
-            'last_shown_at': now,
-            'updated_at': now,
-          }, where: 'medal_id = ?', whereArgs: [id]);
+          await db.update(
+              'medal_recommendations',
+              {
+                'impression_count':
+                    (existing.first['impression_count'] as int) + 1,
+                'last_shown_at': now,
+                'updated_at': now,
+              },
+              where: 'medal_id = ?',
+              whereArgs: [id]);
         }
       }
     } catch (e) {

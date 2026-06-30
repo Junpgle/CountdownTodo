@@ -287,8 +287,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     setState(() {
       _usernameFormatController.text =
           config['usernameFormat'] as String? ?? '{name}';
-      _selectedDateFormat =
-          config['dateFormat'] as String? ?? 'MM月dd日 EEEE';
+      _selectedDateFormat = config['dateFormat'] as String? ?? 'MM月dd日 EEEE';
 
       // 加载时间问候语配置
       _salutationMode = config['salutationMode'] as String? ?? 'timed';
@@ -296,12 +295,10 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
       if (fixedSalutation != null) {
         _fixedSalutationController.text = fixedSalutation;
       }
-      final savedSalutationSlots =
-          config['salutationSlots'] as List<dynamic>?;
+      final savedSalutationSlots = config['salutationSlots'] as List<dynamic>?;
       if (savedSalutationSlots != null && savedSalutationSlots.isNotEmpty) {
         _salutationSlots = savedSalutationSlots
-            .map((e) =>
-                SalutationTimeSlot.fromJson(e as Map<String, dynamic>))
+            .map((e) => SalutationTimeSlot.fromJson(e as Map<String, dynamic>))
             .toList();
       } else {
         _salutationSlots = _defaultSalutationSlots
@@ -318,17 +315,14 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
       // 加载问候语配置
       _greetingMode = config['greetingMode'] as String? ?? 'timed';
-      final fixedGreetings =
-          config['fixedGreetings'] as List<dynamic>?;
+      final fixedGreetings = config['fixedGreetings'] as List<dynamic>?;
       if (fixedGreetings != null && fixedGreetings.isNotEmpty) {
         _fixedGreetingController.text = fixedGreetings.join('\n');
       }
-      final savedSlots =
-          config['timeSlots'] as List<dynamic>?;
+      final savedSlots = config['timeSlots'] as List<dynamic>?;
       if (savedSlots != null && savedSlots.isNotEmpty) {
         _timeSlots = savedSlots
-            .map((e) =>
-                GreetingTimeSlot.fromJson(e as Map<String, dynamic>))
+            .map((e) => GreetingTimeSlot.fromJson(e as Map<String, dynamic>))
             .toList();
       } else {
         _timeSlots = _defaultTimeSlots
@@ -478,21 +472,25 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
     final isWideScreen = MediaQuery.of(context).size.width > 768;
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('首页文字自定义'),
-        actions: [
-          TextButton(
-            onPressed: _saveConfig,
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('首页文字自定义'),
+              actions: [
+                TextButton(
+                  onPressed: _saveConfig,
+                  child: const Text('保存'),
+                ),
+              ],
+            ),
       body: isWideScreen ? _buildWideLayout() : _buildNarrowLayout(),
-      floatingActionButton: widget.isEmbedded ? FloatingActionButton.extended(
-        onPressed: _saveConfig,
-        icon: const Icon(Icons.save),
-        label: const Text('保存配置'),
-      ) : null,
+      floatingActionButton: widget.isEmbedded
+          ? FloatingActionButton.extended(
+              onPressed: _saveConfig,
+              icon: const Icon(Icons.save),
+              label: const Text('保存配置'),
+            )
+          : null,
     );
   }
 
@@ -508,41 +506,41 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 左侧：基础配置 + 时间问候语
-        Expanded(
-          flex: 1,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildDateFormatCard(),
-              const SizedBox(height: 16),
-              _buildUsernameFormatCard(),
-              const SizedBox(height: 16),
-              _buildSalutationModeCard(),
-              const SizedBox(height: 16),
-              if (_salutationMode == 'fixed')
-                _buildFixedSalutationCard()
-              else
-                _buildSalutationSlotsCard(),
-            ],
-          ),
-        ),
-        // 右侧：问候语配置
-        Expanded(
-          flex: 1,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildGreetingModeCard(),
-              const SizedBox(height: 16),
-              if (_greetingMode == 'fixed')
-                _buildFixedGreetingCard()
-              else
-                _buildTimeSlotsCard(),
-              const SizedBox(height: 16),
-              _buildRestoreButton(),
-            ],
-          ),
-        ),
+              Expanded(
+                flex: 1,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _buildDateFormatCard(),
+                    const SizedBox(height: 16),
+                    _buildUsernameFormatCard(),
+                    const SizedBox(height: 16),
+                    _buildSalutationModeCard(),
+                    const SizedBox(height: 16),
+                    if (_salutationMode == 'fixed')
+                      _buildFixedSalutationCard()
+                    else
+                      _buildSalutationSlotsCard(),
+                  ],
+                ),
+              ),
+              // 右侧：问候语配置
+              Expanded(
+                flex: 1,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _buildGreetingModeCard(),
+                    const SizedBox(height: 16),
+                    if (_greetingMode == 'fixed')
+                      _buildFixedGreetingCard()
+                    else
+                      _buildTimeSlotsCard(),
+                    const SizedBox(height: 16),
+                    _buildRestoreButton(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -582,7 +580,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
 
   Widget _buildOverallPreviewCard() {
     String simulatedSalutation = '早上好';
-    if (_salutationMode == 'fixed' && _fixedSalutationController.text.isNotEmpty) {
+    if (_salutationMode == 'fixed' &&
+        _fixedSalutationController.text.isNotEmpty) {
       simulatedSalutation = _fixedSalutationController.text;
     } else if (_salutationMode == 'timed') {
       final now = DateTime.now();
@@ -637,7 +636,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
         : _usernameFormatController.text.replaceAll('{name}', '小明');
 
     return Card(
-      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+      color:
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -646,9 +646,13 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.visibility, size: 18, color: Theme.of(context).colorScheme.primary),
+                Icon(Icons.visibility,
+                    size: 18, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
-                Text('实时预览 (基于当前时间)', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+                Text('实时预览 (基于当前时间)',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary)),
               ],
             ),
             const SizedBox(height: 12),
@@ -780,8 +784,7 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                   const Text('预览: ',
                       style: TextStyle(fontWeight: FontWeight.w500)),
                   Text(
-                    _usernameFormatController.text
-                        .replaceAll('{name}', '小明'),
+                    _usernameFormatController.text.replaceAll('{name}', '小明'),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
@@ -1215,8 +1218,7 @@ class _SalutationSlotEditDialog extends StatefulWidget {
       _SalutationSlotEditDialogState();
 }
 
-class _SalutationSlotEditDialogState
-    extends State<_SalutationSlotEditDialog> {
+class _SalutationSlotEditDialogState extends State<_SalutationSlotEditDialog> {
   late TimeOfDay _startTime;
   late TimeOfDay _endTime;
 
@@ -1297,8 +1299,7 @@ class _SalutationSlotEditDialogState
                 child: Row(
                   children: [
                     Icon(Icons.info_outline,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.primary),
+                        size: 14, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 4),
                     Text(
                       '跨天时段：${_formatTime(_startTime)} - 次日 ${_formatTime(_endTime)}',
@@ -1448,8 +1449,7 @@ class _TimeSlotEditDialogState extends State<_TimeSlotEditDialog> {
                 child: Row(
                   children: [
                     Icon(Icons.info_outline,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.primary),
+                        size: 14, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 4),
                     Text(
                       '跨天时段：${_formatTime(_startTime)} - 次日 ${_formatTime(_endTime)}',

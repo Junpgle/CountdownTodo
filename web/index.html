@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="倒计时待办 · 番茄钟 · 课程表 — 你的高效学习伴侣">
+  <meta name="application-name" content="CountDownTodo">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#6C63FF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a2e" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- PWA: iOS / iPadOS -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CountDownTodo">
+  <meta name="msapplication-TileColor" content="#6C63FF">
+  <link rel="apple-touch-icon" href="icons/Icon-180.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/Icon-16.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Warm up key origins used by login verification and sync. -->
+  <link rel="preconnect" href="https://api-cdt.junpgle.me" crossorigin>
+  <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
+  <link rel="dns-prefetch" href="https://api-cdt.junpgle.me">
+  <link rel="dns-prefetch" href="https://challenges.cloudflare.com">
+
+  <title>CountDownTodo</title>
+
+  <style>
+    /* Loading splash — shown until Flutter renders its first frame. */
+    body {
+      margin: 0;
+      background: #F8F8FF;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a2e; }
+    }
+    #loading-indicator {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+    }
+    #loading-indicator.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(108, 99, 255, 0.2);
+      border-top-color: #6C63FF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text {
+      margin-top: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      color: #666;
+    }
+    @media (prefers-color-scheme: dark) {
+      .loading-text { color: #aaa; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading splash (removed by Flutter once first frame is ready) -->
+  <div id="loading-indicator">
+    <div class="spinner"></div>
+    <p class="loading-text">正在加载…</p>
+  </div>
+
+  <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // ── PWA Install / Update Bridge ─────────────────────────
+    (function () {
+      var deferredPrompt = null;
+      var pendingWorker = null;
+
+      function dispatch(name, detail) {
+        window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+      }
+
+      window.cdtPwa = {
+        get canInstall() {
+          return Boolean(deferredPrompt);
+        },
+        get hasUpdate() {
+          return Boolean(pendingWorker);
+        },
+        isStandalone: function () {
+          return window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+        },
+        promptInstall: function () {
+          if (!deferredPrompt) {
+            return Promise.resolve({ outcome: 'unavailable' });
+          }
+          var promptEvent = deferredPrompt;
+          deferredPrompt = null;
+          dispatch('cdt-pwa-install-consumed');
+          promptEvent.prompt();
+          return promptEvent.userChoice.catch(function () {
+            return { outcome: 'dismissed' };
+          });
+        },
+        applyUpdate: function () {
+          if (!pendingWorker) return false;
+          pendingWorker.postMessage({ type: 'SKIP_WAITING' });
+          return true;
+        },
+      };
+
+      window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        deferredPrompt = event;
+        dispatch('cdt-pwa-install-available');
+      });
+
+      window.addEventListener('appinstalled', function () {
+        deferredPrompt = null;
+        dispatch('cdt-pwa-installed');
+      });
+
+      window.cdtSetPendingServiceWorker = function (worker) {
+        pendingWorker = worker;
+        dispatch('cdt-pwa-update-available');
+      };
+    })();
+
+    // ── Service Worker Registration ──────────────────────────
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').then(function (reg) {
+          // Listen for updates and prompt user to reload.
+          reg.addEventListener('updatefound', function () {
+            var newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', function () {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.cdtSetPendingServiceWorker(newWorker);
+                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            }
+          });
+
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            window.cdtSetPendingServiceWorker(reg.waiting);
+          }
+        }).catch(function (err) {
+          console.warn('SW registration failed:', err);
+        });
+
+        // Reload the page when the new SW takes over.
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+      });
+    }
+
+    // ── Remove loading splash once Flutter signals ready ─────
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('loading-indicator');
+      if (el) {
+        el.classList.add('fade-out');
+        setTimeout(function () { el.remove(); }, 400);
+      }
+    });
+  </script>
+</body>
+</html>

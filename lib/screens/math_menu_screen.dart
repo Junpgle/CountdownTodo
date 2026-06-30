@@ -67,8 +67,10 @@ class _MathMenuScreenState extends State<MathMenuScreen>
                           horizontal: isTablet ? 40 : 20,
                         ),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                              colors: [Theme.of(context).colorScheme.secondary, Colors.lightBlue]),
+                          gradient: LinearGradient(colors: [
+                            Theme.of(context).colorScheme.secondary,
+                            Colors.lightBlue
+                          ]),
                           borderRadius:
                               BorderRadius.circular(isTablet ? 24 : 16),
                         ),

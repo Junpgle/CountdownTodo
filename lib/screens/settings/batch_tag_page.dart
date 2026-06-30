@@ -8,9 +8,9 @@ import '../../utils/app_color_utils.dart';
 class BatchTagPage extends StatefulWidget {
   final String username;
   final bool isEmbedded;
-  
+
   const BatchTagPage({
-    super.key, 
+    super.key,
     required this.username,
     this.isEmbedded = false,
   });
@@ -74,9 +74,8 @@ class _BatchTagPageState extends State<BatchTagPage>
       _allPomodoros = (results[1] as List<PomodoroRecord>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTimeLogs = (results[2] as List<TimeLogItem>)
-          .where((l) => !l.isDeleted)
-          .toList();
+      _allTimeLogs =
+          (results[2] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _isLoading = false;
     });
   }
@@ -94,7 +93,8 @@ class _BatchTagPageState extends State<BatchTagPage>
       final startMs = _dateRange!.start.millisecondsSinceEpoch;
       final endMs =
           _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
-      list = list.where((p) => p.startTime >= startMs && p.startTime < endMs)
+      list = list
+          .where((p) => p.startTime >= startMs && p.startTime < endMs)
           .toList();
     }
 
@@ -126,7 +126,8 @@ class _BatchTagPageState extends State<BatchTagPage>
       final startMs = _dateRange!.start.millisecondsSinceEpoch;
       final endMs =
           _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
-      list = list.where((l) => l.startTime >= startMs && l.startTime < endMs)
+      list = list
+          .where((l) => l.startTime >= startMs && l.startTime < endMs)
           .toList();
     }
 
@@ -246,8 +247,7 @@ class _BatchTagPageState extends State<BatchTagPage>
             }
           }
         }
-        await StorageService.saveTimeLogs(
-            widget.username, _allTimeLogs,
+        await StorageService.saveTimeLogs(widget.username, _allTimeLogs,
             sync: true);
       }
 
@@ -255,8 +255,7 @@ class _BatchTagPageState extends State<BatchTagPage>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              '成功为 $pomodoroCount 条番茄钟和 $timeLogCount 条时间日志添加标签'),
+          content: Text('成功为 $pomodoroCount 条番茄钟和 $timeLogCount 条时间日志添加标签'),
         ),
       );
 
@@ -356,8 +355,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   decoration: InputDecoration(
                     hintText: '搜索标题...',
                     isDense: true,
-                    prefixIcon:
-                        const Icon(Icons.search, size: 18),
+                    prefixIcon: const Icon(Icons.search, size: 18),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 18),
@@ -370,8 +368,8 @@ class _BatchTagPageState extends State<BatchTagPage>
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                 ),
               ),
@@ -403,8 +401,7 @@ class _BatchTagPageState extends State<BatchTagPage>
               FilterChip(
                 label: const Text('未标签', style: TextStyle(fontSize: 12)),
                 selected: _showOnlyUntagged,
-                onSelected: (v) =>
-                    setState(() => _showOnlyUntagged = v),
+                onSelected: (v) => setState(() => _showOnlyUntagged = v),
                 avatar: const Icon(Icons.label_off, size: 16),
               ),
             ],
@@ -423,8 +420,8 @@ class _BatchTagPageState extends State<BatchTagPage>
         itemCount: _tags.length,
         itemBuilder: (ctx, i) {
           final tag = _tags[i];
-          final color = AppColorUtils.hexToColor(tag.color,
-              fallback: Colors.grey);
+          final color =
+              AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
           final isSelected = _targetTagUuids.contains(tag.uuid);
           return Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -508,8 +505,7 @@ class _BatchTagPageState extends State<BatchTagPage>
                   DateTime.fromMillisecondsSinceEpoch(pom.startTime);
               final endTime = pom.endTime != null
                   ? DateTime.fromMillisecondsSinceEpoch(pom.endTime!)
-                  : startTime
-                      .add(Duration(seconds: pom.effectiveDuration));
+                  : startTime.add(Duration(seconds: pom.effectiveDuration));
               final duration = pom.effectiveDuration ~/ 60;
 
               return ListTile(
@@ -659,8 +655,7 @@ class _BatchTagPageState extends State<BatchTagPage>
   }
 
   Widget _buildBottomBar() {
-    final totalSelected =
-        _selectedPomodoros.length + _selectedTimeLogs.length;
+    final totalSelected = _selectedPomodoros.length + _selectedTimeLogs.length;
     final selectedTagNames = _tags
         .where((t) => _targetTagUuids.contains(t.uuid))
         .map((t) => t.name)

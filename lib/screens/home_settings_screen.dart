@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'dart:convert';
 
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../models.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
@@ -134,8 +134,8 @@ class _SettingsPageState extends State<SettingsPage> {
           () => CourseSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (interconnectTargets.contains(target)) {
       paneId = 'interconnect';
-      paneBuilder = () =>
-          InterconnectSettingsPage(initialTarget: target, isEmbedded: true, username: _username);
+      paneBuilder = () => InterconnectSettingsPage(
+          initialTarget: target, isEmbedded: true, username: _username);
     } else if (advancedTargets.contains(target)) {
       paneId = 'preference'; // merged into preference
       paneBuilder =
@@ -177,7 +177,8 @@ class _SettingsPageState extends State<SettingsPage> {
       else if (paneId == 'course')
         pushWidget = CourseSettingsPage(initialTarget: target);
       else if (paneId == 'interconnect')
-        pushWidget = InterconnectSettingsPage(initialTarget: target, username: _username);
+        pushWidget = InterconnectSettingsPage(
+            initialTarget: target, username: _username);
       else if (paneId == 'llm_config')
         pushWidget = const LLMConfigPage();
       else if (paneId == 'animation')
@@ -593,9 +594,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case 'llm_config':
         return 'AI 助手配置';
       case 'platform':
-        return Platform.isWindows
+        return AppPlatform.isWindows
             ? 'Windows 专属'
-            : (Platform.isAndroid ? 'Android 专属' : '平台专属');
+            : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属');
       case 'notifications':
         return '通知管理';
       case 'permissions':
@@ -795,8 +796,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.devices,
                   color: Colors.blue,
                   title: '数据与互联',
-                  widgetBuilder: () =>
-                      InterconnectSettingsPage(isEmbedded: true, username: _username),
+                  widgetBuilder: () => InterconnectSettingsPage(
+                      isEmbedded: true, username: _username),
                 ),
                 _buildMacSidebarItem(
                   id: 'llm_config',
@@ -814,9 +815,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   id: 'platform',
                   icon: Icons.stars_rounded,
                   color: Colors.deepPurple,
-                  title: Platform.isWindows
+                  title: AppPlatform.isWindows
                       ? 'Windows 专属'
-                      : (Platform.isAndroid ? 'Android 专属' : '平台专属'),
+                      : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属'),
                   widgetBuilder: () =>
                       const PlatformSpecificSettingsPage(isEmbedded: true),
                 ),
@@ -1063,11 +1064,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading:
                       const Icon(Icons.stars_rounded, color: Colors.deepPurple),
-                  title: Text(Platform.isWindows
+                  title: Text(AppPlatform.isWindows
                       ? 'Windows 专属设置'
-                      : (Platform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
-                  subtitle:
-                      Text(Platform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
+                      : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
+                  subtitle: Text(
+                      AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,

@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/image_input_reader.dart';
 
 class LLMConfig {
   final String provider;
@@ -306,8 +306,9 @@ class LLMService {
     }
     // 2. 自定义视觉模型
     final customModels = await getCustomVisionModels();
-    final custom = customModels.where((m) =>
-        m.modelId == visionModel || m.id == visionModel).firstOrNull;
+    final custom = customModels
+        .where((m) => m.modelId == visionModel || m.id == visionModel)
+        .firstOrNull;
     if (custom != null && custom.apiUrl.isNotEmpty) {
       return (url: custom.apiUrl, key: custom.apiKey);
     }
@@ -611,13 +612,10 @@ class LLMService {
       throw Exception('大模型未配置，请先在设置中配置API');
     }
 
-    final file = File(imagePath);
-    if (!await file.exists()) {
-      throw Exception('图片文件不存在: $imagePath');
-    }
+    final imageInput = await readImageInput(imagePath);
 
     // 检查文件大小
-    final fileSize = await file.length();
+    final fileSize = imageInput.length;
     print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
 
     if (fileSize > 10 * 1024 * 1024) {
@@ -625,24 +623,12 @@ class LLMService {
     }
 
     // 读取并编码图片
-    final bytes = await file.readAsBytes();
+    final bytes = imageInput.bytes;
 
     // 使用 Future.microtask 避免阻塞主线程
     final base64Image = await Future.microtask(() => base64Encode(bytes));
 
-    String mimeType = 'image/jpeg';
-    final ext = imagePath.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'png':
-        mimeType = 'image/png';
-        break;
-      case 'gif':
-        mimeType = 'image/gif';
-        break;
-      case 'webp':
-        mimeType = 'image/webp';
-        break;
-    }
+    final mimeType = imageInput.mimeType;
 
     final now = DateTime.now();
     final nowStr =
@@ -686,7 +672,8 @@ class LLMService {
     print('========== LLM 图片识别请求 ==========');
     print('API: $visionUrl');
     print('Model: ${config.visionModel}');
-    print('Image: $imagePath (${(fileSize / 1024).toStringAsFixed(1)}KB)');
+    print(
+        'Image: ${imageInput.displayName} (${(fileSize / 1024).toStringAsFixed(1)}KB)');
     print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
     print('====================================');
 

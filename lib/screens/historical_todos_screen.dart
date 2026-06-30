@@ -131,20 +131,23 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   Future<void> _restoreDeletedItem(TodoItem item) async {
     item.isDeleted = false;
     item.markAsChanged();
-    
+
     // 🚀 核心修复：自动检测并修复“孤儿”状态
     // 如果该待办所属的分组已不存在，则将其设为未分组，确保其能直接在首页主列表显示
     final groups = await StorageService.getTodoGroups(widget.username);
     final activeGroupIds = groups.map((g) => g.id).toSet();
-    
-    if (item.groupId != null && item.groupId!.isNotEmpty && !activeGroupIds.contains(item.groupId)) {
+
+    if (item.groupId != null &&
+        item.groupId!.isNotEmpty &&
+        !activeGroupIds.contains(item.groupId)) {
       item.groupId = null;
     }
-    
+
     await StorageService.updateSingleTodo(widget.username, item);
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('待办已成功恢复，并退回首页清单')));
     }
   }
 
@@ -152,7 +155,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     await StorageService.permanentlyDeleteTodo(widget.username, item.id);
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已彻底删除')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已彻底删除')));
     }
   }
 
@@ -166,7 +170,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     }
     _loadData();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已修复！待办已回到首页清单')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已修复！待办已回到首页清单')));
     }
   }
 
@@ -177,9 +182,12 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   title: const Text("清空回收站"),
                   content: const Text("确定要彻底清空回收站吗？清空后将无法恢复。"),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("取消")),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text("取消")),
                     FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                        style: FilledButton.styleFrom(
+                            backgroundColor: Colors.redAccent),
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text("清空")),
                   ],
@@ -197,7 +205,9 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
   Map<String, List<TodoItem>> _groupByDate(List<TodoItem> items) {
     Map<String, List<TodoItem>> groups = {};
     for (var item in items) {
-      final date = DateTime.fromMillisecondsSinceEpoch(item.updatedAt, isUtc: true).toLocal();
+      final date =
+          DateTime.fromMillisecondsSinceEpoch(item.updatedAt, isUtc: true)
+              .toLocal();
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       groups.putIfAbsent(dateStr, () => []).add(item);
     }
@@ -211,7 +221,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
     Widget? header,
   }) {
     if (items.isEmpty) {
-      return Center(child: Text(emptyText, style: const TextStyle(color: Colors.grey)));
+      return Center(
+          child: Text(emptyText, style: const TextStyle(color: Colors.grey)));
     }
 
     final grouped = _groupByDate(items);
@@ -219,10 +230,11 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: (header != null ? 1 : 0) + sortedDates.fold(0, (sum, date) => sum + 1 + grouped[date]!.length),
+      itemCount: (header != null ? 1 : 0) +
+          sortedDates.fold(0, (sum, date) => sum + 1 + grouped[date]!.length),
       itemBuilder: (context, index) {
         if (header != null && index == 0) return header;
-        
+
         int currentIndex = header != null ? index - 1 : index;
         for (var date in sortedDates) {
           if (currentIndex == 0) {
@@ -234,7 +246,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     width: 4,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -244,7 +259,10 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -298,7 +316,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                   emptyText: "没有历史待办",
                   itemBuilder: (todo) => Card(
                     elevation: 0,
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    color: colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.3),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
                       leading: Checkbox(
@@ -317,7 +336,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                        icon: const Icon(Icons.delete_outline,
+                            color: Colors.redAccent, size: 20),
                         onPressed: () => _deleteItem(todo),
                       ),
                     ),
@@ -333,11 +353,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("共 ${_deletedTodos.length} 条已删除记录", style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                        Text("共 ${_deletedTodos.length} 条已删除记录",
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 13)),
                         TextButton.icon(
                           onPressed: _clearRecycleBin,
-                          icon: const Icon(Icons.delete_sweep, size: 18, color: Colors.redAccent),
-                          label: const Text("清空全部", style: TextStyle(color: Colors.redAccent)),
+                          icon: const Icon(Icons.delete_sweep,
+                              size: 18, color: Colors.redAccent),
+                          label: const Text("清空全部",
+                              style: TextStyle(color: Colors.redAccent)),
                         )
                       ],
                     ),
@@ -347,7 +371,8 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     color: colorScheme.errorContainer.withValues(alpha: 0.2),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
-                      title: Text(todo.title, style: TextStyle(color: colorScheme.onSurface)),
+                      title: Text(todo.title,
+                          style: TextStyle(color: colorScheme.onSurface)),
                       subtitle: Text(
                         "删除于: ${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(todo.updatedAt, isUtc: true).toLocal())}",
                         style: const TextStyle(fontSize: 12),
@@ -357,12 +382,14 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                         children: [
                           IconButton(
                             tooltip: "恢复",
-                            icon: const Icon(Icons.restore, color: Colors.green, size: 20),
+                            icon: const Icon(Icons.restore,
+                                color: Colors.green, size: 20),
                             onPressed: () => _restoreDeletedItem(todo),
                           ),
                           IconButton(
                             tooltip: "彻底删除",
-                            icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
+                            icon: const Icon(Icons.close,
+                                color: Colors.redAccent, size: 20),
                             onPressed: () => _permanentlyDeleteItem(todo),
                           ),
                         ],
@@ -381,16 +408,19 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     decoration: BoxDecoration(
                       color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(
+                          color: Colors.orange.withValues(alpha: 0.3)),
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                        Icon(Icons.info_outline,
+                            color: Colors.orange, size: 20),
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             "这些待办所属的分类文件夹已被删除或找不到了，导致它们无法在主页正常显示。点击修复可取消分类回归。 ",
-                            style: TextStyle(fontSize: 12, color: Colors.orange),
+                            style:
+                                TextStyle(fontSize: 12, color: Colors.orange),
                           ),
                         ),
                       ],
@@ -401,12 +431,15 @@ class _HistoricalTodosScreenState extends State<HistoricalTodosScreen>
                     color: Colors.orange.withValues(alpha: 0.05),
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
-                      title: Text(todo.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text("所属无效ID: ${todo.groupId}", style: const TextStyle(fontSize: 10)),
+                      title: Text(todo.title,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text("所属无效ID: ${todo.groupId}",
+                          style: const TextStyle(fontSize: 10)),
                       trailing: FilledButton.icon(
                         onPressed: () => _fixOrphan(todo),
                         icon: const Icon(Icons.auto_fix_high, size: 16),
-                        label: const Text("一键归队", style: TextStyle(fontSize: 12)),
+                        label:
+                            const Text("一键归队", style: TextStyle(fontSize: 12)),
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           backgroundColor: Colors.orange,

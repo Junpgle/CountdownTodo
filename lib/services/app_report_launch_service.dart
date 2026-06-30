@@ -74,7 +74,7 @@ class AppReportLaunchService {
           return firstArchApk ?? apkUrl.ifNotEmpty ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.macOS) {
-          return macUrl.ifNotEmpty ??  _releasePageUrl;
+          return macUrl.ifNotEmpty ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.windows) {
           return pcUrl.ifNotEmpty ?? _releasePageUrl;

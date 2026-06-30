@@ -1,10 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/api_service.dart';
@@ -14,10 +11,12 @@ import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/local_image_provider.dart';
 import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
 
@@ -227,14 +226,20 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
 
-      final filePath = result.files.single.path;
-      if (filePath == null || filePath.isEmpty) return;
+      final pickedFile = result.files.single;
+      final filePath = pickedFile.path;
+      final bytes = pickedFile.bytes;
+      final imagePath = bytes != null
+          ? _dataUrlFromPickedImage(pickedFile.name, bytes)
+          : filePath;
+      if (imagePath == null || imagePath.isEmpty) return;
 
       setState(() {
-        _selectedImagePath = filePath;
+        _selectedImagePath = imagePath;
       });
     } catch (e) {
       if (!mounted) return;
@@ -249,31 +254,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (sourcePath == null || sourcePath.isEmpty) return null;
 
     try {
-      final sourceFile = File(sourcePath);
-      if (!await sourceFile.exists()) return null;
-
-      final appDir = await getApplicationSupportDirectory();
-      final imageDir = Directory('${appDir.path}/todo_attachments');
-      if (!await imageDir.exists()) {
-        await imageDir.create(recursive: true);
+      final targetPath = await persistImagePath(sourcePath, 'todo_attachments');
+      if (targetPath != null) {
+        setState(() {
+          _selectedImagePath = targetPath;
+        });
       }
-
-      if (p.normalize(sourcePath).startsWith(p.normalize(imageDir.path))) {
-        return sourcePath;
-      }
-
-      final fileName =
-          '${DateTime.now().millisecondsSinceEpoch}_${p.basename(sourcePath)}';
-      final targetPath = '${imageDir.path}/$fileName';
-      await sourceFile.copy(targetPath);
-      setState(() {
-        _selectedImagePath = targetPath;
-      });
       return targetPath;
     } catch (e) {
       debugPrint('❌ 持久化待办图片失败: $e');
       return null;
     }
+  }
+
+  String _dataUrlFromPickedImage(String name, List<int> bytes) {
+    final ext = name.split('.').last.toLowerCase();
+    final mimeType = switch (ext) {
+      'png' => 'image/png',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
+    return 'data:$mimeType;base64,${base64Encode(bytes)}';
   }
 
   Future<void> _loadCategoryDefaults() async {
@@ -1398,18 +1400,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           onTap: _pickAttachmentImage,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(_selectedImagePath!),
+                            child: localImageWidget(
+                              _selectedImagePath!,
                               height: 140,
                               width: double.infinity,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                height: 80,
-                                alignment: Alignment.center,
-                                color: Colors.grey.shade100,
-                                child: const Text('图片不可用，请重新选择'),
-                              ),
                             ),
                           ),
                         ),
@@ -1774,28 +1769,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                if (imagePath != null && File(imagePath).existsSync())
+                if (localImageExists(imagePath))
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      File(imagePath),
+                    child: localImageWidget(
+                      imagePath!,
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(Icons.checklist_rounded,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 24),
-                      ),
                     ),
                   )
                 else

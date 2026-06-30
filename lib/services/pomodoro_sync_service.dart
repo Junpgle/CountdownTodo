@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io'; // 🚀 新增：用于获取当前操作系统
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
@@ -9,6 +8,7 @@ import 'notification_service.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../update_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/navigator_utils.dart';
 
 // ============================================================
@@ -271,7 +271,7 @@ class PomodoroSyncService {
     }
 
     try {
-      final platform = kIsWeb ? 'web' : Platform.operatingSystem;
+      final platform = AppPlatform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
       // 🚀 核心修复：WebSocket 地址动态跟随 ApiService，消除 8082/8084 端口不匹配
@@ -351,11 +351,11 @@ class PomodoroSyncService {
 
         if (manifest != null && manifest['update_info'] != null) {
           final info = manifest['update_info'] as Map<String, dynamic>;
-          if (Platform.isMacOS) {
+          if (AppPlatform.isMacOS) {
             downloadUrl ??= info['mac_package_url']?.toString() ??
                 info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
-          } else if (Platform.isWindows) {
+          } else if (AppPlatform.isWindows) {
             downloadUrl ??= info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
           } else {

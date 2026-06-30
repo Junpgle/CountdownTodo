@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -6,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../storage_service.dart';
 import '../../../utils/app_dialogs.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/time_utils.dart';
 import '../../../utils/page_transitions.dart';
 import '../wallpaper_settings_page.dart';
@@ -206,7 +206,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           context: currentContext,
           builder: (ctx) => AlertDialog(
             title: const Text('下载完成'),
-            content: Text(Platform.isMacOS
+            content: Text(AppPlatform.isMacOS
                 ? '安装包已下载完成，是否打开下载目录？'
                 : '最新版本已下载完成，是否立即安装？'),
             actions: [
@@ -216,7 +216,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text(Platform.isMacOS ? '打开目录' : '立即安装'),
+                child: Text(AppPlatform.isMacOS ? '打开目录' : '立即安装'),
               ),
             ],
           ),
@@ -245,7 +245,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       if (image != null) {
         try {
           final colorScheme = await ColorScheme.fromImageProvider(
-              provider: FileImage(File(image.path)));
+            provider: MemoryImage(await image.readAsBytes()),
+          );
           await StorageService.setCustomThemeColor(colorScheme.primary);
           setState(() => _customThemeColor = colorScheme.primary);
           await StorageService.setThemeColorMode(val);
@@ -377,14 +378,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           _buildTile(
             targetId: 'force_download',
             child: ListTile(
-              leading: Icon(Icons.download_rounded,
-                  color: colorScheme.primary),
+              leading: Icon(Icons.download_rounded, color: colorScheme.primary),
               title: const Text('强制下载最新版本'),
               subtitle: _isForceDownloading
                   ? Text(
                       '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(
-                          fontSize: 12, color: colorScheme.primary),
+                      style:
+                          TextStyle(fontSize: 12, color: colorScheme.primary),
                     )
                   : const Text('未正式发布的版本可能不稳定，请谨慎下载'),
               trailing: _isForceDownloading
@@ -413,7 +413,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           _buildTile(
             targetId: 'help_center',
             child: ListTile(
-              leading: Icon(Icons.help_outline_rounded, color: colorScheme.primary),
+              leading:
+                  Icon(Icons.help_outline_rounded, color: colorScheme.primary),
               title: const Text('帮助与反馈'),
               subtitle: const Text('使用指南、快速上手、常见问题'),
               trailing: const Icon(Icons.chevron_right),
@@ -793,7 +794,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               children: [
                 _buildUpdateSourceCard('github', 'GitHub（最新）', Icons.code),
                 const SizedBox(width: 24),
-                _buildUpdateSourceCard('server', '阿里云服务器（更快）', Icons.cloud_outlined),
+                _buildUpdateSourceCard(
+                    'server', '阿里云服务器（更快）', Icons.cloud_outlined),
               ],
             ),
           ],

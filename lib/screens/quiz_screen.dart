@@ -486,8 +486,8 @@ class _QuizScreenState extends State<QuizScreen>
                     LinearProgressIndicator(
                       value: value,
                       backgroundColor: Colors.grey[200],
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.primary),
                       minHeight: 8,
                     ),
                     const SizedBox(height: 4),

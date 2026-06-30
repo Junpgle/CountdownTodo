@@ -14,10 +14,12 @@ class StickyAnnouncementBanner extends StatefulWidget {
   });
 
   @override
-  State<StickyAnnouncementBanner> createState() => _StickyAnnouncementBannerState();
+  State<StickyAnnouncementBanner> createState() =>
+      _StickyAnnouncementBannerState();
 }
 
-class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> with SingleTickerProviderStateMixin {
+class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _pulseAnimation;
 
@@ -43,12 +45,18 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     // 优先级色彩方案
-    final accentColor = widget.announcement.isPriority ? Colors.orange : Theme.of(context).colorScheme.primary;
-    final bgColor = widget.announcement.isPriority 
-        ? (isDark ? Colors.orange.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.7))
-        : (isDark ? Colors.blueGrey.withValues(alpha: 0.15) : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
+    final accentColor = widget.announcement.isPriority
+        ? Colors.orange
+        : Theme.of(context).colorScheme.primary;
+    final bgColor = widget.announcement.isPriority
+        ? (isDark
+            ? Colors.orange.withValues(alpha: 0.15)
+            : Colors.orange.withValues(alpha: 0.7))
+        : (isDark
+            ? Colors.blueGrey.withValues(alpha: 0.15)
+            : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -87,7 +95,7 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                     ),
                   ),
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -111,7 +119,9 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                                 ],
                               ),
                               child: Icon(
-                                widget.announcement.isPriority ? Icons.bolt_rounded : Icons.campaign_rounded,
+                                widget.announcement.isPriority
+                                    ? Icons.bolt_rounded
+                                    : Icons.campaign_rounded,
                                 size: 14,
                                 color: Colors.white,
                               ),
@@ -123,7 +133,9 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  widget.announcement.isPriority ? "重要通知" : "团队公告",
+                                  widget.announcement.isPriority
+                                      ? "重要通知"
+                                      : "团队公告",
                                   style: TextStyle(
                                     fontSize: 10,
                                     letterSpacing: 1.2,
@@ -136,7 +148,8 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : Colors.black87,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -150,9 +163,11 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                       ),
                       const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.3),
+                          color: (isDark ? Colors.black : Colors.white)
+                              .withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
@@ -164,7 +179,8 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                                 style: TextStyle(
                                   fontSize: 13,
                                   height: 1.5,
-                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  color:
+                                      isDark ? Colors.white70 : Colors.black87,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
@@ -181,19 +197,30 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner> wit
                             children: [
                               CircleAvatar(
                                 radius: 8,
-                                backgroundColor: accentColor.withValues(alpha: 0.2),
-                                child: Icon(Icons.person, size: 10, color: accentColor),
+                                backgroundColor:
+                                    accentColor.withValues(alpha: 0.2),
+                                child: Icon(Icons.person,
+                                    size: 10, color: accentColor),
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 widget.announcement.creatorName ?? '管理员',
-                                style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black38),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? Colors.white38
+                                        : Colors.black38),
                               ),
                             ],
                           ),
                           Text(
-                            DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(widget.announcement.createdAt)),
-                            style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black38),
+                            DateFormat('MM-dd HH:mm').format(
+                                DateTime.fromMillisecondsSinceEpoch(
+                                    widget.announcement.createdAt)),
+                            style: TextStyle(
+                                fontSize: 11,
+                                color:
+                                    isDark ? Colors.white38 : Colors.black38),
                           ),
                         ],
                       ),

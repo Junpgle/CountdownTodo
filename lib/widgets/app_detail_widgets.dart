@@ -275,7 +275,8 @@ class AppDetailScreen extends StatelessWidget {
           final isWide = constraints.maxWidth > 700;
 
           if (isWide) {
-            final contentWidth = constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
+            final contentWidth =
+                constraints.maxWidth > 900 ? 900.0 : constraints.maxWidth;
             final horizontalInset = (constraints.maxWidth - contentWidth) / 2;
             final resolvedPadding = padding.resolve(Directionality.of(context));
 

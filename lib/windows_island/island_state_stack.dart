@@ -15,11 +15,11 @@ enum IslandState {
   reminderCapsule,
   copiedLink,
   // 系统控制状态
-  quickControls,      // 快速控制面板
-  musicPlayer,        // 音乐播放器
-  volumeControl,      // 音量控制
-  brightnessControl,  // 亮度控制
-  cardCarousel,       // 卡片轮播
+  quickControls, // 快速控制面板
+  musicPlayer, // 音乐播放器
+  volumeControl, // 音量控制
+  brightnessControl, // 亮度控制
+  cardCarousel, // 卡片轮播
 }
 
 class _StackEntry {

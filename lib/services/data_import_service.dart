@@ -1,14 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models.dart';
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
+import '../utils/text_file_reader.dart';
 import 'api_service.dart';
 import 'course_service.dart';
 import 'database_helper.dart';
@@ -37,11 +38,12 @@ class DataImportService {
   static String _remapUuid(String? oldUuid, {bool shouldRegenerate = false}) {
     if (oldUuid == null || oldUuid.isEmpty) return oldUuid ?? '';
     if (!shouldRegenerate) return oldUuid;
-    
+
     if (_uuidRemap.containsKey(oldUuid)) {
       return _uuidRemap[oldUuid]!;
     }
-    final newUuid = const Uuid().v5(Uuid.NAMESPACE_URL, '$_uuidNamespaceSalt|$oldUuid');
+    final newUuid =
+        const Uuid().v5(Uuid.NAMESPACE_URL, '$_uuidNamespaceSalt|$oldUuid');
     _uuidRemap[oldUuid] = newUuid;
     return newUuid;
   }
@@ -60,13 +62,20 @@ class DataImportService {
   }
 
   static Future<ImportPreview> parseFile(String filePath) async {
-    final file = File(filePath);
-    final jsonString = await file.readAsString();
+    final jsonString = await readTextFile(filePath);
+    return parseJsonString(jsonString);
+  }
+
+  static Future<ImportPreview> parseBytes(Uint8List bytes) {
+    return parseJsonString(utf8.decode(bytes));
+  }
+
+  static Future<ImportPreview> parseJsonString(String jsonString) async {
     final json = jsonDecode(jsonString) as Map<String, dynamic>;
 
     final version = json['version'] as int? ?? 1;
-    final exportedAt = DateTime.fromMillisecondsSinceEpoch(
-        json['exportedAt'] as int? ?? 0);
+    final exportedAt =
+        DateTime.fromMillisecondsSinceEpoch(json['exportedAt'] as int? ?? 0);
     final data = json['data'] as Map<String, dynamic>? ?? {};
 
     final types = <ImportTypePreview>[];
@@ -114,13 +123,24 @@ class DataImportService {
     required String filePath,
     ImportOptions options = const ImportOptions(),
   }) async {
+    final jsonString = await readTextFile(filePath);
+    return importDataFromJsonString(
+      username: username,
+      jsonString: jsonString,
+      options: options,
+    );
+  }
+
+  static Future<ImportResult> importDataFromJsonString({
+    required String username,
+    required String jsonString,
+    ImportOptions options = const ImportOptions(),
+  }) async {
     try {
       // 重置 UUID 重映射，设置用户盐值确保同账号内确定性映射
       _uuidRemap.clear();
       _uuidNamespaceSalt = '${ApiService.currentUserId}_$username';
-      
-      final file = File(filePath);
-      final jsonString = await file.readAsString();
+
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
       final data = json['data'] as Map<String, dynamic>? ?? {};
 
@@ -137,7 +157,7 @@ class DataImportService {
         final fileUsername = json['username']?.toString();
         final fileUserId = json['userId'] as int?;
         final currentUserId = ApiService.currentUserId;
-        
+
         // 判断逻辑：
         // 1. 优先使用 userId 比较（最可靠）
         // 2. 其次使用 username 比较
@@ -153,11 +173,14 @@ class DataImportService {
           // 旧版本导出的文件，保守策略
           needRegenerate = false;
         }
-        
-        uuidStrategy = needRegenerate ? UuidStrategy.regenerate : UuidStrategy.keepOriginal;
-        
+
+        uuidStrategy = needRegenerate
+            ? UuidStrategy.regenerate
+            : UuidStrategy.keepOriginal;
+
         if (needRegenerate) {
-          debugPrint('⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
+          debugPrint(
+              '⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
         } else if (fileDeviceId != null && fileDeviceId != currentDeviceId) {
           debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
         }
@@ -231,7 +254,8 @@ class DataImportService {
         updatedCount += result['updated']!;
       }
 
-      if (data.containsKey('todo_plan_blocks') && data['todo_plan_blocks'] is List) {
+      if (data.containsKey('todo_plan_blocks') &&
+          data['todo_plan_blocks'] is List) {
         final result = await _importPlanBlocks(
           username,
           data['todo_plan_blocks'] as List<dynamic>,
@@ -255,7 +279,8 @@ class DataImportService {
         updatedCount += result['updated']!;
       }
 
-      if (data.containsKey('pomodoro_records') && data['pomodoro_records'] is List) {
+      if (data.containsKey('pomodoro_records') &&
+          data['pomodoro_records'] is List) {
         final result = await _importPomodoroRecords(
           data['pomodoro_records'] as List<dynamic>,
           uuidStrategy,
@@ -297,7 +322,8 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localGroups = await StorageService.getTodoGroups(username, includeDeleted: true);
+    final localGroups =
+        await StorageService.getTodoGroups(username, includeDeleted: true);
     final localMap = {for (var g in localGroups) g.id: g};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -306,7 +332,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final group = TodoGroup.fromJson(map);
-      
+
       // 处理团队数据
       if (group.teamUuid != null && group.teamUuid!.isNotEmpty) {
         if (!joinedTeamUuids.contains(group.teamUuid)) {
@@ -358,7 +384,8 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localTodos = await StorageService.getTodos(username, includeDeleted: true);
+    final localTodos =
+        await StorageService.getTodos(username, includeDeleted: true);
     final localMap = {for (var t in localTodos) t.id: t};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -367,7 +394,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final todo = TodoItem.fromJson(map);
-      
+
       // 处理团队数据
       if (todo.teamUuid != null && todo.teamUuid!.isNotEmpty) {
         if (!joinedTeamUuids.contains(todo.teamUuid)) {
@@ -383,7 +410,7 @@ class DataImportService {
           }
         }
       }
-      
+
       // 清理冲突数据和图片路径（跨设备无效）
       todo.hasConflict = false;
       todo.serverVersionData = null;
@@ -392,7 +419,7 @@ class DataImportService {
       // 处理 UUID
       final oldId = todo.id;
       todo.id = _remapUuid(oldId, shouldRegenerate: shouldRegenerate);
-      
+
       // 处理关联的 groupId
       if (todo.groupId != null && _uuidRemap.containsKey(todo.groupId)) {
         todo.groupId = _uuidRemap[todo.groupId];
@@ -429,7 +456,8 @@ class DataImportService {
     TeamDataStrategy teamStrategy,
     UuidStrategy uuidStrategy,
   ) async {
-    final localCds = await StorageService.getCountdowns(username, includeDeleted: true);
+    final localCds =
+        await StorageService.getCountdowns(username, includeDeleted: true);
     final localMap = {for (var c in localCds) c.id: c};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -438,7 +466,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final countdown = CountdownItem.fromJson(map);
-      
+
       // 处理团队数据
       if (countdown.teamUuid != null && countdown.teamUuid!.isNotEmpty) {
         if (!joinedTeamUuids.contains(countdown.teamUuid)) {
@@ -454,7 +482,7 @@ class DataImportService {
           }
         }
       }
-      
+
       // 清理冲突数据
       countdown.hasConflict = false;
       countdown.conflictData = null;
@@ -503,7 +531,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final log = TimeLogItem.fromJson(map);
-      
+
       // 处理团队数据
       if (log.teamUuid != null && log.teamUuid!.isNotEmpty) {
         if (!joinedTeamUuids.contains(log.teamUuid)) {
@@ -516,7 +544,7 @@ class DataImportService {
           }
         }
       }
-      
+
       // 清理设备ID（跨设备无效）
       log.deviceId = null;
 
@@ -560,7 +588,8 @@ class DataImportService {
     List<dynamic> items,
     UuidStrategy uuidStrategy,
   ) async {
-    final localBlocks = await StorageService.getPlanBlocks(username, includeDeleted: true);
+    final localBlocks =
+        await StorageService.getPlanBlocks(username, includeDeleted: true);
     final localMap = {for (var b in localBlocks) b.id: b};
     final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
 
@@ -569,14 +598,14 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final block = TodoPlanBlock.fromJson(map);
-      
+
       // 清理设备ID（跨设备无效）
       block.deviceId = null;
 
       // 处理 UUID
       final oldId = block.id;
       block.id = _remapUuid(oldId, shouldRegenerate: shouldRegenerate);
-      
+
       // 处理关联的 todoId
       if (_uuidRemap.containsKey(block.todoId)) {
         block.todoId = _uuidRemap[block.todoId]!;
@@ -635,7 +664,7 @@ class DataImportService {
         map['uuid'] = newUuid;
         course = CourseItem.fromJson(map);
       }
-      
+
       // 处理团队数据
       if (course.teamUuid != null && course.teamUuid!.isNotEmpty) {
         if (!joinedTeamUuids.contains(course.teamUuid)) {
@@ -686,7 +715,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final tag = PomodoroTag.fromJson(map);
-      
+
       // 清理冲突数据
       tag.hasConflict = false;
       tag.conflictData = null;
@@ -733,7 +762,7 @@ class DataImportService {
     for (final item in items) {
       final map = item as Map<String, dynamic>;
       final record = PomodoroRecord.fromJson(map);
-      
+
       // 清理设备ID和冲突数据
       record.deviceId = null;
       record.hasConflict = false;
@@ -742,7 +771,7 @@ class DataImportService {
       // 处理 UUID
       final oldUuid = record.uuid;
       record.uuid = _remapUuid(oldUuid, shouldRegenerate: shouldRegenerate);
-      
+
       // 处理关联的 tagUuids
       if (shouldRegenerate) {
         record.tagUuids = record.tagUuids.map((tagUuid) {
@@ -802,7 +831,8 @@ class DataImportService {
           'created_at': r.createdAt,
           'updated_at': r.updatedAt,
           'has_conflict': r.hasConflict ? 1 : 0,
-          'conflict_data': r.conflictData != null ? jsonEncode(r.conflictData) : null,
+          'conflict_data':
+              r.conflictData != null ? jsonEncode(r.conflictData) : null,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -821,7 +851,7 @@ class DataImportService {
       final value = entry.value;
 
       // 跳过敏感信息
-      if (key == StorageService.KEY_AUTH_TOKEN || 
+      if (key == StorageService.KEY_AUTH_TOKEN ||
           key == StorageService.KEY_DEVICE_ID ||
           key == StorageService.KEY_CURRENT_USER) {
         continue;

@@ -43,7 +43,10 @@ class MotionGuide {
                   shape: BoxShape.rectangle,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: (1 - value) * 0.5),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: (1 - value) * 0.5),
                     width: value * 20,
                   ),
                 ),

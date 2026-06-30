@@ -78,7 +78,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: const EdgeInsets.only(left: 24, right: 24, bottom: 40, top: 12),
+        padding:
+            const EdgeInsets.only(left: 24, right: 24, bottom: 40, top: 12),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
@@ -112,23 +113,32 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .secondary
+                          .withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.assignment_outlined, color: Theme.of(context).colorScheme.secondary),
+                    child: Icon(Icons.assignment_outlined,
+                        color: Theme.of(context).colorScheme.secondary),
                   ),
                   const SizedBox(width: 12),
-                  const Text("任务明细", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text("任务明细",
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   IconButton(
-                    style: IconButton.styleFrom(backgroundColor: Colors.grey.withValues(alpha: 0.1)),
+                    style: IconButton.styleFrom(
+                        backgroundColor: Colors.grey.withValues(alpha: 0.1)),
                     icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
-              Text(todo.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, height: 1.3)),
+              Text(todo.title,
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w600, height: 1.3)),
               const SizedBox(height: 20),
 
               if (todo.remark != null && todo.remark!.isNotEmpty)
@@ -137,9 +147,12 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   padding: const EdgeInsets.all(16),
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.05),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.grey.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+                    border:
+                        Border.all(color: Colors.grey.withValues(alpha: 0.1)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,7 +162,10 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                       Expanded(
                         child: Text(
                           todo.remark!,
-                          style: TextStyle(fontSize: 14, color: isDark ? Colors.grey : Colors.grey, height: 1.5),
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.grey : Colors.grey,
+                              height: 1.5),
                         ),
                       ),
                     ],
@@ -158,9 +174,19 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
 
               Row(
                 children: [
-                  Expanded(child: _buildDetailCard(Icons.calendar_month_rounded, "截止日期", todo.dueDate != null ? TimezoneUtils.getRelativeTime(todo.dueDate!.millisecondsSinceEpoch) : "未设置", Colors.orange)),
+                  Expanded(
+                      child: _buildDetailCard(
+                          Icons.calendar_month_rounded,
+                          "截止日期",
+                          todo.dueDate != null
+                              ? TimezoneUtils.getRelativeTime(
+                                  todo.dueDate!.millisecondsSinceEpoch)
+                              : "未设置",
+                          Colors.orange)),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildDetailCard(Icons.groups_rounded, "所属团队", todo.teamName ?? "个人任务", Colors.purple)),
+                  Expanded(
+                      child: _buildDetailCard(Icons.groups_rounded, "所属团队",
+                          todo.teamName ?? "个人任务", Colors.purple)),
                 ],
               ),
             ],
@@ -170,7 +196,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
     );
   }
 
-  Widget _buildDetailCard(IconData icon, String label, String value, Color color) {
+  Widget _buildDetailCard(
+      IconData icon, String label, String value, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -186,11 +213,20 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
             children: [
               Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey : Colors.grey, fontWeight: FontWeight.w500)),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey : Colors.grey,
+                      fontWeight: FontWeight.w500)),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), overflow: TextOverflow.ellipsis),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87),
+              overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -199,7 +235,10 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   /// 🚀 防止非法 UTF-16 代理对导致 Flutter ParagraphBuilder 崩溃
   String _safeStr(String? s) {
     if (s == null) return '';
-    return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'), '');
+    return s.replaceAll(
+        RegExp(
+            r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]'),
+        '');
   }
 
   @override
@@ -212,129 +251,174 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
       body: _isLoading
           ? _buildSkeleton(isDark)
           : GestureDetector(
-        onScaleUpdate: _handleScaleUpdate,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          slivers: [
-            SliverAppBar(
-              floating: true,
-              pinned: true,
-              expandedHeight: 60,
-              elevation: 0,
-              backgroundColor: isDark ? Colors.black.withValues(alpha: 0.65) : Colors.white.withValues(alpha: 0.65),
-              flexibleSpace: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: Container(color: Colors.transparent),
-                ),
-              ),
-              title: const Text('全景汇聚看板', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-              centerTitle: false,
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: IconButton(
-                    icon: const Icon(Icons.refresh_rounded),
-                    tooltip: '刷新数据',
-                    onPressed: _loadAllTeamData,
+              onScaleUpdate: _handleScaleUpdate,
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics()),
+                slivers: [
+                  SliverAppBar(
+                    floating: true,
+                    pinned: true,
+                    expandedHeight: 60,
+                    elevation: 0,
+                    backgroundColor: isDark
+                        ? Colors.black.withValues(alpha: 0.65)
+                        : Colors.white.withValues(alpha: 0.65),
+                    flexibleSpace: ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                        child: Container(color: Colors.transparent),
+                      ),
+                    ),
+                    title: const Text('全景汇聚看板',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5)),
+                    centerTitle: false,
+                    actions: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          tooltip: '刷新数据',
+                          onPressed: _loadAllTeamData,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
 
-            // 🚀 看板功能区 (热力图 & 甘特图)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    TeamHeatmapWidget(todos: _allCombinedTodos, viewDays: _viewDays == 30 ? 35 : _viewDays),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Divider(height: 1, color: isDark ? Colors.white10 : Colors.grey.withValues(alpha: 0.1)),
+                  // 🚀 看板功能区 (热力图 & 甘特图)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 24, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                            color:
+                                isDark ? Colors.white10 : Colors.transparent),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isDark
+                                ? Colors.black.withValues(alpha: 0.3)
+                                : Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
+                          )
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          TeamHeatmapWidget(
+                              todos: _allCombinedTodos,
+                              viewDays: _viewDays == 30 ? 35 : _viewDays),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: Divider(
+                                height: 1,
+                                color: isDark
+                                    ? Colors.white10
+                                    : Colors.grey.withValues(alpha: 0.1)),
+                          ),
+                          TeamGanttWidget(
+                            todos: _allCombinedTodos,
+                            viewDays: _viewDays,
+                            onTodoTap: _showTodoDetails,
+                          ),
+                        ],
+                      ),
                     ),
-                    TeamGanttWidget(
-                      todos: _allCombinedTodos,
-                      viewDays: _viewDays,
-                      onTodoTap: _showTodoDetails,
+                  ),
+
+                  // 数据指标行
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                              child: _buildStatChip(
+                                  context,
+                                  "活跃任务",
+                                  "${_allCombinedTodos.length}",
+                                  Theme.of(context).colorScheme.primary,
+                                  Icons.flash_on_rounded)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                              child: _buildStatChip(
+                                  context,
+                                  "团队关联",
+                                  "${_allCombinedTodos.where((t) => t.teamUuid != null).length}",
+                                  Colors.purple,
+                                  Icons.hub_rounded)),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+                  // 任务流
+                  _allCombinedTodos.isEmpty
+                      ? SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.task_alt_rounded,
+                                    size: 64,
+                                    color: Colors.grey.withValues(alpha: 0.3)),
+                                const SizedBox(height: 16),
+                                Text("暂无活跃的全景任务",
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey,
+                                        fontWeight: FontWeight.w500)),
+                              ],
+                            ),
+                          ),
+                        )
+                      : SliverPadding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) => _buildWaterfallItem(
+                                  _allCombinedTodos[index],
+                                  isLast:
+                                      index == _allCombinedTodos.length - 1),
+                              childCount: _allCombinedTodos.length,
+                            ),
+                          ),
+                        ),
+
+                  // 底部留白
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                        height: MediaQuery.of(context).padding.bottom + 50),
+                  ),
+                ],
               ),
             ),
-
-            // 数据指标行
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(child: _buildStatChip(context, "活跃任务", "${_allCombinedTodos.length}", Theme.of(context).colorScheme.primary, Icons.flash_on_rounded)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildStatChip(context, "团队关联", "${_allCombinedTodos.where((t) => t.teamUuid != null).length}", Colors.purple, Icons.hub_rounded)),
-                  ],
-                ),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-            // 任务流
-            _allCombinedTodos.isEmpty
-                ? SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
-                    const SizedBox(height: 16),
-                    Text("暂无活跃的全景任务", style: TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w500)),
-                  ],
-                ),
-              ),
-            )
-                : SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildWaterfallItem(_allCombinedTodos[index], isLast: index == _allCombinedTodos.length - 1),
-                  childCount: _allCombinedTodos.length,
-                ),
-              ),
-            ),
-
-            // 底部留白
-            SliverToBoxAdapter(
-              child: SizedBox(height: MediaQuery.of(context).padding.bottom + 50),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildStatChip(BuildContext context, String label, String value, Color color, IconData icon) {
+  Widget _buildStatChip(BuildContext context, String label, String value,
+      Color color, IconData icon) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color.withValues(alpha: isDark ? 0.2 : 0.08), color.withValues(alpha: isDark ? 0.05 : 0.02)],
+          colors: [
+            color.withValues(alpha: isDark ? 0.2 : 0.08),
+            color.withValues(alpha: isDark ? 0.05 : 0.02)
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -349,11 +433,17 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
             children: [
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 6),
-              Text(_safeStr(label), style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+              Text(_safeStr(label),
+                  style: TextStyle(
+                      fontSize: 12, color: color, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 8),
-          Text(_safeStr(value), style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87)),
+          Text(_safeStr(value),
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87)),
         ],
       ),
     );
@@ -362,7 +452,8 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   Widget _buildWaterfallItem(TodoItem todo, {required bool isLast}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     bool isTeamTask = todo.teamUuid != null;
-    Color teamColor = isTeamTask ? Theme.of(context).colorScheme.primary : Colors.orange;
+    Color teamColor =
+        isTeamTask ? Theme.of(context).colorScheme.primary : Colors.orange;
 
     return IntrinsicHeight(
       child: Row(
@@ -465,9 +556,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                                     todo.updatedAt)),
                             style: TextStyle(
                                 fontSize: 11,
-                                color: isDark
-                                    ? Colors.grey
-                                    : Colors.grey,
+                                color: isDark ? Colors.grey : Colors.grey,
                                 fontWeight: FontWeight.w500),
                           ),
                         ],
@@ -477,7 +566,9 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                   const SizedBox(height: 12),
                   Text(_safeStr(todo.title),
                       style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600, height: 1.3)),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3)),
                   if (todo.remark != null && todo.remark!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -485,9 +576,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
                         _safeStr(todo.remark!),
                         style: TextStyle(
                             fontSize: 13,
-                            color: isDark
-                                ? Colors.grey
-                                : Colors.grey,
+                            color: isDark ? Colors.grey : Colors.grey,
                             height: 1.4),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

@@ -1,23 +1,22 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'package:CountDownTodo/services/database_helper.dart';
 import '../services/api_service.dart';
+import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
-import '../services/environment_service.dart';
 import '../storage_service.dart';
+import '../utils/text_file_reader.dart';
 
 // 引入不同高校的解析器
 import '../course_import/parsers/hfut_parser.dart';
 import '../course_import/parsers/xmu_parser.dart';
-import '../course_import/parsers/xidian_parser.dart'; 
-import '../course_import/parsers/zfsoft_parser.dart'; 
-import '../course_import/parsers/xujc_parser.dart'; 
+import '../course_import/parsers/xidian_parser.dart';
+import '../course_import/parsers/zfsoft_parser.dart';
+import '../course_import/parsers/xujc_parser.dart';
 
 import '../models.dart';
 
@@ -28,10 +27,8 @@ class CourseService {
 
   static Future<void> _ensureCoursesColumnsForWrite(dynamic db) async {
     final info = await db.rawQuery("PRAGMA table_info(courses)");
-    final columns = info
-        .map((row) => row['name']?.toString())
-        .whereType<String>()
-        .toSet();
+    final columns =
+        info.map((row) => row['name']?.toString()).whereType<String>().toSet();
     debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
 
     final requiredColumns = {
@@ -81,7 +78,8 @@ class CourseService {
   }
 
   // --- 内部辅助：统一将解析后的实体类集合保存到本地 ---
-  static Future<void> saveCourses(String username, List<CourseItem> courses) async {
+  static Future<void> saveCourses(
+      String username, List<CourseItem> courses) async {
     // 1. 🚀 写入 SQL
     try {
       final dbHelper = DatabaseHelper.instance;
@@ -111,14 +109,16 @@ class CourseService {
   // ================= 导入与解析逻辑 =================
 
   // 1. 从字符串导入课表 (合工大)
-  static Future<bool> importScheduleFromJson(String username, String jsonString, {DateTime? semesterStart}) async {
+  static Future<bool> importScheduleFromJson(String username, String jsonString,
+      {DateTime? semesterStart}) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
       return false;
     }
 
     try {
-      List<CourseItem> parsedCourses = HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
+      List<CourseItem> parsedCourses =
+          HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
@@ -131,9 +131,11 @@ class CourseService {
   }
 
   // 2. 导入厦大（本部）课表
-  static Future<bool> importXmuScheduleFromHtml(String username, String htmlString, DateTime semesterStart) async {
+  static Future<bool> importXmuScheduleFromHtml(
+      String username, String htmlString, DateTime semesterStart) async {
     try {
-      List<CourseItem> parsedCourses = XmuScheduleParser.parseHtml(htmlString, semesterStart);
+      List<CourseItem> parsedCourses =
+          XmuScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
@@ -146,9 +148,11 @@ class CourseService {
   }
 
   // 🚀 2.1 导入厦大嘉庚学院课表
-  static Future<bool> importXujcScheduleFromHtml(String username, String htmlString, DateTime semesterStart) async {
+  static Future<bool> importXujcScheduleFromHtml(
+      String username, String htmlString, DateTime semesterStart) async {
     try {
-      List<CourseItem> parsedCourses = XujcScheduleParser.parseHtml(htmlString, semesterStart);
+      List<CourseItem> parsedCourses =
+          XujcScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
@@ -161,9 +165,11 @@ class CourseService {
   }
 
   // 🚀 3. 新增：导入西电 ics 课表
-  static Future<bool> importXidianScheduleFromIcs(String username, String icsString, DateTime semesterStart) async {
+  static Future<bool> importXidianScheduleFromIcs(
+      String username, String icsString, DateTime semesterStart) async {
     try {
-      List<CourseItem> parsedCourses = XidianScheduleParser.parseIcs(icsString, semesterStart);
+      List<CourseItem> parsedCourses =
+          XidianScheduleParser.parseIcs(icsString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
       // 保存标准格式
@@ -176,10 +182,10 @@ class CourseService {
   }
 
   // 4. 从文件路径导入课表 (供外部 App 唤起时调用)
-  static Future<bool> importScheduleFromFile(String username, String filePath) async {
+  static Future<bool> importScheduleFromFile(
+      String username, String filePath) async {
     try {
-      File file = File(filePath);
-      String content = await file.readAsString();
+      String content = await readTextFile(filePath);
       return await importScheduleFromJson(username, content);
     } catch (e) {
       return false;
@@ -188,9 +194,7 @@ class CourseService {
 
   // 🚀 5. 新增：导入正方教务系统课表
   static Future<bool> importZfSoftScheduleFromHtml(
-      String username,
-      String htmlString,
-      DateTime semesterStart,
+      String username, String htmlString, DateTime semesterStart,
       {Map<int, Map<String, int>>? customTimes} // 🚀 适配：接收用户自定义的作息表
       ) async {
     try {
@@ -310,7 +314,8 @@ class CourseService {
 
   static bool _isDatabaseLocked(Object error) {
     final text = error.toString().toLowerCase();
-    return text.contains('database is locked') || text.contains('sqlite_error: 5');
+    return text.contains('database is locked') ||
+        text.contains('sqlite_error: 5');
   }
 
   static List<CourseItem> _parseLegacyCoursePrefsValue(Object? raw) {
@@ -318,8 +323,8 @@ class CourseService {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
         return decoded
-            .map<CourseItem>((item) =>
-                CourseItem.fromJson(Map<String, dynamic>.from(item)))
+            .map<CourseItem>(
+                (item) => CourseItem.fromJson(Map<String, dynamic>.from(item)))
             .toList();
       }
       return HfutScheduleParser.parse(raw);
@@ -345,86 +350,16 @@ class CourseService {
 
   static Future<List<CourseItem>> _recoverCoursesFromLegacySqlIfNeeded(
       String username) async {
-    if (kIsWeb || !(Platform.isWindows || Platform.isLinux)) return [];
-
-    final envPrefix = EnvironmentService.isTest ? 'test_v5_' : 'v4_';
-    final candidateNames = <String>{
-      '${envPrefix}uni_sync_$username.db',
-      'v4_uni_sync_$username.db',
-      'uni_sync_$username.db',
-      EnvironmentService.dbName,
-      'v4_uni_sync.db',
-    };
-
-    final candidatePaths = <String>{
-      for (final dbName in candidateNames)
-        absolute(join('.dart_tool', 'sqflite_common_ffi', 'databases', dbName)),
-      for (final dbName in candidateNames)
-        absolute(join(
-          'build',
-          'windows',
-          'x64',
-          'runner',
-          'Debug',
-          '.dart_tool',
-          'sqflite_common_ffi',
-          'databases',
-          dbName,
-        )),
-      for (final dbName in candidateNames)
-        absolute(join(
-          'build',
-          'windows',
-          'x64',
-          'runner',
-          'Release',
-          '.dart_tool',
-          'sqflite_common_ffi',
-          'databases',
-          dbName,
-        )),
-    };
-
-    for (final legacyPath in candidatePaths) {
-      final legacyFile = File(legacyPath);
-      if (!await legacyFile.exists()) continue;
-
-      Database? legacyDb;
-      try {
-        legacyDb = await openDatabase(legacyPath, readOnly: true);
-        final tableRows = await legacyDb.query(
-          'sqlite_master',
-          columns: ['name'],
-          where: 'type = ? AND name = ?',
-          whereArgs: ['table', 'courses'],
-          limit: 1,
-        );
-        if (tableRows.isEmpty) continue;
-
-        final maps = await legacyDb.query(
-          'courses',
-          where: 'IFNULL(is_deleted, 0) = 0',
-          orderBy: 'date ASC, start_time ASC',
-        );
-        if (maps.isEmpty) continue;
-
-        final courses = maps.map((m) => CourseItem.fromJson(m)).toList();
-        await saveCourses(username, courses);
-        debugPrint(
-            '✅ [Course] 已从旧 FFI 数据库恢复 ${courses.length} 条课表: $legacyPath');
-        return courses;
-      } catch (e) {
-        debugPrint('⚠️ [Course] 旧 FFI 课表恢复失败 ($legacyPath): $e');
-      } finally {
-        await legacyDb?.close();
-      }
+    final courses = await recoverLegacyCoursesFromSql(username);
+    if (courses.isNotEmpty) {
+      await saveCourses(username, courses);
     }
-
-    return [];
+    return courses;
   }
 
   // 5. 获取主页今日/明日需要显示的课程
-  static Future<Map<String, dynamic>> getDashboardCourses(String username) async {
+  static Future<Map<String, dynamic>> getDashboardCourses(
+      String username) async {
     try {
       final courses = await getAllCourses(username);
       if (courses.isEmpty) return {'title': '暂无课表', 'courses': <CourseItem>[]};
@@ -435,17 +370,22 @@ class CourseService {
       int currentHHMM = now.hour * 100 + now.minute;
 
       // 1. 尝试按日期精确筛选今天的课程
-      List<CourseItem> todayCourses = courses.where((c) => c.date == todayStr).toList();
+      List<CourseItem> todayCourses =
+          courses.where((c) => c.date == todayStr).toList();
 
       // 🚀 核心改进：如果没有按日期找到，尝试按“当前周次+星期”回退计算（支持动态修改开学日期的情况）
       if (todayCourses.isEmpty) {
         final DateTime? semStart = await StorageService.getSemesterStart();
         if (semStart != null) {
-          final DateTime semMonday = DateTime(semStart.year, semStart.month, semStart.day)
-              .subtract(Duration(days: semStart.weekday - 1));
+          final DateTime semMonday =
+              DateTime(semStart.year, semStart.month, semStart.day)
+                  .subtract(Duration(days: semStart.weekday - 1));
           int todayWeek = todayNormalized.difference(semMonday).inDays ~/ 7 + 1;
           int todayWeekday = todayNormalized.weekday;
-          todayCourses = courses.where((c) => c.weekIndex == todayWeek && c.weekday == todayWeekday).toList();
+          todayCourses = courses
+              .where(
+                  (c) => c.weekIndex == todayWeek && c.weekday == todayWeekday)
+              .toList();
         }
       }
 
@@ -460,19 +400,26 @@ class CourseService {
 
       // 2. 今天的课没排，或者“今天的课都上完了”，找明天的
       DateTime tomorrow = now.add(const Duration(days: 1));
-      DateTime tomorrowNormalized = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
+      DateTime tomorrowNormalized =
+          DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
       String tomorrowStr = DateFormat('yyyy-MM-dd').format(tomorrow);
-      List<CourseItem> tomorrowCourses = courses.where((c) => c.date == tomorrowStr).toList();
+      List<CourseItem> tomorrowCourses =
+          courses.where((c) => c.date == tomorrowStr).toList();
 
       // 🚀 明天也同样支持回退计算
       if (tomorrowCourses.isEmpty) {
         final DateTime? semStart = await StorageService.getSemesterStart();
         if (semStart != null) {
-          final DateTime semMonday = DateTime(semStart.year, semStart.month, semStart.day)
-              .subtract(Duration(days: semStart.weekday - 1));
-          int tomorrowWeek = tomorrowNormalized.difference(semMonday).inDays ~/ 7 + 1;
+          final DateTime semMonday =
+              DateTime(semStart.year, semStart.month, semStart.day)
+                  .subtract(Duration(days: semStart.weekday - 1));
+          int tomorrowWeek =
+              tomorrowNormalized.difference(semMonday).inDays ~/ 7 + 1;
           int tomorrowWeekday = tomorrowNormalized.weekday;
-          tomorrowCourses = courses.where((c) => c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday).toList();
+          tomorrowCourses = courses
+              .where((c) =>
+                  c.weekIndex == tomorrowWeek && c.weekday == tomorrowWeekday)
+              .toList();
         }
       }
 
@@ -536,7 +483,8 @@ class CourseService {
   }
 
   // 6. 按周获取课程
-  static Future<List<CourseItem>> getCoursesByWeek(String username, int weekIndex) async {
+  static Future<List<CourseItem>> getCoursesByWeek(
+      String username, int weekIndex) async {
     final courses = await getAllCourses(username);
     return courses.where((c) => c.weekIndex == weekIndex).toList();
   }
@@ -552,22 +500,25 @@ class CourseService {
   // ================= 云端同步逻辑 =================
 
   // 8. 上传本地课表到云端
-  static Future<Map<String, dynamic>> syncCoursesToCloud(String username, int userId) async {
+  static Future<Map<String, dynamic>> syncCoursesToCloud(
+      String username, int userId) async {
     final courses =
         await getAllCourses(username, applyCalendarAdjustments: false);
 
     // 转换为后端需要的结构
-    final courseMaps = courses.map((c) => {
-      'course_name': c.courseName,
-      'room_name': c.roomName,
-      'teacher_name': c.teacherName,
-      'start_time': c.startTime,
-      'end_time': c.endTime,
-      'weekday': c.weekday,
-      'week_index': c.weekIndex,
-      'lesson_type': c.lessonType ?? '',
-      'date': c.date,
-    }).toList();
+    final courseMaps = courses
+        .map((c) => {
+              'course_name': c.courseName,
+              'room_name': c.roomName,
+              'teacher_name': c.teacherName,
+              'start_time': c.startTime,
+              'end_time': c.endTime,
+              'weekday': c.weekday,
+              'week_index': c.weekIndex,
+              'lesson_type': c.lessonType ?? '',
+              'date': c.date,
+            })
+        .toList();
 
     return await ApiService.uploadCourses(
       userId: userId,
@@ -576,7 +527,8 @@ class CourseService {
   }
 
   /// ?? Isolate רãα
-  static List<CourseItem> _parseCourseItemsIsolate(List<Map<String, dynamic>> maps) {
+  static List<CourseItem> _parseCourseItemsIsolate(
+      List<Map<String, dynamic>> maps) {
     return maps.map((m) => CourseItem.fromJson(m)).toList();
   }
 }

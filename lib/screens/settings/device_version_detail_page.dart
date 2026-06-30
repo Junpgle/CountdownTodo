@@ -47,9 +47,11 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('设备版本明细'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('设备版本明细'),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

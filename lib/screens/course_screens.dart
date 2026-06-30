@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +9,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
+import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import 'time_log_screen.dart';
 import 'course_month_view.dart';
@@ -3512,9 +3512,7 @@ class CourseDetailScreen extends StatelessWidget {
                 icon: Icons.person, label: '授课教师', value: course.teacherName),
             const AppDetailDivider(),
             AppDetailRow(
-                icon: Icons.location_on,
-                label: '上课地点',
-                value: course.roomName),
+                icon: Icons.location_on, label: '上课地点', value: course.roomName),
             const AppDetailDivider(),
             AppDetailRow(
               icon: Icons.calendar_today,
@@ -3529,8 +3527,7 @@ class CourseDetailScreen extends StatelessWidget {
               value:
                   '${course.formattedStartTime} - ${course.formattedEndTime}',
             ),
-            if (course.lessonType != null &&
-                course.lessonType!.isNotEmpty) ...[
+            if (course.lessonType != null && course.lessonType!.isNotEmpty) ...[
               const AppDetailDivider(),
               AppDetailRow(
                 icon: Icons.category,
@@ -3634,9 +3631,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
     return AppDetailScreen(
       appBarTitle: '任务详情',
       backgroundColor: colorScheme.surface,
-      icon: todo.isDone
-          ? Icons.check_circle_rounded
-          : Icons.pending_rounded,
+      icon: todo.isDone ? Icons.check_circle_rounded : Icons.pending_rounded,
       title: todo.title,
       titleSize: 22,
       titleDecoration: todo.isDone ? TextDecoration.lineThrough : null,
@@ -3644,8 +3639,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
       color: todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning,
       iconSize: 64,
       progress: progress,
-      progressColor:
-          todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
+      progressColor: todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       scrollPhysics: const BouncingScrollPhysics(),
       sections: [
@@ -3658,9 +3652,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                   ? colorScheme.cdtSuccess
                   : colorScheme.cdtWarning),
           AppDetailRow(
-              icon: Icons.schedule_rounded,
-              label: "开始时间",
-              value: startTimeStr),
+              icon: Icons.schedule_rounded, label: "开始时间", value: startTimeStr),
           AppDetailRow(
               icon: Icons.event_busy_rounded,
               label: "截止时间",
@@ -3730,11 +3722,7 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(todo.imagePath!),
-                  errorBuilder: (ctx, err, stack) => const Text("无法加载本地图片",
-                      style: TextStyle(fontSize: 12)),
-                ),
+                child: localImageWidget(todo.imagePath!),
               ),
             ),
           ]),
@@ -3759,24 +3747,20 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
               }),
         ]),
         if (!_loadingRecords && _focusRecords.isNotEmpty)
-          AppDetailSection(
-              title: "专注记录 (${_focusRecords.length})",
-              children: [
-                ..._focusRecords
-                    .take(20)
-                    .map((r) => _buildFocusRecordRow(r)),
-                if (_focusRecords.length > 20)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '仅显示最近 20 条',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
+          AppDetailSection(title: "专注记录 (${_focusRecords.length})", children: [
+            ..._focusRecords.take(20).map((r) => _buildFocusRecordRow(r)),
+            if (_focusRecords.length > 20)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '仅显示最近 20 条',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
                   ),
-              ]),
+                ),
+              ),
+          ]),
         const SizedBox(height: 40),
       ],
     );
@@ -3886,9 +3870,7 @@ class TimeLogDetailScreen extends StatelessWidget {
             AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
             const AppDetailDivider(),
             AppDetailRow(
-                icon: Icons.access_time,
-                label: '时长',
-                value: '$durationMin 分钟'),
+                icon: Icons.access_time, label: '时长', value: '$durationMin 分钟'),
             const AppDetailDivider(),
             AppDetailRow(
                 icon: Icons.play_arrow,
@@ -3912,8 +3894,7 @@ class TimeLogDetailScreen extends StatelessWidget {
               icon: Icons.update,
               label: '最近更新',
               value: AppTimeFormats.fullDateTime(
-                DateTime.fromMillisecondsSinceEpoch(log.updatedAt,
-                        isUtc: true)
+                DateTime.fromMillisecondsSinceEpoch(log.updatedAt, isUtc: true)
                     .toLocal(),
               ),
             ),
@@ -3975,9 +3956,7 @@ class PomodoroDetailScreen extends StatelessWidget {
             AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
             const AppDetailDivider(),
             AppDetailRow(
-                icon: Icons.access_time,
-                label: '时长',
-                value: '$durationMin 分钟'),
+                icon: Icons.access_time, label: '时长', value: '$durationMin 分钟'),
             const AppDetailDivider(),
             AppDetailRow(
                 icon: Icons.play_arrow,

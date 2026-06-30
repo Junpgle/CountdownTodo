@@ -38,7 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _saveSettings() async {
     if (selectedOps.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请至少选择一种运算符号')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请至少选择一种运算符号')));
       return;
     }
 
@@ -50,20 +51,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     int maxRes = int.tryParse(_maxResCtrl.text) ?? 100;
 
     // 简单校验
-    if (minN1 > maxN1) { int t = minN1; minN1 = maxN1; maxN1 = t; }
-    if (minN2 > maxN2) { int t = minN2; minN2 = maxN2; maxN2 = t; }
+    if (minN1 > maxN1) {
+      int t = minN1;
+      minN1 = maxN1;
+      maxN1 = t;
+    }
+    if (minN2 > maxN2) {
+      int t = minN2;
+      minN2 = maxN2;
+      maxN2 = t;
+    }
 
     Map<String, dynamic> settings = {
       'operators': selectedOps,
-      'min_num1': minN1, 'max_num1': maxN1,
-      'min_num2': minN2, 'max_num2': maxN2,
+      'min_num1': minN1,
+      'max_num1': maxN1,
+      'min_num2': minN2,
+      'max_num2': maxN2,
       'max_result': maxRes,
     };
 
     await StorageService.saveSettings(settings);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('设置已保存')));
     Navigator.pop(context);
   }
 
@@ -83,7 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildRangeRow(String label, TextEditingController minCtrl, TextEditingController maxCtrl) {
+  Widget _buildRangeRow(String label, TextEditingController minCtrl,
+      TextEditingController maxCtrl) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -96,16 +109,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: minCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(labelText: "最小值", border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: "最小值", border: OutlineInputBorder()),
               ),
             ),
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("至")),
+            const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text("至")),
             Expanded(
               child: TextField(
                 controller: maxCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(labelText: "最大值", border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: "最大值", border: OutlineInputBorder()),
               ),
             ),
           ],
@@ -124,7 +141,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("运算类型 (可多选)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text("运算类型 (可多选)",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
@@ -147,8 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               decoration: const InputDecoration(
                   hintText: "例如: 100",
                   border: OutlineInputBorder(),
-                  helperText: "加法和乘法结果不超过此值"
-              ),
+                  helperText: "加法和乘法结果不超过此值"),
             ),
             const SizedBox(height: 30),
             SizedBox(

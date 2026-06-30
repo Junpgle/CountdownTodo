@@ -658,7 +658,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
     if (totalMin > 0 && now.isAfter(cDate)) {
       progress = (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
     }
-    final fillBrush = isPast ? Colors.redAccent : Theme.of(context).colorScheme.primary;
+    final fillBrush =
+        isPast ? Colors.redAccent : Theme.of(context).colorScheme.primary;
 
     return Dismissible(
       key: Key('folder_todo_dismiss_${todo.id}'),
@@ -687,8 +688,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                style: TextButton.styleFrom(
-                    foregroundColor: Colors.redAccent),
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
                 child: const Text('删除'),
               ),
             ],
@@ -734,295 +734,296 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             enabled: isAiGeneratedTodo(todo),
             isLight: widget.isLight,
             child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4.0),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: widget.isLight
-                  ? Colors.black.withValues(alpha: 0.02)
-                  : Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Stack(
-              children: [
-                // Background progress fill
-                if (!todo.isDone)
-                  Positioned.fill(
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 1200),
-                      curve: Curves.easeOutQuart,
-                      tween: Tween<double>(
-                          begin: 0.0,
-                          end: _hasAnimated
-                              ? (progress < 0.08 ? 0.08 : progress)
-                              : 0.0),
-                      builder: (context, value, child) {
-                        return FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: value,
-                          child: child!,
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              fillBrush.withValues(
-                                  alpha: widget.isLight ? 0.2 : 0.1),
-                              fillBrush.withValues(
-                                  alpha: widget.isLight ? 0.1 : 0.05),
-                            ],
+              margin: const EdgeInsets.symmetric(vertical: 4.0),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: widget.isLight
+                    ? Colors.black.withValues(alpha: 0.02)
+                    : Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                children: [
+                  // Background progress fill
+                  if (!todo.isDone)
+                    Positioned.fill(
+                      child: TweenAnimationBuilder<double>(
+                        duration: const Duration(milliseconds: 1200),
+                        curve: Curves.easeOutQuart,
+                        tween: Tween<double>(
+                            begin: 0.0,
+                            end: _hasAnimated
+                                ? (progress < 0.08 ? 0.08 : progress)
+                                : 0.0),
+                        builder: (context, value, child) {
+                          return FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: value,
+                            child: child!,
+                          );
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                fillBrush.withValues(
+                                    alpha: widget.isLight ? 0.2 : 0.1),
+                                fillBrush.withValues(
+                                    alpha: widget.isLight ? 0.1 : 0.05),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 9.0, horizontal: 8.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (todo.teamUuid != null)
-                        Container(
-                          width: 3,
-                          height: 24,
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: GestureDetector(
-                          onTap: () => widget.onTodoToggle(todo),
-                          child: Container(
-                            width: 22,
-                            height: 22,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 9.0, horizontal: 8.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (todo.teamUuid != null)
+                          Container(
+                            width: 3,
+                            height: 24,
+                            margin: const EdgeInsets.only(right: 8),
                             decoration: BoxDecoration(
-                              color: todo.isDone
-                                  ? Colors.green
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(7),
-                              border: Border.all(
+                              color: colorScheme.primary,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: GestureDetector(
+                            onTap: () => widget.onTodoToggle(todo),
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
                                 color: todo.isDone
                                     ? Colors.green
-                                    : Colors.grey.withValues(alpha: 0.4),
-                                width: 1.8,
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(7),
+                                border: Border.all(
+                                  color: todo.isDone
+                                      ? Colors.green
+                                      : Colors.grey.withValues(alpha: 0.4),
+                                  width: 1.8,
+                                ),
                               ),
+                              child: todo.isDone
+                                  ? const Icon(Icons.check,
+                                      size: 15, color: Colors.white)
+                                  : null,
                             ),
-                            child: todo.isDone
-                                ? const Icon(Icons.check,
-                                    size: 15, color: Colors.white)
-                                : null,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    todo.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: widget.isLight
-                                          ? Colors.black87
-                                          : Colors.white,
-                                      decoration: todo.isDone
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      height: 1.25,
-                                    ),
-                                  ),
-                                ),
-                                if (todo.hasConflict) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.warning_amber_rounded,
-                                    size: 13,
-                                    color: Colors.orange.shade400,
-                                  ),
-                                ],
-                                if (badge.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 1.5),
-                                    decoration: BoxDecoration(
-                                      color: todo.isDone
-                                          ? colorScheme.onSurface
-                                              .withValues(alpha: 0.06)
-                                          : badgeBg,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      badge,
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: todo.isDone
-                                              ? colorScheme.onSurface
-                                                  .withValues(alpha: 0.3)
-                                              : badgeColor),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            if (todo.teamUuid != null) ...[
-                              const SizedBox(height: 3),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Row(
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 5, vertical: 1.5),
-                                    decoration: BoxDecoration(
-                                      color: colorScheme.primary
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                          color: colorScheme.primary
-                                              .withValues(alpha: 0.2),
-                                          width: 0.5),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.groups_rounded,
-                                            size: 9,
-                                            color: colorScheme.primary),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
-                                          style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color: colorScheme.primary),
-                                        ),
-                                      ],
+                                  Expanded(
+                                    child: Text(
+                                      todo.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: widget.isLight
+                                            ? Colors.black87
+                                            : Colors.white,
+                                        decoration: todo.isDone
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        height: 1.25,
+                                      ),
                                     ),
                                   ),
-                                  if (todo.collabType == 1 &&
-                                      widget.teamRoles[todo.teamUuid] ==
-                                          'admin' &&
-                                      widget.onShowIndependentTodoStatus !=
-                                          null) ...[
+                                  if (todo.hasConflict) ...[
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.warning_amber_rounded,
+                                      size: 13,
+                                      color: Colors.orange.shade400,
+                                    ),
+                                  ],
+                                  if (badge.isNotEmpty) ...[
                                     const SizedBox(width: 6),
-                                    GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () {
-                                        _suppressTodoItemTap = true;
-                                        widget
-                                            .onShowIndependentTodoStatus!(todo);
-                                        Future.microtask(() {
-                                          _suppressTodoItemTap = false;
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 5, vertical: 1.5),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green
-                                              .withValues(alpha: 0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: Colors.green
-                                                .withValues(alpha: 0.35),
-                                            width: 0.5,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(
-                                              Icons
-                                                  .assignment_turned_in_outlined,
-                                              size: 9,
-                                              color: Colors.green,
-                                            ),
-                                            SizedBox(width: 3),
-                                            Text(
-                                              '独立任务进度',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.green,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: todo.isDone
+                                            ? colorScheme.onSurface
+                                                .withValues(alpha: 0.06)
+                                            : badgeBg,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        badge,
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: todo.isDone
+                                                ? colorScheme.onSurface
+                                                    .withValues(alpha: 0.3)
+                                                : badgeColor),
                                       ),
                                     ),
                                   ],
                                 ],
                               ),
-                            ],
-                            const SizedBox(height: 3),
-                            // Time row
-                            Row(
-                              children: [
-                                Icon(Icons.access_time_rounded,
-                                    size: 11,
-                                    color: deadlineColor ?? Colors.grey[500]),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    timeStr,
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      color: deadlineColor ?? Colors.grey[500],
-                                      fontWeight: deadlineColor != null
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
+                              if (todo.teamUuid != null) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.primary
+                                            .withValues(alpha: 0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                            color: colorScheme.primary
+                                                .withValues(alpha: 0.2),
+                                            width: 0.5),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.groups_rounded,
+                                              size: 9,
+                                              color: colorScheme.primary),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            "${todo.teamName ?? '团队'} · ${todo.creatorName ?? '成员'}",
+                                            style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: colorScheme.primary),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
+                                    if (todo.collabType == 1 &&
+                                        widget.teamRoles[todo.teamUuid] ==
+                                            'admin' &&
+                                        widget.onShowIndependentTodoStatus !=
+                                            null) ...[
+                                      const SizedBox(width: 6),
+                                      GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          _suppressTodoItemTap = true;
+                                          widget.onShowIndependentTodoStatus!(
+                                              todo);
+                                          Future.microtask(() {
+                                            _suppressTodoItemTap = false;
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 5, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green
+                                                .withValues(alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: Colors.green
+                                                  .withValues(alpha: 0.35),
+                                              width: 0.5,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: const [
+                                              Icon(
+                                                Icons
+                                                    .assignment_turned_in_outlined,
+                                                size: 9,
+                                                color: Colors.green,
+                                              ),
+                                              SizedBox(width: 3),
+                                              Text(
+                                                '独立任务进度',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ],
-                            ),
-                            // Remark
-                            if (todo.remark != null &&
-                                todo.remark!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 3),
+                              // Time row
                               Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 1),
-                                    child: Icon(Icons.notes_rounded,
-                                        size: 12, color: Colors.grey[500]),
-                                  ),
+                                  Icon(Icons.access_time_rounded,
+                                      size: 11,
+                                      color: deadlineColor ?? Colors.grey[500]),
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
-                                      todo.remark!,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                      timeStr,
                                       style: TextStyle(
-                                          fontSize: 12.5,
-                                          color: Colors.grey[600],
-                                          height: 1.4),
+                                        fontSize: 11.5,
+                                        color:
+                                            deadlineColor ?? Colors.grey[500],
+                                        fontWeight: deadlineColor != null
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
+                              // Remark
+                              if (todo.remark != null &&
+                                  todo.remark!.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 1),
+                                      child: Icon(Icons.notes_rounded,
+                                          size: 12, color: Colors.grey[500]),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        todo.remark!,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 12.5,
+                                            color: Colors.grey[600],
+                                            height: 1.4),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1041,7 +1042,8 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.edit, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(Icons.edit,
+                  color: Theme.of(context).colorScheme.primary),
               title: const Text("修改组名"),
               onTap: () {
                 Navigator.pop(ctx);

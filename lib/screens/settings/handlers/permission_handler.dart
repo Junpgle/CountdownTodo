@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../services/screen_time_service.dart';
+import '../../../utils/app_platform.dart';
 
 class PermissionHandler {
   final BuildContext context;
@@ -56,14 +56,14 @@ class PermissionHandler {
   ];
 
   Future<void> checkAllPermissions() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
     onUpdateChecking(true);
 
     final Map<String, PermissionStatus> results = {};
 
     results['notification'] = await Permission.notification.status;
 
-    if (Platform.isAndroid) {
+    if (AppPlatform.isAndroid) {
       final storageStatus = await Permission.storage.status;
       final manageStatus = await Permission.manageExternalStorage.status;
       results['storage'] = (storageStatus.isGranted || manageStatus.isGranted)
@@ -98,7 +98,7 @@ class PermissionHandler {
   }
 
   Future<void> requestOrOpenPermission(String key) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
 
     switch (key) {
       case 'notification':
@@ -106,7 +106,7 @@ class PermissionHandler {
         if (status.isPermanentlyDenied) await openAppSettings();
         break;
       case 'storage':
-        if (Platform.isAndroid) {
+        if (AppPlatform.isAndroid) {
           final status = await Permission.manageExternalStorage.request();
           if (status.isPermanentlyDenied || status.isDenied) {
             await openAppSettings();
