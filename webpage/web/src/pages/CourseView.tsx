@@ -78,8 +78,8 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
       ]);
 
       const hasCache = cachedCourses && cachedCourses.length > 0;
-      let courseData = cachedCourses ?? [];
-      let semesterStartMs: number | null = cachedSemester;
+      const courseData = cachedCourses ?? [];
+      const semesterStartMs: number | null = cachedSemester;
 
       if (hasCache) {
         setCourses(cachedCourses);
@@ -128,7 +128,6 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
     };
 
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const weekDates = useMemo(() => {
@@ -170,7 +169,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
     const intra = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, CalendarEntry[]>;
 
     todos.forEach(t => {
-      if (t.is_deleted || t.is_completed) return;
+      if (t.is_deleted) return;
       const start = new Date(t.created_date ?? t.created_at);
       const end = t.due_date ? new Date(t.due_date) : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59);
 
