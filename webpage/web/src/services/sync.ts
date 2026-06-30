@@ -1,5 +1,5 @@
 import { ApiService } from './api';
-import type { TodoItem, CountdownItem, TodoGroup, PomodoroRecord, PomodoroTag } from '../types';
+import type { TodoItem, CountdownItem, TodoGroup, PomodoroRecord, PomodoroTag, TodoPlanBlock, TimeLogItem } from '../types';
 
 interface IndependentCompletion {
   is_completed: boolean;
@@ -12,7 +12,9 @@ export const SyncEngine = {
   getLocalTodos: (userId: number): TodoItem[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_todos')) || '[]'),
   getLocalCountdowns: (userId: number): CountdownItem[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_countdowns')) || '[]'),
   getLocalTodoGroups: (userId: number): TodoGroup[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_todo_groups')) || '[]'),
-  getLocalTimeLogs: (userId: number): PomodoroRecord[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'pom_records')) || '[]'),
+  getLocalPlanBlocks: (userId: number): TodoPlanBlock[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_plan_blocks')) || '[]'),
+  getLocalTimeLogs: (userId: number): TimeLogItem[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'web_time_logs')) || '[]'),
+  getLocalPomodoroRecords: (userId: number): PomodoroRecord[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'pom_records')) || '[]'),
   getLocalPomodoroTags: (userId: number): PomodoroTag[] => JSON.parse(localStorage.getItem(ApiService.getUserKey(userId, 'pom_tags')) || '[]'),
   getLastSyncTime: (userId: number) => parseInt(localStorage.getItem(ApiService.getUserKey(userId, 'last_sync_time')) || '0', 10),
 
@@ -25,7 +27,9 @@ export const SyncEngine = {
   setLocalTodos: (userId: number, todos: TodoItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_todos'), JSON.stringify(todos)),
   setLocalCountdowns: (userId: number, cds: CountdownItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_countdowns'), JSON.stringify(cds)),
   setLocalTodoGroups: (userId: number, groups: TodoGroup[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_todo_groups'), JSON.stringify(groups)),
-  setLocalTimeLogs: (userId: number, logs: PomodoroRecord[]) => localStorage.setItem(ApiService.getUserKey(userId, 'pom_records'), JSON.stringify(logs)),
+  setLocalPlanBlocks: (userId: number, blocks: TodoPlanBlock[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_plan_blocks'), JSON.stringify(blocks)),
+  setLocalTimeLogs: (userId: number, logs: TimeLogItem[]) => localStorage.setItem(ApiService.getUserKey(userId, 'web_time_logs'), JSON.stringify(logs)),
+  setLocalPomodoroRecords: (userId: number, logs: PomodoroRecord[]) => localStorage.setItem(ApiService.getUserKey(userId, 'pom_records'), JSON.stringify(logs)),
   setLocalPomodoroTags: (userId: number, tags: PomodoroTag[]) => localStorage.setItem(ApiService.getUserKey(userId, 'pom_tags'), JSON.stringify(tags)),
   setLastSyncTime: (userId: number, time: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), time.toString()),
   resetSync: (userId: number) => localStorage.setItem(ApiService.getUserKey(userId, 'last_sync_time'), '0'),
@@ -58,29 +62,40 @@ export const SyncEngine = {
 
   async syncData(userId: number) {
     const lastSyncTime = this.getLastSyncTime(userId);
+    const planBlocksSyncInitKey = ApiService.getUserKey(userId, 'web_plan_blocks_sync_initialized');
+    const timeLogsSyncInitKey = ApiService.getUserKey(userId, 'web_time_logs_sync_initialized');
+    const shouldBackfillPlanBlocks = localStorage.getItem(planBlocksSyncInitKey) !== 'true';
+    const shouldBackfillTimeLogs = localStorage.getItem(timeLogsSyncInitKey) !== 'true';
+    const syncSince = shouldBackfillPlanBlocks || shouldBackfillTimeLogs ? 0 : lastSyncTime;
     const deviceId = ApiService.getDeviceId();
     const allLocalTodos = this.getLocalTodos(userId);
     const allLocalCds = this.getLocalCountdowns(userId);
     const allLocalGroups = this.getLocalTodoGroups(userId);
-    const allLocalLogs = this.getLocalTimeLogs(userId);
+    const allLocalPlanBlocks = this.getLocalPlanBlocks(userId);
+    const allLocalTimeLogs = this.getLocalTimeLogs(userId);
+    const allLocalLogs = this.getLocalPomodoroRecords(userId);
     const allLocalTags = this.getLocalPomodoroTags(userId);
 
     // 筛选脏数据 (待上传)
     const dirtyTodos = allLocalTodos.filter(t => t.updated_at > lastSyncTime || t.is_deleted);
     const dirtyCds = allLocalCds.filter(c => c.updated_at > lastSyncTime || c.is_deleted);
     const dirtyGroups = allLocalGroups.filter(g => g.updated_at > lastSyncTime || g.is_deleted);
+    const dirtyPlanBlocks = allLocalPlanBlocks.filter(p => p.updated_at > lastSyncTime || p.is_deleted);
+    const dirtyTimeLogs = allLocalTimeLogs.filter(l => l.updated_at > lastSyncTime || l.is_deleted);
     const dirtyLogs = allLocalLogs.filter(r => r.updated_at > lastSyncTime || r.is_deleted);
     const dirtyTags = allLocalTags.filter(t => t.updated_at > lastSyncTime || t.is_deleted);
 
     try {
-      console.log(`[Sync] Starting sync. LastSyncTime: ${lastSyncTime}, Backend: ${ApiService.getBackendKey()}`);
+      console.log(`[Sync] Starting sync. LastSyncTime: ${syncSince}, Backend: ${ApiService.getBackendKey()}`);
       const payload = {
         user_id: userId,
-        last_sync_time: lastSyncTime,
+        last_sync_time: syncSince,
         device_id: deviceId,
         todos: dirtyTodos,
         countdowns: dirtyCds,
         todo_groups: dirtyGroups,
+        todo_plan_blocks_changes: dirtyPlanBlocks,
+        time_logs_changes: dirtyTimeLogs,
         pomodoro_records_changes: dirtyLogs, // 兼容 Aliyun
         pomodoro_tags_changes: dirtyTags,    // 兼容 Aliyun
         screen_time: null
@@ -136,7 +151,7 @@ export const SyncEngine = {
 
         // --- 合并 Todo Groups ---
         const serverGroups = (Array.isArray(response.server_todo_groups) ? response.server_todo_groups : []) as TodoGroup[];
-        const groupMap = new Map(allLocalGroups.map(g => [String(g.uuid || (g as any).id), g]));
+        const groupMap = new Map(allLocalGroups.map(g => [String(g.uuid || g.id), g]));
         for (const sGroup of serverGroups) {
           const sUuid = String(sGroup.uuid || sGroup.id);
           const lGroup = groupMap.get(sUuid);
@@ -145,6 +160,29 @@ export const SyncEngine = {
           }
         }
         this.setLocalTodoGroups(userId, Array.from(groupMap.values()));
+
+        // --- 合并 Todo Plan Blocks ---
+        const serverPlanBlocks = (Array.isArray(response.server_plan_blocks) ? response.server_plan_blocks : []) as TodoPlanBlock[];
+        const planBlockMap = new Map(allLocalPlanBlocks.map(p => [p.uuid, p]));
+        for (const sPlan of serverPlanBlocks) {
+          const lPlan = planBlockMap.get(sPlan.uuid);
+          if (!lPlan || sPlan.version > lPlan.version || ((sPlan.updated_at || 0) >= (lPlan.updated_at || 0))) {
+            planBlockMap.set(sPlan.uuid, sPlan);
+          }
+        }
+        this.setLocalPlanBlocks(userId, Array.from(planBlockMap.values()));
+
+        // --- 合并 Time Logs ---
+        const serverTimeLogs = (Array.isArray(response.server_time_logs) ? response.server_time_logs : []) as TimeLogItem[];
+        const timeLogMap = new Map(allLocalTimeLogs.map(l => [l.uuid || l.id, l]));
+        for (const sLog of serverTimeLogs) {
+          const sUuid = sLog.uuid || sLog.id;
+          const lLog = timeLogMap.get(sUuid);
+          if (!lLog || sLog.version > lLog.version || ((sLog.updated_at || 0) >= (lLog.updated_at || 0))) {
+            timeLogMap.set(sUuid, { ...sLog, uuid: sUuid, id: sUuid });
+          }
+        }
+        this.setLocalTimeLogs(userId, Array.from(timeLogMap.values()));
 
         // --- 合并 Countdowns ---
         const serverCds = (Array.isArray(response.server_countdowns) ? response.server_countdowns : []) as CountdownItem[];
@@ -166,7 +204,7 @@ export const SyncEngine = {
             logMap.set(sLog.uuid, sLog);
           }
         }
-        this.setLocalTimeLogs(userId, Array.from(logMap.values()));
+        this.setLocalPomodoroRecords(userId, Array.from(logMap.values()));
 
         // --- 合并 Pomodoro Tags ---
         const serverTags = (Array.isArray(response.server_pomodoro_tags) ? response.server_pomodoro_tags : []) as PomodoroTag[];
@@ -182,6 +220,8 @@ export const SyncEngine = {
         if (Array.isArray(response.joined_team_uuids)) {
           this.cleanupOrphanedTeamItems(userId, response.joined_team_uuids);
         }
+        localStorage.setItem(planBlocksSyncInitKey, 'true');
+        localStorage.setItem(timeLogsSyncInitKey, 'true');
         this.setLastSyncTime(userId, Number(response.new_sync_time));
         return true;
       }
@@ -210,6 +250,13 @@ export const SyncEngine = {
       this.setLocalCountdowns(userId, filteredCds);
     }
 
+    // 清理 Time Logs
+    const timeLogs = this.getLocalTimeLogs(userId);
+    const filteredTimeLogs = timeLogs.filter(l => !l.team_uuid || teamSet.has(l.team_uuid));
+    if (filteredTimeLogs.length !== timeLogs.length) {
+      this.setLocalTimeLogs(userId, filteredTimeLogs);
+    }
+
     // 清理 Groups
     const groups = this.getLocalTodoGroups(userId);
     const filteredGroups = groups.filter(g => !g.team_uuid || teamSet.has(g.team_uuid));
@@ -218,4 +265,3 @@ export const SyncEngine = {
     }
   }
 };
-

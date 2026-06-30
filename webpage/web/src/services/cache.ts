@@ -1,11 +1,13 @@
-import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag, Team, TeamAnnouncement } from '../types';
+import type { TodoItem, TodoGroup, CountdownItem, PomodoroRecord, PomodoroTag, Team, TeamAnnouncement, TodoPlanBlock, TimeLogItem } from '../types';
 import type { CourseItem, ScreenTimeStat } from '../pages/webapp-utils';
 
 const DB_NAME = 'cdt_cache';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 const STORE_TODOS = 'todos';
 const STORE_GROUPS = 'groups';
 const STORE_COUNTDOWNS = 'countdowns';
+const STORE_PLAN_BLOCKS = 'plan_blocks';
+const STORE_TIME_LOGS = 'time_logs';
 const STORE_COURSES = 'courses';
 const STORE_SETTINGS = 'settings';
 const STORE_SCREEN_TIME = 'screen_time';
@@ -49,6 +51,12 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_COUNTDOWNS)) {
         db.createObjectStore(STORE_COUNTDOWNS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_PLAN_BLOCKS)) {
+        db.createObjectStore(STORE_PLAN_BLOCKS, { keyPath: 'uuid' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TIME_LOGS)) {
+        db.createObjectStore(STORE_TIME_LOGS, { keyPath: 'uuid' });
       }
       if (!db.objectStoreNames.contains(STORE_COURSES)) {
         db.createObjectStore(STORE_COURSES, { keyPath: 'id' });
@@ -213,6 +221,52 @@ export const CacheService = {
       await putAll(STORE_COUNTDOWNS, itemsWithKey);
     } catch (e) {
       console.warn('CacheService: Failed to cache countdowns', e);
+    }
+  },
+
+  // Plan Blocks
+  async getCachedPlanBlocks(userId: number): Promise<TodoPlanBlock[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_PLAN_BLOCKS);
+      const cached = all.filter(p => p._key === key) as unknown as TodoPlanBlock[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedPlanBlocks(userId: number, blocks: TodoPlanBlock[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_PLAN_BLOCKS, key);
+      const itemsWithKey = blocks.map(p => ({ ...p, _key: key }));
+      await putAll(STORE_PLAN_BLOCKS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache plan blocks', e);
+    }
+  },
+
+  // Time Logs
+  async getCachedTimeLogs(userId: number): Promise<TimeLogItem[] | null> {
+    try {
+      const key = `u${userId}`;
+      const all = await getAll<CacheItem>(STORE_TIME_LOGS);
+      const cached = all.filter(l => l._key === key) as unknown as TimeLogItem[];
+      return cached.length > 0 ? cached : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setCachedTimeLogs(userId: number, logs: TimeLogItem[]): Promise<void> {
+    try {
+      const key = `u${userId}`;
+      await clearStoreByPrefix(STORE_TIME_LOGS, key);
+      const itemsWithKey = logs.map(l => ({ ...l, _key: key }));
+      await putAll(STORE_TIME_LOGS, itemsWithKey);
+    } catch (e) {
+      console.warn('CacheService: Failed to cache time logs', e);
     }
   },
 
@@ -404,6 +458,7 @@ export const CacheService = {
     try {
       const stores = [
         STORE_TODOS, STORE_GROUPS, STORE_COUNTDOWNS,
+        STORE_PLAN_BLOCKS, STORE_TIME_LOGS,
         STORE_COURSES, STORE_SETTINGS, STORE_SCREEN_TIME,
         STORE_POMODORO_RECORDS, STORE_POMODORO_TAGS,
         STORE_TEAMS, STORE_ANNOUNCEMENTS,

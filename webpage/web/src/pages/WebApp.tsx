@@ -9,7 +9,7 @@ import { SyncEngine } from '../services/sync';
 import { ApiRequestError, ApiService } from '../services/api';
 import { WsService } from '../services/websocket';
 import { CacheService } from '../services/cache';
-import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement } from '../types';
+import type { TodoItem, CountdownItem, User, TodoGroup, Team, TeamAnnouncement, TodoPlanBlock, TimeLogItem } from '../types';
 
 interface RemotePomData {
   active: boolean;
@@ -107,6 +107,8 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [todoGroups, setTodoGroups] = useState<TodoGroup[]>([]);
   const [countdowns, setCountdowns] = useState<CountdownItem[]>([]);
+  const [planBlocks, setPlanBlocks] = useState<TodoPlanBlock[]>([]);
+  const [timeLogs, setTimeLogs] = useState<TimeLogItem[]>([]);
   const [showAddModal, setShowAddModal] = useState<'todo' | 'countdown' | 'group' | null>(null);
 
   // 编辑待办
@@ -425,7 +427,9 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
         setUserTeams(teams);
         CacheService.setCachedTeams(user.id, teams);
       }
-    } catch (e) {}
+    } catch {
+      // Teams are non-critical for the dashboard; cached data can stay visible.
+    }
   };
 
   const fetchPriorityAnns = async () => {
@@ -456,10 +460,12 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
   // 🚀 加载本地数据（带缓存优化）
   const loadLocalData = useCallback(async () => {
     // 先尝试从 IndexedDB 缓存加载
-    const [cachedTodos, cachedGroups, cachedCountdowns, cachedTeams, cachedAnns, cachedStats] = await Promise.all([
+    const [cachedTodos, cachedGroups, cachedCountdowns, cachedPlanBlocks, cachedTimeLogs, cachedTeams, cachedAnns, cachedStats] = await Promise.all([
       CacheService.getCachedTodos(user.id),
       CacheService.getCachedGroups(user.id),
       CacheService.getCachedCountdowns(user.id),
+      CacheService.getCachedPlanBlocks(user.id),
+      CacheService.getCachedTimeLogs(user.id),
       CacheService.getCachedTeams(user.id),
       CacheService.getCachedAnnouncements(user.id),
       CacheService.getCachedSyncStats(user.id),
@@ -474,6 +480,12 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     }
     if (cachedCountdowns) {
       setCountdowns(cachedCountdowns);
+    }
+    if (cachedPlanBlocks) {
+      setPlanBlocks(cachedPlanBlocks);
+    }
+    if (cachedTimeLogs) {
+      setTimeLogs(cachedTimeLogs);
     }
     if (cachedTeams) {
       setUserTeams(cachedTeams);
@@ -492,11 +504,15 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     const todosWithCompletions = SyncEngine.applyIndependentCompletions(user.id, rawTodos);
     const rawGroups = SyncEngine.getLocalTodoGroups(user.id).filter(g => !g.is_deleted);
     const rawCountdowns = SyncEngine.getLocalCountdowns(user.id).filter(c => !c.is_deleted);
+    const rawPlanBlocks = SyncEngine.getLocalPlanBlocks(user.id).filter(p => !p.is_deleted);
+    const rawTimeLogs = SyncEngine.getLocalTimeLogs(user.id).filter(l => !l.is_deleted);
 
     // 检查数据是否有变化
     const todosChanged = !cachedTodos || CacheService.hasDataChanged(cachedTodos, todosWithCompletions);
     const groupsChanged = !cachedGroups || CacheService.hasDataChanged(cachedGroups, rawGroups);
     const countdownsChanged = !cachedCountdowns || CacheService.hasDataChanged(cachedCountdowns, rawCountdowns);
+    const planBlocksChanged = !cachedPlanBlocks || CacheService.hasDataChanged(cachedPlanBlocks, rawPlanBlocks);
+    const timeLogsChanged = !cachedTimeLogs || CacheService.hasDataChanged(cachedTimeLogs, rawTimeLogs);
 
     // 只更新有变化的数据
     if (todosChanged) {
@@ -510,6 +526,14 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
     if (countdownsChanged) {
       setCountdowns(rawCountdowns);
       CacheService.setCachedCountdowns(user.id, rawCountdowns);
+    }
+    if (planBlocksChanged) {
+      setPlanBlocks(rawPlanBlocks);
+      CacheService.setCachedPlanBlocks(user.id, rawPlanBlocks);
+    }
+    if (timeLogsChanged) {
+      setTimeLogs(rawTimeLogs);
+      CacheService.setCachedTimeLogs(user.id, rawTimeLogs);
     }
   }, [user.id]);
 
@@ -1439,7 +1463,11 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
               onClick={(e) => {
                 e.stopPropagation();
                 setDismissReport(true);
-                try { localStorage.setItem('hide_report_launcher', 'true'); } catch {}
+                try {
+                  localStorage.setItem('hide_report_launcher', 'true');
+                } catch {
+                  // Ignore storage failures; the in-memory dismiss state is already updated.
+                }
               }}
               title="不再提示"
             >
@@ -1458,7 +1486,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
         <div className="flex flex-col lg:flex-row gap-6 h-full flex-1 min-h-0">
         {/* 左半部分：自适应周视图 */}
         <div className="w-full lg:w-1/2 flex flex-col shrink-0 lg:shrink h-auto lg:h-full min-h-[500px] lg:min-h-0">
-          <CourseView userId={user.id} todos={todos} countdowns={countdowns} />
+          <CourseView userId={user.id} todos={todos} countdowns={countdowns} planBlocks={planBlocks} timeLogs={timeLogs} />
         </div>
 
         {/* 右半部分：倒计时 (顶部) + 待办清单 (底部) */}
@@ -1540,6 +1568,26 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
 
             <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-4 min-h-0">
               {(() => {
+                type MixedTodoItem = TodoItem & {
+                  type: 'todo';
+                  data: TodoItem;
+                  minDate: number | null;
+                  maxUrgency: number;
+                  isAllDone: boolean;
+                };
+                type ProcessedGroupItem = {
+                  group: TodoGroup;
+                  todos: TodoItem[];
+                  isAllDone: boolean;
+                  minDate: number;
+                  maxUrgency: number;
+                };
+                type MixedGroupItem = ProcessedGroupItem & {
+                  type: 'group';
+                  data: TodoGroup;
+                };
+                type MixedItem = MixedTodoItem | MixedGroupItem;
+
                 // 1. 预处理文件夹数据，提取排序元数据
                 const processedGroups = todoGroups.map(g => {
                   const gUuid = String(g.uuid || g.id).trim().toLowerCase();
@@ -1568,13 +1616,13 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                 });
 
                 // 3. 定义项目的归类与混合逻辑
-                const getSection = (item: any) => {
-                  const date = item.minDate || item.due_date;
+                const getSection = (item: MixedItem) => {
+                  const date = item.minDate;
                   if (!date) return 'today';
                   const d = new Date(date);
                   d.setHours(0,0,0,0);
 
-                  const isCompleted = item.isAllDone || item.is_completed;
+                  const isCompleted = item.isAllDone;
                   const isPast = d.getTime() < todayMs;
 
                   if (isPast && isCompleted) return 'history';
@@ -1587,28 +1635,28 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                   return d.getTime() > todayMs ? 'future' : 'today';
                 };
 
-                const mixedItems = [
-                  ...unclassified.map(t => ({ type: 'todo', data: t, ...t, minDate: t.due_date || (t.created_date || t.created_at), maxUrgency: calculateUrgency(t), isAllDone: t.is_completed })),
-                  ...processedGroups.map(g => ({ type: 'group', data: g.group, ...g }))
+                const mixedItems: MixedItem[] = [
+                  ...unclassified.map<MixedTodoItem>(t => ({ type: 'todo', data: t, ...t, minDate: t.due_date || (t.created_date || t.created_at), maxUrgency: calculateUrgency(t), isAllDone: t.is_completed })),
+                  ...processedGroups.map<MixedGroupItem>(g => ({ type: 'group', data: g.group, ...g }))
                 ];
 
                 const pastItems = mixedItems.filter(i => getSection(i) === 'past');
                 const todayItems = mixedItems.filter(i => getSection(i) === 'today');
                 const futureItems = mixedItems.filter(i => getSection(i) === 'future');
 
-                const mixedSorter = (a: any, b: any) => {
+                const mixedSorter = (a: MixedItem, b: MixedItem) => {
                   if (a.isAllDone !== b.isAllDone) return a.isAllDone ? 1 : -1;
                   // 精确排序：进度高者（紧急度大）排在前面
                   if (a.maxUrgency !== b.maxUrgency) return b.maxUrgency - a.maxUrgency;
                   return (a.minDate || 0) - (b.minDate || 0);
                 };
-                const renderItem = (item: any) => {
+                const renderItem = (item: MixedItem) => {
                   if (item.type === 'todo') {
                     return <TodoCard key={item.data.uuid} todo={item.data} isPast={getSection(item) === 'past'} isFuture={getSection(item) === 'future'} />;
                   } else {
                     const group = item.data;
                     const groupTodos = item.todos;
-                    const undoneCount = groupTodos.filter((t:any) => !t.is_completed).length;
+                    const undoneCount = groupTodos.filter(t => !t.is_completed).length;
                     return (
                       <div key={group.uuid || group.id} className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden transition-all hover:shadow-sm">
                         <div className="flex items-center gap-3 p-3.5 select-none">
@@ -1627,7 +1675,7 @@ export const WebApp = ({ onBack, user, onLogout, onOpenDashboard }: { onBack: ()
                         </div>
                         {group.is_expanded && groupTodos.length > 0 && (
                           <div className="bg-white/50 border-t border-slate-100/80 p-2 space-y-2">
-                             {groupTodos.sort(todoSorter).map((t:any) => (
+                             {groupTodos.sort(todoSorter).map(t => (
                                <TodoCard key={t.uuid} todo={t} isPast={isHistorical(t)} />
                              ))}
                           </div>

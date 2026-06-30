@@ -7,16 +7,42 @@ import {
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { CacheService } from '../services/cache';
-import type { TodoItem, CountdownItem, PomodoroRecord, PomodoroTag } from '../types';
+import type { TodoItem, CountdownItem, PomodoroRecord, PomodoroTag, TodoPlanBlock, TimeLogItem } from '../types';
 import type { CourseItem, CalendarEntry, DetailItem } from './webapp-utils';
 import { formatDt, formatTimeNum, getLocalPomRecords } from './webapp-utils';
 
-type ViewFilter = 'all' | 'courses' | 'todos' | 'pomodoros';
+type ViewFilter = 'all' | 'courses' | 'todos' | 'timelogs' | 'plans' | 'pomodoros';
+
+const normalizePlanRecordIds = (ids: TodoPlanBlock['pomodoro_record_ids']) => {
+  if (Array.isArray(ids)) return ids.filter(Boolean).map(String);
+  if (typeof ids === 'string') {
+    return ids.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+};
+
+const timeRangesOverlap = (startA: number, endA: number, startB: number, endB: number) => {
+  return endA > startB && startA < endB;
+};
+
+const isRecordAssociatedWithPlan = (record: PomodoroRecord, plan: TodoPlanBlock) => {
+  if (record.is_deleted || plan.is_deleted) return false;
+
+  if (normalizePlanRecordIds(plan.pomodoro_record_ids).includes(record.uuid)) return true;
+  if (record.plan_block_id && record.plan_block_id === plan.uuid) return true;
+
+  if (plan.todo_uuid && record.todo_uuid && record.todo_uuid === plan.todo_uuid) {
+    const recordEnd = record.end_time ?? (record.start_time + (record.actual_duration || record.planned_duration || 0) * 1000);
+    return timeRangesOverlap(record.start_time, recordEnd, plan.start_time, plan.end_time);
+  }
+
+  return false;
+};
 
 // --------------------------------------------------------
 // 课表/周视图组件 (内嵌到首页左侧使用)
 // --------------------------------------------------------
-export const CourseView = ({ userId, todos, countdowns }: { userId: number, todos: TodoItem[], countdowns: CountdownItem[] }) => {
+export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: { userId: number, todos: TodoItem[], countdowns: CountdownItem[], planBlocks: TodoPlanBlock[], timeLogs: TimeLogItem[] }) => {
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
@@ -34,6 +60,69 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
   const startHour = 8;
   const endHour = 22;
   const totalMins = (endHour - startHour) * 60;
+
+  const getPlanTitle = (plan: TodoPlanBlock) => {
+    if (plan.title_snapshot?.trim()) return plan.title_snapshot;
+    return todos.find(t => t.uuid === plan.todo_uuid)?.content || '规划任务';
+  };
+
+  const getTimeLogTitle = (log: TimeLogItem) => {
+    if (log.title?.trim()) return log.title;
+    const tag = pomTags.find(t => log.tag_uuids?.includes(t.uuid));
+    return tag?.name || '时间日志';
+  };
+
+  const getTimeLogColor = (log: TimeLogItem) => {
+    const tag = pomTags.find(t => log.tag_uuids?.includes(t.uuid));
+    return tag?.color || '#0ea5e9';
+  };
+
+  const getPlanStatusLabel = (status: number) => {
+    switch (status) {
+      case 1: return '已完成';
+      case 2: return '已延迟';
+      case 3: return '已取消';
+      case 4: return '已提醒';
+      case 5: return '专注中';
+      case 6: return '已错过';
+      case 7: return '已跳过';
+      default: return '已规划';
+    }
+  };
+
+  const getPlanColorClass = (status: number) => {
+    switch (status) {
+      case 1: return 'bg-green-500/70';
+      case 2: return 'bg-orange-500/75';
+      case 3:
+      case 7:
+        return 'bg-slate-400/70';
+      case 5: return 'bg-red-500/80';
+      case 6: return 'bg-rose-500/75';
+      default: return 'bg-violet-500/75';
+    }
+  };
+
+  const getPlanPomodoroProgress = (plan: TodoPlanBlock) => {
+    const associatedRecords = pomRecords.filter(record => isRecordAssociatedWithPlan(record, plan));
+    let completedSeconds = plan.actual_focus_seconds || 0;
+    let totalSeconds = 0;
+
+    if (associatedRecords.length > 0) {
+      completedSeconds = 0;
+      for (const record of associatedRecords) {
+        const effective = Math.max(0, record.actual_duration || record.planned_duration || 0);
+        const planned = Math.max(0, record.planned_duration || effective);
+        totalSeconds += planned || effective;
+        completedSeconds += Math.min(effective, planned || effective);
+      }
+    } else {
+      totalSeconds = (plan.planned_minutes || Math.max(1, Math.round((plan.end_time - plan.start_time) / 60000))) * 60;
+    }
+
+    const progress = totalSeconds > 0 ? Math.min(1, Math.max(0, completedSeconds / totalSeconds)) : 0;
+    return { completedSeconds, totalSeconds, progress, recordCount: associatedRecords.length };
+  };
 
   const applySemesterStart = (semesterStartMs: number | null, data: CourseItem[]) => {
     if (semesterStartMs && semesterStartMs > 0) {
@@ -144,6 +233,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
     
     pomRecords.forEach(record => {
       if (record.is_deleted || record.start_time <= 0) return;
+      if (planBlocks.some(plan => isRecordAssociatedWithPlan(record, plan))) return;
       
       const start = new Date(record.start_time);
       const endMs = record.end_time ?? (record.start_time + (record.actual_duration || record.planned_duration) * 1000);
@@ -162,7 +252,51 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
     });
 
     return result;
-  }, [pomRecords, weekDates]);
+  }, [pomRecords, planBlocks, weekDates]);
+
+  const planBlocksPerDay = useMemo(() => {
+    const result: Record<number, TodoPlanBlock[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+
+    planBlocks.forEach(plan => {
+      if (plan.is_deleted || plan.start_time <= 0 || plan.end_time <= 0) return;
+
+      for (let i = 0; i < 7; i++) {
+        const dayStart = new Date(weekDates[i]);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(weekDates[i]);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        if (plan.end_time > dayStart.getTime() && plan.start_time <= dayEnd.getTime()) {
+          result[i + 1].push(plan);
+        }
+      }
+    });
+
+    Object.values(result).forEach(items => items.sort((a, b) => a.start_time - b.start_time));
+    return result;
+  }, [planBlocks, weekDates]);
+
+  const timeLogsPerDay = useMemo(() => {
+    const result: Record<number, TimeLogItem[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+
+    timeLogs.forEach(log => {
+      if (log.is_deleted || log.start_time <= 0 || log.end_time <= 0) return;
+
+      for (let i = 0; i < 7; i++) {
+        const dayStart = new Date(weekDates[i]);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(weekDates[i]);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        if (log.end_time > dayStart.getTime() && log.start_time <= dayEnd.getTime()) {
+          result[i + 1].push(log);
+        }
+      }
+    });
+
+    Object.values(result).forEach(items => items.sort((a, b) => a.start_time - b.start_time));
+    return result;
+  }, [timeLogs, weekDates]);
 
   const { allDayItems, intraDayItems } = useMemo(() => {
     const all = { 1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[] } as Record<number, CalendarEntry[]>;
@@ -268,12 +402,12 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                       <ArrowLeftCircle className="w-5 h-5" />
                     </button>
                 )}
-                <div className={`p-2.5 rounded-2xl ${type === 'course' ? 'bg-blue-100 text-blue-600' : type === 'todo' ? 'bg-emerald-100 text-emerald-600' : type === 'multi' ? 'bg-indigo-100 text-indigo-600' : type === 'pomodoro' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
-                  {type === 'course' ? <BookOpen className="w-6 h-6" /> : type === 'todo' ? <CheckCircle2 className="w-6 h-6" /> : type === 'multi' ? <CalendarDays className="w-6 h-6" /> : type === 'pomodoro' ? <Flame className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                <div className={`p-2.5 rounded-2xl ${type === 'course' ? 'bg-blue-100 text-blue-600' : type === 'todo' ? 'bg-emerald-100 text-emerald-600' : type === 'multi' ? 'bg-indigo-100 text-indigo-600' : type === 'pomodoro' ? 'bg-red-100 text-red-600' : type === 'plan' ? 'bg-violet-100 text-violet-600' : type === 'timelog' ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'}`}>
+                  {type === 'course' ? <BookOpen className="w-6 h-6" /> : type === 'todo' ? <CheckCircle2 className="w-6 h-6" /> : type === 'multi' ? <CalendarDays className="w-6 h-6" /> : type === 'pomodoro' ? <Flame className="w-6 h-6" /> : type === 'plan' ? <CalendarDays className="w-6 h-6" /> : type === 'timelog' ? <Clock className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
                 </div>
                 <div>
                   <h4 className="font-black text-xl text-slate-800 tracking-tight">
-                    {type === 'course' ? '课程详情' : type === 'todo' ? '待办详情' : type === 'multi' ? '全天事项聚合' : type === 'pomodoro' ? '专注详情' : '重要倒计时'}
+                    {type === 'course' ? '课程详情' : type === 'todo' ? '待办详情' : type === 'multi' ? '全天事项聚合' : type === 'pomodoro' ? '专注详情' : type === 'plan' ? '规划详情' : type === 'timelog' ? '时间日志详情' : '重要倒计时'}
                   </h4>
                 </div>
               </div>
@@ -334,6 +468,75 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                             <div className="flex items-start gap-3 text-slate-600 pt-1 border-t border-slate-200 mt-1">
                               <BookOpen className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                               <span className="text-sm font-medium text-slate-500 italic leading-relaxed">{todo.remark}</span>
+                            </div>
+                        )}
+                      </div>
+                    </>
+                );
+              })()}
+
+              {type === 'plan' && (() => {
+                const plan = data as TodoPlanBlock;
+                const start = new Date(plan.start_time);
+                const end = new Date(plan.end_time);
+                const progress = getPlanPomodoroProgress(plan);
+                const actualMinutes = Math.floor((plan.actual_focus_seconds || progress.completedSeconds) / 60);
+                return (
+                    <>
+                      <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{getPlanTitle(plan)}</h3>
+                      <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <Flag className="w-5 h-5 text-violet-500" />
+                          <span className="font-bold">{getPlanStatusLabel(plan.status)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <PlayCircle className="w-5 h-5 text-violet-500" />
+                          <span className="font-bold text-sm">开始: {formatDt(start)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <StopCircle className="w-5 h-5 text-violet-500" />
+                          <span className="font-bold text-sm">结束: {formatDt(end)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <Clock className="w-5 h-5 text-violet-500" />
+                          <span className="font-bold text-sm">计划 {plan.planned_minutes || Math.max(1, Math.round((plan.end_time - plan.start_time) / 60000))} 分钟{actualMinutes > 0 ? ` · 已专注 ${actualMinutes} 分钟` : ''}</span>
+                        </div>
+                        {plan.remark && (
+                            <div className="flex items-start gap-3 text-slate-600 pt-1 border-t border-slate-200 mt-1">
+                              <BookOpen className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
+                              <span className="text-sm font-medium text-slate-500 italic leading-relaxed">{plan.remark}</span>
+                            </div>
+                        )}
+                      </div>
+                    </>
+                );
+              })()}
+
+              {type === 'timelog' && (() => {
+                const log = data as TimeLogItem;
+                const start = new Date(log.start_time);
+                const end = new Date(log.end_time);
+                const minutes = Math.max(1, Math.round((log.end_time - log.start_time) / 60000));
+                return (
+                    <>
+                      <h3 className="text-2xl font-black text-slate-800 leading-tight mb-2">{getTimeLogTitle(log)}</h3>
+                      <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <Clock className="w-5 h-5 text-sky-500" />
+                          <span className="font-bold">{minutes} 分钟</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <PlayCircle className="w-5 h-5 text-sky-500" />
+                          <span className="font-bold text-sm">开始: {formatDt(start)}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-slate-600">
+                          <StopCircle className="w-5 h-5 text-sky-500" />
+                          <span className="font-bold text-sm">结束: {formatDt(end)}</span>
+                        </div>
+                        {log.remark && (
+                            <div className="flex items-start gap-3 text-slate-600 pt-1 border-t border-slate-200 mt-1">
+                              <BookOpen className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
+                              <span className="text-sm font-medium text-slate-500 italic leading-relaxed">{log.remark}</span>
                             </div>
                         )}
                       </div>
@@ -458,7 +661,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
               <button onClick={() => setShowViewMenu(!showViewMenu)} className="flex items-center gap-1 text-xs sm:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl hover:bg-slate-50 transition">
                 <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
                 <span className="hidden sm:inline">
-                  {viewMode === 'all' ? '全部' : viewMode === 'courses' ? '只看课表' : viewMode === 'todos' ? '只看待办' : '只看专注'}
+                  {viewMode === 'all' ? '全部' : viewMode === 'courses' ? '只看课表' : viewMode === 'todos' ? '只看待办' : viewMode === 'timelogs' ? '只看日志' : viewMode === 'plans' ? '只看规划' : '只看专注'}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
@@ -468,6 +671,8 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                       { key: 'all', label: '全部' },
                       { key: 'courses', label: '只看课表' },
                       { key: 'todos', label: '只看待办' },
+                      { key: 'timelogs', label: '只看日志' },
+                      { key: 'plans', label: '只看规划' },
                       { key: 'pomodoros', label: '只看专注' },
                     ] as const).map(({ key, label }) => (
                         <button key={key} onClick={() => { setViewMode(key); setShowViewMenu(false); }} className={`w-full text-left px-4 py-2 text-sm font-bold hover:bg-slate-50 transition ${viewMode === key ? 'text-blue-600' : 'text-slate-600'}`}>
@@ -507,7 +712,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
               </div>
 
               {/* 全天事件吸顶区 */}
-              {hasAnyAllDay && viewMode !== 'courses' && viewMode !== 'pomodoros' && (
+              {hasAnyAllDay && viewMode !== 'courses' && viewMode !== 'timelogs' && viewMode !== 'plans' && viewMode !== 'pomodoros' && (
                   <div className="flex shrink-0 border-b border-slate-50 bg-white z-10">
                     <div className="w-10 sm:w-12 shrink-0" />
                     <div className="flex flex-1 min-w-0 pt-1 pb-1.5 pr-2">
@@ -566,7 +771,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                   ))}
 
                   {/* 渲染课程 */}
-                  {viewMode !== 'todos' && viewMode !== 'pomodoros' && weekCourses.map(course => {
+                  {viewMode !== 'todos' && viewMode !== 'timelogs' && viewMode !== 'plans' && viewMode !== 'pomodoros' && weekCourses.map(course => {
                     const sh = Math.floor(course.start_time / 100);
                     const sm = course.start_time % 100;
                     const eh = Math.floor(course.end_time / 100);
@@ -589,7 +794,7 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                   })}
 
                   {/* 渲染日内待办 */}
-                  {viewMode !== 'courses' && viewMode !== 'pomodoros' && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
+                  {viewMode !== 'courses' && viewMode !== 'timelogs' && viewMode !== 'plans' && viewMode !== 'pomodoros' && Object.entries(intraDayItems).flatMap(([dayStr, items]) => {
                     const weekday = parseInt(dayStr);
                     const collisionMap: Record<number, number> = {};
                     return items.map(item => {
@@ -618,8 +823,93 @@ export const CourseView = ({ userId, todos, countdowns }: { userId: number, todo
                     });
                   })}
 
+                  {/* 渲染时间日志 */}
+                  {viewMode !== 'courses' && viewMode !== 'todos' && viewMode !== 'plans' && viewMode !== 'pomodoros' && Object.entries(timeLogsPerDay).flatMap(([dayStr, logs]) => {
+                    const weekday = parseInt(dayStr);
+                    const collisionMap: Record<number, number> = {};
+                    return logs.map(log => {
+                      const dayIndex = weekday - 1;
+                      const dayStart = new Date(weekDates[dayIndex]);
+                      dayStart.setHours(0, 0, 0, 0);
+                      const dayEnd = new Date(weekDates[dayIndex]);
+                      dayEnd.setHours(23, 59, 59, 999);
+                      const displayStart = new Date(Math.max(log.start_time, dayStart.getTime()));
+                      const displayEnd = new Date(Math.min(log.end_time, dayEnd.getTime()));
+                      const top = getTopPercent(displayStart.getHours(), displayStart.getMinutes());
+                      const height = getHeightPercent(displayStart.getHours(), displayStart.getMinutes(), displayEnd.getHours(), displayEnd.getMinutes());
+                      const bucket = Math.floor(top / 5);
+                      const stackIndex = collisionMap[bucket] || 0;
+                      collisionMap[bucket] = stackIndex + 1;
+                      const baseLeft = (weekday - 1) * (100 / 7);
+                      const duration = Math.max(1, Math.round((log.end_time - log.start_time) / 60000));
+                      return (
+                          <div key={`tl-${log.uuid || log.id}-${weekday}`} className="absolute z-10" style={{ top: `${top}%`, height: `${height}%`, left: `calc(${baseLeft}% + ${stackIndex * 3}px)`, width: `calc(${100/7}% - ${stackIndex * 3}px)`, padding: '1px' }}>
+                            <button
+                                onClick={() => setDetailItem({ type: 'timelog', data: log })}
+                                className="w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.05] hover:z-30 hover:shadow-md"
+                                style={{ backgroundColor: `${getTimeLogColor(log)}cc` }}
+                            >
+                              <span className="flex items-start gap-0.5 min-w-0">
+                                <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-px" />
+                                <span className="text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all line-clamp-2">{getTimeLogTitle(log)}</span>
+                              </span>
+                              {height > 4 && (
+                                  <span className="text-[6px] sm:text-[8px] text-white/85 mt-auto">
+                                    {duration}min
+                                  </span>
+                              )}
+                            </button>
+                          </div>
+                      );
+                    });
+                  })}
+
+                  {/* 渲染规划块 */}
+                  {viewMode !== 'courses' && viewMode !== 'todos' && viewMode !== 'timelogs' && viewMode !== 'pomodoros' && Object.entries(planBlocksPerDay).flatMap(([dayStr, plans]) => {
+                    const weekday = parseInt(dayStr);
+                    const collisionMap: Record<number, number> = {};
+                    return plans.map(plan => {
+                      const dayIndex = weekday - 1;
+                      const dayStart = new Date(weekDates[dayIndex]);
+                      dayStart.setHours(0, 0, 0, 0);
+                      const dayEnd = new Date(weekDates[dayIndex]);
+                      dayEnd.setHours(23, 59, 59, 999);
+                      const displayStart = new Date(Math.max(plan.start_time, dayStart.getTime()));
+                      const displayEnd = new Date(Math.min(plan.end_time, dayEnd.getTime()));
+                      const top = getTopPercent(displayStart.getHours(), displayStart.getMinutes());
+                      const height = getHeightPercent(displayStart.getHours(), displayStart.getMinutes(), displayEnd.getHours(), displayEnd.getMinutes());
+                      const bucket = Math.floor(top / 5);
+                      const stackIndex = collisionMap[bucket] || 0;
+                      collisionMap[bucket] = stackIndex + 1;
+                      const baseLeft = (weekday - 1) * (100 / 7);
+                      const progress = getPlanPomodoroProgress(plan);
+                      const isDone = plan.status === 1 || plan.status === 3 || plan.status === 7;
+                      return (
+                          <div key={`pl-${plan.uuid}-${weekday}`} className="absolute z-20" style={{ top: `${top}%`, height: `${height}%`, left: `calc(${baseLeft}% + ${stackIndex * 3}px)`, width: `calc(${100/7}% - ${stackIndex * 3}px)`, padding: '1px' }}>
+                            <button
+                                onClick={() => setDetailItem({ type: 'plan', data: plan })}
+                                className={`relative w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.05] hover:z-30 hover:shadow-md ${getPlanColorClass(plan.status)}`}
+                            >
+                              {progress.progress > 0 && (
+                                  <span className="absolute inset-x-0 bottom-0 bg-white/20 pointer-events-none" style={{ height: `${progress.progress * 100}%` }} />
+                              )}
+                              <span className="relative flex items-start gap-0.5 min-w-0">
+                                <CalendarDays className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white shrink-0 mt-px" />
+                                <span className={`text-[7px] sm:text-[9px] font-bold text-white leading-tight break-all line-clamp-2 ${isDone ? 'line-through opacity-85' : ''}`}>{getPlanTitle(plan)}</span>
+                              </span>
+                              {height > 4 && (
+                                  <span className="relative text-[6px] sm:text-[8px] text-white/85 mt-auto">
+                                    {getPlanStatusLabel(plan.status)}
+                                  </span>
+                              )}
+                            </button>
+                          </div>
+                      );
+                    });
+                  })}
+
                   {/* 渲染番茄钟记录 */}
-                  {viewMode !== 'courses' && viewMode !== 'todos' && Object.entries(pomodorosPerDay).flatMap(([dayStr, records]) => {
+                  {viewMode !== 'courses' && viewMode !== 'todos' && viewMode !== 'timelogs' && viewMode !== 'plans' && Object.entries(pomodorosPerDay).flatMap(([dayStr, records]) => {
                     const weekday = parseInt(dayStr);
                     const collisionMap: Record<number, number> = {};
                     return records.map(record => {
