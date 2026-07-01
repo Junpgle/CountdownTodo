@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/data_export_models.dart';
 import '../../../services/data_export_service.dart';
 import '../../../storage_service.dart';
+import '../../../utils/app_platform.dart';
 
 class DataExportPage extends StatefulWidget {
   final bool isEmbedded;
@@ -258,21 +259,22 @@ class _DataExportPageState extends State<DataExportPage> {
             ),
             const SizedBox(height: 12),
             RadioListTile<bool>(
-              title: const Text('保存到文件'),
-              subtitle: const Text('保存到本地文档目录'),
+              title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
+              subtitle: Text(AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
               value: true,
               groupValue: _saveToFile,
               onChanged: (v) => setState(() => _saveToFile = v!),
               contentPadding: EdgeInsets.zero,
             ),
-            RadioListTile<bool>(
-              title: const Text('分享'),
-              subtitle: const Text('通过系统分享发送给其他应用'),
-              value: false,
-              groupValue: _saveToFile,
-              onChanged: (v) => setState(() => _saveToFile = v!),
-              contentPadding: EdgeInsets.zero,
-            ),
+            if (!AppPlatform.isWeb)
+              RadioListTile<bool>(
+                title: const Text('分享'),
+                subtitle: const Text('通过系统分享发送给其他应用'),
+                value: false,
+                groupValue: _saveToFile,
+                onChanged: (v) => setState(() => _saveToFile = v!),
+                contentPadding: EdgeInsets.zero,
+              ),
           ],
         ),
       ),

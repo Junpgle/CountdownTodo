@@ -100,6 +100,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         await StorageService.getHomeTextConfig();
     String updateSource = await UpdateService.getUpdateSource();
 
+    if (AppPlatform.isWeb && wallpaperProvider == 'custom') {
+      wallpaperProvider = 'bing';
+      await StorageService.saveWallpaperProvider(wallpaperProvider);
+    }
+
     if (mounted) {
       setState(() {
         _themeMode = theme;
@@ -316,6 +321,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isWeb = AppPlatform.isWeb;
     if (_isLoading) {
       return const Scaffold(body: AppLoadingView());
     }
@@ -333,79 +339,82 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           _buildHomeTextSection(),
           _buildAppearanceSection(),
           _buildColorSection(),
-          const AppSettingsSectionHeader(
-            title: '系统与存储',
-            padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
+          AppSettingsSectionHeader(
+            title: isWeb ? '浏览器与存储' : '系统与存储',
+            padding: const EdgeInsets.only(left: 16, bottom: 8, top: 24),
           ),
           _buildTile(
             targetId: 'cache',
             child: ListTile(
               leading: Icon(Icons.cleaning_services_outlined,
                   color: colorScheme.secondary),
-              title: const Text('深度清理缓存与冗余'),
-              subtitle: const Text('包含更新残留包与深度图片缓存'),
+              title: Text(isWeb ? '清理页面图片缓存' : '深度清理缓存与冗余'),
+              subtitle: Text(isWeb ? '清理当前浏览器页面的图片缓存' : '包含更新残留包与深度图片缓存'),
               trailing: Text(_cacheSizeStr,
                   style: TextStyle(
                       fontSize: 12, color: colorScheme.onSurfaceVariant)),
               onTap: _storageManagementHandler.clearCache,
             ),
           ),
-          const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'storage',
-            child: ListTile(
-              leading: Icon(Icons.data_usage, color: colorScheme.cdtWarning),
-              title: const Text('存储空间深度分析'),
-              subtitle: const Text('找出占用数百MB的隐藏文件'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _storageManagementHandler.showStorageAnalysis,
+          if (!isWeb) ...[
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'storage',
+              child: ListTile(
+                leading: Icon(Icons.data_usage, color: colorScheme.cdtWarning),
+                title: const Text('存储空间深度分析'),
+                subtitle: const Text('找出占用数百MB的隐藏文件'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _storageManagementHandler.showStorageAnalysis,
+              ),
             ),
-          ),
-          const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'update',
-            child: ListTile(
-              leading: Icon(Icons.system_update_outlined,
-                  color: colorScheme.cdtSuccess),
-              title: const Text('检查新版本'),
-              trailing: _isCheckingUpdate
-                  ? const AppLoadingIndicator()
-                  : const Icon(Icons.chevron_right),
-              onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'update',
+              child: ListTile(
+                leading: Icon(Icons.system_update_outlined,
+                    color: colorScheme.cdtSuccess),
+                title: const Text('检查新版本'),
+                trailing: _isCheckingUpdate
+                    ? const AppLoadingIndicator()
+                    : const Icon(Icons.chevron_right),
+                onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
+              ),
             ),
-          ),
-          const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'force_download',
-            child: ListTile(
-              leading: Icon(Icons.download_rounded, color: colorScheme.primary),
-              title: const Text('强制下载最新版本'),
-              subtitle: _isForceDownloading
-                  ? Text(
-                      '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                      style:
-                          TextStyle(fontSize: 12, color: colorScheme.primary),
-                    )
-                  : const Text('未正式发布的版本可能不稳定，请谨慎下载'),
-              trailing: _isForceDownloading
-                  ? SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        value: _forceDownloadProgress > 0
-                            ? _forceDownloadProgress
-                            : null,
-                        color: colorScheme.primary,
-                      ),
-                    )
-                  : Icon(Icons.file_download_outlined,
-                      color: colorScheme.onSurfaceVariant),
-              onTap: _isForceDownloading ? null : _forceDownloadLatest,
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'force_download',
+              child: ListTile(
+                leading:
+                    Icon(Icons.download_rounded, color: colorScheme.primary),
+                title: const Text('强制下载最新版本'),
+                subtitle: _isForceDownloading
+                    ? Text(
+                        '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                        style:
+                            TextStyle(fontSize: 12, color: colorScheme.primary),
+                      )
+                    : const Text('未正式发布的版本可能不稳定，请谨慎下载'),
+                trailing: _isForceDownloading
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          value: _forceDownloadProgress > 0
+                              ? _forceDownloadProgress
+                              : null,
+                          color: colorScheme.primary,
+                        ),
+                      )
+                    : Icon(Icons.file_download_outlined,
+                        color: colorScheme.onSurfaceVariant),
+                onTap: _isForceDownloading ? null : _forceDownloadLatest,
+              ),
             ),
-          ),
-          const AppSettingsDivider(),
-          _buildUpdateSourceSection(),
+            const AppSettingsDivider(),
+            _buildUpdateSourceSection(),
+          ],
           const AppSettingsSectionHeader(
             title: '其他工具',
             padding: EdgeInsets.only(left: 16, bottom: 8, top: 24),
@@ -448,16 +457,19 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ),
           const AppSettingsDivider(indent: 72),
-          _buildTile(
-            targetId: 'migration',
-            child: ListTile(
-              leading: Icon(Icons.move_to_inbox, color: colorScheme.secondary),
-              title: const Text('旧版本地数据一键迁移'),
-              subtitle: const Text('包含待办、课程、课表与习惯数据'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _showMigrationDialog,
+          if (!isWeb)
+            _buildTile(
+              targetId: 'migration',
+              child: ListTile(
+                leading:
+                    Icon(Icons.move_to_inbox, color: colorScheme.secondary),
+                title: const Text('旧版本地数据一键迁移'),
+                subtitle: const Text('包含待办、课程、课表与习惯数据'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showMigrationDialog,
+              ),
             ),
-          ),
+          if (!isWeb) const AppSettingsDivider(indent: 72),
           const SizedBox(height: 32),
         ],
       ),
@@ -509,9 +521,11 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 _buildWallpaperCard('bing', 'Bing每日一图', Icons.image_outlined),
                 const SizedBox(width: 24),
                 _buildWallpaperCard('github', 'GitHub随机', Icons.code),
-                const SizedBox(width: 24),
-                _buildWallpaperCard(
-                    'custom', '自定义图片', Icons.folder_special_outlined),
+                if (!AppPlatform.isWeb) ...[
+                  const SizedBox(width: 24),
+                  _buildWallpaperCard(
+                      'custom', '自定义图片', Icons.folder_special_outlined),
+                ],
               ],
             ),
           ],
@@ -1061,8 +1075,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildColorCircle(
-                        'system_wallpaper', null, '多色/自动', displayColors),
+                    _buildColorCircle('system_wallpaper', null,
+                        AppPlatform.isWeb ? '默认' : '多色/自动', displayColors),
                     const SizedBox(width: 12),
                     _buildColorCircle(
                         'app_wallpaper', null, '应用壁纸', displayColors),

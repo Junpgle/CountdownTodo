@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../storage_service.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -106,31 +107,41 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
           ),
         ),
         const AppSettingsDivider(),
-        ListTile(
-          leading: Icon(Icons.cloud_queue, color: colorScheme.secondary),
-          title: const Text('云端数据接口线路'),
-          subtitle: Text(
-            _serverChoice == 'cloudflare'
-                ? '当前: Cloudflare'
-                : '当前: 阿里云ECS (更快)',
-            style: const TextStyle(fontSize: 12),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.push(
-              context,
-              PageTransitions.slideHorizontal(
-                ServerChoicePage(
-                  initialServerChoice: _serverChoice,
-                  isEmbedded: false,
+        if (AppPlatform.isWeb)
+          ListTile(
+            leading: Icon(Icons.cloud_queue, color: colorScheme.secondary),
+            title: const Text('云端数据接口线路'),
+            subtitle: const Text(
+              '网页版固定通过 Cloudflare Zero Trust 代理访问 API',
+              style: TextStyle(fontSize: 12),
+            ),
+          )
+        else
+          ListTile(
+            leading: Icon(Icons.cloud_queue, color: colorScheme.secondary),
+            title: const Text('云端数据接口线路'),
+            subtitle: Text(
+              _serverChoice == 'cloudflare'
+                  ? '当前: Cloudflare'
+                  : '当前: 阿里云ECS (更快)',
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                PageTransitions.slideHorizontal(
+                  ServerChoicePage(
+                    initialServerChoice: _serverChoice,
+                    isEmbedded: false,
+                  ),
+                  settings: const RouteSettings(name: '云端数据接口线路'),
                 ),
-                settings: const RouteSettings(name: '云端数据接口线路'),
-              ),
-            ).then((_) {
-              _loadSettings();
-            });
-          },
-        ),
+              ).then((_) {
+                _loadSettings();
+              });
+            },
+          ),
         const AppSettingsDivider(),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),

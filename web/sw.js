@@ -1,9 +1,10 @@
 // CountDownTodo PWA Service Worker
 // Handles offline caching and update lifecycle.
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `countdowntodo-${CACHE_VERSION}`;
 const OFFLINE_URL = './offline.html';
+const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20260701c';
 
 // App shell files to pre-cache on install.
 // Flutter build output is hashed, so we only cache the unhashed entry points;
@@ -13,7 +14,7 @@ const PRE_CACHE_URLS = [
   './',
   './index.html',
   OFFLINE_URL,
-  './flutter_bootstrap.js',
+  BOOTSTRAP_URL,
   './sqflite_sw.js',
   './sqlite3.wasm',
   './favicon.png',
@@ -71,7 +72,6 @@ async function cacheShell() {
 // ── Install ─────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(cacheShell());
-  self.skipWaiting();
 });
 
 // ── Activate ────────────────────────────────────────────────

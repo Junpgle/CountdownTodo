@@ -6,6 +6,7 @@ import '../../services/reminder_schedule_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/storage/app_settings_storage.dart';
 import '../../utils/app_dialogs.dart';
+import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
@@ -169,6 +170,22 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (AppPlatform.isWeb) {
+      return Scaffold(
+        appBar: widget.isEmbedded
+            ? null
+            : AppBar(
+                title: const Text('通知与提醒设置'),
+                centerTitle: true,
+              ),
+        body: const AppEmptyState(
+          icon: Icons.notifications_off_outlined,
+          title: '网页版暂不提供系统通知设置',
+          message: '浏览器无法提供原生实时活动、精确闹钟和后台保活。课程、待办和规划可以在数据与互联中导出为 ICS 日历文件。',
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: widget.isEmbedded
           ? null

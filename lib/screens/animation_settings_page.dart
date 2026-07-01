@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/animation_config_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 
 class AnimationSettingsPage extends StatefulWidget {
@@ -155,16 +156,17 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   _update(screenRadius: val);
                 },
               ),
-              _buildToggleCard(
-                title: '预测性返回',
-                subtitle: 'Android 14+ 返回手势',
-                icon: Icons.swipe_left,
-                value: _predictiveBackEnabled,
-                onChanged: (val) {
-                  setState(() => _predictiveBackEnabled = val);
-                  _update(predictiveBack: val);
-                },
-              ),
+              if (!AppPlatform.isWeb)
+                _buildToggleCard(
+                  title: '预测性返回',
+                  subtitle: 'Android 14+ 返回手势',
+                  icon: Icons.swipe_left,
+                  value: _predictiveBackEnabled,
+                  onChanged: (val) {
+                    setState(() => _predictiveBackEnabled = val);
+                    _update(predictiveBack: val);
+                  },
+                ),
               _buildToggleCard(
                 title: '运动模糊',
                 subtitle: '滑动动态模糊 (影响性能)',

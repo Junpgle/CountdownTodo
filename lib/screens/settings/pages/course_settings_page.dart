@@ -10,6 +10,7 @@ import '../../../course_import/handlers/course_import_handler.dart';
 import '../../../course_import/widgets/course_adaptation_screen.dart';
 import '../../course_calendar_adjustment_screen.dart';
 import '../../../models.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/page_transitions.dart';
 
 class CourseSettingsPage extends StatefulWidget {
@@ -392,6 +393,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isWeb = AppPlatform.isWeb;
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
@@ -501,9 +503,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               children: [
                 _buildActionCard(
                   id: 'webview_import',
-                  icon: Icons.language_outlined,
-                  title: '在线教务导入',
-                  subtitle: '推荐方式',
+                  icon: isWeb ? Icons.open_in_browser : Icons.language_outlined,
+                  title: isWeb ? '打开教务网页' : '在线教务导入',
+                  subtitle: isWeb ? '导出文件后导入' : '推荐方式',
                   color: Colors.teal,
                   onTap: _courseImportHandler.importFromWebView,
                 ),

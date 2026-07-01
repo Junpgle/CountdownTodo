@@ -6,7 +6,6 @@ import 'dart:convert';
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
-import '../models.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
@@ -74,6 +73,21 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _handleInitialTarget(String target) {
+    if (AppPlatform.isWeb &&
+        {
+          'permissions',
+          'notifications',
+          'float_window_style',
+          'force_refresh',
+          'island_priority',
+          'tai_db',
+          'live_updates',
+          'island_support',
+          'test_notification',
+        }.contains(target)) {
+      return;
+    }
+
     String paneId;
     Widget Function() paneBuilder;
 
@@ -807,36 +821,37 @@ class _SettingsPageState extends State<SettingsPage> {
                   widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
                 ),
 
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-
-                _buildMacSidebarItem(
-                  id: 'platform',
-                  icon: Icons.stars_rounded,
-                  color: Colors.deepPurple,
-                  title: AppPlatform.isWindows
-                      ? 'Windows 专属'
-                      : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属'),
-                  widgetBuilder: () =>
-                      const PlatformSpecificSettingsPage(isEmbedded: true),
-                ),
-                _buildMacSidebarItem(
-                  id: 'notifications',
-                  icon: Icons.notifications,
-                  color: Colors.amber,
-                  title: '通知管理',
-                  widgetBuilder: () =>
-                      const NotificationSettingsPage(isEmbedded: true),
-                ),
-                _buildMacSidebarItem(
-                  id: 'permissions',
-                  icon: Icons.security,
-                  color: Colors.red,
-                  title: '权限管理',
-                  widgetBuilder: () =>
-                      const PermissionSettingsPage(isEmbedded: true),
-                ),
+                if (!AppPlatform.isWeb) ...[
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  _buildMacSidebarItem(
+                    id: 'platform',
+                    icon: Icons.stars_rounded,
+                    color: Colors.deepPurple,
+                    title: AppPlatform.isWindows
+                        ? 'Windows 专属'
+                        : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属'),
+                    widgetBuilder: () =>
+                        const PlatformSpecificSettingsPage(isEmbedded: true),
+                  ),
+                  _buildMacSidebarItem(
+                    id: 'notifications',
+                    icon: Icons.notifications,
+                    color: Colors.amber,
+                    title: '通知管理',
+                    widgetBuilder: () =>
+                        const NotificationSettingsPage(isEmbedded: true),
+                  ),
+                  _buildMacSidebarItem(
+                    id: 'permissions',
+                    icon: Icons.security,
+                    color: Colors.red,
+                    title: '权限管理',
+                    widgetBuilder: () =>
+                        const PermissionSettingsPage(isEmbedded: true),
+                  ),
+                ],
                 _buildMacSidebarItem(
                   id: 'help',
                   icon: Icons.help_outline,
@@ -1035,7 +1050,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading:
                       const Icon(Icons.devices_outlined, color: Colors.blue),
                   title: const Text('数据与互联'),
-                  subtitle: const Text('局域网同步、手环、日历双向同步'),
+                  subtitle: Text(AppPlatform.isWeb
+                      ? '浏览器导入导出、ICS 日历文件与批量标签'
+                      : '局域网同步、手环、日历双向同步'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,
@@ -1061,42 +1078,45 @@ class _SettingsPageState extends State<SettingsPage> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
-                ListTile(
-                  leading:
-                      const Icon(Icons.stars_rounded, color: Colors.deepPurple),
-                  title: Text(AppPlatform.isWindows
-                      ? 'Windows 专属设置'
-                      : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
-                  subtitle: Text(
-                      AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          const PlatformSpecificSettingsPage())),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.notifications_outlined,
-                      color: Colors.amber),
-                  title: const Text('通知管理'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          const NotificationSettingsPage())),
-                ),
-                const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading:
-                      const Icon(Icons.security_outlined, color: Colors.red),
-                  title: const Text('权限管理'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          const PermissionSettingsPage())),
-                ),
-                const Divider(height: 1, indent: 56),
+                if (!AppPlatform.isWeb) ...[
+                  ListTile(
+                    leading: const Icon(Icons.stars_rounded,
+                        color: Colors.deepPurple),
+                    title: Text(AppPlatform.isWindows
+                        ? 'Windows 专属设置'
+                        : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
+                    subtitle: Text(
+                        AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            const PlatformSpecificSettingsPage())),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading: const Icon(Icons.notifications_outlined,
+                        color: Colors.amber),
+                    title: const Text('通知管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            const NotificationSettingsPage())),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  ListTile(
+                    leading:
+                        const Icon(Icons.security_outlined, color: Colors.red),
+                    title: const Text('权限管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            const PermissionSettingsPage())),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                ],
                 ListTile(
                   leading:
                       const Icon(Icons.help_outline, color: Colors.blueGrey),
