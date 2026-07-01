@@ -241,6 +241,7 @@ class AppDetailScreen extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final ScrollPhysics? scrollPhysics;
   final Color? backgroundColor;
+  final List<Widget>? leftSections;
 
   const AppDetailScreen({
     super.key,
@@ -260,6 +261,7 @@ class AppDetailScreen extends StatelessWidget {
     this.padding = const EdgeInsets.all(24),
     this.scrollPhysics,
     this.backgroundColor,
+    this.leftSections,
   });
 
   @override
@@ -292,17 +294,26 @@ class AppDetailScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       flex: 4,
-                      child: AppDetailHeader(
-                        icon: icon,
-                        title: title,
-                        subtitle: headerSubtitle,
-                        color: color,
-                        iconSize: iconSize,
-                        titleSize: titleSize,
-                        titleDecoration: titleDecoration,
-                        titleColor: titleColor,
-                        progress: progress,
-                        progressColor: progressColor,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppDetailHeader(
+                            icon: icon,
+                            title: title,
+                            subtitle: headerSubtitle,
+                            color: color,
+                            iconSize: iconSize,
+                            titleSize: titleSize,
+                            titleDecoration: titleDecoration,
+                            titleColor: titleColor,
+                            progress: progress,
+                            progressColor: progressColor,
+                          ),
+                          if (leftSections != null && leftSections!.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            ...leftSections!,
+                          ],
+                        ],
                       ),
                     ),
                     const SizedBox(width: 32),
@@ -335,6 +346,10 @@ class AppDetailScreen extends StatelessWidget {
                 progress: progress,
                 progressColor: progressColor,
               ),
+              if (leftSections != null && leftSections!.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                ...leftSections!,
+              ],
               const SizedBox(height: 20),
               ...sections,
             ],

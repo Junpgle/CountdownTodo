@@ -3642,6 +3642,37 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
       progressColor: todo.isDone ? colorScheme.cdtSuccess : colorScheme.primary,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       scrollPhysics: const BouncingScrollPhysics(),
+      leftSections: [
+        if (todo.teamUuid != null)
+          AppDetailSection(title: "协作信息", children: [
+            AppDetailRow(
+                icon: Icons.group_rounded,
+                label: "所属团队",
+                value: todo.teamName ?? "未知团队"),
+            AppDetailRow(
+                icon: Icons.person_rounded,
+                label: "创建者",
+                value: todo.creatorName ?? "未知用户"),
+            AppDetailRow(
+                icon: Icons.handshake_rounded,
+                label: "协作模式",
+                value: todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
+          ]),
+        if (todo.remark != null && todo.remark!.isNotEmpty)
+          AppDetailSection(title: "备注详情", children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                todo.remark!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ]),
+      ],
       sections: [
         AppDetailSection(title: "基本信息", children: [
           AppDetailRow(
@@ -3673,35 +3704,6 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                 label: "提醒设置",
                 value: "提前 ${todo.reminderMinutes} 分钟"),
         ]),
-        if (todo.teamUuid != null)
-          AppDetailSection(title: "协作信息", children: [
-            AppDetailRow(
-                icon: Icons.group_rounded,
-                label: "所属团队",
-                value: todo.teamName ?? "未知团队"),
-            AppDetailRow(
-                icon: Icons.person_rounded,
-                label: "创建者",
-                value: todo.creatorName ?? "未知用户"),
-            AppDetailRow(
-                icon: Icons.handshake_rounded,
-                label: "协作模式",
-                value: todo.collabType == 1 ? "每个人独立完成" : "所有人共同协作"),
-          ]),
-        if (todo.remark != null && todo.remark!.isNotEmpty)
-          AppDetailSection(title: "备注详情", children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                todo.remark!,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: colorScheme.onSurface,
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ]),
         if (todo.originalText != null && todo.originalText!.isNotEmpty)
           AppDetailSection(title: "原始识别文本", children: [
             Padding(
@@ -3746,37 +3748,84 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
                 AppSnackBars.success(context, "ID 已复制到剪贴板");
               }),
         ]),
-        if (!_loadingRecords && _focusRecords.isNotEmpty)
-          AppDetailSection(title: "专注记录 (${_focusRecords.length})", children: [
-            ..._focusRecords.take(20).map((r) => _buildFocusRecordRow(r)),
-            if (_focusRecords.length > 20)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  '仅显示最近 20 条',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+        if (!_loadingRecords && _focusRecords.isNotEmpty) ...[
+          Builder(
+            builder: (context) {
+              int maxFocusDuration = 1;
+              int totalDurationSeconds = 0;
+              int completedCount = 0;
+              if (_focusRecords.isNotEmpty) {
+                for (var r in _focusRecords) {
+                  totalDurationSeconds += r.effectiveDuration;
+                  if (r.isCompleted) completedCount++;
+                  int durationMin = r.effectiveDuration ~/ 60;
+                  if (durationMin > maxFocusDuration) maxFocusDuration = durationMin;
+                }
+              }
+              int totalDurationMin = totalDurationSeconds ~/ 60;
+              int avgDurationMin = _focusRecords.isNotEmpty ? totalDurationMin ~/ _focusRecords.length : 0;
+
+              return AppDetailSection(title: "专注记录分布 (${_focusRecords.length})", children: [
+                Row(
+                  children: [
+                    _buildStatCard("总时长", "$totalDurationMin 分钟", colorScheme.primary),
+                    const SizedBox(width: 10),
+                    _buildStatCard("平均单次", "$avgDurationMin 分钟", colorScheme.secondary),
+                    const SizedBox(width: 10),
+                    _buildStatCard("成功次数", "$completedCount 次", colorScheme.cdtSuccess),
+                  ],
                 ),
-              ),
-          ]),
-        const SizedBox(height: 40),
+                const SizedBox(height: 20),
+                ..._focusRecords.take(20).map((r) => _buildFocusRecordVisualized(r, maxFocusDuration)),
+                if (_focusRecords.length > 20)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '仅显示最近 20 条',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ]);
+            }
+          ),
+        ]
       ],
     );
   }
 
-  Widget _buildFocusRecordRow(PomodoroRecord r) {
+  Widget _buildStatCard(String title, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 4),
+            Text(title, style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.8))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFocusRecordVisualized(PomodoroRecord r, int maxDuration) {
     final colorScheme = Theme.of(context).colorScheme;
     final startLocal =
         DateTime.fromMillisecondsSinceEpoch(r.startTime, isUtc: true).toLocal();
     final durationMin = r.effectiveDuration ~/ 60;
-    final statusIcon =
-        r.isCompleted ? Icons.check_circle_rounded : Icons.timer_off_rounded;
-    final statusColor =
-        r.isCompleted ? colorScheme.cdtSuccess : colorScheme.cdtWarning;
+    
+    final safeMax = maxDuration > 0 ? maxDuration : 1; 
+    final ratio = (durationMin / safeMax).clamp(0.05, 1.0);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
@@ -3790,37 +3839,72 @@ class _TodoDetailScreenState extends State<TodoDetailScreen> {
             ),
           );
         },
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(statusIcon, size: 20, color: statusColor),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${AppTimeFormats.compactDateTime(startLocal)} · $durationMin 分钟',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  AppTimeFormats.compactDateTime(startLocal),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
                   ),
-                  if (r.note != null && r.note!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      r.note!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
+                ),
+                Text(
+                  '$durationMin 分钟',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: r.isCompleted ? colorScheme.primary : colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    Container(
+                      height: 10,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOutCubic,
+                      height: 10,
+                      width: constraints.maxWidth * ratio,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: r.isCompleted 
+                            ? [colorScheme.primary.withValues(alpha: 0.6), colorScheme.primary]
+                            : [colorScheme.error.withValues(alpha: 0.6), colorScheme.error],
+                        ),
+                        borderRadius: BorderRadius.circular(5),
                       ),
                     ),
                   ],
-                ],
-              ),
+                );
+              }
             ),
+            if (r.note != null && r.note!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                r.note!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ],
         ),
       ),
