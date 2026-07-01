@@ -151,75 +151,150 @@ class AppDetailSection extends StatelessWidget {
   }
 }
 
-class AppDetailRow extends StatelessWidget {
+class AppDetailInfoCard extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String title;
   final String value;
   final Color? valueColor;
   final VoidCallback? onTap;
-  final int valueMaxLines;
-  final EdgeInsetsGeometry padding;
 
-  const AppDetailRow({
+  const AppDetailInfoCard({
     super.key,
     required this.icon,
-    required this.label,
+    required this.title,
     required this.value,
     this.valueColor,
     this.onTap,
-    this.valueMaxLines = 1,
-    this.padding = const EdgeInsets.symmetric(vertical: 10),
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final row = Padding(
-      padding: padding,
-      child: Row(
-        crossAxisAlignment: valueMaxLines > 1
-            ? CrossAxisAlignment.start
-            : CrossAxisAlignment.center,
+    
+    Widget card = Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 12),
+          Icon(icon, color: colorScheme.primary, size: 22),
+          const SizedBox(height: 8),
+          Text(title, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 4),
           Text(
-            label,
+            value,
             style: TextStyle(
-              fontSize: 14,
-              color: colorScheme.onSurfaceVariant,
+              fontSize: 14, 
+              fontWeight: FontWeight.bold, 
+              color: valueColor ?? colorScheme.onSurface
             ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
+        ],
+      ),
+    );
+
+    if (onTap != null) {
+      card = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: card,
+        ),
+      );
+    }
+
+    return card;
+  }
+}
+
+class AppDetailWideCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final VoidCallback? onTap;
+  final bool isLink;
+  final int maxLines;
+  final Color? valueColor;
+
+  const AppDetailWideCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.value,
+    this.onTap,
+    this.isLink = false,
+    this.maxLines = 3,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    Widget card = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.primary, size: 22),
+          const SizedBox(width: 12),
+          Text(title, style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              value,
-              maxLines: valueMaxLines,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? colorScheme.onSurface,
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14, 
+                      fontWeight: FontWeight.bold, 
+                      color: valueColor ?? (isLink ? colorScheme.primary : colorScheme.onSurface)
+                    ),
+                    textAlign: TextAlign.right,
+                    maxLines: maxLines,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isLink) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: colorScheme.primary),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
-    if (onTap == null) return row;
-    return InkWell(onTap: onTap, child: row);
-  }
-}
 
-class AppDetailDivider extends StatelessWidget {
-  const AppDetailDivider({super.key});
+    if (onTap != null) {
+      card = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: card,
+        ),
+      );
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Divider(
-      height: 1,
-      color: Theme.of(context).colorScheme.cdtDivider,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: card,
     );
   }
 }
