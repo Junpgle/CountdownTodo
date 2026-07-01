@@ -1248,6 +1248,31 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     await PomodoroService.saveRunState(_buildCurrentRunState());
   }
 
+  void _finalizeOngoingPause(int endMs) {
+    if (!_isPaused || _pausedAtMs <= 0) {
+      if (_pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+        _pauseIntervals.last.endMs = endMs;
+      }
+      return;
+    }
+
+    final pauseDuration = endMs - _pausedAtMs;
+    if (pauseDuration > 0) {
+      _accumulatedMs += pauseDuration;
+    }
+
+    if (_pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
+      _pauseIntervals.last.endMs = endMs;
+    } else {
+      _pauseIntervals.add(PauseInterval(startMs: _pausedAtMs, endMs: endMs));
+    }
+
+    _isPaused = false;
+    _pausedAtMs = 0;
+    _pauseStartMs = 0;
+    _pauseElapsedSecs = 0;
+  }
+
   void _showPauseDialog() {
     _pauseFocus();
     showDialog(
@@ -1503,12 +1528,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       NotificationService.cancelReminder(40002);
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // 如果正在暂停，关闭最后一个暂停区间
-      if (_isPaused &&
-          _pauseIntervals.isNotEmpty &&
-          _pauseIntervals.last.isOngoing) {
-        _pauseIntervals.last.endMs = now;
-      }
+      _finalizeOngoingPause(now);
 
       final actualSeconds = PomodoroRunState.computeActualSeconds(
           _sessionStartMs, _accumulatedMs,
@@ -1553,12 +1573,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       final now = DateTime.now().millisecondsSinceEpoch;
       final isCountUp = _settings.mode == TimerMode.countUp;
 
-      // 如果正在暂停，关闭最后一个暂停区间
-      if (_isPaused &&
-          _pauseIntervals.isNotEmpty &&
-          _pauseIntervals.last.isOngoing) {
-        _pauseIntervals.last.endMs = now;
-      }
+      _finalizeOngoingPause(now);
 
       await _persistIdleBoundTodo(_boundTodo);
       await _clearRunStateSilently();
@@ -1785,12 +1800,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (confirm) {
         final now = DateTime.now().millisecondsSinceEpoch;
 
-        // 如果正在暂停，关闭最后一个暂停区间
-        if (_isPaused &&
-            _pauseIntervals.isNotEmpty &&
-            _pauseIntervals.last.isOngoing) {
-          _pauseIntervals.last.endMs = now;
-        }
+        _finalizeOngoingPause(now);
 
         final actualSeconds = PomodoroRunState.computeActualSeconds(
             _sessionStartMs, _accumulatedMs,

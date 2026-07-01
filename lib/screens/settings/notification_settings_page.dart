@@ -39,6 +39,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   List<TodoGroup> _todoGroups = [];
   Map<String, int> _categoryReminderMinutes = {};
   String? _username;
+  String _webPermission = 'default';
+  bool _webPermissionLoading = false;
 
   @override
   void initState() {
@@ -96,6 +98,41 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         _categoryReminderMinutes = catReminders;
       });
     }
+
+    if (AppPlatform.isWeb) {
+      await _refreshWebPermission();
+    }
+  }
+
+  Future<void> _refreshWebPermission() async {
+    final permission =
+        await NotificationService.getBrowserNotificationPermission();
+    if (!mounted) return;
+    setState(() {
+      _webPermission = permission;
+    });
+  }
+
+  Future<bool> _requestWebPermission() async {
+    if (!AppPlatform.isWeb) return true;
+    setState(() => _webPermissionLoading = true);
+    final granted =
+        await NotificationService.requestBrowserNotificationPermission();
+    final permission =
+        await NotificationService.getBrowserNotificationPermission();
+    if (!mounted) return granted;
+    setState(() {
+      _webPermission = permission;
+      _webPermissionLoading = false;
+    });
+    if (granted) {
+      AppSnackBars.success(context, '浏览器通知已开启');
+    } else if (permission == 'blocked_insecure') {
+      AppSnackBars.warning(context, '浏览器通知需要 HTTPS 或 localhost 环境');
+    } else if (permission == 'denied') {
+      AppSnackBars.warning(context, '通知权限已被浏览器拒绝，请在地址栏权限设置中重新允许');
+    }
+    return granted;
   }
 
   Future<void> _toggleLiveActivityMaster(bool? value) async {
@@ -134,6 +171,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _toggleNormalMaster(bool? value) async {
     final enabled = value ?? false;
+    if (AppPlatform.isWeb && enabled) {
+      final granted = await _requestWebPermission();
+      if (!granted) {
+        await AppSettingsStorage.setNormalNotificationEnabled(false);
+        if (!mounted) return;
+        setState(() => _normalEnabled = false);
+        return;
+      }
+    }
+
     await AppSettingsStorage.setNormalNotificationEnabled(enabled);
     setState(() {
       _normalEnabled = enabled;
@@ -145,9 +192,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     if (enabled) {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(true);
       await AppSettingsStorage.setReminderNotificationEnabled(true);
+      _triggerReschedule();
     } else {
       await AppSettingsStorage.setPomodoroEndNotificationEnabled(false);
       await AppSettingsStorage.setReminderNotificationEnabled(false);
+      await NotificationService.scheduleReminders([], clearFirst: true);
     }
   }
 
@@ -156,7 +205,11 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     await storageCallback(value);
     setState(() => setStateCallback(value));
     if (key == 'reminder') {
-      _triggerReschedule();
+      if (value) {
+        _triggerReschedule();
+      } else {
+        await NotificationService.scheduleReminders([], clearFirst: true);
+      }
     }
   }
 
@@ -171,19 +224,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (AppPlatform.isWeb) {
-      return Scaffold(
-        appBar: widget.isEmbedded
-            ? null
-            : AppBar(
-                title: const Text('通知与提醒设置'),
-                centerTitle: true,
-              ),
-        body: const AppEmptyState(
-          icon: Icons.notifications_off_outlined,
-          title: '网页版暂不提供系统通知设置',
-          message: '浏览器无法提供原生实时活动、精确闹钟和后台保活。课程、待办和规划可以在数据与互联中导出为 ICS 日历文件。',
-        ),
-      );
+      return _buildWebSettingsScaffold();
     }
 
     return Scaffold(
@@ -422,6 +463,283 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildWebSettingsScaffold() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('浏览器通知设置'),
+              centerTitle: true,
+            ),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          _buildWebPermissionCard(),
+          const SizedBox(height: 16),
+          _buildMasterSwitch(
+            title: '浏览器通知',
+            subtitle: '授权后弹出番茄钟、待办、课程和同步提醒',
+            icon: Icons.notifications_active_outlined,
+            color: colorScheme.primary,
+            value: _normalEnabled,
+            onChanged: _toggleNormalMaster,
+          ),
+          const SizedBox(height: 8),
+          _buildSubSection(
+            enabled: _normalEnabled,
+            children: [
+              _buildSwitchTile(
+                title: '番茄钟结束提醒',
+                subtitle: '专注或休息阶段结束时弹出浏览器通知',
+                icon: Icons.event_note_outlined,
+                value: _pomodoroEndEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'pomodoro_end',
+                  v,
+                  (val) => _pomodoroEndEnabled = val,
+                  AppSettingsStorage.setPomodoroEndNotificationEnabled,
+                ),
+              ),
+              _buildSwitchTile(
+                title: '待办/课程提醒',
+                subtitle: '页面或 PWA 运行期间预约未来 7 天的提醒',
+                icon: Icons.alarm_outlined,
+                value: _reminderEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'reminder',
+                  v,
+                  (val) => _reminderEnabled = val,
+                  AppSettingsStorage.setReminderNotificationEnabled,
+                ),
+              ),
+              if (_reminderEnabled) _buildCourseReminderTile(),
+              _buildSwitchTile(
+                title: '图片识别结果',
+                subtitle: '识别完成、失败或重试状态通过浏览器通知提示',
+                icon: Icons.image_search_outlined,
+                value: _todoRecognizeEnabled,
+                onChanged: (v) => _toggleSubNotification(
+                  'todo_recognize',
+                  v,
+                  (val) => _todoRecognizeEnabled = val,
+                  AppSettingsStorage.setTodoRecognizeNotificationEnabled,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildWebReminderManagerCard(),
+          if (_reminderEnabled && _todoGroups.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _buildCategoryRemindersSection(),
+          ],
+          const SizedBox(height: 16),
+          _buildWebNotificationLimitCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebPermissionCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final granted = _webPermission == 'granted';
+
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: colorScheme.primaryContainer,
+                  foregroundColor: colorScheme.onPrimaryContainer,
+                  child: Icon(_webPermissionIcon()),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '浏览器通知权限',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${_webPermissionLabel()} · ${_webPermissionDescription()}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: '重新检查',
+                  onPressed:
+                      _webPermissionLoading ? null : _refreshWebPermission,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _webPermissionLoading
+                      ? null
+                      : granted
+                          ? _sendWebTestNotification
+                          : _requestWebPermission,
+                  icon: _webPermissionLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(granted
+                          ? Icons.notifications_active_outlined
+                          : Icons.notification_add_outlined),
+                  label: Text(granted ? '发送测试通知' : '允许通知'),
+                ),
+                if (!granted)
+                  OutlinedButton.icon(
+                    onPressed:
+                        _webPermissionLoading ? null : _refreshWebPermission,
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: const Text('检查状态'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebReminderManagerCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: _showScheduledReminders,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: colorScheme.secondaryContainer,
+                foregroundColor: colorScheme.onSecondaryContainer,
+                child: const Icon(Icons.manage_search_outlined),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '浏览器预约提醒',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '查看当前页面/PWA 运行期间已预约的提醒',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebNotificationLimitCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: Icon(
+          Icons.info_outline_rounded,
+          color: colorScheme.primary,
+        ),
+        title: const Text('浏览器通知限制'),
+        subtitle: const Text(
+          '通知需要 HTTPS 且用户授权。页面或 PWA 关闭后，浏览器不能保证像原生 App 一样精确触发后台提醒；长期课程/日程提醒可在数据与互联中导出 ICS 日历文件。',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendWebTestNotification() async {
+    await NotificationService.showGenericNotification(
+      title: 'CountDownTodo 通知已开启',
+      body: '之后的番茄钟、待办和课程提醒会通过浏览器通知提示。',
+    );
+    if (!mounted) return;
+    AppSnackBars.success(context, '测试通知已发送');
+  }
+
+  IconData _webPermissionIcon() {
+    return switch (_webPermission) {
+      'granted' => Icons.notifications_active_outlined,
+      'denied' => Icons.notifications_off_outlined,
+      'blocked_insecure' => Icons.lock_outline,
+      'unsupported' => Icons.browser_not_supported_outlined,
+      _ => Icons.notification_add_outlined,
+    };
+  }
+
+  String _webPermissionLabel() {
+    return switch (_webPermission) {
+      'granted' => '已允许',
+      'denied' => '已拒绝',
+      'blocked_insecure' => '需要安全连接',
+      'unsupported' => '浏览器不支持',
+      'default' => '未授权',
+      _ => '状态未知',
+    };
+  }
+
+  String _webPermissionDescription() {
+    return switch (_webPermission) {
+      'granted' => '可以发送浏览器系统通知',
+      'denied' => '需要在地址栏权限设置中重新允许',
+      'blocked_insecure' => '请使用 HTTPS 域名或 localhost',
+      'unsupported' => '当前浏览器没有 Notification API',
+      'default' => '点击允许后才会弹出通知',
+      _ => '点击重新检查刷新状态',
+    };
   }
 
   Widget _buildMasterSwitch({
@@ -746,7 +1064,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 const AppSheetDragHandle(),
                 AppSheetHeader(
                   icon: Icons.alarm_outlined,
-                  title: '已注册的提醒',
+                  title: AppPlatform.isWeb ? '已预约的浏览器提醒' : '已注册的提醒',
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   trailing: TextButton.icon(
                     onPressed: () async {
@@ -757,7 +1075,10 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         Navigator.pop(sheetContext);
                       }
                       if (mounted) {
-                        AppSnackBars.success(context, '已清除所有系统闹钟');
+                        AppSnackBars.success(
+                          context,
+                          AppPlatform.isWeb ? '已清除浏览器预约提醒' : '已清除所有系统闹钟',
+                        );
                       }
                     },
                     style: TextButton.styleFrom(

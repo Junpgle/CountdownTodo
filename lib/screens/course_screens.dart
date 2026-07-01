@@ -3921,8 +3921,6 @@ class PomodoroDetailScreen extends StatelessWidget {
         record.endTime ?? (record.startTime + record.effectiveDuration * 1000);
     DateTime end =
         DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
-    int durationMin = record.effectiveDuration ~/ 60;
-
     Color pomColor = colorScheme.cdtFocus;
     String tagInfo = '无标签';
     if (record.tagUuids.isNotEmpty) {
@@ -3941,7 +3939,18 @@ class PomodoroDetailScreen extends StatelessWidget {
     String statusText = record.isCompleted ? '已完成' : '已中断';
 
     final pauseIntervals = record.pauseIntervals ?? [];
-    final totalPauseSeconds = record.totalPauseSeconds ?? 0;
+    final intervalPauseSeconds = pauseIntervals.fold<int>(
+      0,
+      (sum, interval) => sum + interval.durationSeconds,
+    );
+    final storedPauseSeconds = record.totalPauseSeconds ?? 0;
+    final totalPauseSeconds = storedPauseSeconds > intervalPauseSeconds
+        ? storedPauseSeconds
+        : intervalPauseSeconds;
+    final totalElapsedSeconds =
+        _elapsedSeconds(record, endMs, totalPauseSeconds);
+    final focusSeconds =
+        _focusSeconds(record, totalElapsedSeconds, totalPauseSeconds);
     final hasPauseData = totalPauseSeconds > 0 || pauseIntervals.isNotEmpty;
 
     return AppDetailScreen(
@@ -3956,7 +3965,16 @@ class PomodoroDetailScreen extends StatelessWidget {
             AppDetailRow(icon: Icons.label, label: '标签', value: tagInfo),
             const AppDetailDivider(),
             AppDetailRow(
-                icon: Icons.access_time, label: '时长', value: '$durationMin 分钟'),
+              icon: Icons.access_time,
+              label: '总耗时',
+              value: formatDurationChinese(totalElapsedSeconds),
+            ),
+            const AppDetailDivider(),
+            AppDetailRow(
+              icon: Icons.timer_outlined,
+              label: '专注时长',
+              value: formatDurationChinese(focusSeconds),
+            ),
             const AppDetailDivider(),
             AppDetailRow(
                 icon: Icons.play_arrow,
@@ -4028,6 +4046,37 @@ class PomodoroDetailScreen extends StatelessWidget {
       ],
     );
   }
+
+  int _elapsedSeconds(
+    PomodoroRecord record,
+    int endMs,
+    int totalPauseSeconds,
+  ) {
+    final elapsedSeconds = ((endMs - record.startTime) / 1000).round();
+    final actualDuration = record.actualDuration;
+    if (record.plannedDuration == 0 &&
+        actualDuration != null &&
+        totalPauseSeconds > 0) {
+      final logicalElapsed = actualDuration + totalPauseSeconds;
+      return logicalElapsed > elapsedSeconds
+          ? _clampDurationSeconds(logicalElapsed)
+          : _clampDurationSeconds(elapsedSeconds);
+    }
+    return _clampDurationSeconds(elapsedSeconds);
+  }
+
+  int _focusSeconds(
+    PomodoroRecord record,
+    int totalElapsedSeconds,
+    int totalPauseSeconds,
+  ) {
+    if (totalPauseSeconds <= 0) {
+      return _clampDurationSeconds(record.effectiveDuration);
+    }
+    return _clampDurationSeconds(totalElapsedSeconds - totalPauseSeconds);
+  }
+
+  int _clampDurationSeconds(int seconds) => seconds.clamp(0, 24 * 3600).toInt();
 
   Widget _buildPauseIntervalRow(BuildContext context, int index,
       PauseInterval interval, ColorScheme colorScheme) {

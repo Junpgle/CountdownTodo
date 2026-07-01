@@ -1,10 +1,10 @@
 // CountDownTodo PWA Service Worker
 // Handles offline caching and update lifecycle.
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME = `countdowntodo-${CACHE_VERSION}`;
 const OFFLINE_URL = './offline.html';
-const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20260701c';
+const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20260701e';
 
 // App shell files to pre-cache on install.
 // Flutter build output is hashed, so we only cache the unhashed entry points;
@@ -145,4 +145,27 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+});
+
+// ── Notifications ──────────────────────────────────────────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data && event.notification.data.url
+    ? event.notification.data.url
+    : './';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client && new URL(client.url).origin === self.location.origin) {
+            return client.focus();
+          }
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+        return undefined;
+      })
+  );
 });

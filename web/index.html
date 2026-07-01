@@ -346,6 +346,69 @@
       }, 250);
     })();
 
+    // ── Browser Notification Bridge ─────────────────────────
+    (function () {
+      function hasNotificationApi() {
+        return 'Notification' in window;
+      }
+
+      function permission() {
+        if (!hasNotificationApi()) return 'unsupported';
+        if (!window.isSecureContext) return 'blocked_insecure';
+        return Notification.permission;
+      }
+
+      function requestPermission() {
+        if (!hasNotificationApi()) return Promise.resolve('unsupported');
+        if (!window.isSecureContext) return Promise.resolve('blocked_insecure');
+        if (Notification.permission !== 'default') {
+          return Promise.resolve(Notification.permission);
+        }
+        var result = Notification.requestPermission();
+        if (result && typeof result.then === 'function') return result;
+        return Promise.resolve(Notification.permission);
+      }
+
+      function show(title, body, tag) {
+        if (!hasNotificationApi() || Notification.permission !== 'granted') {
+          return false;
+        }
+
+        var options = {
+          body: body || '',
+          icon: 'icons/Icon-192.png',
+          badge: 'icons/Icon-192.png',
+          tag: tag || undefined,
+          renotify: Boolean(tag),
+          data: { url: window.location.href }
+        };
+
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(function (reg) {
+            return reg.showNotification(title, options);
+          }).catch(function () {
+            try {
+              new Notification(title, options);
+            } catch (_) {}
+          });
+          return true;
+        }
+
+        try {
+          new Notification(title, options);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      window.cdtNotifications = {
+        permission: permission,
+        requestPermission: requestPermission,
+        show: show
+      };
+    })();
+
     // ── PWA Install / Update Bridge ─────────────────────────
     (function () {
       var deferredPrompt = null;
@@ -433,6 +496,42 @@
           pendingWorker.postMessage({ type: 'SKIP_WAITING' });
           return true;
         },
+        refreshApp: function () {
+          function reload() {
+            window.location.reload();
+          }
+
+          if (pendingWorker) {
+            window.sessionStorage.setItem('cdt-pwa-apply-update', '1');
+            pendingWorker.postMessage({ type: 'SKIP_WAITING' });
+            return true;
+          }
+
+          if (!('serviceWorker' in navigator)) {
+            reload();
+            return true;
+          }
+
+          navigator.serviceWorker.getRegistration('./').then(function (reg) {
+            if (!reg) {
+              reload();
+              return;
+            }
+            reg.update().catch(function () {
+              return reg;
+            }).then(function () {
+              var worker = reg.waiting || pendingWorker;
+              if (worker) {
+                pendingWorker = worker;
+                window.sessionStorage.setItem('cdt-pwa-apply-update', '1');
+                worker.postMessage({ type: 'SKIP_WAITING' });
+              } else {
+                reload();
+              }
+            });
+          }).catch(reload);
+          return true;
+        },
       };
 
       window.addEventListener('beforeinstallprompt', function (event) {
@@ -463,7 +562,7 @@
     // ── Service Worker Registration ──────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js?v=20260701c', { scope: './' }).then(function (reg) {
+        navigator.serviceWorker.register('sw.js?v=20260701e', { scope: './' }).then(function (reg) {
           // Listen for updates and prompt user to reload.
           reg.addEventListener('updatefound', function () {
             var newWorker = reg.installing;
@@ -504,6 +603,6 @@
     });
   </script>
 
-  <script src="flutter_bootstrap.js?v=20260701c" async></script>
+  <script src="flutter_bootstrap.js?v=20260701e" async></script>
 </body>
 </html>

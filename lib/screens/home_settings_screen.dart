@@ -76,7 +76,6 @@ class _SettingsPageState extends State<SettingsPage> {
     if (AppPlatform.isWeb &&
         {
           'permissions',
-          'notifications',
           'float_window_style',
           'force_refresh',
           'island_priority',
@@ -186,25 +185,26 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
-      if (paneId == 'preference')
+      if (paneId == 'preference') {
         pushWidget = PreferenceSettingsPage(initialTarget: target);
-      else if (paneId == 'course')
+      } else if (paneId == 'course') {
         pushWidget = CourseSettingsPage(initialTarget: target);
-      else if (paneId == 'interconnect')
+      } else if (paneId == 'interconnect') {
         pushWidget = InterconnectSettingsPage(
             initialTarget: target, username: _username);
-      else if (paneId == 'llm_config')
+      } else if (paneId == 'llm_config') {
         pushWidget = const LLMConfigPage();
-      else if (paneId == 'animation')
+      } else if (paneId == 'animation') {
         pushWidget = const AnimationSettingsPage();
-      else if (paneId == 'platform')
+      } else if (paneId == 'platform') {
         pushWidget = PlatformSpecificSettingsPage(initialTarget: target);
-      else if (paneId == 'permissions')
+      } else if (paneId == 'permissions') {
         pushWidget = const PermissionSettingsPage();
-      else if (paneId == 'notifications')
+      } else if (paneId == 'notifications') {
         pushWidget = const NotificationSettingsPage();
-      else
+      } else {
         pushWidget = const AboutScreen();
+      }
 
       Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
     }
@@ -474,7 +474,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
-    } catch (e) {}
+    } catch (e) {
+      // Reminder rescheduling should not block the settings page.
+    }
   }
 
   Future<void> _forceFullSync() async {
@@ -612,7 +614,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ? 'Windows 专属'
             : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属');
       case 'notifications':
-        return '通知管理';
+        return AppPlatform.isWeb ? '浏览器通知' : '通知管理';
       case 'permissions':
         return '权限管理';
       case 'about':
@@ -821,10 +823,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   widgetBuilder: () => const LLMConfigPage(isEmbedded: true),
                 ),
 
-                if (!AppPlatform.isWeb) ...[
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 12),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                if (!AppPlatform.isWeb)
                   _buildMacSidebarItem(
                     id: 'platform',
                     icon: Icons.stars_rounded,
@@ -835,14 +837,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     widgetBuilder: () =>
                         const PlatformSpecificSettingsPage(isEmbedded: true),
                   ),
-                  _buildMacSidebarItem(
-                    id: 'notifications',
-                    icon: Icons.notifications,
-                    color: Colors.amber,
-                    title: '通知管理',
-                    widgetBuilder: () =>
-                        const NotificationSettingsPage(isEmbedded: true),
-                  ),
+                _buildMacSidebarItem(
+                  id: 'notifications',
+                  icon: Icons.notifications,
+                  color: Colors.amber,
+                  title: AppPlatform.isWeb ? '浏览器通知' : '通知管理',
+                  widgetBuilder: () =>
+                      const NotificationSettingsPage(isEmbedded: true),
+                ),
+                if (!AppPlatform.isWeb)
                   _buildMacSidebarItem(
                     id: 'permissions',
                     icon: Icons.security,
@@ -851,7 +854,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     widgetBuilder: () =>
                         const PermissionSettingsPage(isEmbedded: true),
                   ),
-                ],
                 _buildMacSidebarItem(
                   id: 'help',
                   icon: Icons.help_outline,
@@ -1094,17 +1096,22 @@ class _SettingsPageState extends State<SettingsPage> {
                             const PlatformSpecificSettingsPage())),
                   ),
                   const Divider(height: 1, indent: 56),
-                  ListTile(
-                    leading: const Icon(Icons.notifications_outlined,
-                        color: Colors.amber),
-                    title: const Text('通知管理'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.push(
-                        context,
-                        PageTransitions.slideHorizontal(
-                            const NotificationSettingsPage())),
-                  ),
-                  const Divider(height: 1, indent: 56),
+                ],
+                ListTile(
+                  leading: const Icon(Icons.notifications_outlined,
+                      color: Colors.amber),
+                  title: Text(AppPlatform.isWeb ? '浏览器通知' : '通知管理'),
+                  subtitle: Text(AppPlatform.isWeb
+                      ? '权限授权、番茄钟结束、待办和课程提醒'
+                      : '实时活动、定时闹钟与通知偏好'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                      context,
+                      PageTransitions.slideHorizontal(
+                          const NotificationSettingsPage())),
+                ),
+                const Divider(height: 1, indent: 56),
+                if (!AppPlatform.isWeb) ...[
                   ListTile(
                     leading:
                         const Icon(Icons.security_outlined, color: Colors.red),

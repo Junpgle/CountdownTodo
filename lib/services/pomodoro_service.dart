@@ -186,10 +186,49 @@ class PomodoroRecord {
     int? actualDuration,
     String? deviceId,
   }) {
-    final computedActual = actualDuration ??
-        PomodoroRunState.computeActualSeconds(
-            state.sessionStartMs, state.accumulatedMs,
-            endMs: endMs);
+    var accumulatedMs = state.accumulatedMs;
+    final pauseIntervals = state.pauseIntervals
+        .map((interval) =>
+            PauseInterval(startMs: interval.startMs, endMs: interval.endMs))
+        .toList();
+
+    if (state.isPaused) {
+      final pauseStartMs = state.pausedAtMs > 0
+          ? state.pausedAtMs
+          : state.pauseStartMs > 0
+              ? state.pauseStartMs
+              : pauseIntervals.isNotEmpty
+                  ? pauseIntervals.last.startMs
+                  : 0;
+      if (pauseStartMs > 0) {
+        final pauseDuration = endMs - pauseStartMs;
+        if (pauseDuration > 0) {
+          accumulatedMs += pauseDuration;
+        }
+        if (pauseIntervals.isNotEmpty && pauseIntervals.last.isOngoing) {
+          pauseIntervals.last.endMs = endMs;
+        } else {
+          pauseIntervals
+              .add(PauseInterval(startMs: pauseStartMs, endMs: endMs));
+        }
+      }
+    }
+
+    final computedFromState = PomodoroRunState.computeActualSeconds(
+        state.sessionStartMs, accumulatedMs,
+        endMs: endMs);
+    final computedActual = actualDuration != null &&
+            (!state.isPaused || actualDuration <= computedFromState)
+        ? actualDuration
+        : computedFromState;
+    final intervalPauseSeconds = pauseIntervals.fold<int>(
+      0,
+      (sum, interval) => sum + interval.durationSeconds,
+    );
+    final accumulatedPauseSeconds = (accumulatedMs / 1000).round();
+    final totalPauseSeconds = accumulatedPauseSeconds > intervalPauseSeconds
+        ? accumulatedPauseSeconds
+        : intervalPauseSeconds;
     return PomodoroRecord(
       uuid: state.sessionUuid,
       todoUuid: state.todoUuid,
@@ -203,8 +242,8 @@ class PomodoroRecord {
       deviceId: deviceId,
       planBlockId: state.planBlockId,
       note: state.note,
-      totalPauseSeconds: (state.accumulatedMs / 1000).round(),
-      pauseIntervals: List.from(state.pauseIntervals),
+      totalPauseSeconds: totalPauseSeconds,
+      pauseIntervals: pauseIntervals,
     );
   }
 

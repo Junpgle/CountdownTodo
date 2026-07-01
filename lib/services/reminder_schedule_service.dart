@@ -24,7 +24,6 @@ class ReminderScheduleService {
 
   // 提前多少分钟提醒
   static const int _todoAdvanceMinutes = 5;
-  static const int _courseAdvanceMinutes = 10;
 
   /// 检测待办类型
   static String _detectTodoType(String title) {
@@ -272,15 +271,7 @@ class ReminderScheduleService {
       await StorageService.savePlanBlocks(username, remindedBlocks);
     }
 
-    if (reminders.isEmpty) {
-      return;
-    }
-
     await NotificationService.scheduleReminders(reminders);
-  }
-
-  static bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   static String _hm(DateTime dt) =>

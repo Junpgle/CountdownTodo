@@ -107,6 +107,10 @@ class NotificationService {
     return future;
   }
 
+  static Future<String> getBrowserNotificationPermission() async => 'granted';
+
+  static Future<bool> requestBrowserNotificationPermission() async => true;
+
   static Future<void> _initialize() async {
     tz.initializeTimeZones();
 
@@ -526,7 +530,10 @@ class NotificationService {
 
   static Future<void> scheduleReminders(List<Map<String, dynamic>> reminders,
       {bool clearFirst = true}) async {
-    if (!await AppSettingsStorage.isReminderNotificationEnabled()) return;
+    if (!await AppSettingsStorage.isReminderNotificationEnabled() &&
+        !(clearFirst && reminders.isEmpty)) {
+      return;
+    }
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     if (reminders.isEmpty && !clearFirst) return;
     await ensureInitialized();

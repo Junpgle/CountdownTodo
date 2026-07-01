@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:CountDownTodo/services/notification_service.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web/web.dart' as web;
 
 class ChangelogEntry {
   final String versionName;
@@ -946,7 +949,6 @@ class UpdateService {
     bool hasUpdate,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    final downloadUrl = getDownloadUrlForArch(manifest);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -977,24 +979,40 @@ class UpdateService {
           ),
           const SizedBox(height: 10),
           Text(manifest.updateInfo.description),
-          const SizedBox(height: 20),
-          if (downloadUrl.isNotEmpty)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('在浏览器中下载新版本'),
-                onPressed: () {
-                  launchUrl(
-                    Uri.parse(downloadUrl),
-                    webOnlyWindowName: '_blank',
-                  );
-                },
-              ),
+          const SizedBox(height: 10),
+          Text(
+            '网页版会通过刷新页面加载最新资源；若已有待更新的离线缓存，会先应用缓存更新再刷新。',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('刷新网页获取最新版本'),
+              onPressed: _refreshWebApp,
+            ),
+          ),
         ],
       ],
     );
+  }
+
+  static void _refreshWebApp() {
+    try {
+      if (globalContext.has('cdtPwa')) {
+        final pwa = globalContext['cdtPwa'] as JSObject?;
+        if (pwa != null) {
+          pwa.callMethod<JSAny?>('refreshApp'.toJS);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    web.window.location.reload();
   }
 
   static String _todayKey([DateTime? now]) {
