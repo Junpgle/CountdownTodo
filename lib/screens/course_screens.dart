@@ -2483,10 +2483,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               Theme.of(context).colorScheme.cdtFocus.withValues(alpha: 0.6);
           String pomTitle = '专注';
 
-          // 优先显示任务名，其次显示标签名
-          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) {
-            pomTitle = record.todoTitle!;
-          } else if (record.tagUuids.isNotEmpty) {
+          if (record.tagUuids.isNotEmpty) {
             final tag = _pomodoroTags.cast<PomodoroTag?>().firstWhere(
                 (t) => record.tagUuids.contains(t?.uuid),
                 orElse: () => null);
@@ -2498,6 +2495,11 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               );
               pomTitle = tag.name;
             }
+          }
+          
+          // 优先显示任务名，其次显示标签名
+          if (record.todoTitle != null && record.todoTitle!.isNotEmpty) {
+            pomTitle = record.todoTitle!;
           }
 
           final pomCardKey = _getPomodoroCardKey('${record.uuid}_${segmentIndex++}');
