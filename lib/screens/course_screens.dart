@@ -44,6 +44,20 @@ class _HiddenTimeRange {
   }
 }
 
+class _TimelineEvent {
+  final double top;
+  final double bottom;
+  final Widget Function(double left, double width) builder;
+  int columnIndex = 0;
+  int maxColumns = 1;
+
+  _TimelineEvent({
+    required this.top,
+    required this.bottom,
+    required this.builder,
+  });
+}
+
 class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     with TickerProviderStateMixin {
   int _currentWeek = 1;
@@ -1817,6 +1831,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       ));
     }
 
+    Map<int, List<_TimelineEvent>> eventsPerDay = {
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+      7: [],
+    };
+
     if (_activeDataViews.contains('todos')) {
       Map<String, int> collisionMap = {};
 
@@ -1858,19 +1882,24 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               .toList()
               .indexOf(todo);
 
-          // 🚀 根据物理高度动态计算 Todo 标题最大行数
+          // 🚀 根据物理高度动态放大字体和计算最大行数
+          final double titleFontSize = (height * 0.35).clamp(11.0, 14.0);
+          final double teamFontSize = (height * 0.25).clamp(8.0, 11.0);
           final double availableForTodo =
               (todo.teamUuid != null && height >= 32)
-                  ? height - 14.0
+                  ? height - (teamFontSize + 7.0)
                   : height - 2.0;
-          int todoMaxLines = (availableForTodo / 10.0).round();
+          int todoMaxLines = (availableForTodo / (titleFontSize + 1.0)).floor();
           if (todoMaxLines < 1) todoMaxLines = 1;
 
-          children.add(Positioned(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
-            left: finalLeft,
-            width: finalWidth,
-            height: height,
+            bottom: top + height,
+            builder: (left, width) => Positioned(
+              top: top,
+              left: left,
+              width: width,
+              height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -1913,6 +1942,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 },
                 child: Container(
                   key: todoCardKey,
+                  alignment: Alignment.center,
                   clipBehavior: Clip.hardEdge,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
@@ -1933,7 +1963,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       : SingleChildScrollView(
                           physics: const NeverScrollableScrollPhysics(),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (todo.teamUuid != null && height >= 32)
@@ -1948,19 +1978,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                       borderRadius: BorderRadius.circular(2),
                                     ),
                                     child: Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(Icons.group,
                                             size: 8, color: Colors.white),
                                         const SizedBox(width: 1),
-                                        Expanded(
+                                        Flexible(
                                           // 🚀 强制填满剩余空间并截断
                                           child: Text(
                                             todo.teamName ?? '团队',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 color: Colors.white,
-                                                fontSize: 7,
+                                                fontSize: teamFontSize,
                                                 fontWeight: FontWeight.bold),
                                             maxLines: 1,
+                                            textAlign: TextAlign.center,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
@@ -1968,35 +2000,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     ),
                                   ),
                                 ),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2.0),
-                                    child: Icon(
-                                        todo.isDone
-                                            ? Icons.check_circle
-                                            : Icons.task_alt,
-                                        size: 10,
-                                        color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Expanded(
-                                    child: Text(
-                                      todo.title,
-                                      style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          decoration: todo.isDone
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                          height: 1.0),
-                                      maxLines: todoMaxLines,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                              if (height >= 38) ...[
+                                Icon(
+                                    todo.isDone
+                                        ? Icons.check_circle
+                                        : Icons.task_alt,
+                                    size: 10,
+                                    color: Colors.white),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                todo.title,
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    decoration: todo.isDone
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    height: 1.0),
+                                maxLines: todoMaxLines,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               if (todo.remark != null &&
                                   todo.remark!.isNotEmpty &&
@@ -2020,7 +2045,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          ));
+          )));
         }
       }
     }
@@ -2066,17 +2091,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final logIndex =
               _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
 
-          // 🚀 根据物理高度动态计算 TimeLog 标题最大行数
+          // 🚀 根据物理高度动态计算 TimeLog 标题最大行数和字体大小
+          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
+          final double timeFontSize = (height * 0.25).clamp(9.0, 12.0);
           final double availableForLog =
-              height > 22 ? height - 9.0 : height - 2.0;
-          int logMaxLines = (availableForLog / 9.0).round();
+              height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
+          int logMaxLines = (availableForLog / (titleFontSize + 1.0)).floor();
           if (logMaxLines < 1) logMaxLines = 1;
 
-          children.add(Positioned(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
-            left: finalLeft,
-            width: finalWidth,
-            height: height,
+            bottom: top + height,
+            builder: (left, width) => Positioned(
+              top: top,
+              left: left,
+              width: width,
+              height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2120,6 +2150,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 },
                 child: Container(
                   key: logCardKey,
+                  alignment: Alignment.center,
                   clipBehavior: Clip.hardEdge,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
@@ -2137,28 +2168,21 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 1.0),
-                                    child: const Icon(Icons.edit_calendar,
-                                        size: 8, color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Expanded(
-                                    child: Text(
-                                      logTitle,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0),
-                                      maxLines: logMaxLines,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                              if (height >= 38) ...[
+                                Icon(Icons.edit_calendar,
+                                    size: 8, color: Colors.white),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                logTitle,
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0),
+                                maxLines: logMaxLines,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               if (height > 22)
                                 Text(
@@ -2166,7 +2190,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                   style: TextStyle(
                                       color:
                                           Colors.white.withValues(alpha: 0.8),
-                                      fontSize: 7,
+                                      fontSize: timeFontSize,
                                       height: 1.0),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -2177,7 +2201,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          ));
+          )));
         }
       }
     }
@@ -2209,26 +2233,32 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
 
-          // 🚀 根据物理高度动态计算 Plan 标题最大行数
+          // 🚀 根据物理高度动态计算标题最大行数和字体大小
+          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
+          final double subFontSize = (height * 0.25).clamp(9.0, 12.0);
+          
           int planMaxLines = 2;
           if (hasAssociatedPomodoro) {
             double availableForPlan = height > 32
-                ? height - 19.0
-                : (height > 24 ? height - 11.0 : height - 4.0);
-            planMaxLines = (availableForPlan / 9.0).round();
+                ? height - (subFontSize * 2 + 5.0)
+                : (height > 24 ? height - (subFontSize + 4.0) : height - 4.0);
+            planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
             if (planMaxLines < 1) planMaxLines = 1;
           } else {
             double availableForPlan =
-                height > 24 ? height - 11.0 : height - 4.0;
-            planMaxLines = (availableForPlan / 9.0).round();
+                height > 24 ? height - (subFontSize + 4.0) : height - 4.0;
+            planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
             if (planMaxLines < 1) planMaxLines = 1;
           }
 
-          children.add(Positioned(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
-            left: leftOffset + 4,
-            width: cellWidth - 8,
-            height: height,
+            bottom: top + height,
+            builder: (left, width) => Positioned(
+              top: top,
+              left: left + 3,
+              width: width > 6 ? width - 6 : width,
+              height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2241,6 +2271,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 );
               },
               child: Container(
+                alignment: Alignment.center,
                 clipBehavior: Clip.hardEdge,
                 padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
                 decoration: BoxDecoration(
@@ -2270,40 +2301,37 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ),
                           ),
                           // 内容层
-                          SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                        plan.status == TodoPlanStatus.finished
-                                            ? Icons.event_available
-                                            : Icons.event_note,
-                                        size: 9,
-                                        color: Colors.white),
-                                    const SizedBox(width: 2),
-                                    Expanded(
-                                      child: Text(
-                                        title,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            height: 1.0),
-                                        maxLines: height < 28 ? 1 : 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                          Center(
+                            child: SingleChildScrollView(
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                              if (height >= 38) ...[
+                                Icon(
+                                    plan.status == TodoPlanStatus.finished
+                                        ? Icons.event_available
+                                        : Icons.event_note,
+                                    size: 9,
+                                    color: Colors.white),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                title,
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0),
+                                maxLines: height < 28 ? 1 : 2,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                                 if (height > 24)
                                   Column(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        CrossAxisAlignment.center,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
@@ -2311,9 +2339,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                         style: TextStyle(
                                             color: Colors.white
                                                 .withValues(alpha: 0.85),
-                                            fontSize: 7,
+                                            fontSize: subFontSize,
                                             height: 1.0),
                                         maxLines: 1,
+                                        textAlign: TextAlign.center,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       // 显示番茄钟完成情况
@@ -2327,6 +2356,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                               height: 1.0,
                                               fontWeight: FontWeight.bold),
                                           maxLines: 1,
+                                          textAlign: TextAlign.center,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                     ],
@@ -2334,6 +2364,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                               ],
                             ),
                           ),
+                        ),
                         ],
                       )
                     : (height < 18
@@ -2342,32 +2373,28 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                         : SingleChildScrollView(
                             physics: const NeverScrollableScrollPhysics(),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(
-                                        plan.status == TodoPlanStatus.finished
-                                            ? Icons.event_available
-                                            : Icons.event_note,
-                                        size: 9,
-                                        color: Colors.white),
-                                    const SizedBox(width: 2),
-                                    Expanded(
-                                      child: Text(
-                                        title,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            height: 1.0),
-                                        maxLines: height < 28 ? 1 : 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
+                                if (height >= 38) ...[
+                                  Icon(
+                                      plan.status == TodoPlanStatus.finished
+                                          ? Icons.event_available
+                                          : Icons.event_note,
+                                      size: titleFontSize,
+                                      color: Colors.white),
+                                  const SizedBox(height: 2),
+                                ],
+                                Text(
+                                  title,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: titleFontSize,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.0),
+                                  maxLines: height < 28 ? 1 : 2,
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 if (height > 24)
                                   Text(
@@ -2375,7 +2402,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                     style: TextStyle(
                                         color: Colors.white
                                             .withValues(alpha: 0.85),
-                                        fontSize: 7,
+                                        fontSize: subFontSize,
                                         height: 1.0),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -2384,7 +2411,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ))),
               ),
             ),
-          ));
+          )));
         }
       }
     }
@@ -2392,23 +2419,65 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     if (_activeDataViews.contains('pomodoros')) {
       for (int weekday = 1; weekday <= 7; weekday++) {
         for (var record in _pomodorosPerDay[weekday]!) {
-          DateTime start =
+          DateTime pomStart =
               DateTime.fromMillisecondsSinceEpoch(record.startTime, isUtc: true)
                   .toLocal();
           int endMs = record.endTime ??
               (record.startTime + record.effectiveDuration * 1000);
-          DateTime end =
+          DateTime pomEnd =
               DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
 
-          double top = _timeToY(start.hour, start.minute, minuteHeight);
-          double bottom = _timeToY(end.hour, end.minute, minuteHeight);
-          double height = bottom - top;
+          final associatedPlans = (_planBlocksPerDay[weekday] ?? [])
+              .where((plan) => _isRecordAssociatedWithPlan(record, plan))
+              .toList();
 
-          if (height < 18.0) height = 18.0;
+          List<Map<String, DateTime>> segments = [{'start': pomStart, 'end': pomEnd}];
 
-          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
-          double finalWidth = cellWidth - 2;
-          double finalLeft = leftOffset + 1;
+          for (var plan in associatedPlans) {
+            DateTime planStart =
+                DateTime.fromMillisecondsSinceEpoch(plan.startTime, isUtc: true)
+                    .toLocal();
+            DateTime planEnd =
+                DateTime.fromMillisecondsSinceEpoch(plan.endTime, isUtc: true)
+                    .toLocal();
+
+            List<Map<String, DateTime>> newSegments = [];
+            for (var seg in segments) {
+              DateTime s = seg['start']!;
+              DateTime e = seg['end']!;
+
+              if (e.isBefore(planStart) ||
+                  e.isAtSameMomentAs(planStart) ||
+                  s.isAfter(planEnd) ||
+                  s.isAtSameMomentAs(planEnd)) {
+                newSegments.add(seg);
+              } else {
+                if (s.isBefore(planStart)) {
+                  newSegments.add({'start': s, 'end': planStart});
+                }
+                if (e.isAfter(planEnd)) {
+                  newSegments.add({'start': planEnd, 'end': e});
+                }
+              }
+            }
+            segments = newSegments;
+          }
+
+          int segmentIndex = 0;
+          for (var seg in segments) {
+            DateTime start = seg['start']!;
+            DateTime end = seg['end']!;
+
+            double top = _timeToY(start.hour, start.minute, minuteHeight);
+            double bottom = _timeToY(end.hour, end.minute, minuteHeight);
+            double height = bottom - top;
+
+            if (height < 5.0) continue;
+            if (height < 18.0) height = 18.0;
+
+            double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+            double finalWidth = cellWidth - 2;
+            double finalLeft = leftOffset + 1;
 
           Color pomColor =
               Theme.of(context).colorScheme.cdtFocus.withValues(alpha: 0.6);
@@ -2431,21 +2500,26 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             }
           }
 
-          final pomCardKey = _getPomodoroCardKey(record.uuid);
+          final pomCardKey = _getPomodoroCardKey('${record.uuid}_${segmentIndex++}');
           final pomIndex =
               _pomodorosPerDay.values.expand((e) => e).toList().indexOf(record);
 
-          // 🚀 根据物理高度动态计算 Pomodoro 标题最大行数
+          // 🚀 根据物理高度动态计算 Pomodoro 标题最大行数和字体大小
+          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
+          final double timeFontSize = (height * 0.25).clamp(9.0, 12.0);
           final double availableForPom =
-              height > 22 ? height - 9.0 : height - 2.0;
-          int pomMaxLines = (availableForPom / 9.0).round();
+              height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
+          int pomMaxLines = (availableForPom / (titleFontSize + 1.0)).floor();
           if (pomMaxLines < 1) pomMaxLines = 1;
 
-          children.add(Positioned(
+          eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
-            left: finalLeft,
-            width: finalWidth,
-            height: height,
+            bottom: top + height,
+            builder: (left, width) => Positioned(
+              top: top,
+              left: left,
+              width: width,
+              height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2489,6 +2563,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 },
                 child: Container(
                   key: pomCardKey,
+                  alignment: Alignment.center,
                   clipBehavior: Clip.hardEdge,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
@@ -2503,41 +2578,35 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                       : SingleChildScrollView(
                           physics: const NeverScrollableScrollPhysics(),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 1.0),
-                                    child: const Icon(
-                                        Icons.local_fire_department,
-                                        size: 8,
-                                        color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Expanded(
-                                    child: Text(
-                                      pomTitle,
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.0),
-                                      maxLines: pomMaxLines,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                              if (height >= 38) ...[
+                                Icon(
+                                    Icons.local_fire_department,
+                                    size: titleFontSize,
+                                    color: Colors.white),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                pomTitle,
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: titleFontSize,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.0),
+                                maxLines: pomMaxLines,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               if (height > 22)
                                 Text(
-                                  '${record.effectiveDuration ~/ 60}min',
-                                  style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.85),
-                                      fontSize: 7,
+                                  '${end.difference(start).inMinutes}min',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color:
+                                              Colors.white.withValues(alpha: 0.85),
+                                      fontSize: timeFontSize,
                                       height: 1.0),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -2548,7 +2617,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          ));
+          )));
+          }
         }
       }
     }
@@ -2570,8 +2640,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             course.courseName, course.weekday, course.startTime);
         final courseIndex = _weekCourses.indexOf(course);
 
-        // 🚀 根据课程卡片的物理高度动态计算课程名称的最大行数
-        const double titleLineHeight = 12.0;
+        // 🚀 根据课程卡片的物理高度动态计算课程名称字体大小和最大行数
+        final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
+        final double subFontSize = (height * 0.25).clamp(9.0, 12.0);
+        final double titleLineHeight = titleFontSize * 1.15 + 1.0;
         const double paddingTotal = 2.0;
         const double gapHeight = 2.0;
 
@@ -2587,11 +2659,14 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           if (courseMaxLines < 1) courseMaxLines = 1;
         }
 
-        children.add(Positioned(
-          top: top + 1,
-          left: left + 1,
-          width: courseWidth,
-          height: height - 2,
+        eventsPerDay[course.weekday]!.add(_TimelineEvent(
+          top: top,
+          bottom: top + height,
+          builder: (left, width) => Positioned(
+            top: top + 1,
+            left: left,
+            width: width,
+            height: height - 2,
           child: AnimatedBuilder(
             animation: _courseExpandAnim,
             builder: (ctx, child) {
@@ -2635,6 +2710,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               },
               child: Container(
                 key: cardKey,
+                alignment: Alignment.center,
                 clipBehavior: Clip.hardEdge,
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
@@ -2648,16 +2724,17 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                     ]),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
                       course.courseName,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: Colors.white,
-                          fontSize: 11,
+                          fontSize: titleFontSize,
                           fontWeight: FontWeight.bold,
                           height: 1.15),
                       maxLines: courseMaxLines,
+                      textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (height > 30) ...[
@@ -2667,9 +2744,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                           course.roomName,
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.85),
-                              fontSize: 9,
+                              fontSize: subFontSize,
                               height: 1.1),
                           overflow: TextOverflow.clip,
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ],
@@ -2678,7 +2756,59 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               ),
             ),
           ),
-        ));
+        )));
+      }
+    }
+
+    for (int weekday = 1; weekday <= 7; weekday++) {
+      List<_TimelineEvent> dayEvents = eventsPerDay[weekday]!;
+      if (dayEvents.isEmpty) continue;
+
+      dayEvents.sort((a, b) => a.top.compareTo(b.top));
+
+      List<List<_TimelineEvent>> columns = [];
+      List<_TimelineEvent> currentGroup = [];
+      double groupBottom = -1;
+
+      for (var event in dayEvents) {
+        if (event.top >= groupBottom && currentGroup.isNotEmpty) {
+          for (var e in currentGroup) {
+            e.maxColumns = columns.length;
+          }
+          columns.clear();
+          currentGroup.clear();
+          groupBottom = -1;
+        }
+
+        currentGroup.add(event);
+        if (event.bottom > groupBottom) {
+          groupBottom = event.bottom;
+        }
+
+        bool placed = false;
+        for (int i = 0; i < columns.length; i++) {
+          if (columns[i].last.bottom <= event.top) {
+            columns[i].add(event);
+            event.columnIndex = i;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          event.columnIndex = columns.length;
+          columns.add([event]);
+        }
+      }
+
+      for (var e in currentGroup) {
+        e.maxColumns = columns.length;
+      }
+
+      double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
+      for (var event in dayEvents) {
+        double w = (cellWidth - 2) / event.maxColumns;
+        double l = leftOffset + 1 + event.columnIndex * w;
+        children.add(event.builder(l, w));
       }
     }
 
