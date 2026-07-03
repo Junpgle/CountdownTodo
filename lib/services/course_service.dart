@@ -161,7 +161,7 @@ class CourseService {
 
   // 1. 从字符串导入课表 (合工大)
   static Future<bool> importScheduleFromJson(String username, String jsonString,
-      {DateTime? semesterStart, bool merge = false}) async {
+      {DateTime? semesterStart, bool merge = false, String semesterId = 'default'}) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
       return false;
@@ -171,6 +171,21 @@ class CourseService {
       List<CourseItem> parsedCourses =
           HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
       if (parsedCourses.isEmpty) return false;
+
+      // 设置学期ID
+      parsedCourses = parsedCourses.map((c) => CourseItem(
+        courseName: c.courseName,
+        teacherName: c.teacherName,
+        date: c.date,
+        weekday: c.weekday,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        weekIndex: c.weekIndex,
+        roomName: c.roomName,
+        lessonType: c.lessonType,
+        semesterId: semesterId,
+        teamUuid: c.teamUuid,
+      )).toList();
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
@@ -187,11 +202,26 @@ class CourseService {
   // 2. 导入厦大（本部）课表
   static Future<bool> importXmuScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
-      {bool merge = false}) async {
+      {bool merge = false, String semesterId = 'default'}) async {
     try {
       List<CourseItem> parsedCourses =
           XmuScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
+
+      // 设置学期ID
+      parsedCourses = parsedCourses.map((c) => CourseItem(
+        courseName: c.courseName,
+        teacherName: c.teacherName,
+        date: c.date,
+        weekday: c.weekday,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        weekIndex: c.weekIndex,
+        roomName: c.roomName,
+        lessonType: c.lessonType,
+        semesterId: semesterId,
+        teamUuid: c.teamUuid,
+      )).toList();
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
@@ -208,11 +238,26 @@ class CourseService {
   // 🚀 2.1 导入厦大嘉庚学院课表
   static Future<bool> importXujcScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
-      {bool merge = false}) async {
+      {bool merge = false, String semesterId = 'default'}) async {
     try {
       List<CourseItem> parsedCourses =
           XujcScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
+
+      // 设置学期ID
+      parsedCourses = parsedCourses.map((c) => CourseItem(
+        courseName: c.courseName,
+        teacherName: c.teacherName,
+        date: c.date,
+        weekday: c.weekday,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        weekIndex: c.weekIndex,
+        roomName: c.roomName,
+        lessonType: c.lessonType,
+        semesterId: semesterId,
+        teamUuid: c.teamUuid,
+      )).toList();
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
@@ -229,11 +274,26 @@ class CourseService {
   // 🚀 3. 新增：导入西电 ics 课表
   static Future<bool> importXidianScheduleFromIcs(
       String username, String icsString, DateTime semesterStart,
-      {bool merge = false}) async {
+      {bool merge = false, String semesterId = 'default'}) async {
     try {
       List<CourseItem> parsedCourses =
           XidianScheduleParser.parseIcs(icsString, semesterStart);
       if (parsedCourses.isEmpty) return false;
+
+      // 设置学期ID
+      parsedCourses = parsedCourses.map((c) => CourseItem(
+        courseName: c.courseName,
+        teacherName: c.teacherName,
+        date: c.date,
+        weekday: c.weekday,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        weekIndex: c.weekIndex,
+        roomName: c.roomName,
+        lessonType: c.lessonType,
+        semesterId: semesterId,
+        teamUuid: c.teamUuid,
+      )).toList();
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);
@@ -262,7 +322,7 @@ class CourseService {
   static Future<bool> importZfSoftScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
       {Map<int, Map<String, int>>? customTimes,
-      bool merge = false}) async {
+      bool merge = false, String semesterId = 'default'}) async {
     try {
       // 调用解析器，并传入可能的自定义时间配置
       List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -271,6 +331,21 @@ class CourseService {
         customTimes: customTimes,
       );
       if (parsedCourses.isEmpty) return false;
+
+      // 设置学期ID
+      parsedCourses = parsedCourses.map((c) => CourseItem(
+        courseName: c.courseName,
+        teacherName: c.teacherName,
+        date: c.date,
+        weekday: c.weekday,
+        startTime: c.startTime,
+        endTime: c.endTime,
+        weekIndex: c.weekIndex,
+        roomName: c.roomName,
+        lessonType: c.lessonType,
+        semesterId: semesterId,
+        teamUuid: c.teamUuid,
+      )).toList();
 
       if (merge) {
         await mergeCoursesToSql(username, parsedCourses);

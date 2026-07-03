@@ -291,6 +291,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             weekIndex: weekIndex,
             lessonType: c['lesson_type'] ?? '',
             date: dateStr,
+            semesterId: _activeSemesterId, // 设置当前活跃学期ID
           );
         }).toList();
 

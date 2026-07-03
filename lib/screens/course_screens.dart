@@ -75,7 +75,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
   // 多学期支持
   List<SemesterInfo> _semesters = [];
-  String _activeSemesterId = 'default';
 
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
@@ -199,8 +198,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       PomodoroService.getTags(),
       StorageService.getPlanBlocks(widget.username),
       StorageService.getSemesterStart(),
-      StorageService.getSemesters(), // 新增：加载学期列表
-      StorageService.getActiveSemesterId(), // 新增：加载当前活跃学期
+      StorageService.getSemesters(), // 加载学期列表
     ]);
 
     // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
@@ -216,7 +214,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _pomodoroTags = results[4] as List<PomodoroTag>;
     DateTime? semStart = results[6] as DateTime?;
     _semesters = results[7] as List<SemesterInfo>;
-    _activeSemesterId = results[8] as String;
 
     // 如果没有学期数据，从旧的 semesterStart 创建默认学期
     if (_semesters.isEmpty && semStart != null) {
@@ -230,23 +227,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       ];
     }
 
-    // 根据当前活跃学期过滤课程
-    if (_semesters.isNotEmpty) {
-      final activeSemester =
-          _semesters.where((s) => s.id == _activeSemesterId).toList();
-      if (activeSemester.isNotEmpty) {
-        semStart = activeSemester.first.startDate;
-        // 按学期过滤课程：只显示当前活跃学期的课程
-        final beforeCount = _allCourses.length;
-        _allCourses = _allCourses
-            .where((c) => c.semesterId == _activeSemesterId)
-            .toList();
-        final afterCount = _allCourses.length;
-        debugPrint("📚 [CourseScreen] 学期过滤: $beforeCount -> $afterCount (学期ID: $_activeSemesterId)");
-      }
-    }
+    // 按开学日期排序学期
+    _semesters.sort((a, b) => a.startDate.compareTo(b.startDate));
 
-    // 1. 处理课程相关数据
+    // 不过滤课程，保留所有学期的课程
+    // 课程会根据周次自动判断属于哪个学期
+
+    // 1. 处理课程相关数据 - 收集所有学期的所有周次
     if (_allCourses.isNotEmpty) {
       _availableWeeks = _allCourses.map((c) => c.weekIndex).toSet().toList();
       _availableWeeks.sort();
@@ -260,11 +247,15 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     // 3. 处理日志
     _allTimeLogs = allLogsRaw.where((l) => !l.isDeleted).toList();
 
-    // 4. 计算学期起始周
+    // 4. 计算学期起始周 - 使用第一个学期的开学日期作为初始参考
     _allPlanBlocks =
         (results[5] as List<TodoPlanBlock>).where((p) => !p.isDeleted).toList();
 
-    if (semStart != null) {
+    if (_semesters.isNotEmpty) {
+      // 使用第一个学期的开学日期
+      semStart = _semesters.first.startDate;
+      _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
+    } else if (semStart != null) {
       _semesterMonday = semStart.subtract(Duration(days: semStart.weekday - 1));
     } else if (_allCourses.isNotEmpty) {
       final sortedCourses = List<CourseItem>.from(_allCourses)
@@ -286,14 +277,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _semesterMonday = now.subtract(Duration(days: now.weekday - 1));
     }
 
-    // 5. 计算当前周
+    // 5. 计算当前周 - 基于第一个学期
     DateTime now = DateTime.now();
     int daysOffset = now.difference(_semesterMonday!).inDays;
     _currentWeek = (daysOffset ~/ 7) + 1;
 
-    // 6. 获取当前周课程
-    _weekCourses =
-        _allCourses.where((c) => c.weekIndex == _currentWeek).toList();
+    // 6. 获取当前周课程 - 根据当前周次找到对应的学期，然后过滤课程
+    _updateWeekCourses();
 
     // 7. 月视图数据按需构建，避免首次进入课程页就做全量逐日展开
     _monthDataPrepared = false;
@@ -311,6 +301,47 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         _checkCoachMarks();
       });
     }
+  }
+
+  /// 根据当前周次找到对应的学期，然后过滤课程
+  void _updateWeekCourses() {
+    // 根据当前周次计算对应的日期
+    if (_semesterMonday == null) return;
+    
+    // 计算当前周次对应的周一日期
+    final currentWeekMonday = _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
+    
+    // 找到这个日期属于哪个学期，并计算在该学期中的相对周次
+    String? targetSemesterId;
+    int relativeWeek = _currentWeek;
+    
+    for (final semester in _semesters) {
+      final semesterStart = DateTime(
+          semester.startDate.year, semester.startDate.month, semester.startDate.day);
+      final semesterEnd = semester.endDate != null
+          ? DateTime(semester.endDate!.year, semester.endDate!.month, semester.endDate!.day)
+          : semesterStart.add(const Duration(days: 120)); // 默认4个月
+      
+      // 检查当前周的周一是否在这个学期的范围内
+      if (!currentWeekMonday.isBefore(semesterStart) && 
+          !currentWeekMonday.isAfter(semesterEnd)) {
+        targetSemesterId = semester.id;
+        // 计算在该学期中的相对周次
+        final semesterMonday = semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
+        relativeWeek = (currentWeekMonday.difference(semesterMonday).inDays ~/ 7) + 1;
+        break;
+      }
+    }
+    
+    // 如果没有找到对应的学期，使用第一个学期
+    targetSemesterId ??= _semesters.isNotEmpty ? _semesters.first.id : 'default';
+    
+    // 过滤课程：只显示当前学期当前相对周次的课程
+    _weekCourses = _allCourses
+        .where((c) => c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
+        .toList();
+    
+    debugPrint("📚 [CourseScreen] 当前周次: $_currentWeek, 学期: $targetSemesterId, 相对周次: $relativeWeek, 课程数: ${_weekCourses.length}");
   }
 
   void _checkCoachMarks() async {
@@ -632,8 +663,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _isLoading = true;
     });
 
-    // 🚀 核心优化：直接使用已加载的 _allCourses 进行过滤，不再触发数据库/Isolate 开销
-    _weekCourses = _allCourses.where((c) => c.weekIndex == newWeek).toList();
+    // 🚀 核心优化：根据周次自动判断学期，然后过滤课程
+    _updateWeekCourses();
     _updateWeekTodos();
     _updateWeekTimeLogsPomodorosAndPlans();
     _checkCollapsedSlots();
@@ -667,40 +698,82 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     if (_viewMode == 2) {
       return DateFormat('yyyy年M月').format(_selectedMonth);
     }
-    if (_semesterMonday == null) return '第 $_currentWeek 周';
-    DateTime monday =
+    if (_semesterMonday == null || _semesters.isEmpty) return '第 $_currentWeek 周';
+    
+    // 计算当前周次对应的周一日期
+    DateTime currentWeekMonday =
         _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
-    DateTime sunday = monday.add(const Duration(days: 6));
-
-    int maxWeek = _availableWeeks.isNotEmpty ? _availableWeeks.last : 20;
-
-    if (_currentWeek >= 1 && _currentWeek <= maxWeek) {
-      return '第 $_currentWeek 周';
-    } else if (_currentWeek < 1) {
-      return '学期前 ${1 - _currentWeek} 周';
+    
+    // 找到这个日期属于哪个学期，并计算在该学期中的相对周次
+    String? targetSemesterName;
+    int relativeWeek = _currentWeek;
+    
+    for (final semester in _semesters) {
+      final semesterStart = DateTime(
+          semester.startDate.year, semester.startDate.month, semester.startDate.day);
+      final semesterEnd = semester.endDate != null
+          ? DateTime(semester.endDate!.year, semester.endDate!.month, semester.endDate!.day)
+          : semesterStart.add(const Duration(days: 120));
+      
+      // 检查当前周的周一是否在这个学期的范围内
+      if (!currentWeekMonday.isBefore(semesterStart) && 
+          !currentWeekMonday.isAfter(semesterEnd)) {
+        targetSemesterName = semester.name;
+        // 计算在该学期中的相对周次
+        final semesterMonday = semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
+        relativeWeek = (currentWeekMonday.difference(semesterMonday).inDays ~/ 7) + 1;
+        break;
+      }
+    }
+    
+    // 显示周次标签
+    if (targetSemesterName != null && relativeWeek >= 1) {
+      return '$targetSemesterName 第 $relativeWeek 周';
     } else {
-      return '${DateFormat('M/d').format(monday)}-${DateFormat('M/d').format(sunday)}';
+      // 如果没有找到对应的学期，显示日期范围
+      DateTime sunday = currentWeekMonday.add(const Duration(days: 6));
+      return '${DateFormat('M/d').format(currentWeekMonday)}-${DateFormat('M/d').format(sunday)}';
     }
   }
 
   String _getBiWeekLabel() {
-    if (_semesterMonday == null) return "第$_currentWeek-${_currentWeek + 1}周";
+    if (_semesterMonday == null || _semesters.isEmpty) {
+      return "第$_currentWeek-${_currentWeek + 1}周";
+    }
 
+    // 计算当前周次对应的周一日期
     DateTime w1Monday =
         _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
     DateTime w2Monday = w1Monday.add(const Duration(days: 7));
 
-    String m1 = DateFormat('M月').format(w1Monday);
-    String m2 = DateFormat('M月').format(w2Monday);
+    // 找到这两个日期属于哪个学期
+    String getSemesterWeekLabel(DateTime date) {
+      for (final semester in _semesters) {
+        final semesterStart = DateTime(
+            semester.startDate.year, semester.startDate.month, semester.startDate.day);
+        final semesterEnd = semester.endDate != null
+            ? DateTime(semester.endDate!.year, semester.endDate!.month, semester.endDate!.day)
+            : semesterStart.add(const Duration(days: 120));
+        
+        if (!date.isBefore(semesterStart) && !date.isAfter(semesterEnd)) {
+          final semesterMonday = semesterStart.subtract(Duration(days: semesterStart.weekday - 1));
+          final relativeWeek = (date.difference(semesterMonday).inDays ~/ 7) + 1;
+          return '${semester.name} 第$relativeWeek周';
+        }
+      }
+      return '${DateFormat('M/d').format(date)}';
+    }
 
-    // 计算每月第几周 (简易： (day-1)/7 + 1)
-    int wk1 = ((w1Monday.day - 1) / 7).floor() + 1;
-    int wk2 = ((w2Monday.day - 1) / 7).floor() + 1;
-
-    if (m1 == m2) {
-      return "$m1 第$wk1-$wk2周";
+    String label1 = getSemesterWeekLabel(w1Monday);
+    String label2 = getSemesterWeekLabel(w2Monday);
+    
+    // 如果两个周次在同一个学期，简写
+    if (label1.split(' ').first == label2.split(' ').first) {
+      final week1 = label1.split(' ').last;
+      final week2 = label2.split(' ').last;
+      return '${label1.split(' ').first} $week1-$week2';
     } else {
-      return "$m1第$wk1周-$m2第$wk2周";
+      return '$label1-$label2';
     }
   }
 
@@ -789,105 +862,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     int daysDiff = now.difference(_semesterMonday!).inDays;
     int week = (daysDiff ~/ 7) + 1;
     if (week < 1) week = 1;
-    _jumpToWeek(week);
-  }
-
-  void _showSemesterSwitchDialog() {
-    if (_semesters.isEmpty) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.school_outlined, color: colorScheme.primary),
-              const SizedBox(width: 10),
-              const Text('切换学期'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: _semesters.map((semester) {
-                final isActive = semester.id == _activeSemesterId;
-                return InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _switchSemester(semester);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: isActive
-                            ? colorScheme.primary
-                            : colorScheme.outlineVariant,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isActive
-                              ? Icons.check_circle
-                              : Icons.circle_outlined,
-                          color: isActive
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                semester.name,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isActive ? colorScheme.primary : null,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '开学: ${semester.startDate.month}/${semester.startDate.day}${semester.endDate != null ? '  放假: ${semester.endDate!.month}/${semester.endDate!.day}' : ''}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _switchSemester(SemesterInfo semester) async {
-    await StorageService.setActiveSemesterId(semester.id);
-    setState(() {
-      _activeSemesterId = semester.id;
-    });
-    // 重新加载数据
-    await _loadData();
+    _jumpToWeek(week    );
   }
 
   Widget _buildMonthDaySidebar(DateTime day) {
@@ -3261,40 +3236,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 学期名称显示
-            if (_semesters.isNotEmpty)
-              GestureDetector(
-                onTap: _showSemesterSwitchDialog,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _semesters
-                            .where((s) => s.id == _activeSemesterId)
-                            .firstOrNull
-                            ?.name ?? '学期',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.arrow_drop_down,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if (_semesters.isNotEmpty) const SizedBox(width: 8),
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
