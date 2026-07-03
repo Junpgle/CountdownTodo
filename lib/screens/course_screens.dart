@@ -73,6 +73,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   bool _isLoading = true;
   DateTime? _semesterMonday;
 
+  // 多学期支持
+  List<SemesterInfo> _semesters = [];
+  String _activeSemesterId = 'default';
+
   List<TimeLogItem> _allTimeLogs = [];
   List<PomodoroRecord> _allPomodoroRecords = [];
   List<PomodoroTag> _pomodoroTags = [];
@@ -195,6 +199,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       PomodoroService.getTags(),
       StorageService.getPlanBlocks(widget.username),
       StorageService.getSemesterStart(),
+      StorageService.getSemesters(), // 新增：加载学期列表
+      StorageService.getActiveSemesterId(), // 新增：加载当前活跃学期
     ]);
 
     // 🚀 核心优化：等待 300ms 让进入页面的过渡动画彻底完成
@@ -209,6 +215,36 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     _allPomodoroRecords = results[3] as List<PomodoroRecord>;
     _pomodoroTags = results[4] as List<PomodoroTag>;
     DateTime? semStart = results[6] as DateTime?;
+    _semesters = results[7] as List<SemesterInfo>;
+    _activeSemesterId = results[8] as String;
+
+    // 如果没有学期数据，从旧的 semesterStart 创建默认学期
+    if (_semesters.isEmpty && semStart != null) {
+      _semesters = [
+        SemesterInfo(
+          id: 'default',
+          name: '当前学期',
+          startDate: semStart,
+          isCurrent: true,
+        )
+      ];
+    }
+
+    // 根据当前活跃学期过滤课程
+    if (_semesters.isNotEmpty) {
+      final activeSemester =
+          _semesters.where((s) => s.id == _activeSemesterId).toList();
+      if (activeSemester.isNotEmpty) {
+        semStart = activeSemester.first.startDate;
+        // 按学期过滤课程：只显示当前活跃学期的课程
+        final beforeCount = _allCourses.length;
+        _allCourses = _allCourses
+            .where((c) => c.semesterId == _activeSemesterId)
+            .toList();
+        final afterCount = _allCourses.length;
+        debugPrint("📚 [CourseScreen] 学期过滤: $beforeCount -> $afterCount (学期ID: $_activeSemesterId)");
+      }
+    }
 
     // 1. 处理课程相关数据
     if (_allCourses.isNotEmpty) {
@@ -754,6 +790,104 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     int week = (daysDiff ~/ 7) + 1;
     if (week < 1) week = 1;
     _jumpToWeek(week);
+  }
+
+  void _showSemesterSwitchDialog() {
+    if (_semesters.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.school_outlined, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              const Text('切换学期'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _semesters.map((semester) {
+                final isActive = semester.id == _activeSemesterId;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _switchSemester(semester);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: isActive
+                            ? colorScheme.primary
+                            : colorScheme.outlineVariant,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isActive
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          color: isActive
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                semester.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: isActive ? colorScheme.primary : null,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '开学: ${semester.startDate.month}/${semester.startDate.day}${semester.endDate != null ? '  放假: ${semester.endDate!.month}/${semester.endDate!.day}' : ''}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _switchSemester(SemesterInfo semester) async {
+    await StorageService.setActiveSemesterId(semester.id);
+    setState(() {
+      _activeSemesterId = semester.id;
+    });
+    // 重新加载数据
+    await _loadData();
   }
 
   Widget _buildMonthDaySidebar(DateTime day) {
@@ -3127,6 +3261,40 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // 学期名称显示
+            if (_semesters.isNotEmpty)
+              GestureDetector(
+                onTap: _showSemesterSwitchDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _semesters
+                            .where((s) => s.id == _activeSemesterId)
+                            .firstOrNull
+                            ?.name ?? '学期',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        size: 14,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (_semesters.isNotEmpty) const SizedBox(width: 8),
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),

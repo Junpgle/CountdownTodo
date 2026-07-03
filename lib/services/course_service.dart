@@ -67,6 +67,7 @@ class CourseService {
         'week_index': c.weekIndex,
         'room_name': c.roomName,
         'lesson_type': c.lessonType,
+        'semester_id': c.semesterId,
         'team_uuid': c.teamUuid,
         'is_deleted': c.isDeleted ? 1 : 0,
         'version': c.version,

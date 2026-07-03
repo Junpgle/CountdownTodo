@@ -211,6 +211,8 @@ class StorageService {
       "semester_progress_enabled";
   static const String KEY_SEMESTER_START = "semester_start_date";
   static const String KEY_SEMESTER_END = "semester_end_date";
+  static const String KEY_SEMESTERS = "semesters_list"; // 多学期列表
+  static const String KEY_ACTIVE_SEMESTER = "active_semester_id"; // 当前活跃学期
   static const String KEY_TIME_LOGS = "user_time_logs";
   static const String KEY_IGNORED_SCHEDULE_CONFLICTS =
       "ignored_schedule_conflicts";
@@ -4334,6 +4336,126 @@ class StorageService {
       }
     }
     return s != null ? DateTime.tryParse(s) : null;
+  }
+
+  // ==========================================
+  // 多学期管理
+  // ==========================================
+
+  /// 获取所有学期列表
+  static Future<List<SemesterInfo>> getSemesters() async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String key = username != null && username.isNotEmpty
+        ? "${KEY_SEMESTERS}_$username"
+        : KEY_SEMESTERS;
+
+    final String? jsonStr = prefs.getString(key);
+    if (jsonStr == null || jsonStr.isEmpty) {
+      // 迁移：如果没有任何学期数据，从旧的 semesterStart 创建一个默认学期
+      final oldStart = await getSemesterStart();
+      if (oldStart != null) {
+        final defaultSemester = SemesterInfo(
+          id: 'default',
+          name: '当前学期',
+          startDate: oldStart,
+          isCurrent: true,
+        );
+        await saveSemesters([defaultSemester]);
+        return [defaultSemester];
+      }
+      return [];
+    }
+
+    try {
+      final List<dynamic> list = jsonDecode(jsonStr);
+      return list
+          .map((e) => SemesterInfo.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 保存学期列表
+  static Future<void> saveSemesters(List<SemesterInfo> semesters) async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String key = username != null && username.isNotEmpty
+        ? "${KEY_SEMESTERS}_$username"
+        : KEY_SEMESTERS;
+
+    final jsonStr = jsonEncode(semesters.map((s) => s.toJson()).toList());
+    await prefs.setString(key, jsonStr);
+
+    // 同步更新旧的 semesterStart/semesterEnd（兼容）
+    final current =
+        semesters.where((s) => s.isCurrent).toList();
+    if (current.isNotEmpty) {
+      await prefs.setString(
+          username != null && username.isNotEmpty
+              ? "${KEY_SEMESTER_START}_$username"
+              : KEY_SEMESTER_START,
+          current.first.startDate.toIso8601String());
+      if (current.first.endDate != null) {
+        await prefs.setString(
+            username != null && username.isNotEmpty
+                ? "${KEY_SEMESTER_END}_$username"
+                : KEY_SEMESTER_END,
+            current.first.endDate!.toIso8601String());
+      }
+    }
+  }
+
+  /// 获取当前活跃学期 ID
+  static Future<String> getActiveSemesterId() async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String key = username != null && username.isNotEmpty
+        ? "${KEY_ACTIVE_SEMESTER}_$username"
+        : KEY_ACTIVE_SEMESTER;
+
+    return prefs.getString(key) ?? 'default';
+  }
+
+  /// 设置当前活跃学期 ID
+  static Future<void> setActiveSemesterId(String semesterId) async {
+    final prefs = await StorageService.prefs;
+    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String key = username != null && username.isNotEmpty
+        ? "${KEY_ACTIVE_SEMESTER}_$username"
+        : KEY_ACTIVE_SEMESTER;
+
+    await prefs.setString(key, semesterId);
+  }
+
+  /// 获取指定学期的开学日期
+  static Future<DateTime?> getSemesterStartById(String semesterId) async {
+    final semesters = await getSemesters();
+    try {
+      final semester = semesters.firstWhere((s) => s.id == semesterId);
+      return semester.startDate;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 根据日期自动识别所属学期
+  static Future<SemesterInfo?> getSemesterByDate(DateTime date) async {
+    final semesters = await getSemesters();
+    for (final semester in semesters) {
+      final start = DateTime(
+          semester.startDate.year, semester.startDate.month, semester.startDate.day);
+      final end = semester.endDate != null
+          ? DateTime(semester.endDate!.year, semester.endDate!.month,
+              semester.endDate!.day)
+          : start.add(const Duration(days: 120)); // 默认4个月
+
+      if (!date.isBefore(start) && !date.isAfter(end)) {
+        return semester;
+      }
+    }
+    return null;
   }
 
   static Future<void> updateLastAutoSyncTime(String username) async {

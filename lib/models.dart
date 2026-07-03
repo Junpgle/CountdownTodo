@@ -829,6 +829,61 @@ class TodoPlanBlock {
 // 🚀 3. 课表相关
 // ==========================================
 
+/// 学期信息模型
+class SemesterInfo {
+  final String id; // 学期标识，如 "2025-fall", "2026-spring"
+  final String name; // 学期名称，如 "2025秋季学期"
+  final DateTime startDate; // 开学日期
+  final DateTime? endDate; // 放假日期（可选）
+  final bool isCurrent; // 是否为当前学期
+
+  SemesterInfo({
+    required this.id,
+    required this.name,
+    required this.startDate,
+    this.endDate,
+    this.isCurrent = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'start_date': startDate.toIso8601String(),
+        'end_date': endDate?.toIso8601String(),
+        'is_current': isCurrent,
+      };
+
+  factory SemesterInfo.fromJson(Map<String, dynamic> json) => SemesterInfo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        startDate: DateTime.parse(json['start_date']),
+        endDate:
+            json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
+        isCurrent: json['is_current'] ?? false,
+      );
+
+  /// 转换为毫秒时间戳（用于云端同步）
+  Map<String, dynamic> toCloudJson() => {
+        'id': id,
+        'name': name,
+        'start_ms': startDate.millisecondsSinceEpoch,
+        'end_ms': endDate?.millisecondsSinceEpoch,
+        'is_current': isCurrent,
+      };
+
+  factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) =>
+      SemesterInfo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        startDate:
+            DateTime.fromMillisecondsSinceEpoch(json['start_ms'] as int),
+        endDate: json['end_ms'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(json['end_ms'] as int)
+            : null,
+        isCurrent: json['is_current'] ?? false,
+      );
+}
+
 class CourseItem {
   final String uuid;
   final String courseName;
@@ -840,6 +895,7 @@ class CourseItem {
   final int weekIndex;
   final String roomName;
   final String? lessonType;
+  final String semesterId; // 所属学期标识
   String? teamUuid;
   int version;
   int updatedAt;
@@ -857,6 +913,7 @@ class CourseItem {
     required this.weekIndex,
     required this.roomName,
     this.lessonType,
+    this.semesterId = 'default',
     this.teamUuid,
     this.version = 1,
     int? updatedAt,
@@ -864,15 +921,17 @@ class CourseItem {
     this.isDeleted = false,
   })  : uuid = uuid ??
             generateDeterministicUuid(
-                courseName, weekday, startTime, endTime, weekIndex, roomName),
+                courseName, weekday, startTime, endTime, weekIndex, roomName,
+                semesterId: semesterId),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   static String generateDeterministicUuid(
-      String name, int day, int start, int end, int week, String room) {
+      String name, int day, int start, int end, int week, String room,
+      {String semesterId = 'default'}) {
     const namespace =
         '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
-    final input = "$name|$day|$start|$end|$week|$room";
+    final input = "$semesterId|$name|$day|$start|$end|$week|$room";
     return const Uuid().v5(namespace, input);
   }
 
@@ -892,6 +951,7 @@ class CourseItem {
         'weekIndex': weekIndex,
         'roomName': roomName,
         'lessonType': lessonType,
+        'semester_id': semesterId,
         'team_uuid': teamUuid,
         'version': version,
         'updated_at': updatedAt,
@@ -910,6 +970,7 @@ class CourseItem {
         weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
         roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
         lessonType: json['lessonType'] ?? json['lesson_type'],
+        semesterId: json['semester_id'] ?? json['semesterId'] ?? 'default',
         teamUuid: json['team_uuid'] ?? json['teamUuid'],
         version: (json['version'] as num?)?.toInt() ?? 1,
         updatedAt: (json['updated_at'] as num?)?.toInt(),

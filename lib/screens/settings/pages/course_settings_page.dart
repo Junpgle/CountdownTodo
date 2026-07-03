@@ -36,6 +36,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     'semester_start': GlobalKey(),
     'semester_end': GlobalKey(),
     'semester_sync': GlobalKey(),
+    'semester_management': GlobalKey(), // 新增：学期管理
   };
 
   bool _isLoading = true;
@@ -48,6 +49,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
+
+  // 多学期支持
+  List<SemesterInfo> _semesters = [];
+  String _activeSemesterId = 'default';
 
   late CourseImportHandler _courseImportHandler;
 
@@ -86,6 +91,10 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     bool sEnabled = await StorageService.getSemesterEnabled();
     DateTime? sStart = await StorageService.getSemesterStart();
     DateTime? sEnd = await StorageService.getSemesterEnd();
+
+    // 加载多学期数据
+    _semesters = await StorageService.getSemesters();
+    _activeSemesterId = await StorageService.getActiveSemesterId();
 
     String? noCourseBehaviorPref;
     if (_username.isNotEmpty) {
@@ -661,6 +670,33 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           ),
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
+            child: Text('学期管理',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
+          ),
+          _buildTile(
+            targetId: 'semester_management',
+            child: Column(
+              children: [
+                // 学期列表
+                if (_semesters.isNotEmpty)
+                  ..._semesters.map((semester) => _buildSemesterTile(semester)),
+                // 添加新学期按钮
+                ListTile(
+                  leading: Icon(Icons.add_circle_outline,
+                      color: Theme.of(context).colorScheme.primary),
+                  title: Text('添加新学期',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary)),
+                  onTap: _showAddSemesterDialog,
+                ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
             child: Text('课程导入与同步',
                 style: TextStyle(
                     fontSize: 14,
@@ -930,5 +966,386 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildSemesterTile(SemesterInfo semester) {
+    final isActive = semester.id == _activeSemesterId;
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(
+        isActive ? Icons.check_circle : Icons.circle_outlined,
+        color: isActive ? colorScheme.primary : Colors.grey,
+      ),
+      title: Text(
+        semester.name,
+        style: TextStyle(
+          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          color: isActive ? colorScheme.primary : null,
+        ),
+      ),
+      subtitle: Text(
+        '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}${semester.endDate != null ? '  放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}' : ''}',
+        style: const TextStyle(fontSize: 12),
+      ),
+      trailing: PopupMenuButton<String>(
+        itemBuilder: (ctx) => [
+          if (!isActive)
+            const PopupMenuItem(value: 'activate', child: Text('设为当前学期')),
+          const PopupMenuItem(value: 'edit', child: Text('编辑')),
+          if (!isActive)
+            const PopupMenuItem(value: 'delete', child: Text('删除')),
+        ],
+        onSelected: (value) async {
+          switch (value) {
+            case 'activate':
+              await _activateSemester(semester);
+              break;
+            case 'edit':
+              await _editSemester(semester);
+              break;
+            case 'delete':
+              await _deleteSemester(semester);
+              break;
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _activateSemester(SemesterInfo semester) async {
+    // 更新所有学期的 isCurrent 状态
+    final updatedSemesters = _semesters.map((s) {
+      if (s.id == semester.id) {
+        return SemesterInfo(
+          id: s.id,
+          name: s.name,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          isCurrent: true,
+        );
+      } else if (s.isCurrent) {
+        return SemesterInfo(
+          id: s.id,
+          name: s.name,
+          startDate: s.startDate,
+          endDate: s.endDate,
+          isCurrent: false,
+        );
+      }
+      return s;
+    }).toList();
+
+    await StorageService.saveSemesters(updatedSemesters);
+    await StorageService.setActiveSemesterId(semester.id);
+
+    setState(() {
+      _semesters = updatedSemesters;
+      _activeSemesterId = semester.id;
+      _semesterStart = semester.startDate;
+      _semesterEnd = semester.endDate;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已切换到: ${semester.name}')),
+      );
+    }
+  }
+
+  Future<void> _editSemester(SemesterInfo semester) async {
+    final nameController = TextEditingController(text: semester.name);
+    DateTime? startDate = semester.startDate;
+    DateTime? endDate = semester.endDate;
+
+    final result = await showDialog<SemesterInfo>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Text('编辑学期'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '学期名称',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                            '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: startDate!,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() => startDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        label: Text(
+                          endDate != null
+                              ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                              : '选择放假日期 (可选)',
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: endDate ??
+                                startDate!.add(const Duration(days: 120)),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() => endDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (nameController.text.isEmpty || startDate == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请填写学期名称和开学日期')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(
+                      ctx,
+                      SemesterInfo(
+                        id: semester.id,
+                        name: nameController.text,
+                        startDate: startDate!,
+                        endDate: endDate,
+                        isCurrent: semester.isCurrent,
+                      ),
+                    );
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      final updatedSemesters = _semesters.map((s) {
+        if (s.id == result.id) return result;
+        return s;
+      }).toList();
+
+      await StorageService.saveSemesters(updatedSemesters);
+
+      setState(() {
+        _semesters = updatedSemesters;
+        if (result.isCurrent) {
+          _semesterStart = result.startDate;
+          _semesterEnd = result.endDate;
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('学期已更新')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSemester(SemesterInfo semester) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('删除学期'),
+        content: Text('确定要删除 "${semester.name}" 吗？\n\n该学期下的课程数据不会被删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final updatedSemesters = _semesters.where((s) => s.id != semester.id).toList();
+      await StorageService.saveSemesters(updatedSemesters);
+
+      setState(() {
+        _semesters = updatedSemesters;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已删除: ${semester.name}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAddSemesterDialog() async {
+    final nameController = TextEditingController();
+    DateTime? startDate;
+    DateTime? endDate;
+
+    final result = await showDialog<SemesterInfo>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Text('添加新学期'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '学期名称',
+                        hintText: '例如: 2026春季学期',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                          startDate != null
+                              ? '开学日期: ${DateFormat('yyyy/MM/dd').format(startDate!)}'
+                              : '选择开学日期',
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                            helpText: '选择开学日期',
+                          );
+                          if (picked != null) {
+                            setState(() => startDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        label: Text(
+                          endDate != null
+                              ? '放假日期: ${DateFormat('yyyy/MM/dd').format(endDate!)}'
+                              : '选择放假日期 (可选)',
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate:
+                                startDate?.add(const Duration(days: 120)) ??
+                                    DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                            helpText: '选择放假日期',
+                          );
+                          if (picked != null) {
+                            setState(() => endDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (nameController.text.isEmpty || startDate == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请填写学期名称和开学日期')),
+                      );
+                      return;
+                    }
+                    final id =
+                        'semester_${startDate!.millisecondsSinceEpoch}';
+                    Navigator.pop(
+                      ctx,
+                      SemesterInfo(
+                        id: id,
+                        name: nameController.text,
+                        startDate: startDate!,
+                        endDate: endDate,
+                      ),
+                    );
+                  },
+                  child: const Text('添加'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      final updatedSemesters = [..._semesters, result];
+      await StorageService.saveSemesters(updatedSemesters);
+
+      setState(() {
+        _semesters = updatedSemesters;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已添加: ${result.name}')),
+        );
+      }
+    }
   }
 }

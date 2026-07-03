@@ -115,6 +115,248 @@ class CourseImportHandler {
     return true;
   }
 
+  /// 让用户选择导入到哪个学期
+  /// 返回选中的学期 ID，如果用户取消则返回 null
+  Future<String?> _askTargetSemester() async {
+    final semesters = await StorageService.getSemesters();
+    final activeSemesterId = await StorageService.getActiveSemesterId();
+
+    // 始终显示选择界面，让用户可以选择或创建新学期
+    final selected = await showDialog<SemesterInfo>(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.school_outlined, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              const Text('选择导入到哪个学期'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (semesters.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '还没有创建任何学期，请先创建一个学期。',
+                      style: TextStyle(color: colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ...semesters.map((semester) {
+                  final isActive = semester.id == activeSemesterId;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => Navigator.pop(ctx, semester),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isActive
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isActive
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: isActive
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  semester.name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isActive
+                                        ? colorScheme.primary
+                                        : null,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '开学日期: ${semester.startDate.month}/${semester.startDate.day}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                // 创建新学期
+                final newSemester = await _showCreateSemesterDialog();
+                if (newSemester != null && ctx.mounted) {
+                  Navigator.pop(ctx, newSemester);
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('新建学期'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return selected?.id;
+  }
+
+  /// 显示创建新学期的对话框
+  Future<SemesterInfo?> _showCreateSemesterDialog() async {
+    final nameController = TextEditingController();
+    DateTime? startDate;
+    DateTime? endDate;
+
+    final result = await showDialog<SemesterInfo>(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: const Text('创建新学期'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '学期名称',
+                        hintText: '例如: 2026春季学期',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                          startDate != null
+                              ? '开学日期: ${startDate!.year}/${startDate!.month}/${startDate!.day}'
+                              : '选择开学日期',
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                            helpText: '选择开学日期',
+                          );
+                          if (picked != null) {
+                            setState(() => startDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month_outlined),
+                        label: Text(
+                          endDate != null
+                              ? '放假日期: ${endDate!.year}/${endDate!.month}/${endDate!.day}'
+                              : '选择放假日期 (可选)',
+                        ),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate:
+                                startDate?.add(const Duration(days: 120)) ??
+                                    DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                            helpText: '选择放假日期',
+                          );
+                          if (picked != null) {
+                            setState(() => endDate = picked);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (nameController.text.isEmpty || startDate == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请填写学期名称和开学日期')),
+                      );
+                      return;
+                    }
+                    final id =
+                        'semester_${startDate!.millisecondsSinceEpoch}';
+                    Navigator.pop(
+                      ctx,
+                      SemesterInfo(
+                        id: id,
+                        name: nameController.text,
+                        startDate: startDate!,
+                        endDate: endDate,
+                      ),
+                    );
+                  },
+                  child: const Text('创建'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      // 保存新学期到存储
+      final semesters = await StorageService.getSemesters();
+      semesters.add(result);
+      await StorageService.saveSemesters(semesters);
+    }
+
+    return result;
+  }
+
   /// 检测冲突并让用户选择导入模式
   /// 返回 ImportMode，如果用户取消则返回 null
   Future<ImportMode?> _askImportMode(List<CourseItem> newCourses) async {
@@ -475,8 +717,29 @@ class CourseImportHandler {
         return;
       }
 
-      // 第二步：关闭进度弹窗，询问导入模式
+      // 第二步：关闭进度弹窗，选择目标学期和导入模式
       _closeLoadingDialog();
+
+      // 让用户选择导入到哪个学期
+      final targetSemesterId = await _askTargetSemester();
+      if (targetSemesterId == null) return; // 用户取消
+
+      // 设置课程的学期 ID
+      parsedCourses = parsedCourses
+          .map((c) => CourseItem(
+                courseName: c.courseName,
+                teacherName: c.teacherName,
+                date: c.date,
+                weekday: c.weekday,
+                startTime: c.startTime,
+                endTime: c.endTime,
+                weekIndex: c.weekIndex,
+                roomName: c.roomName,
+                lessonType: c.lessonType,
+                semesterId: targetSemesterId,
+                teamUuid: c.teamUuid,
+              ))
+          .toList();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {
@@ -739,8 +1002,29 @@ class CourseImportHandler {
         return;
       }
 
-      // 第二步：关闭进度弹窗，询问导入模式
+      // 第二步：关闭进度弹窗，选择目标学期和导入模式
       _closeLoadingDialog();
+
+      // 让用户选择导入到哪个学期
+      final targetSemesterId = await _askTargetSemester();
+      if (targetSemesterId == null) return; // 用户取消
+
+      // 设置课程的学期 ID
+      parsedCourses = parsedCourses
+          .map((c) => CourseItem(
+                courseName: c.courseName,
+                teacherName: c.teacherName,
+                date: c.date,
+                weekday: c.weekday,
+                startTime: c.startTime,
+                endTime: c.endTime,
+                weekIndex: c.weekIndex,
+                roomName: c.roomName,
+                lessonType: c.lessonType,
+                semesterId: targetSemesterId,
+                teamUuid: c.teamUuid,
+              ))
+          .toList();
 
       final mode = await _askImportMode(parsedCourses);
       if (mode == null) {

@@ -105,6 +105,7 @@ class DatabaseHelper {
         {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
         {'name': 'updated_at', 'type': 'INTEGER DEFAULT 0'},
         {'name': 'created_at', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'semester_id', 'type': "TEXT DEFAULT 'default'"},
       ];
 
       for (final column in columnsToAdd) {

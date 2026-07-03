@@ -502,15 +502,20 @@ class ApiService {
   static Future<bool> uploadUserSettings({
     required int? semesterStartMs,
     required int? semesterEndMs,
+    List<Map<String, dynamic>>? semesters, // 新增：多学期列表
   }) async {
     try {
+      final body = <String, dynamic>{
+        'semester_start': semesterStartMs,
+        'semester_end': semesterEndMs,
+      };
+      if (semesters != null) {
+        body['semesters'] = semesters;
+      }
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/settings'),
         headers: _getHeaders(),
-        body: jsonEncode({
-          'semester_start': semesterStartMs,
-          'semester_end': semesterEndMs,
-        }),
+        body: jsonEncode(body),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
