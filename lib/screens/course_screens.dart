@@ -1991,24 +1991,25 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               .toList()
               .indexOf(todo);
 
-          // 🚀 根据物理高度动态放大字体和计算最大行数
-          final double titleFontSize = (height * 0.35).clamp(11.0, 14.0);
-          final double teamFontSize = (height * 0.25).clamp(8.0, 11.0);
-          final double availableForTodo =
-              (todo.teamUuid != null && height >= 32)
-                  ? height - (teamFontSize + 7.0)
-                  : height - 2.0;
-          int todoMaxLines = (availableForTodo / (titleFontSize + 1.0)).floor();
-          if (todoMaxLines < 1) todoMaxLines = 1;
-
           eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
             bottom: top + height,
-            builder: (left, width) => Positioned(
-              top: top,
-              left: left,
-              width: width,
-              height: height,
+            builder: (left, width) {
+              final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
+              final double teamFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double availableForTodo =
+                  (todo.teamUuid != null && height >= 32)
+                      ? height - (teamFontSize + 7.0)
+                      : height - 2.0;
+              int todoMaxLines = (availableForTodo / (titleFontSize + 1.0)).floor();
+              if (todoMaxLines < 1) todoMaxLines = 1;
+
+              return Positioned(
+                top: top,
+                left: left,
+                width: width,
+                height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2154,7 +2155,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          )));
+              );
+            }
+          ));
         }
       }
     }
@@ -2200,22 +2203,23 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final logIndex =
               _timeLogsPerDay.values.expand((e) => e).toList().indexOf(log);
 
-          // 🚀 根据物理高度动态计算 TimeLog 标题最大行数和字体大小
-          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
-          final double timeFontSize = (height * 0.25).clamp(9.0, 12.0);
-          final double availableForLog =
-              height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
-          int logMaxLines = (availableForLog / (titleFontSize + 1.0)).floor();
-          if (logMaxLines < 1) logMaxLines = 1;
-
           eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
             bottom: top + height,
-            builder: (left, width) => Positioned(
-              top: top,
-              left: left,
-              width: width,
-              height: height,
+            builder: (left, width) {
+              final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
+              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double availableForLog =
+                  height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
+              int logMaxLines = (availableForLog / (titleFontSize + 1.0)).floor();
+              if (logMaxLines < 1) logMaxLines = 1;
+
+              return Positioned(
+                top: top,
+                left: left,
+                width: width,
+                height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2310,7 +2314,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          )));
+              );
+            }
+          ));
         }
       }
     }
@@ -2342,32 +2348,33 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final recordCount = (pomProgress['recordCount'] as int?) ?? 0;
           final hasAssociatedPomodoro = recordCount > 0;
 
-          // 🚀 根据物理高度动态计算标题最大行数和字体大小
-          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
-          final double subFontSize = (height * 0.25).clamp(9.0, 12.0);
-          
-          int planMaxLines = 2;
-          if (hasAssociatedPomodoro) {
-            double availableForPlan = height > 32
-                ? height - (subFontSize * 2 + 5.0)
-                : (height > 24 ? height - (subFontSize + 4.0) : height - 4.0);
-            planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
-            if (planMaxLines < 1) planMaxLines = 1;
-          } else {
-            double availableForPlan =
-                height > 24 ? height - (subFontSize + 4.0) : height - 4.0;
-            planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
-            if (planMaxLines < 1) planMaxLines = 1;
-          }
-
           eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
             bottom: top + height,
-            builder: (left, width) => Positioned(
-              top: top,
-              left: left + 3,
-              width: width > 6 ? width - 6 : width,
-              height: height,
+            builder: (left, width) {
+              final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
+              final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              
+              int planMaxLines = 2;
+              if (hasAssociatedPomodoro) {
+                double availableForPlan = height > 32
+                    ? height - (subFontSize * 2 + 5.0)
+                    : (height > 24 ? height - (subFontSize + 4.0) : height - 4.0);
+                planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
+                if (planMaxLines < 1) planMaxLines = 1;
+              } else {
+                double availableForPlan =
+                    height > 24 ? height - (subFontSize + 4.0) : height - 4.0;
+                planMaxLines = (availableForPlan / (titleFontSize + 1.0)).floor();
+                if (planMaxLines < 1) planMaxLines = 1;
+              }
+
+              return Positioned(
+                top: top,
+                left: left + 3,
+                width: width > 6 ? width - 6 : width,
+                height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2520,7 +2527,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                             ))),
               ),
             ),
-          )));
+              );
+            }
+          ));
         }
       }
     }
@@ -2615,22 +2624,23 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           final pomIndex =
               _pomodorosPerDay.values.expand((e) => e).toList().indexOf(record);
 
-          // 🚀 根据物理高度动态计算 Pomodoro 标题最大行数和字体大小
-          final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
-          final double timeFontSize = (height * 0.25).clamp(9.0, 12.0);
-          final double availableForPom =
-              height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
-          int pomMaxLines = (availableForPom / (titleFontSize + 1.0)).floor();
-          if (pomMaxLines < 1) pomMaxLines = 1;
-
           eventsPerDay[weekday]!.add(_TimelineEvent(
             top: top,
             bottom: top + height,
-            builder: (left, width) => Positioned(
-              top: top,
-              left: left,
-              width: width,
-              height: height,
+            builder: (left, width) {
+              final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
+              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double availableForPom =
+                  height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
+              int pomMaxLines = (availableForPom / (titleFontSize + 1.0)).floor();
+              if (pomMaxLines < 1) pomMaxLines = 1;
+
+              return Positioned(
+                top: top,
+                left: left,
+                width: width,
+                height: height,
             child: AnimatedBuilder(
               animation: _courseExpandAnim,
               builder: (ctx, child) {
@@ -2728,7 +2738,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                 ),
               ),
             ),
-          )));
+              );
+            }
+          ));
           }
         }
       }
@@ -2751,33 +2763,34 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             course.courseName, course.weekday, course.startTime);
         final courseIndex = _weekCourses.indexOf(course);
 
-        // 🚀 根据课程卡片的物理高度动态计算课程名称字体大小和最大行数
-        final double titleFontSize = (height * 0.35).clamp(11.0, 15.0);
-        final double subFontSize = (height * 0.25).clamp(9.0, 12.0);
-        final double titleLineHeight = titleFontSize * 1.15 + 1.0;
-        const double paddingTotal = 2.0;
-        const double gapHeight = 2.0;
-
-        int courseMaxLines = 1;
-        if (course.roomName.isNotEmpty && height > 30) {
-          // 标题最多占一半高度，剩余给地点
-          double halfHeight = (height - paddingTotal - gapHeight) / 2;
-          courseMaxLines = (halfHeight / titleLineHeight).floor();
-          if (courseMaxLines < 1) courseMaxLines = 1;
-        } else {
-          double availableForTitle = (height - paddingTotal) - 5.0;
-          courseMaxLines = (availableForTitle / titleLineHeight).floor();
-          if (courseMaxLines < 1) courseMaxLines = 1;
-        }
-
         eventsPerDay[course.weekday]!.add(_TimelineEvent(
           top: top,
           bottom: top + height,
-          builder: (left, width) => Positioned(
-            top: top + 1,
-            left: left,
-            width: width,
-            height: height - 2,
+          builder: (left, width) {
+            final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
+            final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
+            final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+            final double titleLineHeight = titleFontSize * 1.15 + 1.0;
+            const double paddingTotal = 2.0;
+            const double gapHeight = 2.0;
+
+            int courseMaxLines = 1;
+            if (course.roomName.isNotEmpty && height > 30) {
+              // 标题最多占一半高度，剩余给地点
+              double halfHeight = (height - paddingTotal - gapHeight) / 2;
+              courseMaxLines = (halfHeight / titleLineHeight).floor();
+              if (courseMaxLines < 1) courseMaxLines = 1;
+            } else {
+              double availableForTitle = (height - paddingTotal) - 5.0;
+              courseMaxLines = (availableForTitle / titleLineHeight).floor();
+              if (courseMaxLines < 1) courseMaxLines = 1;
+            }
+
+            return Positioned(
+              top: top + 1,
+              left: left,
+              width: width,
+              height: height - 2,
           child: AnimatedBuilder(
             animation: _courseExpandAnim,
             builder: (ctx, child) {
@@ -2867,7 +2880,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               ),
             ),
           ),
-        )));
+              );
+            }
+          ));
       }
     }
 

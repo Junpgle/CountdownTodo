@@ -275,8 +275,9 @@ class PomodoroRecord {
       'plan_block_id': planBlockId,
       'note': note,
       'total_pause_seconds': totalPauseSeconds,
-      'pause_intervals':
-          pauseIntervals != null ? jsonEncode(pauseIntervals) : null,
+      'pause_intervals': pauseIntervals != null
+          ? jsonEncode(pauseIntervals!.map((e) => e.toJson()).toList())
+          : null,
       'is_deleted': isDeleted ? 1 : 0,
       'version': version,
       'created_at': createdAt,

@@ -901,6 +901,30 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   Future<void> _editSession(PomodoroSession session) async {
+    // 使用副本进行编辑，避免直接修改原对象导致取消后数据被污染
+    final editSession = PomodoroSession(
+      uuid: session.uuid,
+      todoUuid: session.todoUuid,
+      todoTitle: session.todoTitle,
+      tagUuids: List.from(session.tagUuids),
+      startTime: session.startTime,
+      endTime: session.endTime,
+      plannedDuration: session.plannedDuration,
+      actualDuration: session.actualDuration,
+      status: session.status,
+      deviceId: session.deviceId,
+      planBlockId: session.planBlockId,
+      note: session.note,
+      totalPauseSeconds: session.totalPauseSeconds,
+      pauseIntervals: session.pauseIntervals != null
+          ? List.from(session.pauseIntervals!)
+          : null,
+      isDeleted: session.isDeleted,
+      version: session.version,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    );
+
     List<String> editTags = List.from(session.tagUuids);
     String? editTodoUuid = session.todoUuid;
     String? editTodoTitle = session.todoTitle;
@@ -946,7 +970,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                           fontWeight: FontWeight.w600, color: Colors.grey)),
                   const SizedBox(height: 4),
                   Text(DateFormat('yyyy-MM-dd HH:mm:ss').format(
-                      DateTime.fromMillisecondsSinceEpoch(session.startTime,
+                      DateTime.fromMillisecondsSinceEpoch(editSession.startTime,
                               isUtc: true)
                           .toLocal())),
                   const SizedBox(height: 16),
@@ -957,7 +981,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       final currentEnd = DateTime.fromMillisecondsSinceEpoch(
-                              session.endTime ?? session.startTime,
+                              editSession.endTime ?? editSession.startTime,
                               isUtc: true)
                           .toLocal();
                       final pickedTime = await showTimePicker(
@@ -971,20 +995,22 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             pickedTime.hour,
                             pickedTime.minute);
                         if (newEnd.millisecondsSinceEpoch <=
-                            session.startTime) {
+                            editSession.startTime) {
                           if (ctx.mounted)
                             ScaffoldMessenger.of(ctx).showSnackBar(
                                 const SnackBar(content: Text('结束时间必须晚于开始时间')));
                           return;
                         }
                         sd(() {
-                          session.endTime =
+                          editSession.endTime =
                               newEnd.toUtc().millisecondsSinceEpoch;
                           final totalSeconds =
-                              ((session.endTime! - session.startTime) / 1000)
+                              ((editSession.endTime! - editSession.startTime) /
+                                      1000)
                                   .round();
-                          session.actualDuration =
-                              (totalSeconds - (session.totalPauseSeconds ?? 0))
+                          editSession.actualDuration =
+                              (totalSeconds -
+                                      (editSession.totalPauseSeconds ?? 0))
                                   .clamp(0, totalSeconds);
                         });
                       }
@@ -1000,7 +1026,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         const SizedBox(width: 8),
                         Text(DateFormat('HH:mm').format(
                             DateTime.fromMillisecondsSinceEpoch(
-                                    session.endTime ?? session.startTime,
+                                    editSession.endTime ?? editSession.startTime,
                                     isUtc: true)
                                 .toLocal())),
                         const Spacer(),
@@ -1009,8 +1035,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     ),
                   ),
                   // 暂停信息
-                  if (session.totalPauseSeconds != null &&
-                      session.totalPauseSeconds! > 0) ...[
+                  if (editSession.totalPauseSeconds != null &&
+                      editSession.totalPauseSeconds! > 0) ...[
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -1018,17 +1044,17 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             style: TextStyle(fontWeight: FontWeight.w600)),
                         const Spacer(),
                         Text(
-                          _formatPauseDuration(session.totalPauseSeconds!),
+                          _formatPauseDuration(editSession.totalPauseSeconds!),
                           style: TextStyle(
                             color: Theme.of(ctx).colorScheme.error,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        if (session.pauseIntervals != null &&
-                            session.pauseIntervals!.isNotEmpty) ...[
+                        if (editSession.pauseIntervals != null &&
+                            editSession.pauseIntervals!.isNotEmpty) ...[
                           const SizedBox(width: 8),
                           Text(
-                            '${session.pauseIntervals!.length} 次',
+                            '${editSession.pauseIntervals!.length} 次',
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(ctx).colorScheme.onSurfaceVariant,
@@ -1037,8 +1063,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         ],
                       ],
                     ),
-                    if (session.pauseIntervals != null &&
-                        session.pauseIntervals!.isNotEmpty) ...[
+                    if (editSession.pauseIntervals != null &&
+                        editSession.pauseIntervals!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Container(
                         width: double.infinity,
@@ -1054,11 +1080,11 @@ class PomodoroStatsState extends State<PomodoroStats> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             for (int i = 0;
-                                i < session.pauseIntervals!.length;
+                                i < editSession.pauseIntervals!.length;
                                 i++) ...[
                               if (i > 0) const SizedBox(height: 4),
                               _buildPauseIntervalRow(
-                                  ctx, i + 1, session.pauseIntervals![i]),
+                                  ctx, i + 1, editSession.pauseIntervals![i]),
                             ],
                           ],
                         ),
@@ -1211,23 +1237,23 @@ class PomodoroStatsState extends State<PomodoroStats> {
                     child: FilledButton(
                       onPressed: () async {
                         final updated = PomodoroSession(
-                          uuid: session.uuid,
+                          uuid: editSession.uuid,
                           todoUuid: editTodoUuid,
                           todoTitle: editTodoTitle,
                           tagUuids: editTags,
-                          startTime: session.startTime,
-                          endTime: session.endTime,
-                          plannedDuration: session.plannedDuration,
-                          actualDuration: session.actualDuration,
-                          status: session.status,
-                          deviceId: session.deviceId,
-                          planBlockId: session.planBlockId,
+                          startTime: editSession.startTime,
+                          endTime: editSession.endTime,
+                          plannedDuration: editSession.plannedDuration,
+                          actualDuration: editSession.actualDuration,
+                          status: editSession.status,
+                          deviceId: editSession.deviceId,
+                          planBlockId: editSession.planBlockId,
                           note: editNote.isNotEmpty ? editNote : null,
-                          totalPauseSeconds: session.totalPauseSeconds,
-                          pauseIntervals: session.pauseIntervals,
-                          isDeleted: session.isDeleted,
-                          version: session.version + 1,
-                          createdAt: session.createdAt,
+                          totalPauseSeconds: editSession.totalPauseSeconds,
+                          pauseIntervals: editSession.pauseIntervals,
+                          isDeleted: editSession.isDeleted,
+                          version: editSession.version + 1,
+                          createdAt: editSession.createdAt,
                           updatedAt: DateTime.now().millisecondsSinceEpoch,
                         );
                         await PomodoroService.updateSession(updated);
