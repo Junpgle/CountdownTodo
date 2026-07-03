@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/course_service.dart';
+import '../../../services/database_helper.dart';
 import '../../../services/reminder_schedule_service.dart';
 import '../../../storage_service.dart';
 import '../../../services/api_service.dart';
@@ -693,6 +694,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                           color: Theme.of(context).colorScheme.primary)),
                   onTap: _showAddSemesterDialog,
                 ),
+                // 清除学期课程数据按钮
+                if (_semesters.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.delete_sweep_outlined,
+                        color: Colors.red),
+                    title: const Text('清除学期课程数据',
+                        style: TextStyle(color: Colors.red)),
+                    onTap: _showClearSemesterCoursesDialog,
+                  ),
               ],
             ),
           ),
@@ -1345,6 +1355,134 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已添加: ${result.name}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showClearSemesterCoursesDialog() async {
+    if (_semesters.isEmpty) return;
+
+    // 显示学期选择对话框
+    final selectedSemester = await showDialog<SemesterInfo>(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.delete_sweep_outlined, color: Colors.red),
+              const SizedBox(width: 10),
+              const Text('清除学期课程数据'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '选择要清除课程数据的学期：',
+                  style: TextStyle(
+                      fontSize: 14, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ..._semesters.map((semester) => InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.pop(ctx, semester),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: colorScheme.outlineVariant),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.school_outlined,
+                                color: colorScheme.primary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    semester.name,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selectedSemester == null) return;
+
+    // 确认删除
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('确认清除'),
+        content: Text(
+            '确定要清除 "${selectedSemester.name}" 的所有课程数据吗？\n\n此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // 执行清除
+    try {
+      final db = await DatabaseHelper.instance.database;
+      await db.delete(
+        'courses',
+        where: 'semester_id = ?',
+        whereArgs: [selectedSemester.id],
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已清除 "${selectedSemester.name}" 的课程数据')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('清除失败: $e')),
         );
       }
     }
