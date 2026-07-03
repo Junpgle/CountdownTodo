@@ -1329,6 +1329,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         }
       });
 
+      // 自动同步到服务器
+      await _syncSemestersToServer();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('学期已更新')),
@@ -1366,11 +1369,31 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         _semesters = updatedSemesters;
       });
 
+      // 自动同步到服务器
+      await _syncSemestersToServer();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已删除: ${semester.name}')),
         );
       }
+    }
+  }
+
+  /// 同步学期数据到服务器
+  Future<void> _syncSemestersToServer() async {
+    if (_userId == null) return;
+    
+    try {
+      final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
+      await ApiService.uploadUserSettings(
+        semesterStartMs: _semesterStart?.millisecondsSinceEpoch,
+        semesterEndMs: _semesterEnd?.millisecondsSinceEpoch,
+        semesters: semestersData,
+      );
+      debugPrint("✅ [Settings] 学期数据已同步到服务器");
+    } catch (e) {
+      debugPrint("⚠️ [Settings] 学期数据同步失败: $e");
     }
   }
 
@@ -1524,6 +1547,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       setState(() {
         _semesters = updatedSemesters;
       });
+
+      // 自动同步到服务器
+      await _syncSemestersToServer();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

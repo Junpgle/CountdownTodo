@@ -649,25 +649,62 @@ class CourseService {
     final courses =
         await getAllCourses(username, applyCalendarAdjustments: false);
 
-    // 转换为后端需要的结构
-    final courseMaps = courses
-        .map((c) => {
-              'course_name': c.courseName,
-              'room_name': c.roomName,
-              'teacher_name': c.teacherName,
-              'start_time': c.startTime,
-              'end_time': c.endTime,
-              'weekday': c.weekday,
-              'week_index': c.weekIndex,
-              'lesson_type': c.lessonType ?? '',
-              'date': c.date,
-            })
-        .toList();
+    // 按学期分组上传
+    final coursesBySemester = <String, List<CourseItem>>{};
+    for (final c in courses) {
+      final semesterId = c.semesterId.isEmpty ? 'default' : c.semesterId;
+      coursesBySemester.putIfAbsent(semesterId, () => []).add(c);
+    }
 
-    return await ApiService.uploadCourses(
-      userId: userId,
-      courses: courseMaps,
-    );
+    debugPrint("📚 [Sync] 课程按学期分组:");
+    for (final entry in coursesBySemester.entries) {
+      debugPrint("  - 学期 ${entry.key}: ${entry.value.length} 条课程");
+    }
+
+    // 逐个学期上传
+    bool allSuccess = true;
+    String lastMessage = '';
+
+    for (final entry in coursesBySemester.entries) {
+      final semesterId = entry.key;
+      final semesterCourses = entry.value;
+
+      debugPrint("📚 [Sync] 正在上传学期 $semesterId 的 ${semesterCourses.length} 条课程...");
+
+      // 转换为后端需要的结构
+      final courseMaps = semesterCourses
+          .map((c) => {
+                'course_name': c.courseName,
+                'room_name': c.roomName,
+                'teacher_name': c.teacherName,
+                'start_time': c.startTime,
+                'end_time': c.endTime,
+                'weekday': c.weekday,
+                'week_index': c.weekIndex,
+                'lesson_type': c.lessonType ?? '',
+                'date': c.date,
+              })
+          .toList();
+
+      final result = await ApiService.uploadCourses(
+        userId: userId,
+        courses: courseMaps,
+        semester: semesterId,
+      );
+
+      debugPrint("📚 [Sync] 学期 $semesterId 上传结果: ${result['success']}");
+
+      if (result['success'] != true) {
+        allSuccess = false;
+        lastMessage = result['message'] ?? '上传失败';
+      }
+    }
+
+    if (allSuccess) {
+      return {'success': true, 'message': '课表同步成功'};
+    } else {
+      return {'success': false, 'message': lastMessage};
+    }
   }
 
   /// ?? Isolate רãα

@@ -8,7 +8,7 @@ import {
 import { ApiService } from '../services/api';
 import { CacheService } from '../services/cache';
 import type { TodoItem, CountdownItem, PomodoroRecord, PomodoroTag, TodoPlanBlock, TimeLogItem } from '../types';
-import type { CourseItem, CalendarEntry, DetailItem } from './webapp-utils';
+import type { CourseItem, CalendarEntry, DetailItem, SemesterInfo } from './webapp-utils';
 import { formatDt, formatTimeNum, getLocalPomRecords } from './webapp-utils';
 
 type ViewFilter = 'all' | 'courses' | 'todos' | 'timelogs' | 'plans' | 'pomodoros';
@@ -47,6 +47,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
   const [loading, setLoading] = useState(true);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [semesterMonday, setSemesterMonday] = useState(new Date());
+  const [semesters, setSemesters] = useState<SemesterInfo[]>([]);
   const [pomRecords, setPomRecords] = useState<PomodoroRecord[]>([]);
   const [pomTags, setPomTags] = useState<PomodoroTag[]>([]);
 
@@ -124,7 +125,39 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
     return { completedSeconds, totalSeconds, progress, recordCount: associatedRecords.length };
   };
 
-  const applySemesterStart = (semesterStartMs: number | null, data: CourseItem[]) => {
+  const applySemesterStart = (semesterStartMs: number | null, data: CourseItem[], semestersList?: SemesterInfo[]) => {
+    // 优先使用当前日期对应的学期
+    if (semestersList && semestersList.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // 找到当前日期对应的学期
+      for (const semester of semestersList) {
+        const semesterStart = new Date(semester.start_date);
+        semesterStart.setHours(0, 0, 0, 0);
+        const semesterEnd = semester.end_date 
+          ? new Date(semester.end_date) 
+          : new Date(semesterStart.getTime() + 120 * 24 * 60 * 60 * 1000);
+        semesterEnd.setHours(23, 59, 59, 999);
+        
+        if (today >= semesterStart && today <= semesterEnd) {
+          // 找到当前学期，计算该学期的周一和当前周次
+          const startDayOfWeek = semesterStart.getDay() || 7;
+          const firstMonday = new Date(semesterStart);
+          firstMonday.setDate(semesterStart.getDate() - startDayOfWeek + 1);
+          firstMonday.setHours(0, 0, 0, 0);
+          
+          const diffDays = Math.floor((today.getTime() - firstMonday.getTime()) / 86400000);
+          const week = diffDays >= 0 ? Math.floor(diffDays / 7) + 1 : 1;
+          
+          setSemesterMonday(firstMonday);
+          setCurrentWeek(week);
+          return;
+        }
+      }
+    }
+    
+    // 如果没有找到当前学期，使用第一个学期的开学日期
     if (semesterStartMs && semesterStartMs > 0) {
       const startDate = new Date(semesterStartMs);
       const startDayOfWeek = startDate.getDay() || 7;
@@ -158,28 +191,12 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
 
   useEffect(() => {
     const init = async () => {
-      // 1. 先从 IndexedDB 缓存加载
-      const [cachedCourses, cachedSemester, cachedPomRecords, cachedPomTags] = await Promise.all([
-        CacheService.getCachedCourses(userId),
-        CacheService.getCachedSemesterStart(userId),
-        CacheService.getCachedPomRecords(userId),
-        CacheService.getCachedPomTags(userId),
-      ]);
-
-      const hasCache = cachedCourses && cachedCourses.length > 0;
-      const courseData = cachedCourses ?? [];
-      const semesterStartMs: number | null = cachedSemester;
-
-      if (hasCache) {
-        setCourses(cachedCourses);
-        applySemesterStart(semesterStartMs, courseData);
-        setLoading(false);
-        refreshFromServer(courseData, semesterStartMs);
-      } else {
-        await refreshFromServer([], null);
-      }
+      // 直接从服务器获取，跳过缓存（调试用）
+      await refreshFromServer([], null);
 
       // 加载番茄钟数据（优先缓存）
+      const cachedPomRecords = await CacheService.getCachedPomRecords(userId);
+      const cachedPomTags = await CacheService.getCachedPomTags(userId);
       const localRecords = getLocalPomRecords(userId).filter(r => !r.is_deleted);
       setPomRecords(cachedPomRecords ?? localRecords);
       if (cachedPomTags) setPomTags(cachedPomTags);
@@ -196,16 +213,38 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
         ]);
 
         if (Array.isArray(serverCourses)) {
-          courseData = serverCourses as CourseItem[];
+          // 将服务器返回的 semester 字段映射为 semester_id
+          courseData = (serverCourses as any[]).map(c => ({
+            ...c,
+            semester_id: c.semester || 'default'
+          })) as CourseItem[];
           setCourses(courseData);
           CacheService.setCachedCourses(userId, courseData);
         }
 
-        if (settings && settings.semester_start) {
-          const parsed = Number(settings.semester_start);
-          if (!isNaN(parsed) && parsed > 0) {
-            semesterStartMs = parsed;
-            CacheService.setCachedSemesterStart(userId, semesterStartMs);
+        if (settings) {
+          if (settings.semester_start) {
+            const parsed = Number(settings.semester_start);
+            if (!isNaN(parsed) && parsed > 0) {
+              semesterStartMs = parsed;
+              CacheService.setCachedSemesterStart(userId, semesterStartMs);
+            }
+          }
+          
+          // 处理多学期数据
+          if (settings.semesters && Array.isArray(settings.semesters)) {
+            const semestersList = (settings.semesters as any[]).map(s => ({
+              id: s.id || '',
+              name: s.name || '',
+              start_date: s.start_date || (s.start_ms ? new Date(s.start_ms).toISOString() : ''),
+              end_date: s.end_date || (s.end_ms ? new Date(s.end_ms).toISOString() : undefined),
+              is_current: s.is_current || false,
+            })) as SemesterInfo[];
+            setSemesters(semestersList);
+            // 传递学期列表给 applySemesterStart
+            applySemesterStart(semesterStartMs, courseData, semestersList);
+            setLoading(false);
+            return;
           }
         }
       } catch (e) {
@@ -336,8 +375,158 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
     return { allDayItems: all, intraDayItems: intra };
   }, [todos, countdowns, weekDates]);
 
-  const weekCourses = courses.filter(c => c.week_index === currentWeek);
+  // 获取当前周次的学期信息
+  const currentWeekInfo = useMemo(() => {
+    // 计算当前周次对应的周一日期
+    const currentWeekMonday = new Date(semesterMonday);
+    currentWeekMonday.setDate(semesterMonday.getDate() + (currentWeek - 1) * 7);
+    const currentWeekSunday = new Date(currentWeekMonday);
+    currentWeekSunday.setDate(currentWeekMonday.getDate() + 6);
+    
+    // 找到这个日期属于哪个学期
+    for (const semester of semesters) {
+      const semesterStart = new Date(semester.start_date);
+      semesterStart.setHours(0, 0, 0, 0);
+      const semesterEnd = semester.end_date 
+        ? new Date(semester.end_date) 
+        : new Date(semesterStart.getTime() + 120 * 24 * 60 * 60 * 1000);
+      semesterEnd.setHours(23, 59, 59, 999);
+      
+      if (currentWeekMonday >= semesterStart && currentWeekMonday <= semesterEnd) {
+        // 计算在该学期中的相对周次
+        const semesterMondayDate = new Date(semesterStart);
+        const startDayOfWeek = semesterStart.getDay() || 7;
+        semesterMondayDate.setDate(semesterStart.getDate() - startDayOfWeek + 1);
+        semesterMondayDate.setHours(0, 0, 0, 0);
+        
+        const diffDays = Math.floor((currentWeekMonday.getTime() - semesterMondayDate.getTime()) / 86400000);
+        const relativeWeek = Math.floor(diffDays / 7) + 1;
+        
+        return {
+          semesterName: semester.name,
+          relativeWeek: relativeWeek,
+          label: `${semester.name} 第${relativeWeek}周`,
+          isInRange: true,
+        };
+      }
+    }
+    
+    // 没有找到对应的学期，显示日期范围
+    const formatDate = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+    return {
+      semesterName: null,
+      relativeWeek: currentWeek,
+      label: `${formatDate(currentWeekMonday)}-${formatDate(currentWeekSunday)}`,
+      isInRange: false,
+    };
+  }, [semesters, semesterMonday, currentWeek]);
+
+  // 根据当前周次找到对应的学期，并过滤课程
+  const weekCourses = useMemo(() => {
+    // 计算当前周次对应的周一日期
+    const currentWeekMonday = new Date(semesterMonday);
+    currentWeekMonday.setDate(semesterMonday.getDate() + (currentWeek - 1) * 7);
+    
+    // 找到这个日期属于哪个学期，并计算在该学期中的相对周次
+    let targetSemesterId: string | undefined;
+    let relativeWeek = currentWeek;
+    
+    for (const semester of semesters) {
+      const semesterStart = new Date(semester.start_date);
+      semesterStart.setHours(0, 0, 0, 0);
+      const semesterEnd = semester.end_date 
+        ? new Date(semester.end_date) 
+        : new Date(semesterStart.getTime() + 120 * 24 * 60 * 60 * 1000); // 默认4个月
+      semesterEnd.setHours(23, 59, 59, 999);
+      
+      // 检查当前周的周一是否在这个学期的范围内
+      if (currentWeekMonday >= semesterStart && currentWeekMonday <= semesterEnd) {
+        targetSemesterId = semester.id;
+        // 计算在该学期中的相对周次
+        const semesterMondayDate = new Date(semesterStart);
+        const startDayOfWeek = semesterStart.getDay() || 7;
+        semesterMondayDate.setDate(semesterStart.getDate() - startDayOfWeek + 1);
+        semesterMondayDate.setHours(0, 0, 0, 0);
+        
+        const diffDays = Math.floor((currentWeekMonday.getTime() - semesterMondayDate.getTime()) / 86400000);
+        relativeWeek = Math.floor(diffDays / 7) + 1;
+        break;
+      }
+    }
+    
+    // 过滤课程
+    if (targetSemesterId) {
+      // 有学期信息，按学期和相对周次过滤
+      return courses.filter(c => 
+        (c.semester_id === targetSemesterId || !c.semester_id) && 
+        c.week_index === relativeWeek
+      );
+    } else {
+      // 不在任何学期范围内，不显示课程
+      return [];
+    }
+  }, [courses, semesters, semesterMonday, currentWeek]);
+  
   const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+  // 计算课程布局信息，处理重叠课程的自动切分
+  const courseLayouts = useMemo(() => {
+    // 按星期分组
+    const coursesByWeekday: Record<number, CourseItem[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] };
+    weekCourses.forEach(course => {
+      if (course.weekday >= 1 && course.weekday <= 7) {
+        coursesByWeekday[course.weekday].push(course);
+      }
+    });
+
+    const layouts: Array<{ course: CourseItem; left: number; width: number }> = [];
+
+    // 对每个星期的课程进行布局计算
+    Object.entries(coursesByWeekday).forEach(([weekdayStr, dayCourses]) => {
+      const weekday = parseInt(weekdayStr);
+      if (dayCourses.length === 0) return;
+
+      // 按开始时间排序
+      dayCourses.sort((a, b) => a.start_time - b.start_time);
+
+      // 检测重叠并分组
+      const overlapGroups: CourseItem[][] = [];
+      let currentGroup: CourseItem[] = [dayCourses[0]];
+      let currentGroupEnd = dayCourses[0].end_time;
+
+      for (let i = 1; i < dayCourses.length; i++) {
+        const course = dayCourses[i];
+        if (course.start_time < currentGroupEnd) {
+          // 与当前组重叠
+          currentGroup.push(course);
+          currentGroupEnd = Math.max(currentGroupEnd, course.end_time);
+        } else {
+          // 不重叠，开始新组
+          overlapGroups.push(currentGroup);
+          currentGroup = [course];
+          currentGroupEnd = course.end_time;
+        }
+      }
+      overlapGroups.push(currentGroup);
+
+      // 为每组重叠课程分配布局
+      overlapGroups.forEach(group => {
+        const groupSize = group.length;
+        const baseLeft = (weekday - 1) * (100 / 7);
+        const columnWidth = (100 / 7) / groupSize;
+
+        group.forEach((course, index) => {
+          layouts.push({
+            course,
+            left: baseLeft + index * columnWidth,
+            width: columnWidth,
+          });
+        });
+      });
+    });
+
+    return layouts;
+  }, [weekCourses]);
 
   const getTopPercent = (h: number, m: number) => {
     const hm = Math.max(startHour * 60, Math.min(endHour * 60, h * 60 + m));
@@ -684,7 +873,7 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
             </div>
             <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-sm shrink-0">
               <button onClick={() => setCurrentWeek(Math.max(1, currentWeek - 1))} className="p-1 sm:p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition"><ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 rotate-90" /></button>
-              <span className="font-bold text-slate-700 w-12 sm:w-16 text-center text-xs sm:text-sm">第 {currentWeek} 周</span>
+              <span className="font-bold text-slate-700 min-w-[80px] sm:min-w-[120px] text-center text-xs sm:text-sm truncate px-1">{currentWeekInfo.label}</span>
               <button onClick={() => setCurrentWeek(currentWeek + 1)} className="p-1 sm:p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition"><ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
             </div>
           </div>
@@ -770,17 +959,16 @@ export const CourseView = ({ userId, todos, countdowns, planBlocks, timeLogs }: 
                       <div key={`grid-col-${i}`} className="absolute h-full border-l border-slate-200/60" style={{ left: `${i * (100/7)}%` }} />
                   ))}
 
-                  {/* 渲染课程 */}
-                  {viewMode !== 'todos' && viewMode !== 'timelogs' && viewMode !== 'plans' && viewMode !== 'pomodoros' && weekCourses.map(course => {
+                   {/* 渲染课程 */}
+                  {viewMode !== 'todos' && viewMode !== 'timelogs' && viewMode !== 'plans' && viewMode !== 'pomodoros' && courseLayouts.map(({ course, left, width }) => {
                     const sh = Math.floor(course.start_time / 100);
                     const sm = course.start_time % 100;
                     const eh = Math.floor(course.end_time / 100);
                     const em = course.end_time % 100;
                     const top = getTopPercent(sh, sm);
                     const height = getHeightPercent(sh, sm, eh, em);
-                    const left = (course.weekday - 1) * (100 / 7);
                     return (
-                        <div key={`c-${course.id}`} className="absolute" style={{ top: `${top}%`, height: `${height}%`, left: `${left}%`, width: `${100/7}%`, padding: '1px' }}>
+                        <div key={`c-${course.id}`} className="absolute" style={{ top: `${top}%`, height: `${height}%`, left: `${left}%`, width: `${width}%`, padding: '1px' }}>
                           <button
                               onClick={() => setDetailItem({ type: 'course', data: course })}
                               className="w-full h-full text-left rounded shadow-sm border border-white/20 p-0.5 sm:p-1 flex flex-col overflow-hidden text-white transition-transform hover:scale-[1.02] hover:z-20 hover:shadow-md"

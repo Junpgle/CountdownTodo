@@ -76,6 +76,15 @@ export interface CourseItem {
   start_time: number;
   end_time: number;
   week_index: number;
+  semester_id?: string;
+}
+
+export interface SemesterInfo {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date?: string;
+  is_current?: boolean;
 }
 
 export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'timelog' | 'pomodoro' | 'plan' | 'multi';
