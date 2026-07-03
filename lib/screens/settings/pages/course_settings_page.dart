@@ -130,6 +130,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: true,
       builder: (ctx) => AlertDialog(
         content: Row(
           children: [
@@ -221,23 +222,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       return;
     }
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('从云端获取课表'),
-        content: const Text('这将用云端课表数据覆盖本地课表。\n\n本地已有的课表数据将被替换。\n\n是否继续？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('获取')),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-
     _showLoadingDialog(context, "正在获取云端数据...");
 
     try {
@@ -301,12 +285,24 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           );
         }).toList();
 
-        await CourseService.saveCourses(_username, courses);
+        // 检测冲突并让用户选择导入模式
+        final conflicts =
+            await CourseService.detectTimeConflicts(_username, courses);
+        final ImportMode? mode =
+            await _askCloudImportMode(courses, conflicts);
+        if (mode == null) return;
+
+        if (mode == ImportMode.merge) {
+          await CourseService.mergeCoursesToSql(_username, courses);
+        } else {
+          await CourseService.saveCourses(_username, courses);
+        }
 
         if (mounted) {
           _rescheduleReminders();
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('✅ 成功从云端同步 ${courses.length} 条课程与学期设置')));
+          final modeText = mode == ImportMode.merge ? '合并' : '同步';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('✅ 成功从云端$modeText ${courses.length} 条课程与学期设置')));
         }
       } else {
         ScaffoldMessenger.of(context)
@@ -318,6 +314,187 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('❌ 发生错误: $e')));
       }
+    }
+  }
+
+  /// 云端获取时的导入模式选择
+  Future<ImportMode?> _askCloudImportMode(
+      List<CourseItem> newCourses, List<CourseItem> conflicts) async {
+    if (conflicts.isNotEmpty) {
+      // 有冲突：提示用户
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          final conflictSummary = <String, int>{};
+          for (final c in conflicts) {
+            final key = '${c.courseName} (${c.teacherName})';
+            conflictSummary[key] = (conflictSummary[key] ?? 0) + 1;
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 10),
+                Text('检测到时间冲突'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '以下 ${conflictSummary.length} 门课程与云端课表存在时间冲突，导入后将被覆盖：',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  ...conflictSummary.entries.map((e) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.circle,
+                                size: 8, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${e.key}${e.value > 1 ? " (${e.value}节)" : ""}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '不冲突的课程将保留。',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('继续导入'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) return null;
+      return ImportMode.merge;
+    } else {
+      // 无冲突：让用户选择
+      final mode = await showDialog<ImportMode>(
+        context: context,
+        builder: (ctx) {
+          final colorScheme = Theme.of(ctx).colorScheme;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.cloud_download_outlined),
+                SizedBox(width: 10),
+                Text('选择获取方式'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.pop(ctx, ImportMode.replace),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.swap_horiz_rounded,
+                            color: colorScheme.secondary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('替换本地课表',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              Text(
+                                '清除本地课表，仅保留云端数据',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.pop(ctx, ImportMode.merge),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.primary),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.merge_rounded,
+                            color: colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('与本地课表共存',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary)),
+                              const SizedBox(height: 4),
+                              Text(
+                                '合并云端和本地课表，适用于不同学期',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+            ],
+          );
+        },
+      );
+
+      return mode;
     }
   }
 

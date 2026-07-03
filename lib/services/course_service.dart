@@ -106,11 +106,61 @@ class CourseService {
     await prefs.remove(_keyCourseData);
   }
 
+  // ================= 冲突检测与合并逻辑 =================
+
+  /// 检测新课程与现有课程的时间冲突
+  /// 返回与新课程存在时间冲突的旧课程列表
+  /// 冲突定义：同一天（date 相同）且时间段有重叠
+  static Future<List<CourseItem>> detectTimeConflicts(
+      String username, List<CourseItem> newCourses) async {
+    final existingCourses = await getAllCourses(username);
+    if (existingCourses.isEmpty) return [];
+
+    // 用 date（具体日期）判断冲突，而不是 weekIndex
+    // 这样不同学期的课表不会误判为冲突
+    final newDates = newCourses.map((c) => c.date).toSet();
+
+    final conflicts = <CourseItem>[];
+    for (final newCourse in newCourses) {
+      for (final existing in existingCourses) {
+        // 同一天、时间段有重叠
+        if (existing.date == newCourse.date &&
+            existing.startTime < newCourse.endTime &&
+            existing.endTime > newCourse.startTime) {
+          conflicts.add(existing);
+        }
+      }
+    }
+    return conflicts;
+  }
+
+  /// 合并新旧课程写入数据库
+  /// 策略：按 uuid 去重，新课程覆盖同 uuid 的旧课程，其余旧课程保留
+  static Future<void> mergeCoursesToSql(
+      String username, List<CourseItem> newCourses) async {
+    final existingCourses = await getAllCourses(username);
+
+    // 按 uuid 索引旧课程
+    final mergedMap = <String, CourseItem>{};
+    for (final c in existingCourses) {
+      mergedMap[c.uuid] = c;
+    }
+    // 新课程覆盖同 uuid 的旧课程
+    for (final c in newCourses) {
+      mergedMap[c.uuid] = c;
+    }
+
+    final mergedCourses = mergedMap.values.toList();
+    await saveCourses(username, mergedCourses);
+    debugPrint(
+        "✅ [Course] 合并保存成功: 旧 ${existingCourses.length} 条 + 新 ${newCourses.length} 条 -> 合并后 ${mergedCourses.length} 条");
+  }
+
   // ================= 导入与解析逻辑 =================
 
   // 1. 从字符串导入课表 (合工大)
   static Future<bool> importScheduleFromJson(String username, String jsonString,
-      {DateTime? semesterStart}) async {
+      {DateTime? semesterStart, bool merge = false}) async {
     // 调用提取的 parser 进行校验
     if (!HfutScheduleParser.isValid(jsonString)) {
       return false;
@@ -121,8 +171,11 @@ class CourseService {
           HfutScheduleParser.parse(jsonString, semesterStart: semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 保存标准格式
-      await saveCourses(username, parsedCourses);
+      if (merge) {
+        await mergeCoursesToSql(username, parsedCourses);
+      } else {
+        await saveCourses(username, parsedCourses);
+      }
       return true;
     } catch (e) {
       print("解析工大课表出错: $e");
@@ -132,14 +185,18 @@ class CourseService {
 
   // 2. 导入厦大（本部）课表
   static Future<bool> importXmuScheduleFromHtml(
-      String username, String htmlString, DateTime semesterStart) async {
+      String username, String htmlString, DateTime semesterStart,
+      {bool merge = false}) async {
     try {
       List<CourseItem> parsedCourses =
           XmuScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 保存标准格式
-      await saveCourses(username, parsedCourses);
+      if (merge) {
+        await mergeCoursesToSql(username, parsedCourses);
+      } else {
+        await saveCourses(username, parsedCourses);
+      }
       return true;
     } catch (e) {
       print("解析厦大课表出错: $e");
@@ -149,14 +206,18 @@ class CourseService {
 
   // 🚀 2.1 导入厦大嘉庚学院课表
   static Future<bool> importXujcScheduleFromHtml(
-      String username, String htmlString, DateTime semesterStart) async {
+      String username, String htmlString, DateTime semesterStart,
+      {bool merge = false}) async {
     try {
       List<CourseItem> parsedCourses =
           XujcScheduleParser.parseHtml(htmlString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 保存标准格式
-      await saveCourses(username, parsedCourses);
+      if (merge) {
+        await mergeCoursesToSql(username, parsedCourses);
+      } else {
+        await saveCourses(username, parsedCourses);
+      }
       return true;
     } catch (e) {
       print("解析嘉庚课表出错: $e");
@@ -166,14 +227,18 @@ class CourseService {
 
   // 🚀 3. 新增：导入西电 ics 课表
   static Future<bool> importXidianScheduleFromIcs(
-      String username, String icsString, DateTime semesterStart) async {
+      String username, String icsString, DateTime semesterStart,
+      {bool merge = false}) async {
     try {
       List<CourseItem> parsedCourses =
           XidianScheduleParser.parseIcs(icsString, semesterStart);
       if (parsedCourses.isEmpty) return false;
 
-      // 保存标准格式
-      await saveCourses(username, parsedCourses);
+      if (merge) {
+        await mergeCoursesToSql(username, parsedCourses);
+      } else {
+        await saveCourses(username, parsedCourses);
+      }
       return true;
     } catch (e) {
       print("解析西电课表出错: $e");
@@ -195,8 +260,8 @@ class CourseService {
   // 🚀 5. 新增：导入正方教务系统课表
   static Future<bool> importZfSoftScheduleFromHtml(
       String username, String htmlString, DateTime semesterStart,
-      {Map<int, Map<String, int>>? customTimes} // 🚀 适配：接收用户自定义的作息表
-      ) async {
+      {Map<int, Map<String, int>>? customTimes,
+      bool merge = false}) async {
     try {
       // 调用解析器，并传入可能的自定义时间配置
       List<CourseItem> parsedCourses = ZfSoftScheduleParser.parseHtml(
@@ -206,8 +271,11 @@ class CourseService {
       );
       if (parsedCourses.isEmpty) return false;
 
-      // 保存到本地存储
-      await saveCourses(username, parsedCourses);
+      if (merge) {
+        await mergeCoursesToSql(username, parsedCourses);
+      } else {
+        await saveCourses(username, parsedCourses);
+      }
       return true;
     } catch (e) {
       print("解析正方教务课表出错: $e");
