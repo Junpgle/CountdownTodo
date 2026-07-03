@@ -367,27 +367,27 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         } catch (e) {}
       }
 
+      if (mounted) {
+        setState(() => _initializing = false);
+        widget.onReady?.call();
+        _showLocalFloat();
+      }
+
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
         } on TimeoutException catch (_) {}
       } catch (e) {}
 
-      if (mounted) {
-        setState(() => _initializing = false);
-        widget.onReady?.call();
-        _showLocalFloat();
-
-        if (_userId.isNotEmpty && _deviceId.isNotEmpty) {
-          debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() start');
+      if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
+        debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() start');
+        try {
           try {
-            try {
-              await _syncService
-                  .forceReconnect(_userId, 'flutter_$_deviceId')
-                  .timeout(const Duration(seconds: 5));
-            } on TimeoutException catch (_) {}
-          } catch (e) {}
-        }
+            await _syncService
+                .forceReconnect(_userId, 'flutter_$_deviceId')
+                .timeout(const Duration(seconds: 5));
+          } on TimeoutException catch (_) {}
+        } catch (e) {}
       }
     } finally {
       _isInitProcessing = false;
