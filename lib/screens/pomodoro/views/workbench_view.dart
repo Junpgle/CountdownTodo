@@ -2474,6 +2474,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               if (isIdle) ...[
                 const Spacer(),
                 _buildIdleMiddle(),
+                const SizedBox(height: 32),
+                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
                 const Spacer(),
               ] else ...[
                 const Spacer(),
@@ -2491,10 +2493,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 ),
                 const SizedBox(height: 12),
                 _buildNoteButton(contentColor),
-                const Spacer(flex: 2),
+                const SizedBox(height: 32),
+                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+                const Spacer(),
               ],
-              _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
-              const SizedBox(height: 12),
             ],
           ),
         ),
