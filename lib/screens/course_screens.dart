@@ -4383,26 +4383,42 @@ class PomodoroDetailScreen extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: AppDetailInfoCard(
-                      icon: Icons.label,
-                      title: '标签',
-                      value: tagInfo,
-                      valueColor: tagInfo != '无标签' ? colorScheme.primary : null,
-                      onTap: tagInfo != '无标签'
-                          ? () {
-                              final tag = tags.cast<PomodoroTag?>().firstWhere(
-                                  (t) => record.tagUuids.contains(t?.uuid),
-                                  orElse: () => null);
-                              if (tag != null) {
-                                Navigator.push(
-                                  context,
-                                  PageTransitions.material(
-                                    builder: (_) => PomodoroTagDetailScreen(tag: tag),
-                                  ),
-                                );
+                    child: Builder(
+                      builder: (cardCtx) => AppDetailInfoCard(
+                        icon: Icons.label,
+                        title: '标签',
+                        value: tagInfo,
+                        valueColor: tagInfo != '无标签' ? colorScheme.primary : null,
+                        onTap: tagInfo != '无标签'
+                            ? () {
+                                final tag = tags.cast<PomodoroTag?>().firstWhere(
+                                    (t) => record.tagUuids.contains(t?.uuid),
+                                    orElse: () => null);
+                                if (tag != null) {
+                                  final renderBox = cardCtx.findRenderObject() as RenderBox?;
+                                  if (renderBox != null) {
+                                    final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                                    Navigator.push(
+                                      context,
+                                      ContainerTransformRoute(
+                                        page: PomodoroTagDetailScreen(tag: tag),
+                                        sourceRect: rect,
+                                        sourceColor: colorScheme.surfaceContainer,
+                                        sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+                                      ),
+                                    );
+                                  } else {
+                                    Navigator.push(
+                                      context,
+                                      PageTransitions.slideHorizontal(
+                                        PomodoroTagDetailScreen(tag: tag),
+                                      ),
+                                    );
+                                  }
+                                }
                               }
-                            }
-                          : null,
+                            : null,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -4420,30 +4436,44 @@ class PomodoroDetailScreen extends StatelessWidget {
               ),
             ),
             if (record.todoTitle != null && record.todoTitle!.isNotEmpty)
-              AppDetailWideCard(
-                icon: Icons.task_alt,
-                title: '关联待办',
-                value: record.todoTitle!,
-                isLink: true,
-                onTap: () async {
-                  final username = await StorageService.getLoginSession();
-                  if (username == null) return;
-                  if (!context.mounted) return;
+              Builder(
+                builder: (cardCtx) => AppDetailWideCard(
+                  icon: Icons.task_alt,
+                  title: '关联待办',
+                  value: record.todoTitle!,
+                  isLink: true,
+                  onTap: () async {
+                    final username = await StorageService.getLoginSession();
+                    if (username == null) return;
+                    if (!context.mounted) return;
 
-                  final allTodos = await StorageService.getTodos(username);
-                  final todo = allTodos.where((t) => t.id == record.todoUuid).firstOrNull;
-                  
-                  if (todo != null && context.mounted) {
-                    Navigator.push(
-                      context,
-                      PageTransitions.material(
-                        builder: (_) => TodoDetailScreen(todo: todo),
-                      ),
-                    );
-                  } else if (context.mounted) {
-                    AppSnackBars.error(context, "无法找到该待办任务");
-                  }
-                },
+                    final allTodos = await StorageService.getTodos(username);
+                    final todo = allTodos.where((t) => t.id == record.todoUuid).firstOrNull;
+                    
+                    if (todo != null && context.mounted) {
+                      final renderBox = cardCtx.findRenderObject() as RenderBox?;
+                      if (renderBox != null) {
+                        final rect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
+                        Navigator.push(
+                          context,
+                          ContainerTransformRoute(
+                            page: TodoDetailScreen(todo: todo),
+                            sourceRect: rect,
+                            sourceColor: colorScheme.surfaceContainer,
+                            sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)),
+                        );
+                      }
+                    } else if (context.mounted) {
+                      AppSnackBars.error(context, "无法找到该待办任务");
+                    }
+                  },
+                ),
               ),
             Padding(
               padding: const EdgeInsets.only(bottom: 12),

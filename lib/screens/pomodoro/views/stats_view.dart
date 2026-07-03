@@ -980,9 +980,12 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         sd(() {
                           session.endTime =
                               newEnd.toUtc().millisecondsSinceEpoch;
-                          session.actualDuration =
+                          final totalSeconds =
                               ((session.endTime! - session.startTime) / 1000)
                                   .round();
+                          session.actualDuration =
+                              (totalSeconds - (session.totalPauseSeconds ?? 0))
+                                  .clamp(0, totalSeconds);
                         });
                       }
                     },
