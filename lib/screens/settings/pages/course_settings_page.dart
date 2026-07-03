@@ -579,7 +579,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             _semesters = updatedSemesters;
           });
           
-          debugPrint("✅ [Settings] 同步更新学期放假时间: ${updatedSemester.name} -> ${DateFormat('yyyy/MM/dd').format(picked)}");
         }
       }
 
@@ -1391,9 +1390,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         semesterEndMs: _semesterEnd?.millisecondsSinceEpoch,
         semesters: semestersData,
       );
-      debugPrint("✅ [Settings] 学期数据已同步到服务器");
     } catch (e) {
-      debugPrint("⚠️ [Settings] 学期数据同步失败: $e");
     }
   }
 

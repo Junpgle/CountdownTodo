@@ -124,7 +124,7 @@ class IslandSlotProvider {
           return const IslandSlotData.empty();
       }
     } catch (e) {
-      debugPrint('[IslandSlotProvider] Error getting slot $type: $e');
+      // debugPrint('[IslandSlotProvider] Error getting slot $type: $e');
       return const IslandSlotData.empty();
     }
   }
@@ -325,11 +325,11 @@ class IslandSlotProvider {
     try {
       final username = await StorageService.getLoginSession() ?? 'default';
       final cds = await StorageService.getCountdowns(username);
-      debugPrint('[IslandSlotProvider] getCountdowns: ${cds.length} items');
+      // debugPrint('[IslandSlotProvider] getCountdowns: ${cds.length} items');
       final now = DateTime.now();
       final active =
           cds.where((c) => !c.isDeleted && c.targetDate.isAfter(now)).toList();
-      debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
+      // debugPrint('[IslandSlotProvider] active countdowns: ${active.length}');
       active.sort((a, b) => a.targetDate.compareTo(b.targetDate));
 
       if (active.isNotEmpty) {
@@ -337,7 +337,7 @@ class IslandSlotProvider {
         final days = c.targetDate.difference(now).inDays;
         final info = '$days天';
         final display = isLeft ? '[$info] ${c.title}' : '${c.title} [$info]';
-        debugPrint('[IslandSlotProvider] countdown display: $display');
+        // debugPrint('[IslandSlotProvider] countdown display: $display');
         return IslandSlotData(
           display: display,
           type: 'countdown',
@@ -347,7 +347,7 @@ class IslandSlotProvider {
         );
       }
     } catch (e) {
-      debugPrint('[IslandSlotProvider] countdown error: $e');
+      // debugPrint('[IslandSlotProvider] countdown error: $e');
     }
     return const IslandSlotData(display: '', type: 'countdown');
   }

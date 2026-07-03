@@ -341,7 +341,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         .where((c) => c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
         .toList();
     
-    debugPrint("📚 [CourseScreen] 当前周次: $_currentWeek, 学期: $targetSemesterId, 相对周次: $relativeWeek, 课程数: ${_weekCourses.length}");
   }
 
   void _checkCoachMarks() async {
@@ -530,13 +529,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     final spanDays = dayEnd.difference(dayStart).inDays;
 
     if (spanDays < 0) {
-      debugPrint(
-          '[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
+      // debugPrint(
+      //     '[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
       return;
     }
     if (spanDays > _maxExpandedSpanDays) {
-      debugPrint(
-          '[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
+      // debugPrint(
+      //     '[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
       return;
     }
 

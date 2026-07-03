@@ -203,7 +203,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           break;
         } catch (e) {
           lastError = e.toString();
-          debugPrint("重试第$attempt次失败: $e");
+          // debugPrint("重试第$attempt次失败: $e");
 
           if (attempt <= maxRetries) {
             await Future.delayed(Duration(seconds: 2 * attempt));
@@ -601,10 +601,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         persistentImagePath =
             await persistImagePath(widget.imagePath!, 'analysis_images');
         if (persistentImagePath != null) {
-          debugPrint('📸 图片已持久化到: $persistentImagePath');
+          // debugPrint('📸 图片已持久化到: $persistentImagePath');
         }
       } catch (e) {
-        debugPrint('❌ 持久化图片失败: $e');
+        // debugPrint('❌ 持久化图片失败: $e');
       }
     }
 

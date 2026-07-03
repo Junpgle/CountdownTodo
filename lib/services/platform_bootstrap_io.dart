@@ -41,7 +41,7 @@ class PlatformBootstrap {
 
   static Future<void> initDatabaseFactory() async {
     if (AppPlatform.isDesktop) {
-      debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
+      // debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
@@ -78,7 +78,7 @@ class PlatformBootstrap {
         try {
           await FloatWindowService.init();
         } catch (e) {
-          debugPrint('FloatWindowService init failed: $e');
+          // debugPrint('FloatWindowService init failed: $e');
         }
       }
     });

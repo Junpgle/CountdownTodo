@@ -100,7 +100,7 @@ class PomodoroStorage {
         }
 
         if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
+//           debugPrint("🚀 发现未迁移专注记录，正在执行迁移...");
           final legacyItems = <TimeLogItem>[];
           for (var e in legacyJsonList) {
             try {
@@ -110,7 +110,7 @@ class PomodoroStorage {
           await saveMigratedTimeLogs(username, legacyItems, sync: false);
           await prefs.remove("${_timeLogsKey}_$username");
           await prefs.remove(_timeLogsKey);
-          debugPrint("✅ 专注记录迁移完成并已物理清理。");
+//           debugPrint("✅ 专注记录迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
       } else {
@@ -129,7 +129,7 @@ class PomodoroStorage {
           }
           if (legacyItems.isNotEmpty) {
             await saveMigratedTimeLogs(username, legacyItems, sync: false);
-            debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
+//             debugPrint("✅ 专注记录从 Prefs 修复回 SQL: ${legacyItems.length} 条");
           }
         }
       }
@@ -144,7 +144,7 @@ class PomodoroStorage {
 
       return maps.map(_timeLogFromDbMap).toList();
     } catch (e) {
-      debugPrint("⚠️ TimeLogs SQL 异常: $e");
+//       debugPrint("⚠️ TimeLogs SQL 异常: $e");
       final list = prefs.getStringList("${_timeLogsKey}_$username") ?? [];
       return list.map((e) => TimeLogItem.fromJson(jsonDecode(e))).toList();
     }

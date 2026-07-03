@@ -58,18 +58,18 @@ void registerCloseDialogCallback(CloseDialogCallback callback) {
 }
 
 Future<bool> showCloseDialog() async {
-  debugPrint('[Main] showCloseDialog requested');
+    // debugPrint('[Main] showCloseDialog requested');
   if (_onShowCloseDialog != null) {
     try {
       final result = await _onShowCloseDialog!();
-      debugPrint('[Main] Dialog result: $result');
+      // debugPrint('[Main] Dialog result: $result');
       return result;
     } catch (e) {
-      debugPrint('[Main] Error in close dialog callback: $e');
+      // debugPrint('[Main] Error in close dialog callback: $e');
     }
   }
-  debugPrint(
-      '[Main] No callback registered or error occurred, allowing close by default');
+  // debugPrint(
+  //     '[Main] No callback registered or error occurred, allowing close by default');
   return true;
 }
 
@@ -81,7 +81,7 @@ Future<T?> _runStartupTask<T>(
   try {
     return await future.timeout(timeout);
   } catch (e) {
-    debugPrint('[Main] $label startup skipped: $e');
+    // debugPrint('[Main] $label startup skipped: $e');
     return null;
   }
 }
@@ -222,33 +222,33 @@ class _MyAppState extends State<MyApp> {
         });
       }
     } catch (e) {
-      debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
+      // debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
   }
 
   Future<bool> _showCloseConfirmDialog() async {
-    debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
+    // debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
 
     if (!mounted) {
-      debugPrint('[Main] Widget not mounted, falling back to native dialog');
+      // debugPrint('[Main] Widget not mounted, falling back to native dialog');
       return true;
     }
 
     final context = appNavigatorKey.currentContext;
     if (context == null) {
-      debugPrint(
-          '[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
+      // debugPrint(
+      //     '[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
       return true;
     }
 
     // 确保 Navigator 可用
     if (!context.mounted) {
-      debugPrint('[Main] Context not mounted, falling back to native dialog');
+      // debugPrint('[Main] Context not mounted, falling back to native dialog');
       return true;
     }
 
     try {
-      debugPrint('[Main] Attempting to show Flutter dialog...');
+      // debugPrint('[Main] Attempting to show Flutter dialog...');
       final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -258,14 +258,14 @@ class _MyAppState extends State<MyApp> {
           actions: [
             TextButton(
               onPressed: () {
-                debugPrint('[Main] User chose: minimize');
+                // debugPrint('[Main] User chose: minimize');
                 Navigator.of(dialogContext).pop(false);
               },
               child: const Text('最小化到托盘'),
             ),
             TextButton(
               onPressed: () {
-                debugPrint('[Main] User chose: exit');
+                // debugPrint('[Main] User chose: exit');
                 Navigator.of(dialogContext).pop(true);
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -276,14 +276,14 @@ class _MyAppState extends State<MyApp> {
       ).timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
+          // debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
           return false;
         },
       );
-      debugPrint('[Main] Dialog result: $result');
+      // debugPrint('[Main] Dialog result: $result');
       return result ?? false;
     } catch (e) {
-      debugPrint('[Main] Dialog error (will use native fallback): $e');
+      // debugPrint('[Main] Dialog error (will use native fallback): $e');
       rethrow; // 抛出异常让 WindowService 使用原生对话框
     }
   }
@@ -338,7 +338,7 @@ class _MyAppState extends State<MyApp> {
         });
       }
     } catch (e) {
-      debugPrint('[Main] 初始化失败: $e');
+      // debugPrint('[Main] 初始化失败: $e');
       if (mounted) {
         setState(() {
           _isChecking = false;
@@ -425,7 +425,7 @@ class _MyAppState extends State<MyApp> {
       await SplashService.fetchAndCacheTodayContent();
       await SplashService.prefetchTomorrowContent();
     } catch (e) {
-      debugPrint('[Main] 开屏内容预取失败: $e');
+      // debugPrint('[Main] 开屏内容预取失败: $e');
     }
   }
 
@@ -472,15 +472,15 @@ class _MyAppState extends State<MyApp> {
         },
         onDeviceDisconnected: () {},
         onMessageReceived: (data) {
-          debugPrint('[Band] 收到消息: $data');
+          // debugPrint('[Band] 收到消息: $data');
         },
         onPermissionGranted: (permissions) {
-          debugPrint('[Band] 权限已授予: $permissions');
+          // debugPrint('[Band] 权限已授予: $permissions');
           BandSyncService.registerListener();
         },
       );
     } catch (e) {
-      debugPrint('[Band] 初始化失败: $e');
+      // debugPrint('[Band] 初始化失败: $e');
     }
 
     // 设置同步数据提供者
@@ -490,7 +490,7 @@ class _MyAppState extends State<MyApp> {
     _bandPomodoroSub =
         BandSyncService.onBandPomodoroAction.listen((actionData) {
       final action = actionData['action']?.toString();
-      debugPrint('[Band] 番茄钟操作: $action');
+      // debugPrint('[Band] 番茄钟操作: $action');
       if (action == 'finish' || action == 'abandon') {
         _handleBandPomodoroAction(action!);
       }
@@ -584,15 +584,15 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _handleBandPomodoroAction(String action) async {
-    debugPrint('[Band] _handleBandPomodoroAction called: $action');
+    // debugPrint('[Band] _handleBandPomodoroAction called: $action');
     final runState = await PomodoroService.loadRunState();
-    debugPrint('[Band] loadRunState result: ${runState?.phase}');
+    // debugPrint('[Band] loadRunState result: ${runState?.phase}');
     if (runState == null || runState.phase == PomodoroPhase.idle) {
-      debugPrint('[Band] 无运行中的番茄钟，忽略操作: $action');
+      // debugPrint('[Band] 无运行中的番茄钟，忽略操作: $action');
       return;
     }
 
-    debugPrint('[Band] 处理手环操作: $action');
+    // debugPrint('[Band] 处理手环操作: $action');
     if (action == 'finish') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -604,11 +604,11 @@ class _MyAppState extends State<MyApp> {
         status: PomodoroRecordStatus.completed,
         endMs: now,
       );
-      debugPrint('[Band] Adding record: ${actualSeconds}s');
+      // debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
-      debugPrint('[Band] Clearing run state');
+      // debugPrint('[Band] Clearing run state');
       await PomodoroService.clearRunState();
-      debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
+      // debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -620,12 +620,12 @@ class _MyAppState extends State<MyApp> {
           status: PomodoroRecordStatus.interrupted,
           endMs: now,
         );
-        debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
+        // debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
         await PomodoroService.addRecord(record);
       }
-      debugPrint('[Band] Clearing run state (abandon)');
+      // debugPrint('[Band] Clearing run state (abandon)');
       await PomodoroService.clearRunState();
-      debugPrint('[Band] 番茄钟已放弃');
+      // debugPrint('[Band] 番茄钟已放弃');
     }
   }
 
@@ -646,7 +646,7 @@ class _MyAppState extends State<MyApp> {
     try {
       await PlatformBootstrap.initMobileDownloader();
     } catch (e) {
-      debugPrint("Downloader init failed: $e");
+      // debugPrint("Downloader init failed: $e");
     }
 
     if (AppPlatform.isDesktop) {

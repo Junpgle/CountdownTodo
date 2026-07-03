@@ -197,7 +197,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         });
       }
     } catch (e) {
-      debugPrint('[AddTodoScreen] Failed to load todo groups: $e');
+      // debugPrint('[AddTodoScreen] Failed to load todo groups: $e');
     }
   }
 
@@ -262,7 +262,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
       return targetPath;
     } catch (e) {
-      debugPrint('❌ 持久化待办图片失败: $e');
+      // debugPrint('❌ 持久化待办图片失败: $e');
       return null;
     }
   }

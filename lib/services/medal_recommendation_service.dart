@@ -1970,7 +1970,7 @@ class MedalRecommendationService {
         recommendReasons: reasons,
       );
     } catch (e) {
-      debugPrint('ML recommendation failed, falling back: $e');
+      // debugPrint('ML recommendation failed, falling back: $e');
       final fallback = recommendNext(allProgresses);
       return MedalRecommendation(
         topRecommendations: fallback,

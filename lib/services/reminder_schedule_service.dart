@@ -218,7 +218,7 @@ class ReminderScheduleService {
           });
         }
       } catch (e) {
-        debugPrint('[ReminderSchedule] 课程解析出错: $e');
+        // debugPrint('[ReminderSchedule] 课程解析出错: $e');
       }
     }
 

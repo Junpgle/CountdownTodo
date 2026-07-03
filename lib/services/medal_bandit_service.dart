@@ -35,7 +35,7 @@ class MedalBanditService {
         result[id] = sampleBeta(alpha, beta);
       }
     } catch (e) {
-      debugPrint('Bandit sampleAll failed: $e');
+      // debugPrint('Bandit sampleAll failed: $e');
       // Fallback: uniform samples
       for (final id in medalIds) {
         result[id] = _rng.nextDouble();
@@ -131,7 +131,7 @@ class MedalBanditService {
             whereArgs: [medalId]);
       }
     } catch (e) {
-      debugPrint('Bandit updateOutcomes failed: $e');
+      // debugPrint('Bandit updateOutcomes failed: $e');
     }
   }
 
@@ -174,7 +174,7 @@ class MedalBanditService {
         }
       }
     } catch (e) {
-      debugPrint('Bandit recordImpressions failed: $e');
+      // debugPrint('Bandit recordImpressions failed: $e');
     }
   }
 

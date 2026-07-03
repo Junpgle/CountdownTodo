@@ -42,7 +42,7 @@ class SplashService {
 
       final Map<String, dynamic>? dayConfig = config[tomorrowStr];
       if (dayConfig == null) {
-        debugPrint('[Splash] 明天 ($tomorrowStr) 暂无开屏内容');
+        // debugPrint('[Splash] 明天 ($tomorrowStr) 暂无开屏内容');
         return;
       }
 
@@ -72,7 +72,7 @@ class SplashService {
             _prefetchedDurationMs, dayConfig['duration_ms'] as int);
       }
     } catch (e) {
-      debugPrint('[Splash] 预取失败: $e');
+      // debugPrint('[Splash] 预取失败: $e');
     }
   }
 
@@ -90,7 +90,7 @@ class SplashService {
 
       final Map<String, dynamic>? dayConfig = config[todayStr];
       if (dayConfig == null) {
-        debugPrint('[Splash] 今天 ($todayStr) 暂无开屏内容');
+        // debugPrint('[Splash] 今天 ($todayStr) 暂无开屏内容');
         return;
       }
 
@@ -119,7 +119,7 @@ class SplashService {
         await prefs.setInt(_cachedDurationMs, dayConfig['duration_ms'] as int);
       }
     } catch (e) {
-      debugPrint('[Splash] 获取今天内容失败: $e');
+      // debugPrint('[Splash] 获取今天内容失败: $e');
     }
   }
 
@@ -211,7 +211,7 @@ class SplashService {
       }
       return null;
     } catch (e) {
-      debugPrint('[Splash] 获取配置失败: $e');
+      // debugPrint('[Splash] 获取配置失败: $e');
       return null;
     }
   }
@@ -229,7 +229,7 @@ class SplashService {
       }
       return null;
     } catch (e) {
-      debugPrint('[Splash] 图片下载失败: $e');
+      // debugPrint('[Splash] 图片下载失败: $e');
       return null;
     }
   }

@@ -682,7 +682,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroTag.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Tag SQL 读取异常: $e");
+      // debugPrint("⚠️ Tag SQL 读取异常: $e");
     }
 
     // 2. 迁移逻辑
@@ -698,7 +698,7 @@ class PomodoroService {
       }
 
       if (s != null) {
-        debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
+        // debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
           final legacyTags =
@@ -724,7 +724,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroTag.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Tag SQL 读取异常: $e");
+      // debugPrint("⚠️ Tag SQL 读取异常: $e");
     }
     return [];
   }
@@ -1056,15 +1056,15 @@ class PomodoroService {
           pb.markAsChanged();
           // 4. 保存
           await StorageService.savePlanBlocks(username, [pb]);
-          debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
+          // debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
         }
       } catch (e) {
-        debugPrint('[PomodoroService] 规划块联动失败: $e');
+        // debugPrint('[PomodoroService] 规划块联动失败: $e');
       }
     }
 
-    debugPrint(
-        '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
+    // debugPrint(
+    //     '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
 
     // 3. 立即尝试同步
     if (!isSyncSource) {
@@ -1088,7 +1088,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");
+      // debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");
     }
 
     // 逃生通道：Dart 内存过滤
@@ -1149,9 +1149,9 @@ class PomodoroService {
         }
       }
 
-      debugPrint(
-        '[PomodoroService] syncRecordsFromCloud forceFullSync=$forceFullSync, fromMs=$effectiveFromMs',
-      );
+      // debugPrint(
+      //   '[PomodoroService] syncRecordsFromCloud forceFullSync=$forceFullSync, fromMs=$effectiveFromMs',
+      // );
 
       final recordsRaw = await ApiService.fetchPomodoroSessions(
         fromMs: effectiveFromMs,
@@ -1274,7 +1274,7 @@ class PomodoroService {
 
       return hasChange;
     } catch (e) {
-      debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
+      // debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
       return false;
     }
   }
@@ -1410,9 +1410,9 @@ class PomodoroService {
 
       final dirty = dedup.values.toList();
 
-      debugPrint(
-        '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
-      );
+      // debugPrint(
+      //   '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
+      // );
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
@@ -1434,7 +1434,7 @@ class PomodoroService {
         }
       }
     } catch (e) {
-      debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
+      // debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
     }
   }
 
@@ -1463,7 +1463,7 @@ class PomodoroService {
       }
 
       if (s != null) {
-        debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
+        // debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
           final legacyRecords =
@@ -1472,12 +1472,12 @@ class PomodoroService {
             await _saveRecordsToSql(legacyRecords);
             await prefs.remove(scopedKey);
             await prefs.remove(_keyRecords);
-            debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
+            // debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
           }
           await prefs.setBool(migrationKey, true);
           return legacyRecords;
         } catch (e) {
-          debugPrint("❌ [Pomodoro] 迁移失败: $e");
+          // debugPrint("❌ [Pomodoro] 迁移失败: $e");
         }
       }
     }

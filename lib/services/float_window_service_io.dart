@@ -80,7 +80,7 @@ class FloatWindowService {
     if (_initialized) return;
     _initialized = true;
     if (!_isRealIslandEnabled) {
-      debugPrint('[FloatWindow] Real island disabled on Windows debug build.');
+      // debugPrint('[FloatWindow] Real island disabled on Windows debug build.');
       try {
         await IslandManager().destroyCachedIsland('island-1');
       } catch (_) {}
@@ -102,12 +102,12 @@ class FloatWindowService {
   // ── Clipboard Integration ──────────────────────────────────────────────
 
   static void _initClipboardListener() {
-    debugPrint('[FloatWindow] _initClipboardListener called');
+    // debugPrint('[FloatWindow] _initClipboardListener called');
     if (_clipboardService != null) return;
     _clipboardService = ClipboardService();
     _clipboardService!.startListening();
     _clipboardSub = _clipboardService!.onUrlCopied.listen((url) {
-      debugPrint('[FloatWindow] URL received from stream: $url');
+      // debugPrint('[FloatWindow] URL received from stream: $url');
       if (url == _lastCopiedUrl) return;
       _lastCopiedUrl = url;
       _showCopiedLinkIsland(url);
@@ -118,7 +118,7 @@ class FloatWindowService {
     if (!_isRealIslandEnabled && !_isDebugOverlayEnabled) return;
     try {
       final displayUrl = _truncateUrlForDisplay(url);
-      debugPrint('[FloatWindow] Attempting to send payload for: $displayUrl');
+      // debugPrint('[FloatWindow] Attempting to send payload for: $displayUrl');
 
       final payload = {
         'state': 'copied_link',
@@ -130,31 +130,31 @@ class FloatWindowService {
 
       if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
         debugPayload.value = payload;
-        debugPrint(
-            '[FloatWindow] Routed copied_link payload to debug overlay.');
+        // debugPrint(
+        //     '[FloatWindow] Routed copied_link payload to debug overlay.');
         return;
       }
 
       var winId = IslandManager().getCachedWindowId('island-1');
-      debugPrint('[FloatWindow] island-1 windowId: $winId');
+      // debugPrint('[FloatWindow] island-1 windowId: $winId');
 
       if (winId == null) {
-        debugPrint('[FloatWindow] Island not found, attempting to create');
+        // debugPrint('[FloatWindow] Island not found, attempting to create');
         winId = await IslandManager().createIsland('island-1');
-        debugPrint('[FloatWindow] Created island, windowId: $winId');
+        // debugPrint('[FloatWindow] Created island, windowId: $winId');
         if (winId == null) {
-          debugPrint('[FloatWindow] Failed to create island');
+          // debugPrint('[FloatWindow] Failed to create island');
           return;
         }
       }
 
       final sent =
           await IslandManager().sendStructuredPayload('island-1', payload);
-      debugPrint(
-          '[FloatWindow] Sent copied_link payload: $displayUrl, success: $sent');
+      // debugPrint(
+      //     '[FloatWindow] Sent copied_link payload: $displayUrl, success: $sent');
     } catch (e, stackTrace) {
-      debugPrint(
-          '[FloatWindow] Failed to show copied link island: $e\n$stackTrace');
+      // debugPrint(
+      //     '[FloatWindow] Failed to show copied link island: $e\n$stackTrace');
     }
   }
 
@@ -204,12 +204,12 @@ class FloatWindowService {
       final winId = event['windowId']?.toString();
       final action = event['action']?.toString();
       final payload = event['payload'] as Map<String, dynamic>?;
-      debugPrint('[FloatWindow] Island action from $winId: $action');
+      // debugPrint('[FloatWindow] Island action from $winId: $action');
 
       switch (action) {
         case 'finish':
           if (isWorkbenchMounted) {
-            debugPrint('[FloatWindow] finish delegated to mounted workbench');
+            // debugPrint('[FloatWindow] finish delegated to mounted workbench');
             return;
           }
           final modifiedSecs =
@@ -218,7 +218,7 @@ class FloatWindowService {
           break;
         case 'abandon':
           if (isWorkbenchMounted) {
-            debugPrint('[FloatWindow] abandon delegated to mounted workbench');
+            // debugPrint('[FloatWindow] abandon delegated to mounted workbench');
             return;
           }
           _handleAction('abandon', 0);
@@ -237,7 +237,7 @@ class FloatWindowService {
           break;
         case 'link_opened':
           // 链接已打开，刷新岛的状态恢复到之前的数据
-          debugPrint('[FloatWindow] link_opened, refreshing island state');
+          // debugPrint('[FloatWindow] link_opened, refreshing island state');
           _refreshIslandAfterLinkOpened();
           break;
         case 'bounds_changed':
@@ -248,11 +248,11 @@ class FloatWindowService {
           }
           break;
         case 'handshake_pong':
-          debugPrint('[FloatWindow] handshake_pong from $winId');
+          // debugPrint('[FloatWindow] handshake_pong from $winId');
           break;
       }
     } catch (e) {
-      debugPrint('[FloatWindow] Failed to handle island action: $e');
+      // debugPrint('[FloatWindow] Failed to handle island action: $e');
     }
   }
 
@@ -271,9 +271,9 @@ class FloatWindowService {
 
       // 使用当前状态重新更新岛
       await update(forceReset: true);
-      debugPrint('[FloatWindow] Island state refreshed after link opened');
+      // debugPrint('[FloatWindow] Island state refreshed after link opened');
     } catch (e) {
-      debugPrint('[FloatWindow] Failed to refresh island after link: $e');
+      // debugPrint('[FloatWindow] Failed to refresh island after link: $e');
     }
   }
 
@@ -287,16 +287,16 @@ class FloatWindowService {
       if (!ids.contains(itemId)) {
         ids.add(itemId);
         await prefs.setStringList(key, ids);
-        debugPrint('[FloatWindow] Saved acknowledged reminder ID: $itemId');
+        // debugPrint('[FloatWindow] Saved acknowledged reminder ID: $itemId');
       }
     } catch (e) {
-      debugPrint('[FloatWindow] Failed to save acknowledged reminder: $e');
+      // debugPrint('[FloatWindow] Failed to save acknowledged reminder: $e');
     }
   }
 
   static Future<void> _handleRemindLater() async {
     if (!_isRealIslandEnabled) return;
-    debugPrint('[FloatWindow] _handleRemindLater called');
+    // debugPrint('[FloatWindow] _handleRemindLater called');
     try {
       await windowManager.ensureInitialized();
       await windowManager.show();
@@ -306,7 +306,7 @@ class FloatWindowService {
         _showSnoozeDialog();
       });
     } catch (e) {
-      debugPrint('[FloatWindow] Handle remind_later failed: $e');
+      // debugPrint('[FloatWindow] Handle remind_later failed: $e');
     }
   }
 
@@ -314,22 +314,22 @@ class FloatWindowService {
     if (!_isRealIslandEnabled) return;
     final context = appNavigatorKey.currentContext;
     if (context == null) {
-      debugPrint('[FloatWindow] Context is null, cannot show dialog');
+      // debugPrint('[FloatWindow] Context is null, cannot show dialog');
       return;
     }
 
     SnoozeDialog.show(context).then((minutes) async {
       if (minutes != null) {
-        debugPrint('[FloatWindow] Schedule snooze: $minutes minutes');
+        // debugPrint('[FloatWindow] Schedule snooze: $minutes minutes');
         try {
           await IslandManager().sendStructuredPayload('island-1', {
             'state': 'snooze_reminder',
             'snoozeMinutes': minutes,
           });
-          debugPrint(
-              '[FloatWindow] Sent snooze_reminder payload: $minutes min');
+          // debugPrint(
+          //     '[FloatWindow] Sent snooze_reminder payload: $minutes min');
         } catch (e) {
-          debugPrint('[FloatWindow] Failed to send snooze_reminder: $e');
+          // debugPrint('[FloatWindow] Failed to send snooze_reminder: $e');
         }
       }
     });
@@ -339,19 +339,19 @@ class FloatWindowService {
 
   static void _handleAction(String action, int secs) async {
     if (_processingAction) {
-      debugPrint('[FloatWindow] action $action ignored: already processing');
+      // debugPrint('[FloatWindow] action $action ignored: already processing');
       return;
     }
     _processingAction = true;
     final int myVersion = ++_actionVersion;
 
-    debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs');
+    // debugPrint('[FloatWindow] _handleAction: action=$action, secs=$secs');
 
     if (isWorkbenchMounted) {
       try {
         final isFocused = await windowManager.isFocused();
         if (isFocused) {
-          debugPrint('[FloatWindow] action $action skipped: workbench focused');
+          // debugPrint('[FloatWindow] action $action skipped: workbench focused');
           _processingAction = false;
           return;
         }
@@ -378,7 +378,7 @@ class FloatWindowService {
 
     // Check version for staleness
     if (_actionVersion != myVersion) {
-      debugPrint('[FloatWindow] action $action stale, skipping');
+      // debugPrint('[FloatWindow] action $action stale, skipping');
       _processingAction = false;
       return;
     }
@@ -426,7 +426,7 @@ class FloatWindowService {
       PomodoroSyncService().sendStopSignal();
     }
 
-    debugPrint('[FloatWindow] $action done');
+    // debugPrint('[FloatWindow] $action done');
     _processingAction = false;
   }
 
@@ -496,9 +496,9 @@ class FloatWindowService {
 
     // Check if island is enabled
     final style = await _dataProvider.getStyle();
-    debugPrint('[FloatWindow] update: style=$style, forceReset=$forceReset');
+    // debugPrint('[FloatWindow] update: style=$style, forceReset=$forceReset');
     if (style != 1) {
-      debugPrint('[FloatWindow] style != 1, destroying island');
+      // debugPrint('[FloatWindow] style != 1, destroying island');
       if (_isRealIslandEnabled) {
         try {
           await IslandManager().destroyCachedIsland('island-1');
@@ -537,14 +537,14 @@ class FloatWindowService {
 
     // If null, no update needed
     if (structured == null) {
-      debugPrint('[FloatWindow] No update needed');
+      // debugPrint('[FloatWindow] No update needed');
       return;
     }
 
     if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
       debugPayload.value = Map<String, dynamic>.from(structured);
-      debugPrint(
-          '[FloatWindow] Routed payload to in-layout debug overlay: state=${structured['state']}');
+      // debugPrint(
+      //     '[FloatWindow] Routed payload to in-layout debug overlay: state=${structured['state']}');
       return;
     }
 
@@ -592,17 +592,17 @@ class FloatWindowService {
     try {
       final islandId = 'island-1';
       var winId = IslandManager().getCachedWindowId(islandId);
-      debugPrint(
-          '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
+      // debugPrint(
+      //     '[FloatWindow] _deliverToIsland: winId=$winId, state=${structured['state']}');
 
       if (winId == null) {
         // 互斥锁: 等待已在进行的创建, 或自己发起创建
         if (_creatingIsland != null) {
-          debugPrint(
-              '[FloatWindow] Waiting for in-progress island creation...');
+          // debugPrint(
+          //     '[FloatWindow] Waiting for in-progress island creation...');
           winId = await _creatingIsland;
         } else {
-          debugPrint('[FloatWindow] Creating island: $islandId');
+          // debugPrint('[FloatWindow] Creating island: $islandId');
           // Keep child-window creation payload small and stable. Sending a
           // focusing payload as a createWindow argument has caused desktop
           // multi-window crashes on Windows; update the state after creation.
@@ -613,27 +613,27 @@ class FloatWindowService {
           } finally {
             _creatingIsland = null;
           }
-          debugPrint('[FloatWindow] Created island: winId=$winId');
+          // debugPrint('[FloatWindow] Created island: winId=$winId');
         }
       }
 
       if (winId != null) {
         final sent =
             await IslandManager().sendStructuredPayload(islandId, structured);
-        debugPrint('[FloatWindow] sendStructuredPayload result: $sent');
+        // debugPrint('[FloatWindow] sendStructuredPayload result: $sent');
         if (sent) {
-          debugPrint(
-              '[FloatWindow] Sent payload to island: state=${structured['state']}');
+          // debugPrint(
+          //     '[FloatWindow] Sent payload to island: state=${structured['state']}');
           try {
             debugPayload.value = null;
           } catch (_) {}
         }
       } else {
-        debugPrint(
-            '[FloatWindow] Cannot deliver: winId is null after all attempts');
+        // debugPrint(
+        //     '[FloatWindow] Cannot deliver: winId is null after all attempts');
       }
     } catch (e, stackTrace) {
-      debugPrint('[FloatWindow] Island delivery failed: $e\n$stackTrace');
+      // debugPrint('[FloatWindow] Island delivery failed: $e\n$stackTrace');
     }
   }
 
@@ -680,9 +680,9 @@ class FloatWindowService {
               'height': h.toInt(),
             });
 
-            debugPrint('[FloatWindow] Reset island position: $left, $top');
+            // debugPrint('[FloatWindow] Reset island position: $left, $top');
           } catch (e) {
-            debugPrint('[FloatWindow] Failed to reset island position: $e');
+            // debugPrint('[FloatWindow] Failed to reset island position: $e');
           }
         }
       }
@@ -696,7 +696,7 @@ class FloatWindowService {
   /// Trigger immediate reminder check on island
   static Future<void> triggerReminderCheck() async {
     if (!_isRealIslandEnabled && !_isDebugOverlayEnabled) return;
-    debugPrint('[FloatWindow] triggerReminderCheck called');
+    // debugPrint('[FloatWindow] triggerReminderCheck called');
     if (_isDebugOverlayEnabled && !_isRealIslandEnabled) {
       await update(forceReset: true);
       return;
@@ -711,12 +711,12 @@ class FloatWindowService {
           'windowId': winId,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         }));
-        debugPrint('[FloatWindow] Triggered island reminder check');
+        // debugPrint('[FloatWindow] Triggered island reminder check');
       } else {
-        debugPrint('[FloatWindow] Island window not found');
+        // debugPrint('[FloatWindow] Island window not found');
       }
     } catch (e) {
-      debugPrint('[FloatWindow] Failed to trigger reminder check: $e');
+      // debugPrint('[FloatWindow] Failed to trigger reminder check: $e');
     }
   }
 

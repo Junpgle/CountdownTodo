@@ -127,7 +127,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
         });
       }
     } catch (e) {
-      debugPrint('Error loading board data: $e');
+      // debugPrint('Error loading board data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }

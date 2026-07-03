@@ -75,8 +75,8 @@ class EnvironmentService {
       // 🔌 生产环境：根据用户选择决定
       String serverChoice = await StorageService.getServerChoice();
       ApiService.setServerChoice(serverChoice);
-      print(
-          '🔌 [Environment] Mode: PROD (Current Base: ${ApiService.baseUrl})');
+//       print(
+//           '🔌 [Environment] Mode: PROD (Current Base: ${ApiService.baseUrl})');
     }
   }
 

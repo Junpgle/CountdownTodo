@@ -346,7 +346,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         _animationController.forward(from: 0.0);
       }
     } catch (e) {
-      debugPrint('Error loading insight data: $e');
+      // debugPrint('Error loading insight data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -448,7 +448,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         }
       });
     } catch (e) {
-      debugPrint('Error loading all-time medal data: $e');
+      // debugPrint('Error loading all-time medal data: $e');
     }
   }
 
@@ -1054,7 +1054,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         );
       }
     } catch (e) {
-      debugPrint('保存时间线长图失败: $e');
+      // debugPrint('保存时间线长图失败: $e');
       if (mounted) {
         messenger.showSnackBar(
           SnackBar(content: Text('保存长图失败：$e')),

@@ -72,10 +72,10 @@ Future<List<CourseItem>> recoverLegacyCoursesFromSql(String username) async {
       );
       if (maps.isEmpty) continue;
 
-      debugPrint('✅ [Course] 已从旧 FFI 数据库恢复 ${maps.length} 条课表: $legacyPath');
+      // debugPrint('✅ [Course] 已从旧 FFI 数据库恢复 ${maps.length} 条课表: $legacyPath');
       return maps.map((m) => CourseItem.fromJson(m)).toList();
     } catch (e) {
-      debugPrint('⚠️ [Course] 旧 FFI 课表恢复失败 ($legacyPath): $e');
+      // debugPrint('⚠️ [Course] 旧 FFI 课表恢复失败 ($legacyPath): $e');
     } finally {
       await legacyDb?.close();
     }

@@ -174,7 +174,7 @@ class CountdownStorage {
         }
 
         if (legacyJsonList.isNotEmpty) {
-          debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
+//           debugPrint("🚀 自动迁移倒数日老数据至 SQLite...");
           final legacyData = legacyJsonList
               .map((e) => CountdownItem.fromJson(jsonDecode(e)))
               .toList();
@@ -186,10 +186,10 @@ class CountdownStorage {
           );
           await prefs.remove("${_countdownsKey}_$username");
           await prefs.remove(_countdownsKey);
-          debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
+//           debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
         }
         if (legacyJsonList.isNotEmpty && alreadyMigrated) {
-          debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
+//           debugPrint("✅ 倒数日从 Prefs 修复回 SQL: ${legacyJsonList.length} 条");
         }
         await prefs.setBool(migrationKey, true);
       } else if (alreadyMigrated) {
@@ -210,7 +210,7 @@ class CountdownStorage {
         return maps.map(_countdownFromDbMap).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
+//       debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
     }
 
     final list = prefs.getStringList("${_countdownsKey}_$username") ?? [];

@@ -38,7 +38,7 @@ class MacPomodoroStatusBarService {
         _sendLocalState(runState);
       }
     } catch (e) {
-      debugPrint('[MacPomodoroStatusBar] init error: $e');
+      // debugPrint('[MacPomodoroStatusBar] init error: $e');
     }
 
     _localSub = PomodoroService.onRunStateChanged.listen((state) {

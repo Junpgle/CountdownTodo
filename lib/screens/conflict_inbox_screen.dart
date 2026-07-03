@@ -413,8 +413,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         data: localJson,
       );
     } catch (e) {
-      debugPrint(
-          'resolve_conflict keep_local API failed (will retry via oplog): $e');
+      // debugPrint(
+      //     'resolve_conflict keep_local API failed (will retry via oplog): $e');
     }
 
     if (syncNow) {
@@ -1440,7 +1440,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         Future.microtask(() => StorageService.syncData(widget.username));
       }
     } catch (e) {
-      debugPrint("批量修复失败: $e");
+      // debugPrint("批量修复失败: $e");
     }
 
     // 4. 统一刷新界面
@@ -2098,7 +2098,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             }
           }
         } catch (e) {
-          debugPrint('批量保留本地失败 $itemId: $e');
+          // debugPrint('批量保留本地失败 $itemId: $e');
         }
       }
 
@@ -2178,8 +2178,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             resolution: 'accept_server',
           );
           if (apiResult['success'] != true) {
-            debugPrint(
-                'batch accept_server API failed for $uuid: ${apiResult['error']}');
+            // debugPrint(
+            //     'batch accept_server API failed for $uuid: ${apiResult['error']}');
             await StorageService.resolveConflictLocally(
               uuid: uuid,
               table: table,
@@ -2191,7 +2191,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
           successCount++;
         } catch (e) {
-          debugPrint('批量采用服务器版本失败 $itemId: $e');
+          // debugPrint('批量采用服务器版本失败 $itemId: $e');
         }
       }
 
@@ -2380,15 +2380,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                   data: localJson,
                 );
               } catch (e) {
-                debugPrint(
-                    'batch resolve_conflict keep_local API failed for $uuid: $e');
+                // debugPrint(
+                //     'batch resolve_conflict keep_local API failed for $uuid: $e');
               }
 
               successCount++;
             }
           }
         } catch (e) {
-          debugPrint('批量推荐方案失败 $itemId: $e');
+          // debugPrint('批量推荐方案失败 $itemId: $e');
         }
       }
 
@@ -3925,8 +3925,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           data: widget.localItem,
         );
       } catch (e) {
-        debugPrint(
-            'resolve_conflict keep_local API failed (will retry via oplog): $e');
+        // debugPrint(
+        //     'resolve_conflict keep_local API failed (will retry via oplog): $e');
       }
 
       if (mounted) {
@@ -3985,8 +3985,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       );
       if (apiResult['success'] != true) {
         // API failed — create fallback oplog so resolution survives next sync
-        debugPrint(
-            'accept_server API failed, creating fallback oplog: ${apiResult['error']}');
+        // debugPrint(
+        //     'accept_server API failed, creating fallback oplog: ${apiResult['error']}');
         await StorageService.resolveConflictLocally(
           uuid: uuid,
           table: widget.table,

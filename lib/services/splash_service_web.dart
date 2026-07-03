@@ -41,7 +41,7 @@ class SplashService {
         durationKey: _prefetchedDurationMs,
       );
     } catch (e) {
-      debugPrint('[Splash] Web prefetch failed: $e');
+      // debugPrint('[Splash] Web prefetch failed: $e');
     }
   }
 
@@ -59,7 +59,7 @@ class SplashService {
         durationKey: _cachedDurationMs,
       );
     } catch (e) {
-      debugPrint('[Splash] Web fetch failed: $e');
+      // debugPrint('[Splash] Web fetch failed: $e');
     }
   }
 

@@ -256,7 +256,7 @@ class CourseCalendarAdjustmentService {
         Map<String, dynamic>.from(jsonDecode(raw) as Map),
       );
     } catch (e) {
-      debugPrint('[CourseCalendar] 读取课表调休设置失败: $e');
+      // debugPrint('[CourseCalendar] 读取课表调休设置失败: $e');
       return CourseCalendarAdjustment.empty();
     }
   }

@@ -116,7 +116,7 @@ class ScreenTimeService {
         await StorageService.saveScreenTimeCache(cloudStats);
       }
     } catch (e) {
-      debugPrint("屏幕时间后台同步失败: $e");
+      // debugPrint("屏幕时间后台同步失败: $e");
     }
   }
 
