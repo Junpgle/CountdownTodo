@@ -2845,20 +2845,24 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             ),
           ));
           children.add(Positioned(
-            top: nowY - 2.5,
-            left: lineLeft - 2,
-            width: 6,
-            height: 6,
+            top: nowY - 1,
+            left: lineLeft,
+            width: cellWidth,
+            height: 2,
             child: AnimatedBuilder(
               animation: _pulseAnimation,
               builder: (context, child) {
+                final focusColor = Theme.of(context).colorScheme.cdtFocus;
                 return Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .cdtFocus
-                        .withValues(alpha: _pulseAnimation.value),
-                    shape: BoxShape.circle,
+                    color: focusColor.withValues(alpha: 0.7 + 0.3 * _pulseAnimation.value),
+                    boxShadow: [
+                      BoxShadow(
+                        color: focusColor.withValues(alpha: 0.4 * _pulseAnimation.value),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      )
+                    ],
                   ),
                 );
               },
