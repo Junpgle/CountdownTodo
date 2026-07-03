@@ -645,6 +645,57 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         children: [
           const Padding(
             padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 16.0),
+            child: Text('学期管理',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey)),
+          ),
+          _buildTile(
+            targetId: 'semester_management',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 学期列表
+                if (_semesters.isNotEmpty)
+                  ..._semesters.map((semester) => _buildSemesterTile(semester)),
+                // 添加新学期按钮
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                  child: OutlinedButton.icon(
+                    onPressed: _showAddSemesterDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('添加新学期'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                // 清除学期课程数据按钮
+                if (_semesters.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                    child: TextButton.icon(
+                      onPressed: _showClearSemesterCoursesDialog,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('清除学期课程数据'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
             child: Text('学期设置',
                 style: TextStyle(
                     fontSize: 14,
@@ -662,40 +713,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 StorageService.saveAppSetting(
                     StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
               },
-            ),
-          ),
-          _buildTile(
-            targetId: 'semester_start', // Keep target ID for scrolling
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildDateCard(
-                      title: '开学日期',
-                      date: _semesterStart,
-                      icon: Icons.school_outlined,
-                      color: Colors.blue,
-                      onTap: () => _pickSemesterDate(true),
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12.0),
-                    child:
-                        Icon(Icons.arrow_forward, color: Colors.grey, size: 20),
-                  ),
-                  Expanded(
-                    child: _buildDateCard(
-                      title: '放假日期',
-                      date: _semesterEnd,
-                      icon: Icons.flight_takeoff_outlined,
-                      color: Colors.orange,
-                      onTap: () => _pickSemesterDate(false),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
           const Divider(height: 1, indent: 72),
@@ -718,42 +735,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 );
                 _rescheduleReminders();
               },
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 16.0, bottom: 8.0, top: 24.0),
-            child: Text('学期管理',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          _buildTile(
-            targetId: 'semester_management',
-            child: Column(
-              children: [
-                // 学期列表
-                if (_semesters.isNotEmpty)
-                  ..._semesters.map((semester) => _buildSemesterTile(semester)),
-                // 添加新学期按钮
-                ListTile(
-                  leading: Icon(Icons.add_circle_outline,
-                      color: Theme.of(context).colorScheme.primary),
-                  title: Text('添加新学期',
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary)),
-                  onTap: _showAddSemesterDialog,
-                ),
-                // 清除学期课程数据按钮
-                if (_semesters.isNotEmpty)
-                  ListTile(
-                    leading: const Icon(Icons.delete_sweep_outlined,
-                        color: Colors.red),
-                    title: const Text('清除学期课程数据',
-                        style: TextStyle(color: Colors.red)),
-                    onTap: _showClearSemesterCoursesDialog,
-                  ),
-              ],
             ),
           ),
           const Padding(
@@ -1031,44 +1012,157 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   Widget _buildSemesterTile(SemesterInfo semester) {
     final isActive = semester.id == _activeSemesterId;
-    final colorScheme = Theme.of(context).colorScheme;
-    return ListTile(
-      leading: Icon(
-        isActive ? Icons.check_circle : Icons.circle_outlined,
-        color: isActive ? colorScheme.primary : Colors.grey,
-      ),
-      title: Text(
-        semester.name,
-        style: TextStyle(
-          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          color: isActive ? colorScheme.primary : null,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isActive 
+              ? colorScheme.primary.withValues(alpha: 0.5) 
+              : theme.dividerColor.withValues(alpha: 0.5),
         ),
       ),
-      subtitle: Text(
-        '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}${semester.endDate != null ? '  放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}' : ''}',
-        style: const TextStyle(fontSize: 12),
-      ),
-      trailing: PopupMenuButton<String>(
-        itemBuilder: (ctx) => [
-          if (!isActive)
-            const PopupMenuItem(value: 'activate', child: Text('设为当前学期')),
-          const PopupMenuItem(value: 'edit', child: Text('编辑')),
-          if (!isActive)
-            const PopupMenuItem(value: 'delete', child: Text('删除')),
-        ],
-        onSelected: (value) async {
-          switch (value) {
-            case 'activate':
-              await _activateSemester(semester);
-              break;
-            case 'edit':
-              await _editSemester(semester);
-              break;
-            case 'delete':
-              await _deleteSemester(semester);
-              break;
-          }
-        },
+      child: Material(
+        color: isActive 
+            ? colorScheme.primary.withValues(alpha: 0.1) 
+            : (isDark ? Colors.grey.shade900 : Colors.grey.shade100),
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: () {
+            if (!isActive) _activateSemester(semester);
+          },
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isActive 
+                  ? colorScheme.primary.withValues(alpha: 0.2) 
+                  : Colors.grey.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isActive ? Icons.check_circle : Icons.school_outlined,
+              color: isActive ? colorScheme.primary : Colors.grey.shade600,
+              size: 22,
+            ),
+          ),
+          title: Text(
+            semester.name,
+            style: TextStyle(
+              fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+              fontSize: 16,
+              color: isActive ? colorScheme.primary : null,
+            ),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey.shade500),
+                    const SizedBox(width: 6),
+                    Text(
+                      '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+                if (semester.endDate != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.flight_takeoff_outlined, size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Text(
+                        '放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Builder(
+                    builder: (context) {
+                      final now = DateTime.now();
+                      final start = DateTime(semester.startDate.year, semester.startDate.month, semester.startDate.day);
+                      final end = DateTime(semester.endDate!.year, semester.endDate!.month, semester.endDate!.day, 23, 59, 59);
+                      
+                      double progress = 0.0;
+                      if (now.isAfter(end)) {
+                        progress = 1.0;
+                      } else if (now.isAfter(start)) {
+                        final total = end.difference(start).inMilliseconds;
+                        final elapsed = now.difference(start).inMilliseconds;
+                        progress = (elapsed / total).clamp(0.0, 1.0);
+                      }
+                      
+                      final percent = (progress * 100).toInt();
+                      
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '学期进度',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '$percent%',
+                                style: TextStyle(
+                                  fontSize: 11, 
+                                  color: progress == 1.0 ? Colors.green : (isActive ? colorScheme.primary : Colors.grey.shade600), 
+                                  fontWeight: FontWeight.bold
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 6,
+                              backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                progress == 1.0 
+                                  ? Colors.green 
+                                  : (isActive ? colorScheme.primary : Colors.blue.shade400),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ]
+              ],
+            ),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: '编辑',
+                onPressed: () => _editSemester(semester),
+              ),
+              if (!isActive)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  tooltip: '删除',
+                  onPressed: () => _deleteSemester(semester),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1280,6 +1374,31 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
   }
 
+  /// 根据开学日期自动生成学期名称
+  String _generateSemesterName(DateTime startDate) {
+    final year = startDate.year;
+    final month = startDate.month;
+    
+    // 3月-5月：春季
+    // 6月-8月：夏季
+    // 9月-11月：秋季
+    // 12月-次年2月：冬季
+    if (month >= 3 && month <= 5) {
+      return '${year}年春季';
+    } else if (month >= 6 && month <= 8) {
+      return '${year}年夏季';
+    } else if (month >= 9 && month <= 11) {
+      return '${year}年秋季';
+    } else {
+      // 12月、1月、2月
+      if (month == 12) {
+        return '${year}年冬季';
+      } else {
+        return '${year}年冬季';
+      }
+    }
+  }
+
   Future<void> _showAddSemesterDialog() async {
     final nameController = TextEditingController();
     DateTime? startDate;
@@ -1299,15 +1418,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: '学期名称',
-                        hintText: '例如: 2026春季学期',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
@@ -1326,7 +1436,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             helpText: '选择开学日期',
                           );
                           if (picked != null) {
-                            setState(() => startDate = picked);
+                            setState(() {
+                              startDate = picked;
+                              // 自动生成学期名称
+                              nameController.text = _generateSemesterName(picked);
+                            });
                           }
                         },
                       ),
@@ -1357,6 +1471,15 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: '学期名称',
+                        hintText: '自动生成，可手动修改',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1369,7 +1492,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   onPressed: () {
                     if (nameController.text.isEmpty || startDate == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('请填写学期名称和开学日期')),
+                        const SnackBar(content: Text('请选择开学日期')),
                       );
                       return;
                     }
