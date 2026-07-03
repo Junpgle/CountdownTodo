@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'course_service.dart';
 import '../storage_service.dart';
+import '../models.dart';
 import 'llm_service.dart';
 import 'notification_service.dart';
 
@@ -272,6 +273,113 @@ class ExternalShareHandler {
 
         await Future.delayed(const Duration(milliseconds: 400));
 
+        // 让用户选择目标学期
+        final semesters = await StorageService.getSemesters();
+        String targetSemesterId = 'default';
+        
+        if (semesters.length > 1) {
+          _closeDialogSafely(dialogContext);
+          
+          final selectedSemester = await showDialog<SemesterInfo>(
+            context: context,
+            builder: (ctx) {
+              final colorScheme = Theme.of(ctx).colorScheme;
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    Icon(Icons.school_outlined, color: colorScheme.primary),
+                    const SizedBox(width: 10),
+                    const Text('选择导入到哪个学期'),
+                  ],
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: semesters.map((semester) {
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.pop(ctx, semester),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.school_outlined, color: colorScheme.primary),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      semester.name,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '开学: ${semester.startDate.month}/${semester.startDate.day}',
+                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                ],
+              );
+            },
+          );
+          
+          if (selectedSemester == null) {
+            return;
+          }
+          targetSemesterId = selectedSemester.id;
+          
+          // 重新显示进度对话框
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (ctx) {
+              dialogContext = ctx;
+              return AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                content: Row(
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: statusNotifier,
+                        builder: (context, value, child) {
+                          return Text(value, style: const TextStyle(fontSize: 15, height: 1.4));
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+          statusNotifier.value = "正在导入课表...";
+        } else if (semesters.isNotEmpty) {
+          targetSemesterId = semesters.first.id;
+        }
+
         bool success = false;
         String sourceName = "";
 
@@ -287,7 +395,7 @@ class ExternalShareHandler {
             return;
           }
           success = await CourseService.importXidianScheduleFromIcs(
-              username, content, semStart);
+              username, content, semStart, semesterId: targetSemesterId);
         } else if (content.contains('timetable_con') ||
             content.contains('id="table1"')) {
           sourceName = "正方教务系统";
@@ -301,7 +409,7 @@ class ExternalShareHandler {
             return;
           }
           success = await CourseService.importZfSoftScheduleFromHtml(
-              username, content, semStart);
+              username, content, semStart, semesterId: targetSemesterId);
         } else if (['mhtml', 'html', 'htm'].contains(ext) ||
             content.contains('quoted-printable') ||
             content.toLowerCase().contains('<html')) {
@@ -316,14 +424,14 @@ class ExternalShareHandler {
             return;
           }
           success = await CourseService.importXmuScheduleFromHtml(
-              username, content, semStart);
+              username, content, semStart, semesterId: targetSemesterId);
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
           sourceName = "聚在工大";
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
           success =
-              await CourseService.importScheduleFromJson(username, content);
+              await CourseService.importScheduleFromJson(username, content, semesterId: targetSemesterId);
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));

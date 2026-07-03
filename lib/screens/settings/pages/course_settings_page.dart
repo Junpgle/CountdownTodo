@@ -206,8 +206,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
               .millisecondsSinceEpoch
           : null;
+      
+      // 准备多学期数据
+      final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
+      
       await ApiService.uploadUserSettings(
-          semesterStartMs: startMs, semesterEndMs: endMs);
+          semesterStartMs: startMs, semesterEndMs: endMs, semesters: semestersData);
     }
 
     if (!mounted) return;
@@ -259,6 +263,22 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           await prefs.setString(
               StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
         }
+        
+        // 处理多学期数据
+        if (userSettings['semesters'] != null && userSettings['semesters'] is List) {
+          final semestersList = userSettings['semesters'] as List;
+          final cloudSemesters = semestersList
+              .map((s) => SemesterInfo.fromCloudJson(Map<String, dynamic>.from(s)))
+              .toList();
+          
+          if (cloudSemesters.isNotEmpty) {
+            await StorageService.saveSemesters(cloudSemesters);
+            setState(() {
+              _semesters = cloudSemesters;
+            });
+          }
+        }
+        
         setState(() {});
       }
 
@@ -532,6 +552,36 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               StorageService.KEY_SEMESTER_END, picked.toIso8601String());
         }
       });
+
+      // 同步更新学期管理中的对应学期
+      if (!isStart && _semesterStart != null) {
+        // 找到当前学期（开学日期匹配的学期）
+        final currentSemesterIndex = _semesters.indexWhere((s) =>
+            s.startDate.year == _semesterStart!.year &&
+            s.startDate.month == _semesterStart!.month &&
+            s.startDate.day == _semesterStart!.day);
+        
+        if (currentSemesterIndex != -1) {
+          // 更新该学期的结束日期
+          final updatedSemester = SemesterInfo(
+            id: _semesters[currentSemesterIndex].id,
+            name: _semesters[currentSemesterIndex].name,
+            startDate: _semesters[currentSemesterIndex].startDate,
+            endDate: picked,
+            isCurrent: _semesters[currentSemesterIndex].isCurrent,
+          );
+          
+          final updatedSemesters = List<SemesterInfo>.from(_semesters);
+          updatedSemesters[currentSemesterIndex] = updatedSemester;
+          
+          await StorageService.saveSemesters(updatedSemesters);
+          setState(() {
+            _semesters = updatedSemesters;
+          });
+          
+          debugPrint("✅ [Settings] 同步更新学期放假时间: ${updatedSemester.name} -> ${DateFormat('yyyy/MM/dd').format(picked)}");
+        }
+      }
 
       _courseImportHandler = CourseImportHandler(
         context: context,
