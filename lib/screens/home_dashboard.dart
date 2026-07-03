@@ -197,7 +197,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
       }
     } catch (e) {
-      debugPrint("Failed to extract color: $e");
+      // debugPrint("Failed to extract color: $e");
     }
   }
 
@@ -388,13 +388,13 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
-        debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+        // debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
         final args = call.arguments;
         int? notifId;
         if (args is Map) {
           notifId = args['notificationId'] as int?;
         }
-        debugPrint("📱 解析 notifId: $notifId");
+        // debugPrint("📱 解析 notifId: $notifId");
         _markCurrentTodoDone(notifId: notifId);
       }));
       _notifSubs.add(NotificationService.listen('openTodoConfirm', (call) {
@@ -402,7 +402,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }));
       _notifSubs.add(NotificationService.listen('openShortcut', (call) {
         final shortcutType = call.arguments as String?;
-        debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+        // debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
         if (shortcutType != null) {
           _handleShortcut(shortcutType);
         }
@@ -420,17 +420,17 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
       }));
       _notifSubs.add(NotificationService.listen('openPlanBlock', (call) {
-        debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+        // debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
         if (mounted) {
           _handleOpenPlanBlock(call.arguments);
         }
       }));
       _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
-        debugPrint("🍅 收到 openPomodoro 调用");
+        // debugPrint("🍅 收到 openPomodoro 调用");
         _navigateToPomodoro();
       }));
       _notifSubs.add(NotificationService.listen('openTodoList', (call) {
-        debugPrint("📋 收到 openTodoList 调用");
+        // debugPrint("📋 收到 openTodoList 调用");
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
@@ -439,7 +439,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // PomodoroScreen 的 listen() 会自动 replay pending 事件。
       for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
         _notifSubs.add(NotificationService.listen(action, (call) {
-          debugPrint("🍅 收到 $action");
+          // debugPrint("🍅 收到 $action");
           _navigateToPomodoro();
         }));
       }
@@ -793,7 +793,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 处理 App Shortcut 导航
   Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
-    debugPrint("⚡ 处理 Shortcut: $shortcutType");
+    // debugPrint("⚡ 处理 Shortcut: $shortcutType");
     switch (shortcutType) {
       case 'settings':
         await Navigator.of(context).push(
@@ -829,7 +829,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       planBlockId =
           (arguments['planBlockId'] ?? arguments['plan_block_id'])?.toString();
     }
-    debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
+    // debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
     TodoPlanBlock? target;
     final blocks = await StorageService.getPlanBlocks(widget.username);
     if (planBlockId != null && planBlockId.isNotEmpty) {
@@ -913,15 +913,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
     _syncService.onStaleSyncFocus = (state) async {
-      debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
+      // debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
       final saved = await PomodoroService.loadRunState();
       if (saved == null ||
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
-        debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
+        // debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
         _syncService.sendClearFocusSignal();
       } else {
-        debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
+        // debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
       }
     };
 
@@ -939,7 +939,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               ? 1
               : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
-            debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
+            // debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
             final allTags = await PomodoroService.getTags();
             List<String> realTagNames = [];
@@ -1014,7 +1014,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
         break;
       case 'TEAM_REMOVED':
-        debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
+        // debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
         await _handleManualSync(silent: true);
         if (mounted) _loadAllData();
         break;
@@ -1024,7 +1024,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'JOIN_REQUEST_APPROVED':
       case 'TEAM_MEMBER_JOINED':
       case 'NEW_INVITATION':
-        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
+        // debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
         _debounceCollaborativeSync();
         break;
 
@@ -2265,8 +2265,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           break;
         }
       } catch (e) {
-        debugPrint(
-            "检查课程通知失败: $e (course=${course.courseName}, date='${course.date}', start=${course.startTime})");
+        // debugPrint(
+        //     "检查课程通知失败: $e (course=${course.courseName}, date='${course.date}', start=${course.startTime})");
       }
     }
 
@@ -2542,10 +2542,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
 
       // 无番茄钟时，显示 idle 状态的灵动岛
-      debugPrint('[HomeDashboard] Initializing island on startup (idle state)');
+      // debugPrint('[HomeDashboard] Initializing island on startup (idle state)');
       await FloatWindowService.update(forceReset: true);
     } catch (e) {
-      debugPrint('[HomeDashboard] Island startup init failed: $e');
+      // debugPrint('[HomeDashboard] Island startup init failed: $e');
     }
   }
 
@@ -2562,7 +2562,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         setState(() => _activeAnnouncement = null);
       }
     } catch (e) {
-      debugPrint('❌ [首页] 获取置顶公告失败: $e');
+      // debugPrint('❌ [首页] 获取置顶公告失败: $e');
     }
   }
 
@@ -2587,7 +2587,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             () => _teamPendingCount = totalPending + backgroundUnread.length);
       }
     } catch (e) {
-      debugPrint('❌ [首页] 获取团队消息计数失败: $e');
+      // debugPrint('❌ [首页] 获取团队消息计数失败: $e');
     }
   }
 
@@ -2612,8 +2612,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   void _markCurrentTodoDone({int? notifId}) async {
-    debugPrint(
-        "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
+    // debugPrint(
+    //     "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
 
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -2624,7 +2624,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       return !d.isAfter(today);
     }).toList();
 
-    debugPrint("📱 activeTodos数量=${activeTodos.length}");
+    // debugPrint("📱 activeTodos数量=${activeTodos.length}");
 
     // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
     const int normalTodoNotifId = 12345;
@@ -2675,22 +2675,22 @@ class _HomeDashboardState extends State<HomeDashboard>
           break;
         }
       }
-      debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
+      // debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
     } else {
       // 特殊待办通知：通过 notifId 找到对应的待办
       currentTodo = activeTodos
           .where((t) => t.id.hashCode == notifId && !t.isDone)
           .firstOrNull;
-      debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
+      // debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
     }
 
     // 找不到待办，不执行任何操作
     if (currentTodo == null) {
-      debugPrint("找不到对应的待办: notifId=$notifId");
+      // debugPrint("找不到对应的待办: notifId=$notifId");
       return;
     }
 
-    debugPrint("📱 准备完成待办: ${currentTodo.title}");
+    // debugPrint("📱 准备完成待办: ${currentTodo.title}");
 
     // 取消特殊待办的通知
     await NotificationService.cancelSpecialTodoNotification(
@@ -2949,7 +2949,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer =
         Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
-      debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
+      // debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
       await _handleManualSync(silent: true);
       // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
       if (mounted) {
@@ -2966,7 +2966,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       final duration = DateTime.now().difference(start).inMilliseconds;
       return result;
     } catch (e) {
-      debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
+      // debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
       return null;
     }
   }
@@ -3109,7 +3109,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         ));
       }
     } catch (e) {
-      debugPrint('❌ [DashboardLoader] 加载失败: $e');
+      // debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
       if (mounted) {
         _isGlobalLoadingNotifier.value = false;
@@ -3326,7 +3326,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       await saveIslandTodoSnapshot(todos);
       // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
     } catch (e) {
-      debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
+      // debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
     }
   }
 
@@ -3369,7 +3369,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (nt.isDone) {
         final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
         if (!ot.isDone) {
-          debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+          // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
           NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
         }
       }
@@ -3390,7 +3390,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _pendingTodosToPersist = null;
         await _persistTodosSnapshot(snapshot);
       }).catchError((e) {
-        debugPrint('[HomeDashboard] persist todos failed: $e');
+        // debugPrint('[HomeDashboard] persist todos failed: $e');
       }).whenComplete(() {
         if (!completer.isCompleted) completer.complete();
       });
@@ -3564,7 +3564,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
       // ... 前面代码保持不变
     } catch (e) {
-      debugPrint("Sync Error: $e");
+      // debugPrint("Sync Error: $e");
       String msg = e.toString();
 
       // 🚀 核心修复 1：Token 检查必须移出 !silent 判断
@@ -3864,8 +3864,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   void _handleWallpaperError() {
     if (!mounted || _isWallpaperLoadingError) return;
-    debugPrint(
-        "[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
+    // debugPrint(
+    //     "[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
 
     setState(() {
       _wallpaperRetryCount++;
@@ -3901,7 +3901,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       _tryAnotherRandomWallpaper();
     } else if (_wallpaperRetryCount == 6) {
       // 🚀 Final Fallback: Local Asset
-      debugPrint("[Wallpaper] Using local asset fallback.");
+      // debugPrint("[Wallpaper] Using local asset fallback.");
       if (mounted) {
         setState(() {
           _wallpaperDominantColor = null;
@@ -3913,7 +3913,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
     } else {
       // Total failure
-      debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
+      // debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
       if (mounted) {
         setState(() {
           _wallpaperShow = false;
@@ -3968,7 +3968,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _fetchRandomWallpaper();
       }
     } catch (e) {
-      debugPrint("获取Bing壁纸失败: $e");
+      // debugPrint("获取Bing壁纸失败: $e");
       if (!isFallback) _fetchRandomWallpaper();
     }
   }
@@ -4107,7 +4107,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
       }
     } catch (e) {
-      debugPrint("获取壁纸失败: $e");
+      // debugPrint("获取壁纸失败: $e");
     }
   }
 
@@ -5145,7 +5145,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         );
       }
     } catch (e) {
-      debugPrint('下载壁纸失败: $e');
+      // debugPrint('下载壁纸失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('下载失败: $e')),

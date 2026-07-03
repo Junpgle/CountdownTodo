@@ -311,7 +311,7 @@ class SearchService {
             .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
       }
     } catch (e) {
-      debugPrint("Database search error: $e");
+      // debugPrint("Database search error: $e");
     }
 
     scoredResults.sort((a, b) => b.score.compareTo(a.score));
@@ -522,7 +522,7 @@ class SearchService {
         }).toList();
       }
     } catch (e) {
-      debugPrint('Todo search error: $e');
+      // debugPrint('Todo search error: $e');
     }
 
     for (var t in todos) {
@@ -622,7 +622,7 @@ class SearchService {
         ));
       }
     } catch (e) {
-      debugPrint('Course search error: $e');
+      // debugPrint('Course search error: $e');
     }
 
     // ── 倒计时 ────────────────────────────────────────────────────────────
@@ -667,7 +667,7 @@ class SearchService {
         ));
       }
     } catch (e) {
-      debugPrint('Countdown search error: $e');
+      // debugPrint('Countdown search error: $e');
     }
 
     // ── 时间日志 ──────────────────────────────────────────────────────────
@@ -709,7 +709,7 @@ class SearchService {
         ));
       }
     } catch (e) {
-      debugPrint('Time log search error: $e');
+      // debugPrint('Time log search error: $e');
     }
 
     // ── 时间日志标签 ─────────────────────────────────────────────────────
@@ -734,7 +734,7 @@ class SearchService {
         ));
       }
     } catch (e) {
-      debugPrint('Tag search error: $e');
+      // debugPrint('Tag search error: $e');
     }
 
     // ── 屏幕使用时间 (App 搜索) ─────────────────────────────────────────
@@ -788,7 +788,7 @@ class SearchService {
           }
         }
       } catch (e) {
-        debugPrint('Screen time search error: $e');
+        // debugPrint('Screen time search error: $e');
       }
     } else {
       try {
@@ -831,7 +831,7 @@ class SearchService {
           addScreenTimeApps(dayStats);
         }
       } catch (e) {
-        debugPrint('Screen time search error: $e');
+        // debugPrint('Screen time search error: $e');
       }
     }
 
@@ -869,7 +869,7 @@ class SearchService {
           ));
         }
       } catch (e) {
-        debugPrint('Pomodoro search error: $e');
+        // debugPrint('Pomodoro search error: $e');
       }
     }
 
@@ -901,7 +901,7 @@ class SearchService {
         ));
       }
     } catch (e) {
-      debugPrint('Todo group search error: $e');
+      // debugPrint('Todo group search error: $e');
     }
     return dbItems;
   }
@@ -1139,20 +1139,20 @@ class SearchNavigationHandler {
     try {
       final uuid = result.extraData?['uuid'];
       if (uuid == null) {
-        debugPrint("❌ _handleTodoEdit: uuid is null");
+        // debugPrint("❌ _handleTodoEdit: uuid is null");
         return;
       }
 
       final db = DatabaseHelper.instance;
       final todoMap = await db.getTodoByUuid(uuid);
       if (todoMap == null) {
-        debugPrint("❌ _handleTodoEdit: todo not found for uuid=$uuid");
+        // debugPrint("❌ _handleTodoEdit: todo not found for uuid=$uuid");
         return;
       }
 
       final username = await StorageService.getLoginSession();
       if (username == null) {
-        debugPrint("❌ _handleTodoEdit: no login session");
+        // debugPrint("❌ _handleTodoEdit: no login session");
         return;
       }
 
@@ -1221,10 +1221,10 @@ class SearchNavigationHandler {
           ),
         );
       } else {
-        debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
+        // debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
       }
     } catch (e, stack) {
-      debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
+      // debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
     }
   }
 
@@ -1259,7 +1259,7 @@ class SearchNavigationHandler {
         }
       }
     } catch (e) {
-      debugPrint("❌ _handleCourseNavigation error: $e");
+      // debugPrint("❌ _handleCourseNavigation error: $e");
     }
   }
 

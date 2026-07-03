@@ -29,7 +29,7 @@ class CourseService {
     final info = await db.rawQuery("PRAGMA table_info(courses)");
     final columns =
         info.map((row) => row['name']?.toString()).whereType<String>().toSet();
-    debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
+    // debugPrint("🔎 [Course] 写入前字段: ${columns.join(', ')}");
 
     final requiredColumns = {
       'is_deleted': 'INTEGER DEFAULT 0',
@@ -43,7 +43,7 @@ class CourseService {
         await db.execute(
             "ALTER TABLE courses ADD COLUMN ${entry.key} ${entry.value}");
         columns.add(entry.key);
-        debugPrint("✅ [Course] 已补齐字段 courses.${entry.key}");
+        // debugPrint("✅ [Course] 已补齐字段 courses.${entry.key}");
       }
     }
   }
@@ -85,17 +85,17 @@ class CourseService {
     try {
       final dbHelper = DatabaseHelper.instance;
       await _writeCoursesToSql(dbHelper, courses);
-      debugPrint("✅ [Course] SQL 保存成功: ${courses.length} 条");
+      // debugPrint("✅ [Course] SQL 保存成功: ${courses.length} 条");
     } catch (e) {
-      debugPrint("❌ [Course] SQL 保存失败: $e");
+      // debugPrint("❌ [Course] SQL 保存失败: $e");
       final errorText = e.toString();
       if (errorText.contains('no column named is_deleted') ||
           errorText.contains('no such column: is_deleted')) {
         try {
           await _writeCoursesToSql(DatabaseHelper.instance, courses);
-          debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
+          // debugPrint("✅ [Course] SQL 兜底重试成功: ${courses.length} 条");
         } catch (retryError) {
-          debugPrint("❌ [Course] SQL 兜底重试失败: $retryError");
+          // debugPrint("❌ [Course] SQL 兜底重试失败: $retryError");
         }
       }
     }
@@ -153,8 +153,6 @@ class CourseService {
 
     final mergedCourses = mergedMap.values.toList();
     await saveCourses(username, mergedCourses);
-    debugPrint(
-        "✅ [Course] 合并保存成功: 旧 ${existingCourses.length} 条 + 新 ${newCourses.length} 条 -> 合并后 ${mergedCourses.length} 条");
   }
 
   // ================= 导入与解析逻辑 =================
@@ -194,7 +192,7 @@ class CourseService {
       }
       return true;
     } catch (e) {
-      print("解析工大课表出错: $e");
+      // print("解析工大课表出错: $e");
       return false;
     }
   }
@@ -230,7 +228,7 @@ class CourseService {
       }
       return true;
     } catch (e) {
-      print("解析厦大课表出错: $e");
+      // print("解析厦大课表出错: $e");
       return false;
     }
   }
@@ -266,7 +264,7 @@ class CourseService {
       }
       return true;
     } catch (e) {
-      print("解析嘉庚课表出错: $e");
+      // print("解析嘉庚课表出错: $e");
       return false;
     }
   }
@@ -302,7 +300,7 @@ class CourseService {
       }
       return true;
     } catch (e) {
-      print("解析西电课表出错: $e");
+      // print("解析西电课表出错: $e");
       return false;
     }
   }
@@ -354,7 +352,7 @@ class CourseService {
       }
       return true;
     } catch (e) {
-      print("解析正方教务课表出错: $e");
+      // print("解析正方教务课表出错: $e");
       return false;
     }
   }
@@ -385,7 +383,7 @@ class CourseService {
             maps.map((m) => CourseItem.fromJson(m)).toList());
       }
     } catch (e) {
-      debugPrint("⚠️ Course SQL 读取异常: $e");
+      // debugPrint("⚠️ Course SQL 读取异常: $e");
       if (_isDatabaseLocked(e)) {
         try {
           await Future.delayed(const Duration(milliseconds: 300));
@@ -400,7 +398,7 @@ class CourseService {
                 maps.map((m) => CourseItem.fromJson(m)).toList());
           }
         } catch (retryError) {
-          debugPrint("⚠️ Course SQL locked 重试失败: $retryError");
+          // debugPrint("⚠️ Course SQL locked 重试失败: $retryError");
         }
         return [];
       }
@@ -442,14 +440,14 @@ class CourseService {
         final courses = _parseLegacyCoursePrefsValue(raw);
         if (courses.isEmpty) continue;
 
-        debugPrint(
-            "🚀 [Course] 正在从 SharedPreferences($key) 迁移 ${courses.length} 条数据至 SQL...");
+        // debugPrint(
+        //     "🚀 [Course] 正在从 SharedPreferences($key) 迁移 ${courses.length} 条数据至 SQL...");
         await saveCourses(username, courses);
         await prefs.remove(key);
         await prefs.setBool("${_keyCourseData}_${username}_migrated_v2", true);
         return courses;
       } catch (e) {
-        debugPrint("⚠️ [Course] 迁移 SharedPreferences($key) 失败: $e");
+        // debugPrint("⚠️ [Course] 迁移 SharedPreferences($key) 失败: $e");
       }
     }
 
@@ -621,7 +619,7 @@ class CourseService {
 
       return {'title': '最近无课', 'courses': <CourseItem>[]};
     } catch (e) {
-      print("获取主页课程时发生崩溃: $e");
+      // print("获取主页课程时发生崩溃: $e");
       return {'title': '最近无课', 'courses': <CourseItem>[]};
     }
   }
@@ -656,11 +654,6 @@ class CourseService {
       coursesBySemester.putIfAbsent(semesterId, () => []).add(c);
     }
 
-    debugPrint("📚 [Sync] 课程按学期分组:");
-    for (final entry in coursesBySemester.entries) {
-      debugPrint("  - 学期 ${entry.key}: ${entry.value.length} 条课程");
-    }
-
     // 逐个学期上传
     bool allSuccess = true;
     String lastMessage = '';
@@ -668,8 +661,6 @@ class CourseService {
     for (final entry in coursesBySemester.entries) {
       final semesterId = entry.key;
       final semesterCourses = entry.value;
-
-      debugPrint("📚 [Sync] 正在上传学期 $semesterId 的 ${semesterCourses.length} 条课程...");
 
       // 转换为后端需要的结构
       final courseMaps = semesterCourses
@@ -691,8 +682,6 @@ class CourseService {
         courses: courseMaps,
         semester: semesterId,
       );
-
-      debugPrint("📚 [Sync] 学期 $semesterId 上传结果: ${result['success']}");
 
       if (result['success'] != true) {
         allSuccess = false;

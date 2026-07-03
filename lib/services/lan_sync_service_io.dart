@@ -223,12 +223,12 @@ class LanSyncService {
           if (addr.isLoopback) continue;
           if (addr.type != InternetAddressType.IPv4) continue;
 
-          debugPrint('[LanSync] Scanning interface: ${addr.address}');
+          // debugPrint('[LanSync] Scanning interface: ${addr.address}');
           await _scanSubnet(addr.address);
         }
       }
     } catch (e) {
-      debugPrint('[LanSync] Interface scan failed: $e');
+      // debugPrint('[LanSync] Interface scan failed: $e');
     }
   }
 
@@ -253,7 +253,7 @@ class LanSyncService {
       client.close();
       _emitDevices();
     } catch (e) {
-      debugPrint('[LanSync] Subnet scan failed: $e');
+      // debugPrint('[LanSync] Subnet scan failed: $e');
     }
   }
 
@@ -277,8 +277,8 @@ class LanSyncService {
           lastSeen: DateTime.now().millisecondsSinceEpoch,
         );
         _devices[device.deviceId] = device;
-        debugPrint(
-            '[LanSync] Found device via TCP: $ip (${data['deviceName']})');
+        // debugPrint(
+        //     '[LanSync] Found device via TCP: $ip (${data['deviceName']})');
       }
     } catch (_) {}
   }
@@ -295,7 +295,7 @@ class LanSyncService {
         }
       }
     } catch (e) {
-      debugPrint('[LanSync] Failed to get local IP: $e');
+      // debugPrint('[LanSync] Failed to get local IP: $e');
     }
     return null;
   }
@@ -366,7 +366,7 @@ class LanSyncService {
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
         _serverPort = port;
-        debugPrint('[LanSync] HTTP server started on port $port');
+        // debugPrint('[LanSync] HTTP server started on port $port');
         break;
       } catch (e) {
         port = _defaultHttpPort + attempt + 1;
@@ -392,7 +392,7 @@ class LanSyncService {
         await req.response.close();
       }
     } catch (e) {
-      debugPrint('[LanSync] Handle request error: $e');
+      // debugPrint('[LanSync] Handle request error: $e');
       try {
         req.response.statusCode = HttpStatus.internalServerError;
         final errBody = jsonEncode({'error': e.toString()});
@@ -618,8 +618,8 @@ class LanSyncService {
       _emitProgressValue(1.0);
       _emitProgress('同步完成');
 
-      debugPrint(
-          '[LanSync] Sync from $remoteDeviceId: todos=$todosSynced, countdowns=$countdownsSynced, timeLogs=$timeLogsSynced, pomTags=$pomodoroTagsSynced, pomRecords=$pomodoroRecordsSynced, courses=$coursesSynced');
+      // debugPrint(
+      //     '[LanSync] Sync from $remoteDeviceId: todos=$todosSynced, countdowns=$countdownsSynced, timeLogs=$timeLogsSynced, pomTags=$pomodoroTagsSynced, pomRecords=$pomodoroRecordsSynced, courses=$coursesSynced');
     }
   }
 
@@ -837,7 +837,7 @@ class LanSyncService {
         }
       });
     } catch (e) {
-      debugPrint('[LanSync] UDP discovery failed: $e');
+      // debugPrint('[LanSync] UDP discovery failed: $e');
     }
   }
 
@@ -886,7 +886,7 @@ class LanSyncService {
         _discoveryPort,
       );
     } catch (e) {
-      debugPrint('[LanSync] Broadcast error: $e');
+      // debugPrint('[LanSync] Broadcast error: $e');
     }
   }
 
@@ -1003,7 +1003,7 @@ class LanSyncService {
       final response = await request.close();
 
       final encryptedBody = await response.transform(utf8.decoder).join();
-      debugPrint('[LanSync] Response body: $encryptedBody');
+      // debugPrint('[LanSync] Response body: $encryptedBody');
       final encryptedResponseData =
           jsonDecode(encryptedBody) as Map<String, dynamic>;
 
@@ -1136,7 +1136,7 @@ class LanSyncService {
       req.response.write(jsonEncode({'success': true}));
       await req.response.close();
     } catch (e) {
-      debugPrint('[LanSync] File receive error: $e');
+      // debugPrint('[LanSync] File receive error: $e');
       req.response.statusCode = HttpStatus.internalServerError;
       await req.response.close();
     }

@@ -56,7 +56,7 @@ class DataImportService {
           .where((uuid) => uuid.isNotEmpty)
           .toSet();
     } catch (e) {
-      debugPrint('⚠️ 获取团队列表失败: $e');
+//       debugPrint('⚠️ 获取团队列表失败: $e');
       return {};
     }
   }
@@ -146,7 +146,7 @@ class DataImportService {
 
       // 获取用户当前加入的团队列表
       final joinedTeamUuids = await _getJoinedTeamUuids();
-      debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
+//       debugPrint('📋 用户已加入的团队: $joinedTeamUuids');
 
       // 如果调用方没有显式指定 uuidStrategy，则自动检测
       UuidStrategy uuidStrategy = options.uuidStrategy;
@@ -179,10 +179,10 @@ class DataImportService {
             : UuidStrategy.keepOriginal;
 
         if (needRegenerate) {
-          debugPrint(
-              '⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
+//           debugPrint(
+//               '⚠️ 检测到不同账号 (userId: $fileUserId -> $currentUserId)，将重新生成 UUID');
         } else if (fileDeviceId != null && fileDeviceId != currentDeviceId) {
-          debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
+//           debugPrint('ℹ️ 检测到同账号不同设备，保留原始 UUID');
         }
       }
 
@@ -304,7 +304,7 @@ class DataImportService {
         updatedCount: updatedCount,
       );
     } catch (e) {
-      debugPrint('❌ DataImportService: importData error: $e');
+//       debugPrint('❌ DataImportService: importData error: $e');
       return ImportResult(
         success: false,
         errorMessage: e.toString(),

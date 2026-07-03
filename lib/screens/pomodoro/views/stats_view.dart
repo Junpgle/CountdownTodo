@@ -82,7 +82,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       await PomodoroService.syncTagsFromCloud();
       await PomodoroService.syncRecordsFromCloud();
     } catch (e) {
-      debugPrint('[PomodoroStats] _syncAndRefresh error: $e');
+      // debugPrint('[PomodoroStats] _syncAndRefresh error: $e');
     }
     if (!mounted) return;
     setState(() => _syncing = false);

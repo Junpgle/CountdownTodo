@@ -285,18 +285,33 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       _closeLoadingDialog(context);
 
       if (data.isNotEmpty) {
-        if (_semesterStart == null) {
+        // 检查是否有学期数据
+        if (_semesters.isEmpty && _semesterStart == null) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('⚠️ 云端与本地均未配置开学日期，无法计算课表具体日期')));
           return;
         }
 
-        final DateTime semesterMonday = _semesterStart!
-            .subtract(Duration(days: _semesterStart!.weekday - 1));
-
-        final courses = data.map<CourseItem>((c) {
+        final courses = data.map<CourseItem?>((c) {
           final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
           final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
+          final String semesterId = c['semester'] ?? 'default';
+
+          // 根据学期ID找到对应的开学日期
+          DateTime? semesterStartForCourse;
+          for (final s in _semesters) {
+            if (s.id == semesterId) {
+              semesterStartForCourse = s.startDate;
+              break;
+            }
+          }
+          // 如果找不到对应的学期，使用当前的开学日期
+          semesterStartForCourse ??= _semesterStart;
+          
+          if (semesterStartForCourse == null) return null;
+
+          final DateTime semesterMonday = semesterStartForCourse
+              .subtract(Duration(days: semesterStartForCourse.weekday - 1));
 
           final DateTime courseDate = semesterMonday
               .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
@@ -312,9 +327,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             weekIndex: weekIndex,
             lessonType: c['lesson_type'] ?? '',
             date: dateStr,
-            semesterId: _activeSemesterId, // 设置当前活跃学期ID
+            semesterId: semesterId, // 使用课程本身的学期ID
           );
-        }).toList();
+        }).whereType<CourseItem>().toList();
 
         // 检测冲突并让用户选择导入模式
         final conflicts =
@@ -579,7 +594,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
             _semesters = updatedSemesters;
           });
           
-          debugPrint("✅ [Settings] 同步更新学期放假时间: ${updatedSemester.name} -> ${DateFormat('yyyy/MM/dd').format(picked)}");
         }
       }
 
@@ -1391,9 +1405,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         semesterEndMs: _semesterEnd?.millisecondsSinceEpoch,
         semesters: semestersData,
       );
-      debugPrint("✅ [Settings] 学期数据已同步到服务器");
     } catch (e) {
-      debugPrint("⚠️ [Settings] 学期数据同步失败: $e");
     }
   }
 

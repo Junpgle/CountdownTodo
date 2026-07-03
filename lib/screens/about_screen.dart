@@ -147,7 +147,7 @@ class _AboutScreenState extends State<AboutScreen> {
         }
       }
     } catch (e) {
-      debugPrint('获取设备信息失败: $e');
+      // debugPrint('获取设备信息失败: $e');
     }
   }
 
@@ -172,7 +172,7 @@ class _AboutScreenState extends State<AboutScreen> {
         });
       }
     } catch (e) {
-      debugPrint('获取更新日志失败: $e');
+      // debugPrint('获取更新日志失败: $e');
       if (mounted) {
         setState(() => _isLoadingChangelog = false);
       }
@@ -194,7 +194,7 @@ class _AboutScreenState extends State<AboutScreen> {
         });
       }
     } catch (e) {
-      debugPrint('加载归档日志失败: $e');
+      // debugPrint('加载归档日志失败: $e');
       if (mounted) {
         setState(() => _isLoadingArchive = false);
       }
@@ -222,7 +222,7 @@ class _AboutScreenState extends State<AboutScreen> {
         if (mounted) setState(() => _isLoadingPrivacy = false);
       }
     } catch (e) {
-      debugPrint('获取隐私政策失败: $e');
+      // debugPrint('获取隐私政策失败: $e');
       if (mounted) setState(() => _isLoadingPrivacy = false);
     }
   }

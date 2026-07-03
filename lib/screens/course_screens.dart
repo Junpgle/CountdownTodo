@@ -341,7 +341,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         .where((c) => c.semesterId == targetSemesterId && c.weekIndex == relativeWeek)
         .toList();
     
-    debugPrint("📚 [CourseScreen] 当前周次: $_currentWeek, 学期: $targetSemesterId, 相对周次: $relativeWeek, 课程数: ${_weekCourses.length}");
   }
 
   void _checkCoachMarks() async {
@@ -530,13 +529,13 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     final spanDays = dayEnd.difference(dayStart).inDays;
 
     if (spanDays < 0) {
-      debugPrint(
-          '[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
+      // debugPrint(
+      //     '[CourseScreen] Skip invalid span for $debugLabel: start=$start end=$end');
       return;
     }
     if (spanDays > _maxExpandedSpanDays) {
-      debugPrint(
-          '[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
+      // debugPrint(
+      //     '[CourseScreen] Skip oversized span for $debugLabel: ${spanDays + 1} days');
       return;
     }
 
@@ -1996,8 +1995,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             bottom: top + height,
             builder: (left, width) {
               final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
-              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
-              final double teamFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 10.5);
+              final double teamFontSize = (height * 0.22 * fontScale).clamp(8.0, 9.0);
               final double availableForTodo =
                   (todo.teamUuid != null && height >= 32)
                       ? height - (teamFontSize + 7.0)
@@ -2208,8 +2207,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             bottom: top + height,
             builder: (left, width) {
               final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
-              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
-              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 10.5);
+              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 9.0);
               final double availableForLog =
                   height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
               int logMaxLines = (availableForLog / (titleFontSize + 1.0)).floor();
@@ -2353,8 +2352,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             bottom: top + height,
             builder: (left, width) {
               final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
-              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
-              final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 10.5);
+              final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 9.0);
               
               int planMaxLines = 2;
               if (hasAssociatedPomodoro) {
@@ -2629,8 +2628,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             bottom: top + height,
             builder: (left, width) {
               final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
-              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
-              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+              final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 10.5);
+              final double timeFontSize = (height * 0.22 * fontScale).clamp(8.0, 9.0);
               final double availableForPom =
                   height > 22 ? height - (timeFontSize + 2.0) : height - 2.0;
               int pomMaxLines = (availableForPom / (titleFontSize + 1.0)).floor();
@@ -2768,8 +2767,8 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           bottom: top + height,
           builder: (left, width) {
             final double fontScale = (width / (cellWidth - 2)).clamp(0.4, 1.0);
-            final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 11.5);
-            final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 10.0);
+            final double titleFontSize = (height * 0.32 * fontScale).clamp(9.0, 10.5);
+            final double subFontSize = (height * 0.22 * fontScale).clamp(8.0, 9.0);
             final double titleLineHeight = titleFontSize * 1.15 + 1.0;
             const double paddingTotal = 2.0;
             const double gapHeight = 2.0;
@@ -3296,12 +3295,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         centerTitle: false,
         titleSpacing: 0,
         actions: [
-          IconButton(
-            visualDensity: const VisualDensity(horizontal: -2),
-            icon: const Icon(Icons.smart_toy_outlined, size: 20),
-            tooltip: 'AI日程助手',
-            onPressed: _openAiAssistant,
-          ),
+
           IconButton(
             key: _viewModeKey,
             visualDensity: const VisualDensity(horizontal: -2),

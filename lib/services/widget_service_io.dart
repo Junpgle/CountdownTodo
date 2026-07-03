@@ -71,7 +71,7 @@ class WidgetService {
             widgetBackgroundCallback);
         _initialized = true;
       } catch (e) {
-        print('WidgetBackground 注册失败: $e');
+//         print('WidgetBackground 注册失败: $e');
       }
     } else if (Platform.isMacOS) {
       _initialized = true;
@@ -87,7 +87,7 @@ class WidgetService {
         final todos = await StorageService.getTodos(username);
         await WidgetService.updateAllWidgetData(username, todos);
       } catch (e) {
-        print('Widget periodic refresh error: $e');
+//         print('Widget periodic refresh error: $e');
       }
     });
 
@@ -100,7 +100,7 @@ class WidgetService {
         await updateAllWidgetData(username, todos);
       }
     } catch (e) {
-      print('Widget initial update error: $e');
+//       print('Widget initial update error: $e');
     }
   }
 
@@ -426,45 +426,45 @@ class WidgetService {
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$androidWidgetName')
               .catchError((e) {
-            debugPrint(
-                '⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
+//             debugPrint(
+//                 '⚠️ [WidgetService] Failed to update $androidWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$todoOnlyWidgetName')
               .catchError((e) {
-            debugPrint(
-                '⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
+//             debugPrint(
+//                 '⚠️ [WidgetService] Failed to update $todoOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$courseOnlyWidgetName')
               .catchError((e) {
-            debugPrint(
-                '⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
+//             debugPrint(
+//                 '⚠️ [WidgetService] Failed to update $courseOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName:
                       '$_widgetPackage.$countdownOnlyWidgetName')
               .catchError((e) {
-            debugPrint(
-                '⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
+//             debugPrint(
+//                 '⚠️ [WidgetService] Failed to update $countdownOnlyWidgetName: $e');
             return false;
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$focusOnlyWidgetName')
               .catchError((e) {
-            debugPrint(
-                '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+//             debugPrint(
+//                 '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
             return false;
           }),
         ]);
       } catch (e) {
-        debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
+//         debugPrint('⚠️ [WidgetService] Android Widget update suppressed: $e');
       }
     } catch (e) {
-      debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
+//       debugPrint('⚠️ [WidgetService] Android Widget write error: $e');
     }
   }
 
@@ -474,7 +474,7 @@ class WidgetService {
         'json': snapshot.toJsonString(),
       });
     } catch (e) {
-      debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
+//       debugPrint('⚠️ [WidgetService] macOS Widget update failed: $e');
     }
   }
 

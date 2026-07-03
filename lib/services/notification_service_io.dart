@@ -285,7 +285,7 @@ class NotificationService {
             pendingItems.map((t) => t.remark?.trim() ?? '').toList(),
       });
     } catch (e) {
-      debugPrint("更新今日待办通知失败: $e");
+//       debugPrint("更新今日待办通知失败: $e");
     }
   }
 
@@ -390,8 +390,8 @@ class NotificationService {
         : "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(dueDate)}";
     final notifId = todo.id.hashCode;
 
-    debugPrint(
-        "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
+//     debugPrint(
+//         "🔔 showUpcomingTodoNotification: title=${todo.title}, todoId=${todo.id}, hashCode=${todo.id.hashCode}, todoType=$todoType, isSpecialTodo=$isSpecialTodo, notifId=$notifId");
 
     if (_isDesktopSupported) {
       if (isAllDayTodo) {
@@ -402,7 +402,7 @@ class NotificationService {
 
         final dedupeKey = _windowsAllDayTodoKey(todo);
         if (_windowsAllDayTodoNotifiedKeys.contains(dedupeKey)) {
-          debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
+//           debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
           return;
         }
         _windowsAllDayTodoNotifiedKeys.add(dedupeKey);
@@ -428,10 +428,10 @@ class NotificationService {
         'imagePath': todo.imagePath,
         'originalText': todo.originalText, // 📄 原始分析文本
       });
-      debugPrint(
-          "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
+//       debugPrint(
+//           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
     } catch (e) {
-      debugPrint("更新即将开始的待办通知失败: $e");
+//       debugPrint("更新即将开始的待办通知失败: $e");
     }
   }
 
@@ -503,7 +503,7 @@ class NotificationService {
         'isBreak': isBreak,
       });
     } catch (e) {
-      debugPrint('番茄钟结束提醒失败: $e');
+//       debugPrint('番茄钟结束提醒失败: $e');
     }
   }
 
@@ -562,7 +562,7 @@ class NotificationService {
           );
           scheduledOnDesktop.add(r);
         } catch (e) {
-          debugPrint('桌面端预约提醒失败: $e');
+//           debugPrint('桌面端预约提醒失败: $e');
         }
       }
 
@@ -622,7 +622,7 @@ class NotificationService {
       final List<dynamic> list = jsonDecode(jsonStr);
       return list.map((item) => Map<String, dynamic>.from(item)).toList();
     } catch (e) {
-      debugPrint('Error getting scheduled reminders: $e');
+//       debugPrint('Error getting scheduled reminders: $e');
       return [];
     }
   }
@@ -710,7 +710,7 @@ class NotificationService {
         'progress': progress,
       });
     } catch (e) {
-      debugPrint("更新图片识别进度通知失败: $e");
+//       debugPrint("更新图片识别进度通知失败: $e");
     }
   }
 
@@ -743,7 +743,7 @@ class NotificationService {
         'notificationId': NOTIF_ID_TODO_RECOGNIZE,
       });
     } catch (e) {
-      debugPrint("发送图片识别成功通知失败: $e");
+//       debugPrint("发送图片识别成功通知失败: $e");
     }
   }
 
@@ -777,7 +777,7 @@ class NotificationService {
         'notificationId': NOTIF_ID_TODO_RECOGNIZE,
       });
     } catch (e) {
-      debugPrint("发送图片识别失败通知失败: $e");
+//       debugPrint("发送图片识别失败通知失败: $e");
     }
   }
 
@@ -825,7 +825,7 @@ class NotificationService {
         'content': updateContent,
       });
     } catch (e) {
-      debugPrint("发送版本更新通知失败: $e");
+//       debugPrint("发送版本更新通知失败: $e");
     }
   }
 

@@ -266,14 +266,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   bool _isInitProcessing = false;
   Future<void> _init() async {
     if (_isInitProcessing) {
-      debugPrint(
-          '[PomodoroWorkbench] _init already in progress, skipping redundant call');
+      // debugPrint(
+      //     '[PomodoroWorkbench] _init already in progress, skipping redundant call');
       return;
     }
     _isInitProcessing = true;
     final initStart = DateTime.now();
-    debugPrint(
-        '[PomodoroWorkbench] _init start: ${initStart.toIso8601String()}');
+    // debugPrint(
+    //     '[PomodoroWorkbench] _init start: ${initStart.toIso8601String()}');
     Timer? initWatchdog = Timer(const Duration(seconds: 6), () {});
 
     try {
@@ -380,7 +380,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       } catch (e) {}
 
       if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
-        debugPrint('[PomodoroWorkbench] _syncService.forceReconnect() start');
         try {
           try {
             await _syncService
@@ -834,7 +833,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         groups: _todoGroups,
       );
     } catch (e) {
-      debugPrint('[PomodoroWorkbench] recommend tags failed: $e');
+      // debugPrint('[PomodoroWorkbench] recommend tags failed: $e');
       return const [];
     }
   }
@@ -1174,18 +1173,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_settings.mode == TimerMode.countUp) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final elapsed = ((now - _sessionStartMs) - _accumulatedMs);
-      debugPrint('[Pause] countUp mode: elapsed=$elapsed');
+      // debugPrint('[Pause] countUp mode: elapsed=$elapsed');
       _targetEndMs = _sessionStartMs + elapsed;
     }
 
-    debugPrint('[Pause] About to setState, _isPaused will be set to true');
+    // debugPrint('[Pause] About to setState, _isPaused will be set to true');
     setState(() {
       _isPaused = true;
     });
     _startPauseTicker();
-    debugPrint(
-        '[Pause] LOCKED. _pausedAtMs: $_pausedAtMs, _accumulatedMs: $_accumulatedMs');
-    debugPrint('[Pause] After setState, calling notifications');
+    // debugPrint(
+    //     '[Pause] LOCKED. _pausedAtMs: $_pausedAtMs, _accumulatedMs: $_accumulatedMs');
+    // debugPrint('[Pause] After setState, calling notifications');
     _pushPomodoroNotification();
     _showLocalFloat();
     PomodoroService.saveRunState(_buildCurrentRunState());
@@ -1199,15 +1198,15 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Future<void> _resumeFocus() async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    debugPrint('[Resume] _resumeFocus called');
+    // debugPrint('[Resume] _resumeFocus called');
     if (_pausedAtMs > 0) {
       final pauseDuration = now - _pausedAtMs;
       _accumulatedMs += pauseDuration;
       if (_pauseIntervals.isNotEmpty && _pauseIntervals.last.isOngoing) {
         _pauseIntervals.last.endMs = now;
       }
-      debugPrint(
-          '[Resume] UPDATED. pauseDuration: $pauseDuration, new _accumulatedMs: $_accumulatedMs');
+      // debugPrint(
+      //     '[Resume] UPDATED. pauseDuration: $pauseDuration, new _accumulatedMs: $_accumulatedMs');
 
       // 如果是倒计时模式, 需要推后结束时间
       if (_settings.mode != TimerMode.countUp) {
@@ -1223,7 +1222,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
     }
 
-    debugPrint('[Resume] Settings _isPaused=false and starting ticker');
+    // debugPrint('[Resume] Settings _isPaused=false and starting ticker');
     setState(() {
       _isPaused = false;
       _pausedAtMs = 0;
@@ -2263,9 +2262,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     try {
       await update.timeout(const Duration(seconds: 3));
     } on TimeoutException {
-      debugPrint('[PomodoroWorkbench] Float window update timed out');
+      // debugPrint('[PomodoroWorkbench] Float window update timed out');
     } catch (e) {
-      debugPrint('[PomodoroWorkbench] Float window update failed: $e');
+      // debugPrint('[PomodoroWorkbench] Float window update failed: $e');
     }
   }
 

@@ -141,7 +141,7 @@ class AppDeepLinkService {
         await Process.run('reg', args);
       }
     } catch (e) {
-      debugPrint('[DeepLink] Windows protocol registration failed: $e');
+      // debugPrint('[DeepLink] Windows protocol registration failed: $e');
     }
   }
 }

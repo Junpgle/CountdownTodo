@@ -83,7 +83,7 @@ class _LeaderboardListState extends State<_LeaderboardList> {
       // 确保类型转换安全
       return list.map((e) => Map<String, dynamic>.from(e)).toList();
     } catch (e) {
-      debugPrint("获取排行榜失败: $e");
+      // debugPrint("获取排行榜失败: $e");
       return [];
     }
   }

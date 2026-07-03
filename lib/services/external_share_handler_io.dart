@@ -36,7 +36,7 @@ class ExternalShareHandler {
             onTodoRecognized: onTodoRecognized, fromInitial: false);
       },
       onError: (err) {
-        debugPrint("获取外部意图失败: $err");
+        // debugPrint("获取外部意图失败: $err");
       },
     );
 
@@ -66,7 +66,7 @@ class ExternalShareHandler {
         firstPath.contains('.') &&
         !firstPath.startsWith('countdowntodo://');
     if (!isValidFile) {
-      debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
+      // debugPrint('ExternalShareHandler: skip non-file intent: $firstPath');
       ReceiveSharingIntent.instance.reset();
       _isProcessing = false;
       return;
@@ -120,7 +120,7 @@ class ExternalShareHandler {
       // 生成文件唯一标识并检查是否已处理（仅对getInitialMedia去重，防止重复处理）
       final fileKey = await _generateFileKey(filePath);
       if (fromInitial && await _isFileProcessed(fileKey)) {
-        debugPrint("文件已处理过，跳过: $filePath");
+        // debugPrint("文件已处理过，跳过: $filePath");
         _closeDialogSafely(dialogContext);
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
@@ -205,7 +205,7 @@ class ExternalShareHandler {
             onTodoRecognized(results, filePath);
           }
         } catch (e) {
-          debugPrint("大模型图片识别失败: $e");
+          // debugPrint("大模型图片识别失败: $e");
           String errorMsg = e.toString();
 
           // 获取重试次数
@@ -453,7 +453,7 @@ class ExternalShareHandler {
         }
       }
     } catch (e) {
-      debugPrint("处理外部共享文件崩溃: $e");
+      // debugPrint("处理外部共享文件崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
       await Future.delayed(const Duration(seconds: 2));
       _closeDialogSafely(dialogContext);
@@ -548,7 +548,7 @@ class ExternalShareHandler {
       }
       await prefs.setStringList('processed_file_keys', processedKeys);
     } catch (e) {
-      debugPrint("持久化存储已处理文件失败: $e");
+      // debugPrint("持久化存储已处理文件失败: $e");
     }
   }
 
@@ -569,7 +569,7 @@ class ExternalShareHandler {
     required int maxRetries,
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) async {
-    debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
+    // debugPrint("启动后台重试: filePath=$filePath, maxRetries=$maxRetries");
 
     // 显示开始重试的通知
     await NotificationService.showTodoRecognizeProgress(
@@ -590,7 +590,7 @@ class ExternalShareHandler {
 
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        debugPrint("后台重试第$attempt次...");
+        // debugPrint("后台重试第$attempt次...");
 
         // 更新进度通知和状态
         await NotificationService.showTodoRecognizeProgress(
@@ -614,11 +614,11 @@ class ExternalShareHandler {
             .timeout(const Duration(seconds: 180));
 
         success = true;
-        debugPrint("后台重试第$attempt次成功!");
+        // debugPrint("后台重试第$attempt次成功!");
         break;
       } catch (e) {
         lastError = e.toString();
-        debugPrint("后台重试第$attempt次失败: $e");
+        // debugPrint("后台重试第$attempt次失败: $e");
 
         // 更新失败通知和状态
         await NotificationService.showTodoRecognizeProgress(
@@ -638,7 +638,7 @@ class ExternalShareHandler {
         // 如果不是最后一次，等待更长时间再重试（指数退避）
         if (attempt < maxRetries) {
           final waitSeconds = 5 * attempt; // 增加等待时间
-          debugPrint("等待$waitSeconds秒后重试...");
+          // debugPrint("等待$waitSeconds秒后重试...");
           await Future.delayed(Duration(seconds: waitSeconds));
         }
       }
@@ -666,7 +666,7 @@ class ExternalShareHandler {
         onTodoRecognized(results, filePath);
       }
 
-      debugPrint("后台重试成功，已保存${results.length}个待办，等待用户确认");
+      // debugPrint("后台重试成功，已保存${results.length}个待办，等待用户确认");
     } else {
       // 所有重试都失败，保存最终失败状态
       await StorageService.updatePendingTodoConfirmStatus(
@@ -680,7 +680,7 @@ class ExternalShareHandler {
       );
 
       // 不通知首页刷新，让用户点击重试按钮来手动刷新
-      debugPrint("后台重试全部失败: $lastError");
+      // debugPrint("后台重试全部失败: $lastError");
     }
   }
 
@@ -702,7 +702,7 @@ class ExternalShareHandler {
   }) async {
     final pendingData = await StorageService.getPendingTodoConfirm();
     if (pendingData == null) {
-      debugPrint("没有待确认的待办数据，无法重试");
+      // debugPrint("没有待确认的待办数据，无法重试");
       return;
     }
 
@@ -710,7 +710,7 @@ class ExternalShareHandler {
     final compressedPath = pendingData['compressedPath'] as String?;
 
     if (imagePath == null) {
-      debugPrint("图片路径为空，无法重试");
+      // debugPrint("图片路径为空，无法重试");
       return;
     }
 
@@ -720,7 +720,7 @@ class ExternalShareHandler {
     // 检查图片文件是否存在
     final file = File(retryPath);
     if (!await file.exists()) {
-      debugPrint("图片文件不存在: $retryPath");
+      // debugPrint("图片文件不存在: $retryPath");
       await StorageService.updatePendingTodoConfirmStatus(
         status: 'failed',
         errorMsg: '图片文件不存在，请重新分享',
@@ -774,7 +774,7 @@ class ExternalShareHandler {
           onTodoRecognized(results, imagePath);
         }
 
-        debugPrint("重试成功，已保存${results.length}个待办");
+        // debugPrint("重试成功，已保存${results.length}个待办");
       } else {
         // 识别结果为空
         await StorageService.updatePendingTodoConfirmStatus(
@@ -789,7 +789,7 @@ class ExternalShareHandler {
         // 不通知首页刷新，让用户点击重试按钮来手动刷新
       }
     } catch (e) {
-      debugPrint("重试失败: $e");
+      // debugPrint("重试失败: $e");
       String errorMsg = e.toString();
 
       // 保存失败状态

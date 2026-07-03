@@ -16,7 +16,7 @@ Future<String> resolveDatabasePath(String targetName) async {
 
     final targetPath = join(dbDir.path, targetName);
     await migrateLegacyFfiDatabaseIfNeeded(targetName, targetPath);
-    debugPrint('📁 Database path: $targetPath');
+    // debugPrint('📁 Database path: $targetPath');
     return targetPath;
   }
 
@@ -43,8 +43,8 @@ Future<void> migrateLegacyFfiDatabaseIfNeeded(
         await sidecar.copy('$targetPath$suffix');
       }
     }
-    debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
+    // debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
   } catch (e) {
-    debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
+    // debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
   }
 }

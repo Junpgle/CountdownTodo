@@ -362,7 +362,7 @@ class ApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint("🚫 [ApiService] 忽略上报失败: $e");
+//       debugPrint("🚫 [ApiService] 忽略上报失败: $e");
       return false;
     }
   }
@@ -1221,12 +1221,12 @@ class ApiService {
         combinedHistory.addAll(data['history'] ?? []);
       } else if (response.statusCode == 403 || response.statusCode == 404) {
         // 后端权限收紧后，这两种状态是业务态，不当作网络异常
-        debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
+//         debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
       } else {
-        debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
+//         debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
       }
     } catch (e) {
-      debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
+//       debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
     }
 
     // 2. 获取本地历史并合并
@@ -1249,7 +1249,7 @@ class ApiService {
         });
       }
     } catch (e) {
-      debugPrint("⚠️ 获取本地历史失败: $e");
+//       debugPrint("⚠️ 获取本地历史失败: $e");
     }
 
     // 3. 排序：按时间倒序
