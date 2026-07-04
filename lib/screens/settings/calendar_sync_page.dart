@@ -360,7 +360,11 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: _working ? null : _writeSelected,
+                        onPressed: _working
+                            ? null
+                            : (AppPlatform.isWeb
+                                ? _exportSelectedIcs
+                                : _writeSelected),
                         icon: _working
                             ? const SizedBox(
                                 width: 18,

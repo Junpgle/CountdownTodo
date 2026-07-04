@@ -198,6 +198,8 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // ── 最先检查分享路由，避免启动多余逻辑 ──
+    _checkShareRoute();
     _windowReadyForSplashTransition =
         AppPlatform.isWeb || !AppPlatform.isDesktop;
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
@@ -697,6 +699,20 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     _checkShareRoute();
+
+    // ── 分享页：直接渲染，跳过所有登录/开屏逻辑 ──
+    if (_shareCode != null) {
+      return MaterialApp(
+        title: 'CountDownTodo',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6750A4)),
+          useMaterial3: true,
+        ),
+        home: ShareViewScreen(shareCode: _shareCode!),
+      );
+    }
+
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
