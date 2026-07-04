@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models.dart';
 import '../services/api_service.dart';
+import '../widgets/share_readonly_widgets.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String shareCode;
@@ -18,6 +20,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   Map<String, dynamic>? _data;
   final _passwordController = TextEditingController();
   bool _verifying = false;
+
+  // 转换后的模型数据
+  List<TodoItem> _todos = [];
+  List<TodoGroup> _todoGroups = [];
+  List<CountdownItem> _countdowns = [];
 
   @override
   void initState() {
@@ -42,6 +49,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     );
     if (!mounted) return;
     if (result['success'] == true) {
+      _parseData(result);
       setState(() {
         _data = result;
         _isLoading = false;
@@ -59,6 +67,51 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _parseData(Map<String, dynamic> result) {
+    final teamUuid = result['team']?['uuid']?.toString();
+    final teamName = result['team']?['name']?.toString();
+
+    // 解析待办
+    final rawTodos = (result['todos'] as List?) ?? [];
+    _todos = rawTodos.map((t) => TodoItem(
+      id: t['uuid']?.toString(),
+      title: t['content']?.toString() ?? '',
+      isDone: t['is_completed'] == 1,
+      dueDate: t['due_date'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(t['due_date'] as int)
+          : null,
+      createdDate: t['created_date'] as int?,
+      createdAt: t['created_at'] as int?,
+      collabType: t['collab_type'] ?? 0,
+      groupId: t['group_id']?.toString(),
+      teamUuid: teamUuid,
+      teamName: teamName,
+    )).toList();
+
+    // 解析分组
+    final rawGroups = (result['groups'] as List?) ?? [];
+    _todoGroups = rawGroups.map((g) => TodoGroup(
+      id: g['uuid']?.toString(),
+      name: g['name']?.toString() ?? '未命名分组',
+      isExpanded: g['is_expanded'] == 1,
+      teamUuid: teamUuid,
+      teamName: teamName,
+    )).toList();
+
+    // 解析倒计时
+    final rawCountdowns = (result['countdowns'] as List?) ?? [];
+    _countdowns = rawCountdowns.map((c) => CountdownItem(
+      id: c['uuid']?.toString(),
+      title: c['title']?.toString() ?? '',
+      targetDate: DateTime.fromMillisecondsSinceEpoch(
+          (c['target_time'] as int?) ?? DateTime.now().millisecondsSinceEpoch),
+      isCompleted: c['is_completed'] == 1,
+      createdAt: c['created_at'] as int?,
+      teamUuid: teamUuid,
+      teamName: teamName,
+    )).toList();
   }
 
   Future<void> _verifyPassword() async {
@@ -186,7 +239,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     if (_isLoading) return _buildLoading();
     if (_hasError) return _buildError();
     if (_needsPassword) return _buildPasswordInput();
-    return _buildHome();
+    return _buildDashboard();
   }
 
   Widget _buildLoading() {
@@ -229,8 +282,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   color: Colors.red.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child:
-                    Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
+                child: Icon(Icons.error_outline,
+                    size: 48, color: Colors.red.shade300),
               ),
               const SizedBox(height: 20),
               Text(_errorMessage,
@@ -320,36 +373,23 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     );
   }
 
-  // ==================== 首页布局 ====================
+  // ==================== 首页布局，复用现有组件 ====================
 
-  Widget _buildHome() {
+  Widget _buildDashboard() {
     final teamName = _data!['team']?['name'] ?? '未知团队';
     final share = _data!['share'] ?? {};
-    final todos = (_data!['todos'] as List?) ?? [];
-    final groups = (_data!['groups'] as List?) ?? [];
-    final countdowns = (_data!['countdowns'] as List?) ?? [];
     final announcements = (_data!['announcements'] as List?) ?? [];
-
-    final groupMap = <String, String>{};
-    for (final g in groups) {
-      groupMap[g['uuid']] = g['name'] ?? '未命名分组';
-    }
-
-    final doneTodos = todos.where((t) => t['is_completed'] == 1).length;
-    final pendingTodos = todos.where((t) => t['is_completed'] != 1).toList();
-    final completedTodos = todos.where((t) => t['is_completed'] == 1).toList();
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLight = !isDark;
     final primary = Theme.of(context).colorScheme.primary;
     final secondary = Theme.of(context).colorScheme.secondary;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      backgroundColor: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFE8F4FD),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: CustomScrollView(
-          physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics()),
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
           slivers: [
             // ── 顶部 AppBar ──
             SliverAppBar(
@@ -357,16 +397,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               floating: false,
               pinned: true,
               stretch: true,
-              backgroundColor:
-                  isDark ? const Color(0xFF1E1E2E) : primary,
+              backgroundColor: isDark ? const Color(0xFF1E1E2E) : primary,
               foregroundColor: Colors.white,
               flexibleSpace: FlexibleSpaceBar(
-                titlePadding:
-                    const EdgeInsets.only(left: 20, bottom: 16),
+                titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
                 title: Text(
                   share['title'] ?? teamName,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 background: Container(
                   decoration: BoxDecoration(
@@ -376,21 +413,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       colors: isDark
                           ? [const Color(0xFF1E1E2E), const Color(0xFF2D2D44)]
                           : [primary, primary.withValues(alpha: 0.8)],
-                    ),
-                  ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 56),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (share['description'] != null)
-                            Text(share['description'],
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13)),
-                        ],
-                      ),
                     ),
                   ),
                 ),
@@ -404,132 +426,48 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               ],
             ),
 
-            // ── 统计栏 ──
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.05)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: isDark
-                      ? null
-                      : [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2))
-                        ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildStatItem(
-                        '待办', '$doneTodos/${todos.length}', Icons.check_circle_outline, primary),
-                    _buildDivider(),
-                    _buildStatItem(
-                        '倒计时', '${countdowns.length}', Icons.timer_outlined, secondary),
-                    _buildDivider(),
-                    _buildStatItem(
-                        '公告', '${announcements.length}', Icons.announcement_outlined,
-                        Colors.orangeAccent),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── 公告区域 ──
+            // ── 公告 ──
             if (announcements.isNotEmpty)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeader('团队公告', Icons.announcement_outlined,
-                          Colors.orangeAccent),
-                      const SizedBox(height: 12),
-                      ...announcements
-                          .map((a) => _buildAnnouncementCard(a, isDark)),
-                    ],
-                  ),
-                ),
-              ),
-
-            // ── 待办事项 ──
-            if (todos.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeader(
-                          '待办事项', Icons.check_circle_outline, primary),
-                      const SizedBox(height: 12),
-                      // 未完成
-                      if (pendingTodos.isNotEmpty) ...[
-                        ...pendingTodos.map((t) => _buildTodoCard(t, groupMap, false, isDark, primary)),
-                      ],
-                      // 已完成
-                      if (completedTodos.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12, bottom: 8),
-                          child: Text('已完成 ($doneTodos)',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade500,
-                                  fontWeight: FontWeight.w500)),
-                        ),
-                        ...completedTodos.map((t) => _buildTodoCard(t, groupMap, true, isDark, primary)),
-                      ],
-                    ],
-                  ),
-                ),
+                child: _buildAnnouncementsSection(announcements, isDark),
               ),
 
             // ── 倒计时 ──
-            if (countdowns.isNotEmpty)
+            if (_countdowns.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeader(
-                          '倒计时', Icons.timer_outlined, secondary),
-                      const SizedBox(height: 12),
-                      ...countdowns.map((c) => _buildCountdownCard(c, isDark, secondary)),
-                    ],
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+                ),
+              ),
+
+            // ── 待办 ──
+            if (_todos.isNotEmpty || _todoGroups.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: ShareTodoSection(todos: _todos, todoGroups: _todoGroups, isLight: isLight),
                 ),
               ),
 
             // ── 空状态 ──
-            if (todos.isEmpty && countdowns.isEmpty && announcements.isEmpty)
+            if (_todos.isEmpty && _countdowns.isEmpty && announcements.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inbox_outlined,
-                          size: 64, color: Colors.grey.shade300),
+                      Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade300),
                       const SizedBox(height: 16),
-                      Text('暂无分享内容',
-                          style: TextStyle(
-                              fontSize: 16, color: Colors.grey.shade500)),
+                      Text('暂无分享内容', style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
                     ],
                   ),
                 ),
               ),
 
             // ── 底部留白 ──
-            const SliverToBoxAdapter(
-                child: SizedBox(height: 100)),
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
           ],
         ),
       ),
@@ -537,61 +475,45 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         onPressed: _showJoinDialog,
         backgroundColor: secondary,
         icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text('申请加入团队',
-            style:
-                TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('申请加入团队', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
 
-  // ==================== 组件 ====================
-
-  Widget _buildStatItem(
-      String label, String value, IconData icon, Color color) {
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 22),
-        const SizedBox(height: 6),
-        Text(value,
-            style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-      ],
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(
-        height: 36, width: 1, color: Colors.grey.withValues(alpha: 0.15));
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+  // ── 公告区域（HomeDashboard 风格）──
+  Widget _buildAnnouncementsSection(List announcements, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.orangeAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.announcement_outlined,
+                    size: 18, color: Colors.orangeAccent),
+              ),
+              const SizedBox(width: 10),
+              const Text('团队公告',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orangeAccent)),
+            ],
           ),
-          child: Icon(icon, size: 18, color: color),
-        ),
-        const SizedBox(width: 10),
-        Text(title,
-            style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: color)),
-      ],
+          const SizedBox(height: 12),
+          ...announcements.map((a) => _buildAnnouncementCard(a, isDark)),
+        ],
+      ),
     );
   }
 
-  Widget _buildAnnouncementCard(
-      Map<String, dynamic> a, bool isDark) {
+  Widget _buildAnnouncementCard(Map<String, dynamic> a, bool isDark) {
     final isPriority =
         a['is_priority'] == 1 || a['is_priority'] == true;
     return Container(
@@ -667,184 +589,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildTodoCard(Map<String, dynamic> t,
-      Map<String, String> groupMap, bool isDone, bool isDark, Color primary) {
-    final title = t['content'] ?? '';
-    final dueDate = t['due_date'];
-    final collabType = t['collab_type'];
-    final groupId = t['group_id'];
-    final groupName = groupId != null ? groupMap[groupId] : null;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 6,
-                    offset: const Offset(0, 1))
-              ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDone ? Colors.green : Colors.transparent,
-                border: Border.all(
-                    color: isDone
-                        ? Colors.green
-                        : Colors.grey.shade400,
-                    width: 2),
-              ),
-              child: isDone
-                  ? const Icon(Icons.check,
-                      size: 14, color: Colors.white)
-                  : null,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight:
-                            isDone ? FontWeight.normal : FontWeight.w500,
-                        decoration:
-                            isDone ? TextDecoration.lineThrough : null,
-                        color: isDone ? Colors.grey.shade500 : null,
-                      )),
-                  if (groupName != null ||
-                      dueDate != null ||
-                      collabType == 1)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 2,
-                        children: [
-                          if (groupName != null)
-                            _buildMiniTag(
-                                groupName, primary.withValues(alpha: 0.1), primary),
-                          if (dueDate != null)
-                            _buildMiniTag(
-                                '截止 ${_fmtDate(dueDate)}',
-                                Colors.blue.withValues(alpha: 0.1),
-                                Colors.blue),
-                          if (collabType == 1)
-                            _buildMiniTag('各自独立',
-                                Colors.purple.withValues(alpha: 0.1),
-                                Colors.purple),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniTag(String text, Color bg, Color fg) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-          color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(text,
-          style: TextStyle(fontSize: 11, color: fg)),
-    );
-  }
-
-  Widget _buildCountdownCard(
-      Map<String, dynamic> c, bool isDark, Color secondary) {
-    final title = c['title'] ?? '';
-    final targetTime = c['target_time'] as int?;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final days = targetTime != null
-        ? ((targetTime - now) / (1000 * 60 * 60 * 24)).ceil()
-        : 0;
-    final isPast = days < 0;
-    final isToday = days == 0;
-
-    String daysText;
-    Color badgeColor;
-    if (isPast) {
-      daysText = '已过 ${days.abs()} 天';
-      badgeColor = Colors.grey.shade500;
-    } else if (isToday) {
-      daysText = '今天';
-      badgeColor = Colors.orange;
-    } else {
-      daysText = '$days 天';
-      badgeColor = secondary;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2))
-              ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: isPast ? Colors.grey.shade500 : null,
-                  )),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: badgeColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(daysText,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: badgeColor)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _fmtDate(int ts) {
-    final d = DateTime.fromMillisecondsSinceEpoch(ts);
-    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
   String _fmtDateTime(int ts) {
