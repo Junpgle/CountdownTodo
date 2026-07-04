@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
@@ -53,6 +54,11 @@ class _TurnstileVerificationWidgetState
       ..id = _containerId
       ..style.width = '100%'
       ..style.height = '${widget.height.round()}px';
+
+    ui_web.platformViewRegistry.registerViewFactory(
+      _containerId,
+      (int viewId) => _container,
+    );
 
     _startLoadTimeout();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -107,7 +113,6 @@ class _TurnstileVerificationWidgetState
       } catch (_) {}
     }
     _removeWidget();
-    _container.textContent = '';
     _startLoadTimeout();
     _loadScriptAndRender();
   }
@@ -177,21 +182,6 @@ class _TurnstileVerificationWidgetState
     if (!_hasTurnstile) return;
 
     if (_widgetId != null) {
-      if (!_container.isConnected) {
-        _removeWidget();
-      } else {
-        return;
-      }
-    }
-
-    if (!_container.isConnected) {
-      web.document.body?.appendChild(_container);
-    }
-
-    if (!_container.isConnected) {
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (!_disposed && _widgetId == null) _renderWidget();
-      });
       return;
     }
 
@@ -289,6 +279,7 @@ class _TurnstileVerificationWidgetState
           borderRadius: BorderRadius.circular(12),
           child: Stack(
             children: [
+              HtmlElementView(viewType: _containerId),
               if (_isLoading && !_hasError) _buildLoadingOverlay(),
               if (_hasError) _buildErrorState(),
               if (_isVerified) _buildVerifiedOverlay(),
