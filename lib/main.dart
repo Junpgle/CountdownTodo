@@ -821,17 +821,11 @@ class _MyAppState extends State<MyApp> {
                                   return MaterialPageRoute(
                                     builder: (_) =>
                                         ShareViewScreen(shareCode: code),
-                                    settings: settings,
                                   );
                                 }
                               }
                               return null;
                             },
-                            onUnknownRoute: (_) => MaterialPageRoute(
-                              builder: (_) => _shareCode != null
-                                  ? ShareViewScreen(shareCode: _shareCode!)
-                                  : const LoginScreen(),
-                            ),
                             builder: (context, child) {
                               final content = child ?? const SizedBox.shrink();
                               if (!IslandDebugHost.shouldShowOverlay) {

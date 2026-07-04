@@ -3,7 +3,6 @@ import '../services/api_service.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String shareCode;
-
   const ShareViewScreen({super.key, required this.shareCode});
 
   @override
@@ -37,14 +36,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       _isLoading = true;
       _hasError = false;
     });
-
     final result = await ApiService.fetchShareData(
       widget.shareCode,
       token: _accessToken,
     );
-
     if (!mounted) return;
-
     if (result['success'] == true) {
       setState(() {
         _data = result;
@@ -68,13 +64,9 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   Future<void> _verifyPassword() async {
     final pwd = _passwordController.text.trim();
     if (pwd.isEmpty) return;
-
     setState(() => _verifying = true);
-
     final result = await ApiService.verifyShareCode(widget.shareCode, pwd);
-
     if (!mounted) return;
-
     if (result['success'] == true && result['requires_password'] != true) {
       _accessToken = result['access_token'];
       await _loadData();
@@ -86,252 +78,251 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     }
   }
 
-  void _showJoinRequestDialog() {
-    final emailController = TextEditingController();
-    final messageController = TextEditingController();
-    bool isSubmitting = false;
-
+  void _showJoinDialog() {
+    final emailCtrl = TextEditingController();
+    final msgCtrl = TextEditingController();
+    bool submitting = false;
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: Row(
-                children: [
-                  Icon(Icons.person_add_rounded,
-                      color: Theme.of(context).colorScheme.secondary),
-                  const SizedBox(width: 12),
-                  const Text('申请加入团队'),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '填写你的邮箱，管理员审批后你将收到通知。',
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: emailController,
-                      decoration: InputDecoration(
-                        labelText: '邮箱',
-                        hintText: '请输入你的注册邮箱',
-                        prefixIcon: const Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      autofocus: true,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: messageController,
-                      decoration: InputDecoration(
-                        labelText: '备注（可选）',
-                        hintText: '简单介绍一下自己',
-                        prefixIcon: const Icon(Icons.message_outlined),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      maxLines: 2,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
-                ElevatedButton(
-                  onPressed: isSubmitting
-                      ? null
-                      : () async {
-                          final email = emailController.text.trim();
-                          if (email.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('请输入邮箱')),
-                            );
-                            return;
-                          }
-                          setDialogState(() => isSubmitting = true);
-                          final result =
-                              await ApiService.requestJoinViaShare(
-                            shareCode: widget.shareCode,
-                            email: email,
-                            message: messageController.text.trim(),
-                          );
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(result['success'] == true
-                                  ? '申请已提交，请等待管理员审批'
-                                  : result['error'] ?? '提交失败'),
-                              backgroundColor: result['success'] == true
-                                  ? Colors.green
-                                  : null,
-                            ),
-                          );
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.secondary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Row(children: [
+            Icon(Icons.person_add_rounded,
+                color: Theme.of(context).colorScheme.secondary),
+            const SizedBox(width: 12),
+            const Text('申请加入团队'),
+          ]),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('填写你的邮箱，管理员审批后你将收到通知。',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade600)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: emailCtrl,
+                  decoration: InputDecoration(
+                    labelText: '邮箱',
+                    hintText: '请输入你的注册邮箱',
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: isSubmitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('提交申请'),
+                  keyboardType: TextInputType.emailAddress,
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: msgCtrl,
+                  decoration: InputDecoration(
+                    labelText: '备注（可选）',
+                    hintText: '简单介绍一下自己',
+                    prefixIcon: const Icon(Icons.message_outlined),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  maxLines: 2,
                 ),
               ],
-            );
-          },
-        );
-      },
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消')),
+            ElevatedButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      final email = emailCtrl.text.trim();
+                      if (email.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请输入邮箱')));
+                        return;
+                      }
+                      setDState(() => submitting = true);
+                      final res = await ApiService.requestJoinViaShare(
+                        shareCode: widget.shareCode,
+                        email: email,
+                        message: msgCtrl.text.trim(),
+                      );
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                        content: Text(res['success'] == true
+                            ? '申请已提交，请等待管理员审批'
+                            : res['error'] ?? '提交失败'),
+                        backgroundColor:
+                            res['success'] == true ? Colors.green : null,
+                      ));
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    Theme.of(context).colorScheme.secondary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('提交申请'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _isLoading
-          ? _buildLoading()
-          : _hasError
-              ? _buildError()
-              : _needsPassword
-                  ? _buildPasswordInput()
-                  : _buildContent(),
-      floatingActionButton: (_data != null && !_isLoading && !_hasError)
-          ? FloatingActionButton.extended(
-              onPressed: _showJoinRequestDialog,
-              backgroundColor: Theme.of(context).colorScheme.secondary,
-              icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-              label: const Text('申请加入团队',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            )
-          : null,
-    );
+    if (_isLoading) return _buildLoading();
+    if (_hasError) return _buildError();
+    if (_needsPassword) return _buildPasswordInput();
+    return _buildHome();
   }
 
   Widget _buildLoading() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('加载中...'),
-        ],
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('加载中...',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500)),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage,
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('返回'),
-            ),
-          ],
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child:
+                    Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
+              ),
+              const SizedBox(height: 20),
+              Text(_errorMessage,
+                  style: TextStyle(
+                      fontSize: 16, color: Colors.grey.shade600),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('返回'),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildPasswordInput() {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.lock_outline, size: 48,
-                color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 16),
-            const Text(
-              '需要密码验证',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '此分享链接设置了访问密码',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: '请输入密码',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+    return Scaffold(
+      body: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
                 ),
+                child: Icon(Icons.lock_outline,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.primary),
               ),
-              obscureText: true,
-              autofocus: true,
-              onSubmitted: (_) => _verifyPassword(),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _verifying ? null : _verifyPassword,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 20),
+              const Text('需要密码验证',
+                  style:
+                      TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('此分享链接设置了访问密码',
+                  style: TextStyle(color: Colors.grey.shade600)),
+              const SizedBox(height: 28),
+              TextField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: '请输入密码',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                obscureText: true,
+                autofocus: true,
+                onSubmitted: (_) => _verifyPassword(),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _verifying ? null : _verifyPassword,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
+                  child: _verifying
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('验证',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
-                child: _verifying
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('验证'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildContent() {
+  // ==================== 首页布局 ====================
+
+  Widget _buildHome() {
     final teamName = _data!['team']?['name'] ?? '未知团队';
     final share = _data!['share'] ?? {};
     final todos = (_data!['todos'] as List?) ?? [];
@@ -339,365 +330,290 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     final countdowns = (_data!['countdowns'] as List?) ?? [];
     final announcements = (_data!['announcements'] as List?) ?? [];
 
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          expandedHeight: 140,
-          pinned: true,
-          flexibleSpace: FlexibleSpaceBar(
-            title: Text(
-              share['title'] ?? teamName,
-              style: const TextStyle(fontSize: 16),
-            ),
-            background: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Theme.of(context).colorScheme.primary,
-                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
-                  ],
+    final groupMap = <String, String>{};
+    for (final g in groups) {
+      groupMap[g['uuid']] = g['name'] ?? '未命名分组';
+    }
+
+    final doneTodos = todos.where((t) => t['is_completed'] == 1).length;
+    final pendingTodos = todos.where((t) => t['is_completed'] != 1).toList();
+    final completedTodos = todos.where((t) => t['is_completed'] == 1).toList();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = Theme.of(context).colorScheme.primary;
+    final secondary = Theme.of(context).colorScheme.secondary;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
+          slivers: [
+            // ── 顶部 AppBar ──
+            SliverAppBar(
+              expandedHeight: 160,
+              floating: false,
+              pinned: true,
+              stretch: true,
+              backgroundColor:
+                  isDark ? const Color(0xFF1E1E2E) : primary,
+              foregroundColor: Colors.white,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding:
+                    const EdgeInsets.only(left: 20, bottom: 16),
+                title: Text(
+                  share['title'] ?? teamName,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 24),
-                    Text(
-                      teamName,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
+                background: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: isDark
+                          ? [const Color(0xFF1E1E2E), const Color(0xFF2D2D44)]
+                          : [primary, primary.withValues(alpha: 0.8)],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 56),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (share['description'] != null)
+                            Text(share['description'],
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 13)),
+                        ],
                       ),
                     ),
-                    if (share['description'] != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          share['description'],
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                  ),
+                ),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: _loadData,
+                  tooltip: '刷新',
+                ),
+              ],
+            ),
+
+            // ── 统计栏 ──
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: isDark
+                      ? null
+                      : [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2))
+                        ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatItem(
+                        '待办', '$doneTodos/${todos.length}', Icons.check_circle_outline, primary),
+                    _buildDivider(),
+                    _buildStatItem(
+                        '倒计时', '${countdowns.length}', Icons.timer_outlined, secondary),
+                    _buildDivider(),
+                    _buildStatItem(
+                        '公告', '${announcements.length}', Icons.announcement_outlined,
+                        Colors.orangeAccent),
                   ],
                 ),
               ),
             ),
-          ),
-        ),
-        if (share['share_todos'] == true && todos.isNotEmpty)
-          _buildTodosSection(todos, groups),
-        if (share['share_countdowns'] == true && countdowns.isNotEmpty)
-          _buildCountdownsSection(countdowns),
-        if (share['share_announcements'] == true && announcements.isNotEmpty)
-          _buildAnnouncementsSection(announcements),
-        if (todos.isEmpty && countdowns.isEmpty && announcements.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Text(
-                '暂无分享内容',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 15),
+
+            // ── 公告区域 ──
+            if (announcements.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader('团队公告', Icons.announcement_outlined,
+                          Colors.orangeAccent),
+                      const SizedBox(height: 12),
+                      ...announcements
+                          .map((a) => _buildAnnouncementCard(a, isDark)),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              '由 CountDownTodo 提供支持',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-            ),
-          ),
+
+            // ── 待办事项 ──
+            if (todos.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader(
+                          '待办事项', Icons.check_circle_outline, primary),
+                      const SizedBox(height: 12),
+                      // 未完成
+                      if (pendingTodos.isNotEmpty) ...[
+                        ...pendingTodos.map((t) => _buildTodoCard(t, groupMap, false, isDark, primary)),
+                      ],
+                      // 已完成
+                      if (completedTodos.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 8),
+                          child: Text('已完成 ($doneTodos)',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w500)),
+                        ),
+                        ...completedTodos.map((t) => _buildTodoCard(t, groupMap, true, isDark, primary)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+            // ── 倒计时 ──
+            if (countdowns.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader(
+                          '倒计时', Icons.timer_outlined, secondary),
+                      const SizedBox(height: 12),
+                      ...countdowns.map((c) => _buildCountdownCard(c, isDark, secondary)),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ── 空状态 ──
+            if (todos.isEmpty && countdowns.isEmpty && announcements.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox_outlined,
+                          size: 64, color: Colors.grey.shade300),
+                      const SizedBox(height: 16),
+                      Text('暂无分享内容',
+                          style: TextStyle(
+                              fontSize: 16, color: Colors.grey.shade500)),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ── 底部留白 ──
+            const SliverToBoxAdapter(
+                child: SizedBox(height: 100)),
+          ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showJoinDialog,
+        backgroundColor: secondary,
+        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+        label: const Text('申请加入团队',
+            style:
+                TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // ==================== 组件 ====================
+
+  Widget _buildStatItem(
+      String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 6),
+        Text(value,
+            style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
       ],
     );
   }
 
-  Widget _buildTodosSection(List todos, List groups) {
-    final groupMap = <String, Map<String, dynamic>>{};
-    for (final g in groups) {
-      groupMap[g['uuid']] = Map<String, dynamic>.from(g);
-    }
+  Widget _buildDivider() {
+    return Container(
+        height: 36, width: 1, color: Colors.grey.withValues(alpha: 0.15));
+  }
 
-    final groupedTodos = <String, List<Map<String, dynamic>>>{};
-    final ungrouped = <Map<String, dynamic>>[];
-
-    for (final t in todos) {
-      final todo = Map<String, dynamic>.from(t);
-      final gid = todo['group_id'];
-      if (gid != null && groupMap.containsKey(gid)) {
-        groupedTodos.putIfAbsent(gid, () => []).add(todo);
-      } else {
-        ungrouped.add(todo);
-      }
-    }
-
-    final doneCount = todos.where((t) => t['is_completed'] == 1).length;
-
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.check_circle_outline,
-                    size: 20, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '待办事项',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '$doneCount / ${todos.length}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...groupedTodos.entries.map((entry) {
-              final groupName = groupMap[entry.key]?['name'] ?? '未命名分组';
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      groupName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                  ...entry.value.map((t) => _buildTodoItem(t)),
-                ],
-              );
-            }),
-            if (ungrouped.isNotEmpty) ...ungrouped.map((t) => _buildTodoItem(t)),
-          ],
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: color),
         ),
-      ),
+        const SizedBox(width: 10),
+        Text(title,
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: color)),
+      ],
     );
   }
 
-  Widget _buildTodoItem(Map<String, dynamic> todo) {
-    final isDone = todo['is_completed'] == 1;
-    final title = todo['content'] ?? '';
-    final dueDate = todo['due_date'];
-    final collabType = todo['collab_type'];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            margin: const EdgeInsets.only(top: 2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isDone
-                  ? Colors.green
-                  : Colors.transparent,
-              border: Border.all(
-                color: isDone ? Colors.green : Colors.grey.shade400,
-                width: 2,
-              ),
-            ),
-            child: isDone
-                ? const Icon(Icons.check, size: 14, color: Colors.white)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    decoration: isDone ? TextDecoration.lineThrough : null,
-                    color: isDone ? Colors.grey.shade500 : null,
-                  ),
-                ),
-                if (dueDate != null || collabType == 1)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      children: [
-                        if (dueDate != null)
-                          Text(
-                            '截止 ${_formatDate(dueDate)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                        if (collabType == 1) ...[
-                          if (dueDate != null)
-                            Text(' · ', style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade500)),
-                          Text(
-                            '各自独立',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+  Widget _buildAnnouncementCard(
+      Map<String, dynamic> a, bool isDark) {
+    final isPriority =
+        a['is_priority'] == 1 || a['is_priority'] == true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: isPriority
+            ? Border.all(
+                color: Colors.orangeAccent.withValues(alpha: 0.3),
+                width: 1.5)
+            : null,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2))
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCountdownsSection(List countdowns) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.timer_outlined,
-                    size: 20, color: Theme.of(context).colorScheme.secondary),
-                const SizedBox(width: 8),
-                Text(
-                  '倒计时',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...countdowns.map((c) => _buildCountdownItem(c)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCountdownItem(Map<String, dynamic> countdown) {
-    final title = countdown['title'] ?? '';
-    final targetTime = countdown['target_time'] as int?;
-    final days = targetTime != null
-        ? (targetTime - DateTime.now().millisecondsSinceEpoch) ~/
-            (1000 * 60 * 60 * 24)
-        : 0;
-
-    final daysText = days > 0
-        ? '剩余 $days 天'
-        : days == 0
-            ? '今天'
-            : '已过 ${days.abs()} 天';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(title, style: const TextStyle(fontSize: 15)),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: days < 0
-                  ? Colors.grey.shade200
-                  : Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              daysText,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: days < 0
-                    ? Colors.grey.shade600
-                    : Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnnouncementsSection(List announcements) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.announcement_outlined,
-                    size: 20, color: Colors.orangeAccent),
-                const SizedBox(width: 8),
-                const Text(
-                  '团队公告',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orangeAccent,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...announcements.map((a) => _buildAnnouncementItem(a)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnnouncementItem(Map<String, dynamic> announcement) {
-    final title = announcement['title'] ?? '';
-    final content = announcement['content'] ?? '';
-    final creatorName = announcement['creator_name'];
-    final createdAt = announcement['created_at'] as int?;
-    final isPriority = announcement['is_priority'] == 1 ||
-        announcement['is_priority'] == true;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isPriority
-            ? BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.3))
-            : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -708,43 +624,44 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               children: [
                 if (isPriority) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.orangeAccent,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Text(
-                      '置顶',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold),
-                    ),
+                    child: const Text('置顶',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
+                  child: Text(a['title'] ?? '',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              content,
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-            ),
-            const SizedBox(height: 8),
+            Text(a['content'] ?? '',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: isDark
+                        ? Colors.grey.shade300
+                        : Colors.grey.shade700,
+                    height: 1.5)),
+            const SizedBox(height: 10),
             Text(
               [
-                if (creatorName != null) creatorName,
-                if (createdAt != null) _formatDateTime(createdAt),
+                if (a['creator_name'] != null) a['creator_name'],
+                if (a['created_at'] != null)
+                  _fmtDateTime(a['created_at'] as int),
               ].join(' · '),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              style:
+                  TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
           ],
         ),
@@ -752,13 +669,187 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     );
   }
 
-  String _formatDate(int timestamp) {
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  Widget _buildTodoCard(Map<String, dynamic> t,
+      Map<String, String> groupMap, bool isDone, bool isDark, Color primary) {
+    final title = t['content'] ?? '';
+    final dueDate = t['due_date'];
+    final collabType = t['collab_type'];
+    final groupId = t['group_id'];
+    final groupName = groupId != null ? groupMap[groupId] : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 1))
+              ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isDone ? Colors.green : Colors.transparent,
+                border: Border.all(
+                    color: isDone
+                        ? Colors.green
+                        : Colors.grey.shade400,
+                    width: 2),
+              ),
+              child: isDone
+                  ? const Icon(Icons.check,
+                      size: 14, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight:
+                            isDone ? FontWeight.normal : FontWeight.w500,
+                        decoration:
+                            isDone ? TextDecoration.lineThrough : null,
+                        color: isDone ? Colors.grey.shade500 : null,
+                      )),
+                  if (groupName != null ||
+                      dueDate != null ||
+                      collabType == 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          if (groupName != null)
+                            _buildMiniTag(
+                                groupName, primary.withValues(alpha: 0.1), primary),
+                          if (dueDate != null)
+                            _buildMiniTag(
+                                '截止 ${_fmtDate(dueDate)}',
+                                Colors.blue.withValues(alpha: 0.1),
+                                Colors.blue),
+                          if (collabType == 1)
+                            _buildMiniTag('各自独立',
+                                Colors.purple.withValues(alpha: 0.1),
+                                Colors.purple),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  String _formatDateTime(int timestamp) {
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
-    return '${_formatDate(timestamp)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  Widget _buildMiniTag(String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text(text,
+          style: TextStyle(fontSize: 11, color: fg)),
+    );
+  }
+
+  Widget _buildCountdownCard(
+      Map<String, dynamic> c, bool isDark, Color secondary) {
+    final title = c['title'] ?? '';
+    final targetTime = c['target_time'] as int?;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final days = targetTime != null
+        ? ((targetTime - now) / (1000 * 60 * 60 * 24)).ceil()
+        : 0;
+    final isPast = days < 0;
+    final isToday = days == 0;
+
+    String daysText;
+    Color badgeColor;
+    if (isPast) {
+      daysText = '已过 ${days.abs()} 天';
+      badgeColor = Colors.grey.shade500;
+    } else if (isToday) {
+      daysText = '今天';
+      badgeColor = Colors.orange;
+    } else {
+      daysText = '$days 天';
+      badgeColor = secondary;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2))
+              ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: isPast ? Colors.grey.shade500 : null,
+                  )),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: badgeColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(daysText,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: badgeColor)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _fmtDate(int ts) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ts);
+    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtDateTime(int ts) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ts);
+    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 }
