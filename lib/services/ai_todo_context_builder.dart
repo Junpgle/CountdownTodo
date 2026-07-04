@@ -397,7 +397,8 @@ JSON操作块必须且只能使用以下协议：
       final period = _resolveTimeLogPeriod(userMessage, nowValue);
       if (period != null) {
         final start = _formatCompactDate(period.start);
-        final end = _formatCompactDate(period.end.subtract(const Duration(days: 1)));
+        final end =
+            _formatCompactDate(period.end.subtract(const Duration(days: 1)));
         parts.add(start == end ? '专注记录$start' : '专注记录$start-$end');
       } else {
         parts.add('专注记录最近30条');
@@ -440,8 +441,9 @@ JSON操作块必须且只能使用以下协议：
   }
 
   static bool _looksLikeTodoListQuery(String text) {
-    final hasTodoNoun =
-        text.contains('待办') || text.contains('任务') || text.toLowerCase().contains('todo');
+    final hasTodoNoun = text.contains('待办') ||
+        text.contains('任务') ||
+        text.toLowerCase().contains('todo');
     if (!hasTodoNoun) return false;
     return text.contains('什么') ||
         text.contains('哪些') ||
@@ -662,10 +664,8 @@ JSON操作块必须且只能使用以下协议：
   }
 
   static String _formatTodos(
-    List<Map<String, dynamic>> todos,
-    List<TodoGroup> todoGroups,
-    {String? userMessage, DateTime? now}
-  ) {
+      List<Map<String, dynamic>> todos, List<TodoGroup> todoGroups,
+      {String? userMessage, DateTime? now}) {
     if (todos.isEmpty) return '暂无待办';
     final scoped = _scopeTodosByTime(
       todos,
@@ -726,16 +726,13 @@ JSON操作块必须且只能使用以下协议：
   }
 
   static String _formatPlanBlocks(
-    List<TodoPlanBlock> blocks,
-    List<Map<String, dynamic>> todos,
-    {String? userMessage, DateTime? now}
-  ) {
+      List<TodoPlanBlock> blocks, List<Map<String, dynamic>> todos,
+      {String? userMessage, DateTime? now}) {
     final active = _scopePlanBlocksByTime(
       blocks,
       userMessage: userMessage,
       now: now,
-    )
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    )..sort((a, b) => a.startTime.compareTo(b.startTime));
     if (active.isEmpty) return '待办规划: 暂无匹配时间范围的规划块';
 
     String todoTitle(String id) {
@@ -904,8 +901,8 @@ JSON操作块必须且只能使用以下协议：
       }
     }
 
-    final hanMatch = RegExp(r'(?:未来|接下来)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)')
-        .firstMatch(text);
+    final hanMatch =
+        RegExp(r'(?:未来|接下来)\s*([一二两三四五六七八九十]{1,3})\s*(?:天|日)').firstMatch(text);
     if (hanMatch != null) {
       final parsed = _parseSimpleChineseNumber(hanMatch.group(1)!);
       if (parsed != null && parsed > 0) {
@@ -1137,7 +1134,10 @@ ${lines.isEmpty ? '暂无' : lines}''';
     if (period == null) return base;
     return base.where((t) {
       final start = _parseFlexibleDateTime(
-        t['startTime'] ?? t['start_time'] ?? t['createdDate'] ?? t['created_date'],
+        t['startTime'] ??
+            t['start_time'] ??
+            t['createdDate'] ??
+            t['created_date'],
       );
       final end = _parseFlexibleDateTime(
         t['endTime'] ?? t['end_time'] ?? t['dueDate'] ?? t['due_date'],

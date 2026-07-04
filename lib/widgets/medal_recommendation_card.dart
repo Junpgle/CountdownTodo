@@ -36,7 +36,8 @@ class MedalRecommendationCard extends StatelessWidget {
                 if (recommendation.isML) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(8),
@@ -44,7 +45,9 @@ class MedalRecommendationCard extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.auto_awesome, size: 10, color: Theme.of(context).colorScheme.primary),
+                        Icon(Icons.auto_awesome,
+                            size: 10,
+                            color: Theme.of(context).colorScheme.primary),
                         const SizedBox(width: 2),
                         Text(
                           'AI',
@@ -113,11 +116,13 @@ class MedalRecommendationCard extends StatelessWidget {
                   final medal = entry.value;
                   return Padding(
                     padding: EdgeInsets.only(
-                        bottom: index <
-                                recommendation.topRecommendations.length - 1
-                            ? 16
-                            : 0),
-                    child: _buildMedalProgressItem(context, medal, reason: recommendation.recommendReasons[medal.medal.id]),
+                        bottom:
+                            index < recommendation.topRecommendations.length - 1
+                                ? 16
+                                : 0),
+                    child: _buildMedalProgressItem(context, medal,
+                        reason:
+                            recommendation.recommendReasons[medal.medal.id]),
                   );
                 }).toList(),
               ),
@@ -187,7 +192,9 @@ class MedalRecommendationCard extends StatelessWidget {
                   children: [
                     Text(
                       medal.medal.title,
-                      style: Theme.of(context).textTheme.titleMedium
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 4),
@@ -295,7 +302,9 @@ class _MedalListDialogState extends State<MedalListDialog>
               children: [
                 Text(
                   '勋章系统',
-                  style: Theme.of(context).textTheme.titleLarge
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 IconButton(
@@ -311,8 +320,7 @@ class _MedalListDialogState extends State<MedalListDialog>
             controller: _tabController,
             tabs: [
               Tab(
-                text:
-                    '推荐 (${widget.recommendation.topRecommendations.length})',
+                text: '推荐 (${widget.recommendation.topRecommendations.length})',
               ),
               Tab(text: '已获得 (${widget.recommendation.earnedMedals.length})'),
               Tab(text: '全部 (${widget.recommendation.allMedals.length})'),
@@ -326,8 +334,7 @@ class _MedalListDialogState extends State<MedalListDialog>
               children: [
                 _buildMedalList(
                     context, widget.recommendation.topRecommendations),
-                _buildMedalList(
-                    context, widget.recommendation.earnedMedals),
+                _buildMedalList(context, widget.recommendation.earnedMedals),
                 _buildMedalList(context, widget.recommendation.allMedals),
               ],
             ),

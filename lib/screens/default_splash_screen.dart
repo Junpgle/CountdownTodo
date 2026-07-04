@@ -48,7 +48,7 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
     final size = MediaQuery.of(context).size;
     final isWide = size.width > 600;
     final assetName =
-        isWide ? 'assets/splash/default_pad.jpg' : 'assets/splash/default.jpg';
+        isWide ? 'assets/splash/default_pad.webp' : 'assets/splash/default.webp';
 
     return Scaffold(
       body: SizedBox(

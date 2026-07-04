@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,6 +13,7 @@ import 'package:video_player/video_player.dart';
 import '../storage_service.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
@@ -74,22 +74,59 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   final Set<String> _expandedVersions = {};
 
   // 🚀 最近更新功能数据 —— 每次发版只改这里
-  List<_RecentFeature> get _recentFeatures => [
+  List<_RecentFeature> get _recentFeatures {
+    final scheme = Theme.of(context).colorScheme;
+    if (AppPlatform.isWeb) {
+      return [
         _RecentFeature(
-            Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
-            destinationBuilder: () =>
-                const SettingsPage(initialTarget: 'theme_color')),
-        _RecentFeature(Icons.view_week_rounded,
-            Theme.of(context).colorScheme.primary, '周视图午休折叠', '课程->周视图',
-            destinationBuilder: () =>
-                WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
+          Icons.install_desktop_rounded,
+          scheme.primary,
+          'PWA 网页应用',
+          '浏览器->安装应用',
+        ),
         _RecentFeature(
-            Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
-            destinationBuilder: () =>
-                PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
-        _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
-            destinationBuilder: () => const GlobalSearchOverlay()),
+          Icons.view_week_rounded,
+          scheme.secondary,
+          '周视图午休折叠',
+          '课程->周视图',
+          destinationBuilder: () =>
+              WeeklyCourseScreen(username: widget.loggedInUser ?? ''),
+        ),
+        _RecentFeature(
+          Icons.timeline_rounded,
+          scheme.tertiary,
+          '个人时间轴报表',
+          '专注->个人时间轴',
+          destinationBuilder: () =>
+              PersonalTimelineScreen(username: widget.loggedInUser ?? ''),
+        ),
+        _RecentFeature(
+          Icons.search_rounded,
+          Colors.teal,
+          '全局搜索',
+          '首页->右上角搜索',
+          destinationBuilder: () => const GlobalSearchOverlay(),
+        ),
       ];
+    }
+
+    return [
+      _RecentFeature(
+          Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
+          destinationBuilder: () =>
+              const SettingsPage(initialTarget: 'theme_color')),
+      _RecentFeature(
+          Icons.view_week_rounded, scheme.primary, '周视图午休折叠', '课程->周视图',
+          destinationBuilder: () =>
+              WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
+      _RecentFeature(
+          Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
+          destinationBuilder: () =>
+              PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
+      _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
+          destinationBuilder: () => const GlobalSearchOverlay()),
+    ];
+  }
 
   // 权限状态
   PermissionStatus? _notificationStatus;
@@ -128,21 +165,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _isFirstLaunch = false;
       _pagesBuilder = [
         _buildChangelogPage,
-        if (Platform.isWindows) ...[
-          _buildWinFeaturePage1,
-          _buildWinFeaturePage2,
-          _buildTaiSetupPage,
-          _buildGlobalCourseSetupPage,
-          _buildGlobalThemeSetupPage,
-        ] else ...[
-          _buildAndroidFeaturePage1,
-          _buildAndroidFeaturePage2,
-          _buildAndroidFeaturePage3,
-          _buildAndroidWidgetGuidePage,
-          _buildGlobalCourseSetupPage,
-          _buildGlobalThemeSetupPage,
-        ],
+        ..._buildPlatformGuidePages(),
       ];
+      if (AppPlatform.isWindows) _loadTaiConfig();
       _loadInfo();
       _checkPermissions();
       _loadGlobalSettings();
@@ -177,25 +202,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     // 只有在首次启动，或者用户手动在设置中点击查看引导时，才展示完整特性引导
     if (isFirstLaunch || widget.isManualReview) {
-      if (Platform.isWindows) {
-        pages.addAll([
-          _buildWinFeaturePage1,
-          _buildWinFeaturePage2,
-          _buildTaiSetupPage,
-          _buildGlobalCourseSetupPage,
-          _buildGlobalThemeSetupPage,
-        ]);
-        _loadTaiConfig();
-      } else {
-        pages.addAll([
-          _buildAndroidFeaturePage1,
-          _buildAndroidFeaturePage2,
-          _buildAndroidFeaturePage3,
-          _buildAndroidWidgetGuidePage, // ← 桌面小部件引导
-          _buildGlobalCourseSetupPage,
-          _buildGlobalThemeSetupPage,
-        ]);
-      }
+      pages.addAll(_buildPlatformGuidePages());
+      if (AppPlatform.isWindows) _loadTaiConfig();
     }
 
     if (mounted) {
@@ -203,6 +211,34 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _pagesBuilder = pages;
       });
     }
+  }
+
+  List<Widget Function()> _buildPlatformGuidePages() {
+    if (AppPlatform.isWeb) {
+      return [
+        _buildWebFeaturePage,
+        _buildWebCapabilityPage,
+        _buildGlobalCourseSetupPage,
+        _buildGlobalThemeSetupPage,
+      ];
+    }
+    if (AppPlatform.isWindows) {
+      return [
+        _buildWinFeaturePage1,
+        _buildWinFeaturePage2,
+        _buildTaiSetupPage,
+        _buildGlobalCourseSetupPage,
+        _buildGlobalThemeSetupPage,
+      ];
+    }
+    return [
+      _buildAndroidFeaturePage1,
+      _buildAndroidFeaturePage2,
+      _buildAndroidFeaturePage3,
+      _buildAndroidWidgetGuidePage,
+      _buildGlobalCourseSetupPage,
+      _buildGlobalThemeSetupPage,
+    ];
   }
 
   Future<void> _loadGlobalSettings() async {
@@ -302,10 +338,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     setState(() => _importingSemester = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          StorageService.KEY_SEMESTER_START, _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(
-          StorageService.KEY_SEMESTER_END, _cloudSemesterEnd!.toIso8601String());
+      await prefs.setString(StorageService.KEY_SEMESTER_START,
+          _cloudSemesterStart!.toIso8601String());
+      await prefs.setString(StorageService.KEY_SEMESTER_END,
+          _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
           _semesterStart = _cloudSemesterStart;
@@ -514,7 +550,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Future<void> _checkPermissions() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
 
     final notifStatus = await Permission.notification.status;
 
@@ -522,7 +558,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     bool hasExact = false;
     bool ignoringBattery = false;
 
-    if (Platform.isAndroid) {
+    if (AppPlatform.isAndroid) {
       try {
         hasUsage =
             await screenTimeChannel.invokeMethod('checkUsagePermission') ??
@@ -624,7 +660,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     .withValues(alpha: 0.3)),
           ),
           clipBehavior: Clip.antiAlias,
-          child: assetPath.toLowerCase().endsWith('.mp4')
+          child: assetPath.toLowerCase().endsWith('.mp4') || assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
               : Image.asset(assetPath, fit: fit),
         ),
@@ -1041,6 +1077,169 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     );
   }
 
+  // ── Web 特性及能力取舍 ─────────────────────────────────
+
+  Widget _buildWebFeaturePage() {
+    final scheme = Theme.of(context).colorScheme;
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.web_asset_rounded,
+            iconColor: scheme.primary,
+            title: '网页版 Beta',
+            subtitle:
+                '无需安装即可在浏览器中使用待办、倒数日、番茄钟、课表和同步。首次加载资源较多，安装为 PWA 后再次打开会更快。',
+          ),
+          const SizedBox(height: 28),
+          _buildWebCapabilityTile(
+            icon: Icons.task_alt_rounded,
+            title: '核心数据与同步可用',
+            subtitle: '待办、倒数日、番茄钟、课表、个人时间轴和云端同步均可在网页端运行。',
+            color: scheme.primary,
+          ),
+          const SizedBox(height: 12),
+          _buildWebCapabilityTile(
+            icon: Icons.install_desktop_rounded,
+            title: '支持 PWA 安装',
+            subtitle: '在支持的浏览器中可安装到桌面/启动台，并缓存 Flutter 引擎、字体和离线资源。',
+            color: scheme.secondary,
+          ),
+          const SizedBox(height: 12),
+          _buildWebCapabilityTile(
+            icon: Icons.folder_open_rounded,
+            title: '文件流程改为浏览器模式',
+            subtitle: '导入使用浏览器文件选择，导出和壁纸下载会触发浏览器下载。',
+            color: scheme.tertiary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebCapabilityPage() {
+    final scheme = Theme.of(context).colorScheme;
+    return _buildPageContainer(
+      content: Column(
+        children: [
+          const SizedBox(height: 16),
+          _buildStepHeader(
+            icon: Icons.tune_rounded,
+            iconColor: scheme.error,
+            title: '网页版功能取舍',
+            subtitle: '浏览器无法提供完整系统权限，因此部分原生能力会隐藏、降级或改用网页替代方案。',
+          ),
+          const SizedBox(height: 28),
+          _buildWebCapabilityTile(
+            icon: Icons.notifications_off_outlined,
+            title: '系统级通知与后台保活受限',
+            subtitle: '网页端不提供 Android 精确闹钟、电池优化、锁屏常驻通知等系统级引导。',
+            color: scheme.error,
+            isLimited: true,
+          ),
+          const SizedBox(height: 12),
+          _buildWebCapabilityTile(
+            icon: Icons.desktop_windows_outlined,
+            title: '桌面原生能力不可用',
+            subtitle: 'Windows 悬浮窗、托盘、Island、Tai 数据库读取和系统窗口控制仅在桌面端提供。',
+            color: scheme.error,
+            isLimited: true,
+          ),
+          const SizedBox(height: 12),
+          _buildWebCapabilityTile(
+            icon: Icons.widgets_outlined,
+            title: '移动端小组件不可用',
+            subtitle: 'Android 桌面小部件、手环同步和原生分享入口不在网页版引导中展示。',
+            color: scheme.error,
+            isLimited: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebCapabilityTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    bool isLimited = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isLimited ? 0.07 : 0.09),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface.withValues(alpha: 0.9),
+                        ),
+                      ),
+                    ),
+                    if (isLimited)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '暂不支持',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: scheme.onSurface.withValues(alpha: 0.64),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Android 特性及权限引导 ───────────────────────────────
 
   Widget _buildAndroidFeaturePage1() {
@@ -1054,7 +1253,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '屏幕时间统计与时间全览',
           subtitle: '全天候统计你的手机使用情况，智能合并番茄钟与各 App 的使用时长，生成一目了然的时间网格。',
         ),
-        _buildMediaAsset('assets/guide_media/android_lock_screen.png',
+        _buildMediaAsset('assets/guide_media/android_lock_screen.webp',
             fit: BoxFit.contain),
         const SizedBox(height: 24),
         _buildPermissionTile(
@@ -1082,7 +1281,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '精确保活的通知唤醒',
           subtitle: '不论是日程、倒计时、还是番茄钟，我们确保即使应用在后台，也会准时向您推送提醒。',
         ),
-        _buildMediaAsset('assets/guide_media/android_notification.png',
+        _buildMediaAsset('assets/guide_media/android_notification.webp',
             fit: BoxFit.contain),
         const SizedBox(height: 24),
         _buildPermissionTile(
@@ -1120,7 +1319,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '番茄钟与后台长驻',
           subtitle: '为了体验完美的番茄钟跨端同步（WebSocket）与避免锁屏后被系统盲目杀后台，我们需要调整电池优化。',
         ),
-        _buildMediaAsset('assets/guide_media/android_return_desktop.mp4'),
+        _buildMediaAsset('assets/guide_media/android_return_desktop.webm'),
         const SizedBox(height: 24),
         _buildPermissionTile(
           title: '忽略电池优化',
@@ -1151,7 +1350,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '桌面小部件',
           subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。',
         ),
-        _buildMediaAsset('assets/guide_media/android_widget_guide.mp4'),
+        _buildMediaAsset('assets/guide_media/android_widget_guide.webm'),
         const SizedBox(height: 20),
 
         // 🚀 一键添加到桌面按钮 (Android 8.0+)
@@ -1300,7 +1499,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         title: '全端番茄钟与大屏专注',
         subtitle: '在 Windows 桌面端享受沉浸式或浮窗式的番茄钟体验。而且，现在支持跨屏自动无缝流转同步！',
       ),
-      _buildMediaAsset('assets/guide_media/windows_pomodoro.mp4'),
+      _buildMediaAsset('assets/guide_media/windows_pomodoro.webm'),
     ]));
   }
 
@@ -1314,7 +1513,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         title: '无缝接入 Windows 屏幕时间',
         subtitle: '利用本地读取 Tai 软件（专业 Windows 时间追踪应用）的数据库，轻松在应用内部汇总双端时长。',
       ),
-      _buildMediaAsset('assets/guide_media/windows_screen_time.mp4'),
+      _buildMediaAsset('assets/guide_media/windows_screen_time.webm'),
     ]));
   }
 
@@ -1415,6 +1614,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   Widget _buildGlobalCourseSetupPage() {
     final scheme = Theme.of(context).colorScheme;
+    final isWeb = AppPlatform.isWeb;
     return _buildPageContainer(
         content: Column(
       children: [
@@ -1423,8 +1623,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           icon: Icons.calendar_month_outlined,
           iconColor: Colors.teal,
           title: '课表导入与学期同步',
-          subtitle:
-              '全平台均支持智能课表解析。你可以在首页设置中导入本地课表，或直接从云端同步。\n设置开学与放假日期，以开启学期进度条。',
+          subtitle: isWeb
+              ? '网页版支持浏览器文件导入、云端课表同步和学期进度设置。\n受浏览器限制，教务 WebView 导入和系统本地路径能力会降级。'
+              : '全平台均支持智能课表解析。你可以在首页设置中导入本地课表，或直接从云端同步。\n设置开学与放假日期，以开启学期进度条。',
         ),
         const SizedBox(height: 24),
         Card(
@@ -1476,9 +1677,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               Icon(Icons.tips_and_updates_outlined,
                   color: scheme.primary, size: 20),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '提示：进入应用后，请前往 设置 > 课程设置 导入或同步您的课表！',
+                  isWeb
+                      ? '提示：网页版请使用浏览器文件选择或云端同步导入课表。'
+                      : '提示：进入应用后，请前往 设置 > 课程设置 导入或同步您的课表！',
                   style: TextStyle(fontSize: 12),
                 ),
               ),
@@ -1570,6 +1773,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Widget _buildGlobalThemeSetupPage() {
+    final isWeb = AppPlatform.isWeb;
+    final scheme = Theme.of(context).colorScheme;
+    final themeValue = const {'system', 'light', 'dark'}.contains(_themeMode)
+        ? _themeMode
+        : 'system';
     return _buildPageContainer(
         content: Column(
       children: [
@@ -1577,9 +1785,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _buildStepHeader(
           icon: Icons.palette_outlined,
           iconColor: Colors.deepPurple,
-          title: '个性化：模块排序与深色模式',
-          subtitle:
-              '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适。',
+          title: '个性化：模块排序与主题',
+          subtitle: isWeb
+              ? '你可以自由决定首页模块顺序，并在网页端选择跟随系统、浅色或深色主题。'
+              : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适。',
         ),
         const SizedBox(height: 24),
         Card(
@@ -1591,12 +1800,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             leading: const Icon(Icons.dark_mode_outlined),
             title: const Text('深色模式/主题', style: TextStyle(fontSize: 14)),
             trailing: DropdownButton<String>(
-              value: _themeMode,
+              value: themeValue,
               underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                DropdownMenuItem(value: 'light', child: Text('浅色')),
-                DropdownMenuItem(value: 'dark', child: Text('深色')),
+              items: [
+                const DropdownMenuItem(value: 'system', child: Text('跟随系统')),
+                const DropdownMenuItem(value: 'light', child: Text('浅色')),
+                const DropdownMenuItem(value: 'dark', child: Text('深色')),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -1609,6 +1818,37 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             ),
           ),
         ),
+        if (isWeb) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.secondaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(10),
+              border:
+                  Border.all(color: scheme.secondary.withValues(alpha: 0.22)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 18, color: scheme.secondary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '网页版的跟随系统会读取浏览器/操作系统的亮暗偏好，浏览器偏好变化后界面会随应用主题刷新。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.45,
+                      color: scheme.onSurface.withValues(alpha: 0.72),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     ));
   }

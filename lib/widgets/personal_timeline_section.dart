@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
-import '../services/app_report_launch_service.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../utils/page_transitions.dart';
@@ -60,11 +58,16 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
     }
   }
 
-  Future<void> _openTodayReportInApp() {
-    return AppReportLaunchService.openTimelineReportInApp(
-      dimension: TimelineDimension.daily,
-      date: DateTime.now(),
-    );
+  Future<void> _openTodayReport() {
+    return PageTransitions.pushFromRect(
+      context: context,
+      page: PersonalTimelineScreen(username: widget.username),
+      sourceKey: _cardKey,
+      sourceColor: widget.isLight
+          ? Colors.white.withValues(alpha: 0.15)
+          : Theme.of(context).colorScheme.surface,
+      sourceBorderRadius: BorderRadius.circular(24),
+    ).then((_) => _loadData());
   }
 
   @override
@@ -108,36 +111,14 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                     color: textColor),
               ),
               const Spacer(),
-              if (kIsWeb)
-                FilledButton.icon(
-                  onPressed: _openTodayReportInApp,
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                  label: const Text('前往App查看报告'),
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                )
-              else
-                Icon(Icons.chevron_right, size: 20, color: subColor),
+              Icon(Icons.chevron_right, size: 20, color: subColor),
             ],
           ),
         ),
         const SizedBox(height: 12),
         InkWell(
           key: _cardKey,
-          onTap: kIsWeb
-              ? _openTodayReportInApp
-              : () => PageTransitions.pushFromRect(
-                    context: context,
-                    page: PersonalTimelineScreen(username: widget.username),
-                    sourceKey: _cardKey,
-                    sourceColor: widget.isLight
-                        ? Colors.white.withValues(alpha: 0.15)
-                        : Theme.of(context).colorScheme.surface,
-                    sourceBorderRadius: BorderRadius.circular(24),
-                  ).then((_) => _loadData()),
+          onTap: _openTodayReport,
           borderRadius: BorderRadius.circular(24),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),

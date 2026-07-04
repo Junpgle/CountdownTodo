@@ -230,19 +230,25 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
     }
 
     if (widget.isFocusing) {
+      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
       return Padding(
         key: const ValueKey('focus_btns'),
         padding: EdgeInsets.only(top: widget.isCompact ? 8 : 12),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: isLandscape ? MainAxisAlignment.start : MainAxisAlignment.center,
           children: [
             TextButton.icon(
               onPressed: widget.onAbandonFocus,
               icon: Icon(Icons.stop_rounded, size: widget.isCompact ? 16 : 18),
-              label: Text('放弃', style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              label: Text('放弃',
+                  style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 12 : 16, vertical: 12),
+                foregroundColor: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+                padding: EdgeInsets.symmetric(
+                    horizontal: widget.isCompact ? 12 : 16, vertical: 12),
               ),
             ),
             SizedBox(width: widget.isCompact ? 8 : 16),
@@ -253,21 +259,34 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                       ? Icons.play_arrow_rounded
                       : Icons.pause_rounded,
                   size: widget.isCompact ? 18 : 20),
-              label: Text(widget.onPauseFocus == null ? '继续' : '暂停', style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+              label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
+                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+                foregroundColor: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.6),
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.3),
+                padding: EdgeInsets.symmetric(
+                    horizontal: widget.isCompact ? 20 : 24, vertical: 12),
               ),
             ),
             SizedBox(width: widget.isCompact ? 8 : 16),
             TextButton.icon(
               onPressed: widget.onFinishEarly,
               icon: Icon(Icons.check_rounded, size: widget.isCompact ? 16 : 18),
-              label: Text('完成', style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
+              label: Text('完成',
+                  style: TextStyle(fontSize: widget.isCompact ? 13 : 14)),
               style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                padding: EdgeInsets.symmetric(horizontal: widget.isCompact ? 12 : 16, vertical: 12),
+                foregroundColor: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.4),
+                padding: EdgeInsets.symmetric(
+                    horizontal: widget.isCompact ? 12 : 16, vertical: 12),
               ),
             ),
           ],

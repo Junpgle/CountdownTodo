@@ -1,0 +1,114 @@
+{
+  "id": "./",
+  "name": "CountDownTodo",
+  "short_name": "CountDownTodo",
+  "description": "倒计时待办 · 番茄钟 · 课程表 — 你的高效学习伴侣",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "background_color": "#F8F8FF",
+  "theme_color": "#6C63FF",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["productivity", "education", "utilities"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-16.png",
+      "sizes": "16x16",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/Icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "添加待办",
+      "short_name": "待办",
+      "description": "打开首页并添加新的待办",
+      "url": "./#/home?action=add_todo",
+      "icons": [
+        {
+          "src": "icons/Icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "今日事项",
+      "short_name": "今日",
+      "description": "查看今日待办、倒数日和课程",
+      "url": "./#/home?shortcut=today",
+      "icons": [
+        {
+          "src": "icons/Icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "番茄钟",
+      "short_name": "专注",
+      "description": "进入番茄钟工作台",
+      "url": "./#/home?shortcut=pomodoro",
+      "icons": [
+        {
+          "src": "icons/Icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "个人报告",
+      "short_name": "报告",
+      "description": "查看个人时间线报告",
+      "url": "./#/home?shortcut=timeline",
+      "icons": [
+        {
+          "src": "icons/Icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

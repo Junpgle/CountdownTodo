@@ -402,16 +402,17 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
     }
 
     return SizedBox(
-      height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
-      child: ClipRect(
-        clipper: _HorizontalClipper(),
-        child: ListView.builder(
-          scrollCacheExtent: ScrollCacheExtent.pixels(1000), controller: _listScrollController,
-          padding: const EdgeInsets.only(right: 12),
-          clipBehavior: Clip.none,
-          scrollDirection: Axis.horizontal,
-          itemCount: activeCountdowns.length,
-          itemBuilder: (context, index) {
+        height: 130, // 🚀 适度增加总高度，防止小屏幕溢出
+        child: ClipRect(
+          clipper: _HorizontalClipper(),
+          child: ListView.builder(
+            scrollCacheExtent: ScrollCacheExtent.pixels(1000),
+            controller: _listScrollController,
+            padding: const EdgeInsets.only(right: 12),
+            clipBehavior: Clip.none,
+            scrollDirection: Axis.horizontal,
+            itemCount: activeCountdowns.length,
+            itemBuilder: (context, index) {
               final item = activeCountdowns[index];
               final diff = item.targetDate.difference(today).inDays;
 
@@ -668,8 +669,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
               );
             },
           ),
-        )
-    );
+        ));
   }
 }
 
@@ -683,4 +683,3 @@ class _HorizontalClipper extends CustomClipper<Rect> {
   @override
   bool shouldReclip(covariant CustomClipper<Rect> oldClipper) => false;
 }
-

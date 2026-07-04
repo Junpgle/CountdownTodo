@@ -215,8 +215,9 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                             key: ValueKey(removedTag.uuid),
                                             leading: CircleAvatar(
                                                 radius: 8,
-                                                backgroundColor: AppColorUtils.parseHex(
-                                                    removedTag.color)),
+                                                backgroundColor:
+                                                    AppColorUtils.parseHex(
+                                                        removedTag.color)),
                                             title: Text(removedTag.name),
                                             trailing: Row(
                                               mainAxisSize: MainAxisSize.min,
@@ -224,8 +225,9 @@ class _TagManagerSheetState extends State<TagManagerSheet>
                                                 Checkbox(
                                                   value: _selected.contains(
                                                       removedTag.uuid),
-                                                  activeColor: AppColorUtils.parseHex(
-                                                      removedTag.color),
+                                                  activeColor:
+                                                      AppColorUtils.parseHex(
+                                                          removedTag.color),
                                                   onChanged: null,
                                                 ),
                                                 const Icon(Icons.delete_outline,

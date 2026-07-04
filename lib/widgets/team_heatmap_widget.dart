@@ -21,7 +21,7 @@ class TeamHeatmapWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     final density = _calcDensity();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -32,7 +32,12 @@ class TeamHeatmapWidget extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text("全景任务热力分布 (${viewDays >= 30 ? '月视图' : viewDays >= 14 ? '双周' : '周视图'})", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+          child: Text(
+              "全景任务热力分布 (${viewDays >= 30 ? '月视图' : viewDays >= 14 ? '双周' : '周视图'})",
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey)),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -46,13 +51,18 @@ class TeamHeatmapWidget extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 6),
                 child: Column(
                   children: List.generate(7, (dayIdx) {
-                    final date = today.subtract(Duration(days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx)).toInt()));
-                    final count = density[DateTime(date.year, date.month, date.day)] ?? 0;
+                    final date = today.subtract(Duration(
+                        days: ((weeks - 1 - weekIdx) * 7 + (6 - dayIdx))
+                            .toInt()));
+                    final count =
+                        density[DateTime(date.year, date.month, date.day)] ?? 0;
                     int intensity = 0;
                     if (count > 0 && count <= 2) {
                       intensity = 1;
-                    } else if (count > 2 && count <= 5) intensity = 2;
-                    else if (count > 5 && count <= 9) intensity = 3;
+                    } else if (count > 2 && count <= 5)
+                      intensity = 2;
+                    else if (count > 5 && count <= 9)
+                      intensity = 3;
                     else if (count > 9) intensity = 4;
 
                     return Container(
@@ -78,7 +88,7 @@ class TeamHeatmapWidget extends StatelessWidget {
 
   Color _getHeatmapColor(int intensity, bool isDark) {
     if (intensity == 0) return isDark ? Colors.grey[900]! : Colors.grey[200]!;
-    
+
     // 蓝色渐变系
     List<Color> levels = [
       Colors.blue[100]!,
@@ -94,15 +104,26 @@ class TeamHeatmapWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Text("Less", style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38)),
+          Text("Less",
+              style: TextStyle(
+                  fontSize: 9,
+                  color: isDark ? Colors.white38 : Colors.black38)),
           const SizedBox(width: 4),
-          ...List.generate(5, (i) => Container(
-            width: 8, height: 8,
-            margin: const EdgeInsets.symmetric(horizontal: 1),
-            decoration: BoxDecoration(color: _getHeatmapColor(i, isDark), borderRadius: BorderRadius.circular(1)),
-          )),
+          ...List.generate(
+              5,
+              (i) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: BoxDecoration(
+                        color: _getHeatmapColor(i, isDark),
+                        borderRadius: BorderRadius.circular(1)),
+                  )),
           const SizedBox(width: 4),
-          Text("More", style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38)),
+          Text("More",
+              style: TextStyle(
+                  fontSize: 9,
+                  color: isDark ? Colors.white38 : Colors.black38)),
         ],
       ),
     );

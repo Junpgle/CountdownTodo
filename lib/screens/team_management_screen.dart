@@ -10,6 +10,7 @@ import './unified_waterfall_screen.dart';
 import './conflict_inbox_screen.dart';
 import './team_message_center_screen.dart';
 import './team_announcement_screen.dart';
+import './team_share_manage_screen.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
@@ -1632,6 +1633,25 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                             fontSize: 13, fontWeight: FontWeight.bold)),
                   ),
                 ),
+                if (team.userRole == TeamRole.admin) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        side: BorderSide(
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                      ),
+                      onPressed: () => _openShareManage(team),
+                      icon: const Icon(Icons.link_rounded, size: 18),
+                      label: const Text('分享',
+                          style: TextStyle(fontSize: 13)),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 // 更多菜单
                 PopupMenuButton<String>(
@@ -1642,6 +1662,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   onSelected: (value) {
                     if (value == 'share') {
                       _handleGenerateCode(team);
+                    } else if (value == 'share_manage') {
+                      _openShareManage(team);
                     } else if (value == 'leave') {
                       _confirmLeaveTeam(team);
                     } else if (value == 'delete') {
@@ -1656,6 +1678,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                           SizedBox(width: 12),
                           Text('重置/生成邀请码')
                         ])),
+                    if (team.userRole == TeamRole.admin)
+                      const PopupMenuItem(
+                          value: 'share_manage',
+                          child: Row(children: [
+                            Icon(Icons.link_rounded, size: 18),
+                            SizedBox(width: 12),
+                            Text('分享管理')
+                          ])),
                     if (team.userRole == TeamRole.admin)
                       const PopupMenuItem(
                           value: 'delete',
@@ -1887,6 +1917,15 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       _loadTeams();
       _showSuccessToast('邀请码已更新 ✨');
     }
+  }
+
+  void _openShareManage(Team team) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TeamShareManageScreen(team: team),
+      ),
+    );
   }
 
   void _confirmLeaveTeam(Team team) {
@@ -2216,6 +2255,7 @@ class _TeamDetailViewState extends State<_TeamDetailView>
   }
 
   Widget _buildHeaderActions() {
+    final isAdmin = widget.team.userRole == TeamRole.admin;
     return Row(
       children: [
         IconButton(
@@ -2223,6 +2263,26 @@ class _TeamDetailViewState extends State<_TeamDetailView>
           onPressed: widget.onRefresh,
           tooltip: '刷新数据',
         ),
+        const SizedBox(width: 8),
+        if (isAdmin)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              side: BorderSide(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+            ),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeamShareManageScreen(team: widget.team),
+              ),
+            ),
+            icon: const Icon(Icons.link_rounded, size: 18),
+            label: const Text('分享'),
+          ),
         const SizedBox(width: 8),
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
@@ -2405,6 +2465,20 @@ class _TeamSettingsView extends StatelessWidget {
               await ApiService.generateInviteCode(team.uuid);
               onRefresh();
             },
+          ),
+          const SizedBox(height: 12),
+          _buildSettingItem(
+            context,
+            icon: Icons.link_rounded,
+            color: Theme.of(context).colorScheme.primary,
+            title: '分享管理',
+            subtitle: '创建和管理团队只读分享链接',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeamShareManageScreen(team: team),
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           _buildSettingItem(

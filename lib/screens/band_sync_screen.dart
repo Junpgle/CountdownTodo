@@ -166,10 +166,12 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('手环同步'),
-        elevation: 0,
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('手环同步'),
+              elevation: 0,
+            ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -243,7 +245,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
               const Divider(height: 24),
               Row(
                 children: [
-                  Icon(Icons.devices, color: Theme.of(context).colorScheme.primary),
+                  Icon(Icons.devices,
+                      color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
                   Text(
                     '设备: $_deviceName',
@@ -266,14 +269,16 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
           children: [
             Card(
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
                     Row(
-                    children: [
-                        const Icon(Icons.info_outline, color: Colors.purple, size: 32),
+                      children: [
+                        const Icon(Icons.info_outline,
+                            color: Colors.purple, size: 32),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -306,7 +311,8 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                                 );
                               }
                             },
-                            icon: const Icon(Icons.system_update_alt_rounded, size: 18),
+                            icon: const Icon(Icons.system_update_alt_rounded,
+                                size: 18),
                             label: const Text('检查更新'),
                           ),
                       ],
@@ -314,8 +320,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                     const Divider(height: 24),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('自动检查手环更新', style: TextStyle(fontSize: 14)),
-                      subtitle: const Text('连接时自动将最新版本信息推送至手环', style: TextStyle(fontSize: 12)),
+                      title: const Text('自动检查手环更新',
+                          style: TextStyle(fontSize: 14)),
+                      subtitle: const Text('连接时自动将最新版本信息推送至手环',
+                          style: TextStyle(fontSize: 12)),
                       value: _isAutoUpdateEnabled,
                       onChanged: _saveUpdateSettings,
                     ),

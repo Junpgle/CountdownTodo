@@ -335,7 +335,10 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
               _overviewChip('计划', _fmtMin(planned), Colors.deepPurple),
               _overviewChip('实际', _fmtMin(actual), Colors.green),
               _overviewChip(
-                  '完成', '$done', Theme.of(context).colorScheme.primary, Icons.check_circle_outline),
+                  '完成',
+                  '$done',
+                  Theme.of(context).colorScheme.primary,
+                  Icons.check_circle_outline),
               _overviewChip(
                   '漏做', '$missed', Colors.redAccent, Icons.cancel_outlined),
               _overviewChip('跳过', '$skipped', Colors.orange, Icons.skip_next),

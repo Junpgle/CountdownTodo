@@ -38,7 +38,7 @@ export interface TodoItem {
   is_all_day?: boolean | number;
   isAllDay?: boolean | number;
   has_conflict?: boolean | number;
-  conflict_data?: any;
+  conflict_data?: unknown;
 }
 
 export interface TodoGroup {
@@ -73,6 +73,7 @@ export interface CountdownItem {
 export interface PomodoroRecord {
   uuid: string;
   todo_uuid: string | null;
+  plan_block_id?: string | null;
   start_time: number;
   end_time: number | null;
   planned_duration: number;
@@ -85,6 +86,46 @@ export interface PomodoroRecord {
   updated_at: number;
   is_deleted: boolean | number;
 }
+
+export interface TodoPlanBlock {
+  uuid: string;
+  todo_uuid: string;
+  title_snapshot?: string | null;
+  start_time: number;
+  end_time: number;
+  planned_minutes: number;
+  actual_focus_seconds?: number;
+  status: number;
+  source?: number;
+  remark?: string | null;
+  reminder_minutes?: number;
+  pomodoro_minutes?: number;
+  pomodoro_rounds?: number;
+  calendar_event_id?: string | null;
+  pomodoro_record_ids?: string | string[] | null;
+  version: number;
+  created_at: number;
+  updated_at: number;
+  is_deleted: boolean | number;
+  device_id?: string | null;
+}
+
+export interface TimeLogItem {
+  id: string;
+  uuid: string;
+  title: string;
+  tag_uuids: string[];
+  start_time: number;
+  end_time: number;
+  remark?: string | null;
+  version: number;
+  updated_at: number;
+  created_at: number;
+  is_deleted: boolean | number;
+  device_id?: string | null;
+  team_uuid?: string | null;
+}
+
 export interface PomodoroTag {
   uuid: string;
   name: string;

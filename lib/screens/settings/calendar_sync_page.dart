@@ -1,10 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../services/browser_file_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../storage_service.dart';
+import '../../utils/app_platform.dart';
 
 class CalendarSyncPage extends StatefulWidget {
   final bool isEmbedded;
@@ -32,7 +32,43 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   }
 
   Future<void> _load() async {
-    if (!Platform.isAndroid) {
+    if (AppPlatform.isWeb) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+
+      try {
+        final username = await StorageService.getCurrentUsername();
+        if (username == null || username.isEmpty) {
+          setState(() {
+            _loading = false;
+            _error = '请先登录后再导出日历';
+          });
+          return;
+        }
+
+        final entries = await CalendarSyncService.loadEntries(username);
+        setState(() {
+          _username = username;
+          _entries = entries;
+          _calendars = const [];
+          _calendarId = null;
+          _selectedIds
+            ..clear()
+            ..addAll(entries.map((entry) => entry.id));
+          _loading = false;
+        });
+      } catch (e) {
+        setState(() {
+          _loading = false;
+          _error = '加载失败：$e';
+        });
+      }
+      return;
+    }
+
+    if (!AppPlatform.isAndroid) {
       setState(() {
         _loading = false;
         _error = '当前仅支持写入 Android 系统日历';
@@ -127,6 +163,31 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     }
   }
 
+  Future<void> _exportSelectedIcs() async {
+    final selected =
+        _entries.where((entry) => _selectedIds.contains(entry.id)).toList();
+    if (selected.isEmpty) {
+      _showMessage('请至少选择一项');
+      return;
+    }
+
+    setState(() => _working = true);
+    try {
+      final fileName =
+          'countdowntodo-calendar-${DateFormat('yyyyMMdd-HHmmss').format(DateTime.now())}.ics';
+      await BrowserFileService.saveTextFile(
+        _buildIcs(selected),
+        fileName,
+        mimeType: 'text/calendar;charset=utf-8',
+      );
+      _showMessage('已导出 ${selected.length} 项到 $fileName');
+    } catch (e) {
+      _showMessage('导出失败：$e');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   Future<void> _previewSelected() async {
     final selected =
         _entries.where((entry) => _selectedIds.contains(entry.id)).toList();
@@ -189,10 +250,16 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                   child: FilledButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      _writeSelected();
+                      if (AppPlatform.isWeb) {
+                        _exportSelectedIcs();
+                      } else {
+                        _writeSelected();
+                      }
                     },
-                    icon: const Icon(Icons.event_available_outlined),
-                    label: const Text('确认写入'),
+                    icon: Icon(AppPlatform.isWeb
+                        ? Icons.download_outlined
+                        : Icons.event_available_outlined),
+                    label: Text(AppPlatform.isWeb ? '确认导出' : '确认写入'),
                   ),
                 ),
               ],
@@ -257,16 +324,18 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('写入系统日历'),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _working ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: Text(AppPlatform.isWeb ? '导出日历文件' : '写入系统日历'),
+              actions: [
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: _working ? null : _load,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
       body: _buildBody(),
       bottomNavigationBar: _loading || _error != null
           ? null
@@ -275,12 +344,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: Row(
                   children: [
-                    OutlinedButton.icon(
-                      onPressed: _working ? null : _clearAll,
-                      icon: const Icon(Icons.delete_sweep_outlined),
-                      label: const Text('一键清除'),
-                    ),
-                    const SizedBox(width: 12),
+                    if (!AppPlatform.isWeb) ...[
+                      OutlinedButton.icon(
+                        onPressed: _working ? null : _clearAll,
+                        icon: const Icon(Icons.delete_sweep_outlined),
+                        label: const Text('一键清除'),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     OutlinedButton.icon(
                       onPressed: _working ? null : _previewSelected,
                       icon: const Icon(Icons.visibility_outlined),
@@ -289,7 +360,11 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: _working ? null : _writeSelected,
+                        onPressed: _working
+                            ? null
+                            : (AppPlatform.isWeb
+                                ? _exportSelectedIcs
+                                : _writeSelected),
                         icon: _working
                             ? const SizedBox(
                                 width: 18,
@@ -297,8 +372,12 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Icon(Icons.event_available_outlined),
-                        label: Text('写入所选 ${_selectedIds.length} 项'),
+                            : Icon(AppPlatform.isWeb
+                                ? Icons.download_outlined
+                                : Icons.event_available_outlined),
+                        label: Text(AppPlatform.isWeb
+                            ? '导出所选 ${_selectedIds.length} 项'
+                            : '写入所选 ${_selectedIds.length} 项'),
                       ),
                     ),
                   ],
@@ -324,21 +403,26 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
       children: [
-        const ListTile(
+        ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.event_available_outlined),
-          title: Text('选择写入目标'),
-          subtitle: Text('下面列表会显示系统识别到的日历，当前只保留这一处选择入口'),
+          leading: Icon(AppPlatform.isWeb
+              ? Icons.download_outlined
+              : Icons.event_available_outlined),
+          title: Text(AppPlatform.isWeb ? '选择导出内容' : '选择写入目标'),
+          subtitle: Text(AppPlatform.isWeb
+              ? '导出为 .ics 文件后，可导入 Apple 日历、Google Calendar、Outlook 等日历应用。'
+              : '下面列表会显示系统识别到的日历，当前只保留这一处选择入口'),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _clearBeforeWrite,
-          title: const Text('写入前清除本软件已写入内容'),
-          subtitle: const Text('避免重复事件；只清除带有 CountDownTodo 标记的事件'),
-          onChanged: _working
-              ? null
-              : (value) => setState(() => _clearBeforeWrite = value),
-        ),
+        if (!AppPlatform.isWeb)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _clearBeforeWrite,
+            title: const Text('写入前清除本软件已写入内容'),
+            subtitle: const Text('避免重复事件；只清除带有 CountDownTodo 标记的事件'),
+            onChanged: _working
+                ? null
+                : (value) => setState(() => _clearBeforeWrite = value),
+          ),
         const SizedBox(height: 8),
         _buildQuickSelect(),
         const SizedBox(height: 8),
@@ -376,9 +460,13 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
           const SizedBox(height: 8),
         ],
         if (_entries.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(child: Text('暂无可写入日历的待办、课程、倒数日或规划块')),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: Center(
+              child: Text(AppPlatform.isWeb
+                  ? '暂无可导出为日历的待办、课程、倒数日或规划块'
+                  : '暂无可写入日历的待办、课程、倒数日或规划块'),
+            ),
           )
         else
           ..._entries.map(_buildEntryTile),
@@ -521,4 +609,76 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
   bool _isSameDate(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _buildIcs(List<CalendarSyncEntry> entries) {
+    final lines = <String>[
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//CountDownTodo//Calendar Export//CN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:${_escapeIcsText('CountDownTodo')}',
+      'X-WR-TIMEZONE:${_escapeIcsText(DateTime.now().timeZoneName)}',
+    ];
+    final stamp = _formatIcsDateTime(DateTime.now().toUtc());
+
+    for (final entry in entries) {
+      lines
+        ..add('BEGIN:VEVENT')
+        ..add(
+          'UID:${_escapeIcsText('${entry.type.name}-${entry.id}@countdowntodo')}',
+        )
+        ..add('DTSTAMP:$stamp')
+        ..add('SUMMARY:${_escapeIcsText(entry.title)}')
+        ..add('CATEGORIES:${_escapeIcsText(entry.typeLabel)}');
+
+      if (entry.allDay) {
+        lines
+          ..add('DTSTART;VALUE=DATE:${_formatIcsDate(entry.start)}')
+          ..add('DTEND;VALUE=DATE:${_formatIcsDate(entry.end)}');
+      } else {
+        lines
+          ..add('DTSTART:${_formatIcsDateTime(entry.start.toUtc())}')
+          ..add('DTEND:${_formatIcsDateTime(entry.end.toUtc())}');
+      }
+
+      if (entry.location?.trim().isNotEmpty == true) {
+        lines.add('LOCATION:${_escapeIcsText(entry.location!.trim())}');
+      }
+      if (entry.description?.trim().isNotEmpty == true) {
+        lines.add('DESCRIPTION:${_escapeIcsText(entry.description!.trim())}');
+      }
+      lines.add('END:VEVENT');
+    }
+
+    lines.add('END:VCALENDAR');
+    return '${lines.expand(_foldIcsLine).join('\r\n')}\r\n';
+  }
+
+  String _formatIcsDate(DateTime date) => DateFormat('yyyyMMdd').format(date);
+
+  String _formatIcsDateTime(DateTime dateTime) =>
+      DateFormat("yyyyMMdd'T'HHmmss'Z'").format(dateTime.toUtc());
+
+  String _escapeIcsText(String value) {
+    return value
+        .replaceAll('\\', '\\\\')
+        .replaceAll('\r\n', r'\n')
+        .replaceAll('\n', r'\n')
+        .replaceAll(';', r'\;')
+        .replaceAll(',', r'\,');
+  }
+
+  List<String> _foldIcsLine(String line) {
+    const maxLength = 72;
+    if (line.length <= maxLength) return [line];
+    final folded = <String>[];
+    var rest = line;
+    while (rest.length > maxLength) {
+      folded.add(rest.substring(0, maxLength));
+      rest = ' ${rest.substring(maxLength)}';
+    }
+    folded.add(rest);
+    return folded;
+  }
 }

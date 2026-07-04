@@ -127,7 +127,7 @@ class _AppBoardScreenState extends State<AppBoardScreen>
         });
       }
     } catch (e) {
-      debugPrint('Error loading board data: $e');
+      // debugPrint('Error loading board data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -153,7 +153,8 @@ class _AppBoardScreenState extends State<AppBoardScreen>
               Expanded(
                 child: _isLoading
                     ? Center(
-                        child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary))
+                        child: CircularProgressIndicator(
+                            color: Theme.of(context).colorScheme.primary))
                     : isDesktop
                         ? _buildDesktopLayout()
                         : _buildMobileLayout(),
@@ -251,11 +252,15 @@ class _AppBoardScreenState extends State<AppBoardScreen>
                         padding: const EdgeInsets.symmetric(
                             vertical: 6, horizontal: 12),
                         decoration: BoxDecoration(
-                          color: (isUrgent ? Colors.red : Theme.of(context).colorScheme.primary)
+                          color: (isUrgent
+                                  ? Colors.red
+                                  : Theme.of(context).colorScheme.primary)
                               .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: (isUrgent ? Colors.red : Theme.of(context).colorScheme.primary)
+                            color: (isUrgent
+                                    ? Colors.red
+                                    : Theme.of(context).colorScheme.primary)
                                 .withValues(alpha: 0.2),
                           ),
                         ),
@@ -473,11 +478,16 @@ class _AppBoardScreenState extends State<AppBoardScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon,
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.white24, size: 20),
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.white24,
+                size: 20),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.white24,
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.white24,
                 fontSize: 8,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1,
@@ -618,7 +628,9 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
                 height: 400,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Theme.of(context).colorScheme.primary
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
                       .withValues(alpha: 0.05 + (0.05 * _controller.value)),
                 ),
               ),
@@ -698,7 +710,9 @@ class TodayHourlyTimeline extends StatelessWidget {
             border: Border(
                 bottom:
                     BorderSide(color: Colors.white.withValues(alpha: 0.02))),
-            color: isCurrent ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05) : null,
+            color: isCurrent
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
+                : null,
           ),
           child: Row(
             children: [
@@ -748,11 +762,17 @@ class TodayHourlyTimeline extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
-                                color: (t.isDone ? emerald : Theme.of(context).colorScheme.primary)
+                                color: (t.isDone
+                                        ? emerald
+                                        : Theme.of(context).colorScheme.primary)
                                     .withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
-                                    color: (t.isDone ? emerald : Theme.of(context).colorScheme.primary)
+                                    color: (t.isDone
+                                            ? emerald
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .primary)
                                         .withValues(alpha: 0.1)),
                               ),
                               child: Row(
@@ -764,7 +784,9 @@ class TodayHourlyTimeline extends StatelessWidget {
                                     decoration: BoxDecoration(
                                       color: t.isDone
                                           ? emeraldAccent
-                                          : Theme.of(context).colorScheme.secondary,
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .secondary,
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -951,13 +973,17 @@ class _GanttChartState extends State<GanttChart> {
               onTap: () => widget.onTaskClick(task),
               child: Container(
                 decoration: BoxDecoration(
-                  color: (task.teamUuid != null ? Theme.of(context).colorScheme.primary : emerald)
+                  color: (task.teamUuid != null
+                          ? Theme.of(context).colorScheme.primary
+                          : emerald)
                       .withValues(
                     alpha: isCompleted ? 0.05 : 0.1,
                   ),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
-                    color: (task.teamUuid != null ? Theme.of(context).colorScheme.primary : emerald)
+                    color: (task.teamUuid != null
+                            ? Theme.of(context).colorScheme.primary
+                            : emerald)
                         .withValues(
                       alpha: isCompleted ? 0.16 : 0.3,
                     ),
@@ -1108,7 +1134,9 @@ class _GanttChartState extends State<GanttChart> {
                             Text(
                               DateFormat('E').format(date).toUpperCase(),
                               style: TextStyle(
-                                  color: isToday ? Theme.of(context).colorScheme.primary : Colors.white12,
+                                  color: isToday
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.white12,
                                   fontSize:
                                       math.max(6.0, effectiveDayWidth / 5),
                                   fontWeight: FontWeight.w900),
@@ -1151,7 +1179,10 @@ class _GanttChartState extends State<GanttChart> {
                 bottom: 0,
                 child: Container(
                   width: 1,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.5),
                 ),
               ),
               // Task Rows
@@ -1262,7 +1293,8 @@ class MissionControl extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _buildTab('active', '活跃任务', Theme.of(context).colorScheme.primary),
+                _buildTab(
+                    'active', '活跃任务', Theme.of(context).colorScheme.primary),
                 _buildTab('completed', '历史记录', emerald),
               ],
             ),
@@ -1414,8 +1446,10 @@ class TaskDetailModal extends StatelessWidget {
                     height: 6,
                     child: Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                            colors: [Theme.of(context).colorScheme.primary, Colors.indigo]),
+                        gradient: LinearGradient(colors: [
+                          Theme.of(context).colorScheme.primary,
+                          Colors.indigo
+                        ]),
                       ),
                     ),
                   ),
@@ -1433,13 +1467,17 @@ class TaskDetailModal extends StatelessWidget {
                                     horizontal: 12, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: (task.teamUuid != null
-                                          ? Theme.of(context).colorScheme.primary
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
                                           : emerald)
                                       .withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                       color: (task.teamUuid != null
-                                              ? Theme.of(context).colorScheme.primary
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
                                               : emerald)
                                           .withValues(alpha: 0.3)),
                                 ),
@@ -1447,7 +1485,9 @@ class TaskDetailModal extends StatelessWidget {
                                   task.teamName ?? '个人空间',
                                   style: TextStyle(
                                     color: task.teamUuid != null
-                                        ? Theme.of(context).colorScheme.secondary
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .secondary
                                         : emeraldAccent,
                                     fontSize: 10,
                                     fontWeight: FontWeight.w900,

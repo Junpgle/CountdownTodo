@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../utils/local_image_provider.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback onComplete;
@@ -41,7 +41,8 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    _completeTimer = Timer(Duration(milliseconds: safeDurationMs), _completeOnce);
+    _completeTimer =
+        Timer(Duration(milliseconds: safeDurationMs), _completeOnce);
   }
 
   @override
@@ -56,7 +57,7 @@ class _SplashScreenState extends State<SplashScreen>
     final size = MediaQuery.of(context).size;
     final isWide = size.width > 600;
     final imagePath = widget.content['imagePath'] as String?;
-    final hasImage = imagePath != null && File(imagePath).existsSync();
+    final hasImage = imagePath != null && localImageExists(imagePath);
 
     return Scaffold(
       body: SizedBox(
@@ -124,12 +125,11 @@ class _SplashScreenState extends State<SplashScreen>
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: ClipRect(
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
               ),
             ),
           ),
@@ -143,7 +143,7 @@ class _SplashScreenState extends State<SplashScreen>
             opacity: _fadeAnimation,
             child: ClipRect(
               child: Image.asset(
-                'assets/splash/default.jpg',
+                'assets/splash/default.webp',
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,
@@ -168,12 +168,11 @@ class _SplashScreenState extends State<SplashScreen>
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: ClipRect(
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,
-                alignment: Alignment.centerLeft,
               ),
             ),
           ),
@@ -187,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen>
             opacity: _fadeAnimation,
             child: ClipRect(
               child: Image.asset(
-                'assets/splash/default_pad.jpg',
+                'assets/splash/default_pad.webp',
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,

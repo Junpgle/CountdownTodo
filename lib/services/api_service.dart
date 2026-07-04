@@ -1,11 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
+import 'http_client_factory.dart';
 import '../storage_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 
 class ApiService {
   static String baseUrl = "https://mathquiz.junpgle.me";
@@ -18,11 +17,7 @@ class ApiService {
   // 🛡️ 全局使用的、跳过 SSL 证书验证的 HTTP 客户端
   static http.Client? _clientInstance;
   static http.Client get _client {
-    _clientInstance ??= IOClient(
-      HttpClient()
-        ..badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true,
-    );
+    _clientInstance ??= createApiHttpClient();
     return _clientInstance!;
   }
 
@@ -141,8 +136,7 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> login(
-      String email, String password,
+  static Future<Map<String, dynamic>> login(String email, String password,
       {String? turnstileToken}) async {
     try {
       final Map<String, dynamic> bodyMap = {
@@ -332,7 +326,8 @@ class ApiService {
           'server_tags': data['server_pomodoro_tags'] ?? [],
           'server_plan_blocks': data['server_plan_blocks'] ?? [],
           'joined_team_uuids': data['joined_team_uuids'],
-          'independent_completions': data['independent_completions'], // 🚀 独立完成状态
+          'independent_completions':
+              data['independent_completions'], // 🚀 独立完成状态
           'status': data['status'],
         };
       } else if (response.statusCode == 429) {
@@ -367,7 +362,7 @@ class ApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint("🚫 [ApiService] 忽略上报失败: $e");
+//       debugPrint("🚫 [ApiService] 忽略上报失败: $e");
       return false;
     }
   }
@@ -450,12 +445,12 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchCourses(int userId,
-      {String semester = "default"}) async {
+      {String? semester}) async {
     try {
-      final response = await _client.get(
-          Uri.parse(
-              '$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester'),
-          headers: _getHeaders());
+      final uri = semester != null
+          ? Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester')
+          : Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId');
+      final response = await _client.get(uri, headers: _getHeaders());
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -507,15 +502,20 @@ class ApiService {
   static Future<bool> uploadUserSettings({
     required int? semesterStartMs,
     required int? semesterEndMs,
+    List<Map<String, dynamic>>? semesters, // 新增：多学期列表
   }) async {
     try {
+      final body = <String, dynamic>{
+        'semester_start': semesterStartMs,
+        'semester_end': semesterEndMs,
+      };
+      if (semesters != null) {
+        body['semesters'] = semesters;
+      }
       final response = await _client.post(
         Uri.parse('$_effectiveBaseUrl/api/settings'),
         headers: _getHeaders(),
-        body: jsonEncode({
-          'semester_start': semesterStartMs,
-          'semester_end': semesterEndMs,
-        }),
+        body: jsonEncode(body),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -748,9 +748,11 @@ class ApiService {
   /// 获取当前在线设备分布统计
   static Future<Map<String, dynamic>?> fetchOnlineStats() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/online_stats'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await _client
+          .get(
+            Uri.parse('$_effectiveBaseUrl/api/online_stats'),
+          )
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -763,9 +765,11 @@ class ApiService {
   /// 获取所有设备历史版本分布统计（含离线设备）
   static Future<Map<String, dynamic>?> fetchDeviceVersionStats() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await _client
+          .get(
+            Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
+          )
+          .timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -1195,6 +1199,142 @@ class ApiService {
   }
 
   // ==========================================
+  // 🔗 10.5 团队分享 (Team Shares)
+  // ==========================================
+
+  static Future<Map<String, dynamic>> createTeamShare({
+    required String teamUuid,
+    String? title,
+    String? description,
+    bool shareTodos = true,
+    bool shareCountdowns = true,
+    bool shareAnnouncements = true,
+    String? password,
+    int? expiresHours,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'team_uuid': teamUuid,
+        'share_todos': shareTodos,
+        'share_countdowns': shareCountdowns,
+        'share_announcements': shareAnnouncements,
+      };
+      if (title != null) body['title'] = title;
+      if (description != null) body['description'] = description;
+      if (password != null && password.isNotEmpty) body['password'] = password;
+      if (expiresHours != null) body['expires_hours'] = expiresHours;
+
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/create'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchTeamShares(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      final data = jsonDecode(response.body);
+      return data['shares'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteTeamShare(String shareCode) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/delete'),
+        headers: _getHeaders(),
+        body: jsonEncode({'share_code': shareCode}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateTeamShare({
+    required String shareCode,
+    required bool isActive,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/update'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'share_code': shareCode,
+          'is_active': isActive,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyShareCode(
+      String code, String? password) async {
+    try {
+      final body = <String, dynamic>{};
+      if (password != null && password.isNotEmpty) body['password'] = password;
+
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/shares/$code/verify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchShareData(String code,
+      {String? token}) async {
+    try {
+      var url = '$_effectiveBaseUrl/api/shares/$code/data';
+      if (token != null && token.isNotEmpty) {
+        url += '?token=${Uri.encodeComponent(token)}';
+      }
+      final response = await _client.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestJoinViaShare({
+    required String shareCode,
+    required String email,
+    String? message,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/shares/$shareCode/request_join'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          if (message != null && message.isNotEmpty) 'message': message,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ==========================================
   // 🚀 11. 版本记录与回滚 (History & Rollback)
   // ==========================================
 
@@ -1217,12 +1357,12 @@ class ApiService {
         combinedHistory.addAll(data['history'] ?? []);
       } else if (response.statusCode == 403 || response.statusCode == 404) {
         // 后端权限收紧后，这两种状态是业务态，不当作网络异常
-        debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
+//         debugPrint("🔒 云端历史访问受限(status=${response.statusCode})，继续展示本地历史");
       } else {
-        debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
+//         debugPrint("⚠️ 云端历史接口异常(status=${response.statusCode})");
       }
     } catch (e) {
-      debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
+//       debugPrint("🌐 云端历史不可用，切换至纯本地模式: $e");
     }
 
     // 2. 获取本地历史并合并
@@ -1245,7 +1385,7 @@ class ApiService {
         });
       }
     } catch (e) {
-      debugPrint("⚠️ 获取本地历史失败: $e");
+//       debugPrint("⚠️ 获取本地历史失败: $e");
     }
 
     // 3. 排序：按时间倒序

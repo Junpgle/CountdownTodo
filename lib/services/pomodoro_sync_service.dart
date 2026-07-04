@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io'; // 🚀 新增：用于获取当前操作系统
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
@@ -9,6 +8,7 @@ import 'notification_service.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import '../update_service.dart';
+import '../utils/app_platform.dart';
 import '../utils/navigator_utils.dart';
 
 // ============================================================
@@ -202,7 +202,7 @@ class PomodoroSyncService {
     if (_userId == userId &&
         _deviceId == deviceId &&
         _connState == SyncConnectionState.connected) {
-      debugPrint('[PomodoroSync] 已连接，跳过重连');
+      // debugPrint('[PomodoroSync] 已连接，跳过重连');
       return;
     }
     _userId = userId;
@@ -238,11 +238,11 @@ class PomodoroSyncService {
     _retryCount = 0; // 重置指数退避计数
 
     if (_userId == null || _deviceId == null) {
-      debugPrint(
-          '[PomodoroSync] ❌ 无法手动重连：UserId($_userId) 或 DeviceId($_deviceId) 为空');
+      // debugPrint(
+      //     '[PomodoroSync] ❌ 无法手动重连：UserId($_userId) 或 DeviceId($_deviceId) 为空');
       return;
     }
-    debugPrint('[PomodoroSync] ⚡ 收到手动强制重连请求，正在解锁并重试...');
+    // debugPrint('[PomodoroSync] ⚡ 收到手动强制重连请求，正在解锁并重试...');
     _connecting = false; // 强制解锁
     await _doConnect();
   }
@@ -271,7 +271,7 @@ class PomodoroSyncService {
     }
 
     try {
-      final platform = kIsWeb ? 'web' : Platform.operatingSystem;
+      final platform = AppPlatform.operatingSystem;
       final versionParam = _appVersion ?? 'unknown';
 
       // 🚀 核心修复：WebSocket 地址动态跟随 ApiService，消除 8082/8084 端口不匹配
@@ -318,7 +318,7 @@ class PomodoroSyncService {
         _reportIdleStatus();
       }
     } catch (e) {
-      debugPrint('[PomodoroSync] ❌ 连接失败: $e');
+      // debugPrint('[PomodoroSync] ❌ 连接失败: $e');
       _setConnState(SyncConnectionState.error);
       _scheduleReconnect();
     } finally {
@@ -344,18 +344,18 @@ class PomodoroSyncService {
         final latestVersion =
             signal.latestVersion ?? manifest?['version_name']?.toString();
 
-        debugPrint('[PomodoroSync] 🎁 收到新版本推送: $latestVersion');
+        // debugPrint('[PomodoroSync] 🎁 收到新版本推送: $latestVersion');
 
         String? downloadUrl = signal.downloadUrl;
         String? releaseNotes = signal.releaseNotes;
 
         if (manifest != null && manifest['update_info'] != null) {
           final info = manifest['update_info'] as Map<String, dynamic>;
-          if (Platform.isMacOS) {
+          if (AppPlatform.isMacOS) {
             downloadUrl ??= info['mac_package_url']?.toString() ??
                 info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
-          } else if (Platform.isWindows) {
+          } else if (AppPlatform.isWindows) {
             downloadUrl ??= info['PC_package_url']?.toString() ??
                 info['full_package_url']?.toString();
           } else {
@@ -378,7 +378,7 @@ class PomodoroSyncService {
 
       // 🚀 Uni-Sync 4.0: 团队系统消息处理
       if (signal.action == 'NEW_JOIN_REQUEST') {
-        debugPrint('[PomodoroSync] 🔔 收到新的团队申请信号');
+        // debugPrint('[PomodoroSync] 🔔 收到新的团队申请信号');
         NotificationService.showGenericNotification(
           title: "新的入队申请",
           body: signal.delta?['message'] ?? "有人申请加入你的团队，请前往管理界面处理",
@@ -386,7 +386,7 @@ class PomodoroSyncService {
       }
 
       if (signal.action == 'TEAM_MEMBER_LEFT') {
-        debugPrint('[PomodoroSync] 👥 成员退出团队信号');
+        // debugPrint('[PomodoroSync] 👥 成员退出团队信号');
         NotificationService.showGenericNotification(
           title: "团队成员变动",
           body: "有成员退出了你的团队",
@@ -394,7 +394,7 @@ class PomodoroSyncService {
       }
 
       if (signal.action == 'TEAM_REMOVED' && signal.teamUuid != null) {
-        debugPrint('[PomodoroSync] 🧹 收到踢出团队广播，清理本地数据: ${signal.teamUuid}');
+        // debugPrint('[PomodoroSync] 🧹 收到踢出团队广播，清理本地数据: ${signal.teamUuid}');
         StorageService.clearTeamItems(signal.teamUuid!);
         // 🚀 核心修复：弹出横幅提醒
         NotificationService.showGenericNotification(
@@ -415,14 +415,14 @@ class PomodoroSyncService {
       if (signal.action == 'SYNC_FOCUS' &&
           signal.sourceDevice == _deviceId &&
           onStaleSyncFocus != null) {
-        debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
+        // debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
         onStaleSyncFocus!(signal);
       }
 
       _lastMessageTime = DateTime.now(); // 🚀 每次收到有效消息都刷新时间
       if (!_stateCtrl.isClosed) _stateCtrl.add(signal);
     } catch (e) {
-      debugPrint('[PomodoroSync] 消息解析失败: $e');
+      // debugPrint('[PomodoroSync] 消息解析失败: $e');
     }
   }
 
@@ -442,7 +442,7 @@ class PomodoroSyncService {
     if (_retryCount > 3) delaySecs = 30;
     if (_retryCount > 6) delaySecs = 60;
 
-    debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
+    // debugPrint('[PomodoroSync] 🔄 将在 $delaySecs 秒后进行第 $_retryCount 次重连尝试...');
 
     _reconnectTimer = Timer(Duration(seconds: delaySecs), () {
       if (_userId != null) {
@@ -458,8 +458,8 @@ class PomodoroSyncService {
         // 🚀 核心逻辑：如果超过 2 个心跳周期（60s）没收到任何消息，判定为“僵尸活跃”，强制重连
         final silentDuration = DateTime.now().difference(_lastMessageTime);
         if (silentDuration > (_heartbeatInterval * 2.5)) {
-          debugPrint(
-              '[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
+          // debugPrint(
+          //     '[PomodoroSync] ⚠️ 心跳超时 (已静默 ${silentDuration.inSeconds}s)，强制重新连接...');
           _onDisconnected();
           return;
         }
@@ -538,7 +538,7 @@ class PomodoroSyncService {
   /// 🚀 新增：设置本地专注状态标签，由 WorkbenchView 维护
   void setLocalFocusing(bool focusing) {
     _isLocalFocusing = focusing;
-    debugPrint('[PomodoroSync] 更新本地专注状态标签: $focusing');
+    // debugPrint('[PomodoroSync] 更新本地专注状态标签: $focusing');
   }
 
   void sendSwitchSignal(
@@ -633,7 +633,7 @@ class PomodoroSyncService {
         });
       }
     } catch (e) {
-      debugPrint('[PomodoroSync] 团队订阅失败: $e');
+      // debugPrint('[PomodoroSync] 团队订阅失败: $e');
     }
   }
 
@@ -642,7 +642,7 @@ class PomodoroSyncService {
     try {
       _channel!.sink.add(jsonEncode(payload));
     } catch (e) {
-      debugPrint('[PomodoroSync] ❌ WS发送失败: $e');
+      // debugPrint('[PomodoroSync] ❌ WS发送失败: $e');
       _onDisconnected(); // 发送失败直接触发重连
     }
   }

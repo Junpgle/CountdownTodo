@@ -6,14 +6,13 @@ import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
-import 'package:path_provider/path_provider.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/search_service.dart';
@@ -32,6 +31,8 @@ import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
 import '../services/external_share_handler.dart';
+import '../services/browser_file_service.dart';
+import '../services/island_todo_snapshot.dart';
 import '../services/wallpaper_cache_service.dart';
 import '../services/pomodoro_service.dart';
 import '../services/pomodoro_control_service.dart';
@@ -40,6 +41,8 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../utils/app_platform.dart';
+import '../utils/local_image_provider.dart';
 
 // 引入其他页面
 import 'screen_time_detail_screen.dart';
@@ -159,15 +162,17 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();
   final GlobalKey _courseButtonKey = GlobalKey();
-  
+
   // 🚀 新增：首页引导用的新增 Keys
   final GlobalKey _todoFolderKey = GlobalKey();
   final GlobalKey _todoHistoryKey = GlobalKey();
   final GlobalKey _countdownHistoryKey = GlobalKey();
   final GlobalKey _todayPlanChartKey = GlobalKey();
-  // 每次自增触发首页专注记录卡片与时间轴刷新
-  final ValueNotifier<int> _timelineRefreshTriggerNotifier =
-      ValueNotifier<int>(0);
+  // 独立刷新信号，避免单一计数器同时触发多个重型模块
+  final ValueNotifier<int> _todoRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
 
   Future<void> _extractColorFromProvider(
       ImageProvider provider, String url) async {
@@ -194,7 +199,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
       }
     } catch (e) {
-      debugPrint("Failed to extract color: $e");
+      // debugPrint("Failed to extract color: $e");
     }
   }
 
@@ -238,6 +243,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
+  Timer? _todoNotificationDebouncer;
+  Timer? _teamPendingDebouncer;
+  Timer? _announcementDebouncer;
+  Timer? _todoWidgetDebouncer;
+  Timer? _reminderScheduleDebouncer;
   final ValueNotifier<int> _pomodoroTickNotifier = ValueNotifier<int>(0);
 
   // 🚀 Granular Refresh Notifiers
@@ -339,7 +349,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
     await _saveTodosToSharedFile(nextTodos);
-    _timelineRefreshTriggerNotifier.value++;
+    _timelineRevision.value++;
     _todoUpdateSignalNotifier.value++;
     FloatWindowService.triggerReminderCheck();
     FloatWindowService.invalidateSlotCache();
@@ -383,15 +393,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       _notifSubs.add(NotificationService.listen('markCurrentTodoDone', (call) {
-        debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
+        // debugPrint("📱 收到 markCurrentTodoDone 调用: arguments=${call.arguments}");
         final args = call.arguments;
         int? notifId;
         if (args is Map) {
           notifId = args['notificationId'] as int?;
         }
-        debugPrint("📱 解析 notifId: $notifId");
+        // debugPrint("📱 解析 notifId: $notifId");
         _markCurrentTodoDone(notifId: notifId);
       }));
       _notifSubs.add(NotificationService.listen('openTodoConfirm', (call) {
@@ -399,7 +409,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }));
       _notifSubs.add(NotificationService.listen('openShortcut', (call) {
         final shortcutType = call.arguments as String?;
-        debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
+        // debugPrint("⚡ 收到 openShortcut 调用: $shortcutType");
         if (shortcutType != null) {
           _handleShortcut(shortcutType);
         }
@@ -417,17 +427,17 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
       }));
       _notifSubs.add(NotificationService.listen('openPlanBlock', (call) {
-        debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
+        // debugPrint("📅 收到 openPlanBlock 调用: arguments=${call.arguments}");
         if (mounted) {
           _handleOpenPlanBlock(call.arguments);
         }
       }));
       _notifSubs.add(NotificationService.listen('openPomodoro', (call) {
-        debugPrint("🍅 收到 openPomodoro 调用");
+        // debugPrint("🍅 收到 openPomodoro 调用");
         _navigateToPomodoro();
       }));
       _notifSubs.add(NotificationService.listen('openTodoList', (call) {
-        debugPrint("📋 收到 openTodoList 调用");
+        // debugPrint("📋 收到 openTodoList 调用");
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
@@ -436,7 +446,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       // PomodoroScreen 的 listen() 会自动 replay pending 事件。
       for (final action in ['pomodoroFinishEarly', 'pomodoroAbandon']) {
         _notifSubs.add(NotificationService.listen(action, (call) {
-          debugPrint("🍅 收到 $action");
+          // debugPrint("🍅 收到 $action");
           _navigateToPomodoro();
         }));
       }
@@ -528,6 +538,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (final sub in _notifSubs) {
       sub.cancel();
     }
+    StorageService.dataRefreshNotifier.removeListener(_loadAllData);
+    StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -547,6 +559,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
+    _todoNotificationDebouncer?.cancel();
+    _teamPendingDebouncer?.cancel();
+    _announcementDebouncer?.cancel();
+    _todoWidgetDebouncer?.cancel();
+    _reminderScheduleDebouncer?.cancel();
     _pomodoroTickNotifier.dispose();
     MacPomodoroStatusBarService.dispose();
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
@@ -644,7 +661,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 更新本地列表
     setState(() {
       _todos = [...newTodos, ..._todos];
-      _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴刷新
+      _todoRevision.value++;
     });
 
     // 保存到数据库
@@ -716,17 +733,9 @@ class _HomeDashboardState extends State<HomeDashboard>
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: Image.file(
-                File(imagePath),
+              child: localImageWidget(
+                imagePath,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text(
-                      "图片加载失败，文件可能已过期删除",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                },
               ),
             ),
           ),
@@ -798,7 +807,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 处理 App Shortcut 导航
   Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
-    debugPrint("⚡ 处理 Shortcut: $shortcutType");
+    // debugPrint("⚡ 处理 Shortcut: $shortcutType");
     switch (shortcutType) {
       case 'settings':
         await Navigator.of(context).push(
@@ -834,7 +843,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       planBlockId =
           (arguments['planBlockId'] ?? arguments['plan_block_id'])?.toString();
     }
-    debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
+    // debugPrint("📅 打开规划提醒, notifId=$notifId, planBlockId=$planBlockId");
     TodoPlanBlock? target;
     final blocks = await StorageService.getPlanBlocks(widget.username);
     if (planBlockId != null && planBlockId.isNotEmpty) {
@@ -918,15 +927,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🍅 发起端重连后，服务端回推了历史专注状态
     // 若本地已无对应状态（说明已被用户关闭/完成），则通知云端清除残留
     _syncService.onStaleSyncFocus = (state) async {
-      debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
+      // debugPrint('[首页] 收到服务端回推的残留状态，校验本地...');
       final saved = await PomodoroService.loadRunState();
       if (saved == null ||
           (saved.phase != PomodoroPhase.focusing &&
               saved.phase != PomodoroPhase.breaking)) {
-        debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
+        // debugPrint('[首页] 本地无运行中的专注状态，发送 CLEAR_FOCUS 清除云端残留');
         _syncService.sendClearFocusSignal();
       } else {
-        debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
+        // debugPrint('[首页] 本地仍有运行中的专注，保留云端状态');
       }
     };
 
@@ -944,7 +953,7 @@ class _HomeDashboardState extends State<HomeDashboard>
               ? 1
               : saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
           if (remaining > 0) {
-            debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
+            // debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
             final allTags = await PomodoroService.getTags();
             List<String> realTagNames = [];
@@ -1019,7 +1028,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
         break;
       case 'TEAM_REMOVED':
-        debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
+        // debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
         await _handleManualSync(silent: true);
         if (mounted) _loadAllData();
         break;
@@ -1029,7 +1038,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       case 'JOIN_REQUEST_APPROVED':
       case 'TEAM_MEMBER_JOINED':
       case 'NEW_INVITATION':
-        debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
+        // debugPrint('🚀 [协同信号] 收到 ${signal.action}, 触发静默同步');
         _debounceCollaborativeSync();
         break;
 
@@ -1094,7 +1103,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         });
         _startRemotePomodoroTicker(endMs, isCountUp);
 
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getBool('float_window_enabled') ?? true) {
             await FloatWindowService.update(
@@ -1118,7 +1127,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         // 远端专注结束/断连后，将本地仍为 focusing 状态的规划块重置
         _resetStalePlanBlockFocus();
 
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(endMs: 0, isLocal: false);
         }
         break;
@@ -1147,7 +1156,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (isCountUp) {
           _startRemotePomodoroTicker(_remotePomodoro!.targetEndMs ?? 0, true);
         }
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
@@ -1184,7 +1193,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             note: signal.note ?? '',
           );
         });
-        if (Platform.isWindows) {
+        if (AppPlatform.isWindows) {
           await FloatWindowService.update(
             endMs: isCountUp
                 ? (_remotePomodoro!.timestamp ??
@@ -1391,23 +1400,14 @@ class _HomeDashboardState extends State<HomeDashboard>
                       ),
                     ),
                   )
-                else if (imagePath != null && File(imagePath).existsSync())
+                else if (localImageExists(imagePath))
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      File(imagePath),
+                    child: localImageWidget(
+                      imagePath!,
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.image, color: Colors.grey),
-                      ),
                     ),
                   )
                 else
@@ -1842,7 +1842,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                 ),
               ),
             );
-            _timelineRefreshTriggerNotifier.value++;
+            _scheduleRevision.value++;
+            _timelineRevision.value++;
             _loadAllData();
           },
           onAction: () => _startPlanBlockFocus(activeBlock),
@@ -2059,7 +2060,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         ),
       );
       if (mounted) {
-        _timelineRefreshTriggerNotifier.value++;
+        _pomodoroRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
         _loadAllData();
       }
     } catch (e) {
@@ -2077,7 +2080,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         status: PomodoroRecordStatus.interrupted,
       );
       if (mounted) {
-        _timelineRefreshTriggerNotifier.value++;
+        _pomodoroRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
         _loadAllData();
       }
     } catch (e) {
@@ -2279,8 +2284,8 @@ class _HomeDashboardState extends State<HomeDashboard>
           break;
         }
       } catch (e) {
-        debugPrint(
-            "检查课程通知失败: $e (course=${course.courseName}, date='${course.date}', start=${course.startTime})");
+        // debugPrint(
+        //     "检查课程通知失败: $e (course=${course.courseName}, date='${course.date}', start=${course.startTime})");
       }
     }
 
@@ -2476,8 +2481,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkUpdatesSilently();
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
-      // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
-      if (mounted) _timelineRefreshTriggerNotifier.value++;
+      // 从番茄钟页或任何前台切换回来时，刷新所有卡片
+      if (mounted) {
+        _todoRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
+        _pomodoroRevision.value++;
+      }
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
       // 清理残留的一次性通知
@@ -2503,7 +2513,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final remaining = saved.targetEndMs - DateTime.now().millisecondsSinceEpoch;
     if (saved.mode == TimerMode.countdown && remaining <= 0) return;
 
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool('float_window_enabled') ?? true) {
         final allTags = await PomodoroService.getTags();
@@ -2530,14 +2540,15 @@ class _HomeDashboardState extends State<HomeDashboard>
       sourceKey: _pomodoroCardKey,
     );
     if (mounted) {
-      _timelineRefreshTriggerNotifier.value++;
+      _pomodoroRevision.value++;
+      _timelineRevision.value++;
       _loadAllData(deferred: true);
     }
   }
 
   /// 启动时自动初始化灵动岛（如果用户已开启）
   Future<void> _initIslandOnStartup() async {
-    if (!Platform.isWindows) return;
+    if (!AppPlatform.isWindows) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final style = prefs.getInt('float_window_style') ?? 0;
@@ -2556,10 +2567,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
 
       // 无番茄钟时，显示 idle 状态的灵动岛
-      debugPrint('[HomeDashboard] Initializing island on startup (idle state)');
+      // debugPrint('[HomeDashboard] Initializing island on startup (idle state)');
       await FloatWindowService.update(forceReset: true);
     } catch (e) {
-      debugPrint('[HomeDashboard] Island startup init failed: $e');
+      // debugPrint('[HomeDashboard] Island startup init failed: $e');
     }
   }
 
@@ -2576,7 +2587,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         setState(() => _activeAnnouncement = null);
       }
     } catch (e) {
-      debugPrint('❌ [首页] 获取置顶公告失败: $e');
+      // debugPrint('❌ [首页] 获取置顶公告失败: $e');
     }
   }
 
@@ -2601,7 +2612,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             () => _teamPendingCount = totalPending + backgroundUnread.length);
       }
     } catch (e) {
-      debugPrint('❌ [首页] 获取团队消息计数失败: $e');
+      // debugPrint('❌ [首页] 获取团队消息计数失败: $e');
     }
   }
 
@@ -2626,8 +2637,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   void _markCurrentTodoDone({int? notifId}) async {
-    debugPrint(
-        "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
+    // debugPrint(
+    //     "📱 _markCurrentTodoDone 被调用: notifId=$notifId, todos数量=${_todos.length}");
 
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -2638,7 +2649,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       return !d.isAfter(today);
     }).toList();
 
-    debugPrint("📱 activeTodos数量=${activeTodos.length}");
+    // debugPrint("📱 activeTodos数量=${activeTodos.length}");
 
     // 普通待办通知的 ID 是 12345，特殊待办通知的 ID 是 todo.id.hashCode
     const int normalTodoNotifId = 12345;
@@ -2689,22 +2700,22 @@ class _HomeDashboardState extends State<HomeDashboard>
           break;
         }
       }
-      debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
+      // debugPrint("📱 普通待办通知，完成第一个未完成的普通待办: ${currentTodo?.title}");
     } else {
       // 特殊待办通知：通过 notifId 找到对应的待办
       currentTodo = activeTodos
           .where((t) => t.id.hashCode == notifId && !t.isDone)
           .firstOrNull;
-      debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
+      // debugPrint("📱 特殊待办通知，找到待办: ${currentTodo?.title}");
     }
 
     // 找不到待办，不执行任何操作
     if (currentTodo == null) {
-      debugPrint("找不到对应的待办: notifId=$notifId");
+      // debugPrint("找不到对应的待办: notifId=$notifId");
       return;
     }
 
-    debugPrint("📱 准备完成待办: ${currentTodo.title}");
+    // debugPrint("📱 准备完成待办: ${currentTodo.title}");
 
     // 取消特殊待办的通知
     await NotificationService.cancelSpecialTodoNotification(
@@ -2878,7 +2889,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _initNotifications() async {
     await NotificationService.init();
     // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       if (await Permission.notification.isDenied) {
         await Permission.notification.request();
       }
@@ -2888,7 +2899,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _initScreenTime() async {
     if (mounted) setState(() => _isLoadingScreenTime = true);
 
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
       // 桌面端：直接走缓存读取+Tai同步，不需要权限检查
       if (mounted) setState(() => _hasUsagePermission = true);
       await _loadCachedScreenTime();
@@ -2963,7 +2974,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer =
         Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
-      debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
+      // debugPrint('🔄 [协同] 防抖触发：执行批量同步与界面刷新...');
       await _handleManualSync(silent: true);
       // 🚀 核心修复：协作信号驱动下，强制重新加载数据，不依赖 hasChanges 判断
       if (mounted) {
@@ -2980,7 +2991,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       final duration = DateTime.now().difference(start).inMilliseconds;
       return result;
     } catch (e) {
-      debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
+      // debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
       return null;
     }
   }
@@ -3079,51 +3090,54 @@ class _HomeDashboardState extends State<HomeDashboard>
           _safeListResult<TodoPlanBlock>(results[5]);
 
       if (mounted) {
-        // 🚀 诊断日志：打印 collabType=1 的 is_completed 值
-        /*for (final t in allTodos.where((t) => t.collabType == 1 && !t.isDeleted)) {
-          debugPrint('🧪 [SyncDiag][_loadAllData] collab1 UUID=${t.id} isDone=${t.isDone} version=${t.version}');
-        }*/
-        // 🚀 Granular Update: Only update notifiers if content actually changed
-        if (!_isListEqual(_todos, allTodos)) {
+        final bool todosChanged = !_isListEqual(_todos, allTodos);
+        final bool groupsChanged = !_isListEqual(_todoGroups, allGroups);
+        final bool countdownsChanged = !_isListEqual(_countdowns, allCountdowns);
+        final bool mathChanged = !_isMapEqual(_mathStats, mathStats);
+        final bool coursesChanged = !_isMapEqual(_dashboardCourseData, courseData);
+        final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
+
+        if (todosChanged) {
           _todos = allTodos;
           _todosNotifier.value = allTodos;
+          _todoUpdateSignalNotifier.value++;
         }
         _hasTeamConflictDot = hasTeamConflict;
-        if (!_isListEqual(_todoGroups, allGroups)) {
+        if (groupsChanged) {
           _todoGroups = allGroups;
           _groupsNotifier.value = allGroups;
         }
-        if (!_isListEqual(_countdowns, allCountdowns)) {
+        if (countdownsChanged) {
           _countdowns = allCountdowns;
           _countdownsNotifier.value = allCountdowns;
         }
-        if (!_isMapEqual(_mathStats, mathStats)) {
+        if (mathChanged) {
           _mathStats = mathStats;
           _mathStatsNotifier.value = mathStats;
         }
-        if (!_isMapEqual(_dashboardCourseData, courseData)) {
+        if (coursesChanged) {
           _dashboardCourseData = courseData;
           _courseDataNotifier.value = courseData;
         }
-        _planBlocks = allPlanBlocks;
+        if (plansChanged) {
+          _planBlocks = allPlanBlocks;
+        }
 
-        _todoUpdateSignalNotifier.value++; // 🚀 触发待办局部更新
-        _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴与专注卡片局部更新
+        if (todosChanged || countdownsChanged) {
+          _timelineRevision.value++;
+        }
+        if (plansChanged || coursesChanged) {
+          _scheduleRevision.value++;
+        }
 
-        // 2. 交互与同步逻辑 (异步执行)
-        _syncTodoNotification();
-        _fetchTeamPendingCount(); // 🚀 Uni-Sync 4.0: 加载团队消息计数
-        _fetchActiveAnnouncements(); // 🚀 Uni-Sync 4.0: 获取置顶公告
-        WidgetService.updateTodoWidget(allTodos);
-
-        final allCourses = await CourseService.getAllCourses(widget.username);
-        unawaited(ReminderScheduleService.scheduleAll(
-          todos: allTodos,
-          courses: allCourses,
-        ));
+        _debouncedSyncTodoNotification(todosChanged);
+        _debouncedFetchTeamPending();
+        _debouncedFetchAnnouncements();
+        _debouncedUpdateTodoWidget(allTodos, todosChanged);
+        _debouncedScheduleAllReminders(todosChanged || coursesChanged);
       }
     } catch (e) {
-      debugPrint('❌ [DashboardLoader] 加载失败: $e');
+      // debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
       if (mounted) {
         _isGlobalLoadingNotifier.value = false;
@@ -3335,26 +3349,58 @@ class _HomeDashboardState extends State<HomeDashboard>
     _checkUpcomingEvents();
   }
 
+  void _debouncedSyncTodoNotification(bool needsSync) {
+    _todoNotificationDebouncer?.cancel();
+    if (!needsSync) return;
+    _todoNotificationDebouncer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _syncTodoNotification();
+    });
+  }
+
+  void _debouncedFetchTeamPending() {
+    _teamPendingDebouncer?.cancel();
+    _teamPendingDebouncer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _fetchTeamPendingCount();
+    });
+  }
+
+  void _debouncedFetchAnnouncements() {
+    _announcementDebouncer?.cancel();
+    _announcementDebouncer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _fetchActiveAnnouncements();
+    });
+  }
+
+  void _debouncedUpdateTodoWidget(List<TodoItem> todos, bool needsSync) {
+    _todoWidgetDebouncer?.cancel();
+    if (!needsSync) return;
+    _todoWidgetDebouncer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      WidgetService.updateTodoWidget(_todos);
+    });
+  }
+
+  void _debouncedScheduleAllReminders(bool needsSync) {
+    _reminderScheduleDebouncer?.cancel();
+    if (!needsSync) return;
+    _reminderScheduleDebouncer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      CourseService.getAllCourses(widget.username).then((allCourses) {
+        if (!mounted) return;
+        ReminderScheduleService.scheduleAll(todos: _todos, courses: allCourses);
+      });
+    });
+  }
+
   Future<void> _saveTodosToSharedFile(List<TodoItem> todos) async {
     try {
-      final dir = await getApplicationSupportDirectory();
-      final file = File('${dir.path}/island_todos.json');
-      final todosJson = todos
-          .map((t) => {
-                'id': t.id,
-                'title': t.title,
-                'remark': t.remark,
-                'dueDate': t.dueDate?.toUtc().millisecondsSinceEpoch,
-                'createdDate': t.createdDate,
-                'createdAt': t.createdAt,
-                'isDone': t.isDone,
-                'isDeleted': t.isDeleted,
-              })
-          .toList();
-      await file.writeAsString(jsonEncode(todosJson));
+      await saveIslandTodoSnapshot(todos);
       // debugPrint('[HomeDashboard] Saved ${todos.length} todos to shared file');
     } catch (e) {
-      debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
+      // debugPrint('[HomeDashboard] Failed to save todos to shared file: $e');
     }
   }
 
@@ -3391,13 +3437,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     } else {
       _todos = nextTodos;
     }
-    _timelineRefreshTriggerNotifier.value++;
+    _todoRevision.value++;
+    _timelineRevision.value++;
 
     for (var nt in nextTodos) {
       if (nt.isDone) {
         final ot = oldTodos.firstWhere((t) => t.id == nt.id, orElse: () => nt);
         if (!ot.isDone) {
-          debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
+          // debugPrint("🧹 任务 ${nt.title} 已完成，尝试清除通知 ${nt.id.hashCode}");
           NotificationService.cancelSpecialTodoNotification(nt.id.hashCode);
         }
       }
@@ -3418,7 +3465,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _pendingTodosToPersist = null;
         await _persistTodosSnapshot(snapshot);
       }).catchError((e) {
-        debugPrint('[HomeDashboard] persist todos failed: $e');
+        // debugPrint('[HomeDashboard] persist todos failed: $e');
       }).whenComplete(() {
         if (!completer.isCompleted) completer.complete();
       });
@@ -3592,7 +3639,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       }
       // ... 前面代码保持不变
     } catch (e) {
-      debugPrint("Sync Error: $e");
+      // debugPrint("Sync Error: $e");
       String msg = e.toString();
 
       // 🚀 核心修复 1：Token 检查必须移出 !silent 判断
@@ -3675,7 +3722,8 @@ class _HomeDashboardState extends State<HomeDashboard>
               ),
               TextButton.icon(
                 onPressed: () async {
-                  final uri = Uri.parse('https://github.com/Junpgle/math_quiz_app/issues');
+                  final uri = Uri.parse(
+                      'https://github.com/Junpgle/math_quiz_app/issues');
                   if (await canLaunchUrl(uri)) {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }
@@ -3886,14 +3934,13 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _isLocalFilePath(String path) {
     return !path.startsWith('http://') &&
         !path.startsWith('https://') &&
-        !path.startsWith('assets/') &&
-        !path.startsWith('data:');
+        !path.startsWith('assets/');
   }
 
   void _handleWallpaperError() {
     if (!mounted || _isWallpaperLoadingError) return;
-    debugPrint(
-        "[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
+    // debugPrint(
+    //     "[Wallpaper] Current URL failed: $_wallpaperUrl. Trying fallback...");
 
     setState(() {
       _wallpaperRetryCount++;
@@ -3929,19 +3976,19 @@ class _HomeDashboardState extends State<HomeDashboard>
       _tryAnotherRandomWallpaper();
     } else if (_wallpaperRetryCount == 6) {
       // 🚀 Final Fallback: Local Asset
-      debugPrint("[Wallpaper] Using local asset fallback.");
+      // debugPrint("[Wallpaper] Using local asset fallback.");
       if (mounted) {
         setState(() {
           _wallpaperDominantColor = null;
           _extractedWallpaperUrl = null;
           StorageService.setAppWallpaperColor(null);
-          _wallpaperUrl = 'assets/images/default_wallpaper.png';
+          _wallpaperUrl = 'assets/images/default_wallpaper.webp';
           _isWallpaperLoadingError = false; // Reset to allow this to show
         });
       }
     } else {
       // Total failure
-      debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
+      // debugPrint("[Wallpaper] All fallbacks exhausted. Disabling wallpaper.");
       if (mounted) {
         setState(() {
           _wallpaperShow = false;
@@ -3996,7 +4043,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _fetchRandomWallpaper();
       }
     } catch (e) {
-      debugPrint("获取Bing壁纸失败: $e");
+      // debugPrint("获取Bing壁纸失败: $e");
       if (!isFallback) _fetchRandomWallpaper();
     }
   }
@@ -4017,8 +4064,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (provider == 'custom') {
       final customPath = await StorageService.getWallpaperCustomPath();
       if (customPath != null && customPath.isNotEmpty) {
-        final file = File(customPath);
-        if (await file.exists() && mounted) {
+        if (localImageExists(customPath) && mounted) {
           setState(() {
             _wallpaperShow = true;
             _wallpaperDominantColor = null;
@@ -4136,7 +4182,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         }
       }
     } catch (e) {
-      debugPrint("获取壁纸失败: $e");
+      // debugPrint("获取壁纸失败: $e");
     }
   }
 
@@ -4188,7 +4234,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) {
         setState(() {
           _isSearchOpen = false;
-          _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
+          _timelineRevision.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
         });
       }
       _loadAllData(deferred: true);
@@ -4205,7 +4251,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final mainScreen = Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: !_isSearchOpen, // 🚀 关键：搜索时锁定背景，防止位移卡顿
-      backgroundColor: (showWallpaper && !Platform.isWindows)
+      backgroundColor: (showWallpaper && !AppPlatform.isWindows)
           ? Colors.transparent
           : Theme.of(context).colorScheme.surface,
       body: Stack(
@@ -4227,21 +4273,21 @@ class _HomeDashboardState extends State<HomeDashboard>
                         );
                       },
                     )
-                  : _isLocalFilePath(_wallpaperUrl!)
+                  : _isLocalFilePath(_wallpaperUrl!) &&
+                          localImageProvider(_wallpaperUrl!) != null
                       ? Builder(
                           builder: (context) {
+                            final provider =
+                                localImageProvider(_wallpaperUrl!)!;
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_wallpaperDominantColor == null) {
                                 _extractColorFromProvider(
-                                    FileImage(File(_wallpaperUrl!)),
-                                    _wallpaperUrl!);
+                                    provider, _wallpaperUrl!);
                               }
                             });
-                            return Image.file(
-                              File(_wallpaperUrl!),
+                            return Image(
+                              image: provider,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const SizedBox.shrink(),
                             );
                           },
                         )
@@ -4368,7 +4414,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget courseSection =
                                         ValueListenableBuilder<int>(
                                       valueListenable:
-                                          _timelineRefreshTriggerNotifier,
+                                          _scheduleRevision,
                                       builder: (context, trigger, _) {
                                         return CourseSectionWidget(
                                           dashboardCourseData:
@@ -4390,7 +4436,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
-                                              _timelineRefreshTriggerNotifier
+                                              _timelineRevision
                                                   .value++;
                                             });
                                     Widget todoSection =
@@ -4480,8 +4526,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               isLoading: _isLoadingScreenTime,
                                               lastSyncTime: _lastScreenTimeSync,
                                               onOpenSettings: () async {
-                                                if (Platform.isAndroid ||
-                                                    Platform.isIOS) {
+                                                if (AppPlatform.isAndroid ||
+                                                    AppPlatform.isIOS) {
                                                   await ScreenTimeService
                                                       .openSettings();
                                                 }
@@ -4533,7 +4579,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _timelineRevision,
                                         builder: (context, trigger, _) {
                                           return PersonalTimelineSection(
                                             username: widget.username,
@@ -4547,7 +4593,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget pomodoroSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
                                             key: _pomodoroCardKey,
@@ -4565,7 +4611,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
                                                 );
-                                                _timelineRefreshTriggerNotifier
+                                                _pomodoroRevision
                                                     .value++;
                                                 _loadAllData();
                                               },
@@ -4578,7 +4624,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget planBlockSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _scheduleRevision,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
                                             chartKey: _todayPlanChartKey,
@@ -4594,7 +4640,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                               widget.username),
                                                 ),
                                               );
-                                              _timelineRefreshTriggerNotifier
+                                              _scheduleRevision
                                                   .value++;
                                               _loadAllData();
                                             },
@@ -4902,7 +4948,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                 sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
               );
               if (mounted) {
-                _timelineRefreshTriggerNotifier.value++;
+                _pomodoroRevision.value++;
+                _timelineRevision.value++;
                 _loadAllData(deferred: true);
               }
             },
@@ -5136,79 +5183,57 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _downloadWallpaper() async {
     if (_wallpaperUrl == null) return;
     try {
-      File? sourceFile;
+      final wallpaperUrl = _wallpaperUrl!;
+      late final List<int> bytes;
+      late final String ext;
+
       if (_wallpaperUrl!.startsWith('http://') ||
           _wallpaperUrl!.startsWith('https://')) {
-        final cached =
-            await WallpaperCacheService.cacheManager.getSingleFile(_wallpaperUrl!);
-        if (await cached.exists()) {
-          sourceFile = File(cached.path);
+        final response = await http.get(Uri.parse(wallpaperUrl));
+        if (response.statusCode != 200) {
+          throw Exception('HTTP ${response.statusCode}');
         }
+        bytes = response.bodyBytes;
+        ext = _wallpaperExtension(wallpaperUrl);
+      } else if (wallpaperUrl.startsWith('assets/')) {
+        final data = await rootBundle.load(wallpaperUrl);
+        bytes = data.buffer.asUint8List();
+        ext = _wallpaperExtension(wallpaperUrl);
+      } else if (wallpaperUrl.startsWith('data:')) {
+        final data = UriData.parse(wallpaperUrl);
+        bytes = data.contentAsBytes();
+        ext = data.mimeType.split('/').last;
       } else if (_isLocalFilePath(_wallpaperUrl!)) {
-        final f = File(_wallpaperUrl!);
-        if (await f.exists()) sourceFile = f;
-      } else if (_wallpaperUrl!.startsWith('assets/')) {
-        final data = await rootBundle.load(_wallpaperUrl!);
-        final ext = _wallpaperUrl!.split('.').last;
-        final downloadDir = await getDownloadsDirectory();
-        if (downloadDir == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('无法获取下载目录')),
-            );
-          }
-          return;
-        }
-        final targetDir = Directory('${downloadDir.path}/CountdownTodo');
-        if (!await targetDir.exists()) await targetDir.create(recursive: true);
-        final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-        final targetFile = File('${targetDir.path}/wallpaper_$ts.$ext');
-        await targetFile.writeAsBytes(data.buffer.asUint8List());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已保存到 ${targetFile.path}')),
-          );
-        }
-        return;
+        throw Exception('当前平台无法直接下载本地路径壁纸');
+      } else {
+        throw Exception('不支持的壁纸来源');
       }
 
-      if (sourceFile == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('壁纸文件不存在或已过期')),
-          );
-        }
-        return;
-      }
-
-      final downloadDir = await getDownloadsDirectory();
-      if (downloadDir == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法获取下载目录')),
-          );
-        }
-        return;
-      }
-      final targetDir = Directory('${downloadDir.path}/CountdownTodo');
-      if (!await targetDir.exists()) await targetDir.create(recursive: true);
-      final ext = _wallpaperUrl!.split('.').last.split('?').first;
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final targetPath = '${targetDir.path}/wallpaper_$ts.$ext';
-      await sourceFile.copy(targetPath);
+      final savedPath = await BrowserFileService.saveBytesFile(
+        Uint8List.fromList(bytes),
+        'wallpaper_$ts.$ext',
+        mimeType: 'image/$ext',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已保存到 $targetPath')),
+          SnackBar(content: Text('已保存到 $savedPath')),
         );
       }
     } catch (e) {
-      debugPrint('下载壁纸失败: $e');
+      // debugPrint('下载壁纸失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('下载失败: $e')),
         );
       }
     }
+  }
+
+  String _wallpaperExtension(String url) {
+    final ext = url.split('?').first.split('.').last.toLowerCase();
+    if (ext == 'png' || ext == 'webp' || ext == 'gif') return ext;
+    return 'jpg';
   }
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight) {
@@ -5519,7 +5544,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
           widget.onImageProvider
-              ?.call(const AssetImage('assets/images/default_wallpaper.png'));
+              ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
         });
       }
     }
@@ -5528,11 +5553,11 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return Image.asset('assets/images/default_wallpaper.png',
+      return Image.asset('assets/images/default_wallpaper.webp',
           fit: BoxFit.cover);
     }
     if (_imageBytes == null) {
-      return Image.asset('assets/images/default_wallpaper.png',
+      return Image.asset('assets/images/default_wallpaper.webp',
           fit: BoxFit.cover);
     }
     return FadeTransition(

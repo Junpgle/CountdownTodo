@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="倒计时待办 · 番茄钟 · 课程表 — 你的高效学习伴侣">
+  <meta name="application-name" content="CountDownTodo">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#6C63FF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a2e" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- PWA: iOS / iPadOS -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CountDownTodo">
+  <meta name="msapplication-TileColor" content="#6C63FF">
+  <link rel="apple-touch-icon" href="icons/Icon-180.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/Icon-16.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Warm up key origins used by login verification and sync. -->
+  <link rel="preconnect" href="https://api-cdt.junpgle.me" crossorigin>
+  <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
+  <link rel="dns-prefetch" href="https://api-cdt.junpgle.me">
+  <link rel="dns-prefetch" href="https://challenges.cloudflare.com">
+
+  <title>CountDownTodo</title>
+
+  <style>
+    @font-face {
+      font-family: 'NotoSansCJKsc';
+      src: url('fonts/NotoSansCJKsc-Regular.otf') format('opentype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* Loading splash — shown until Flutter renders its first frame. */
+    body {
+      margin: 0;
+      background: #F8F8FF;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a2e; }
+    }
+    #loading-indicator {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+    #loading-indicator.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(108, 99, 255, 0.2);
+      border-top-color: #6C63FF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-panel {
+      width: min(460px, 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .loading-title {
+      margin: 18px 0 0;
+      font-size: 20px;
+      line-height: 1.3;
+      font-weight: 700;
+      color: #252538;
+    }
+    .loading-text {
+      margin: 10px 0 0;
+      font-size: 14px;
+      color: #666;
+    }
+    .loading-progress {
+      width: 100%;
+      height: 8px;
+      margin-top: 20px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(108, 99, 255, 0.16);
+    }
+    .loading-progress-bar {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: #6C63FF;
+      transition: width 0.25s ease;
+    }
+    .loading-percent {
+      margin-top: 10px;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      color: #5A5A78;
+    }
+    .loading-tip {
+      max-width: 420px;
+      margin: 14px 0 0;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #777794;
+    }
+    @media (prefers-color-scheme: dark) {
+      .loading-title { color: #F5F5FF; }
+      .loading-text { color: #aaa; }
+      .loading-progress { background: rgba(255, 255, 255, 0.14); }
+      .loading-progress-bar { background: #9C97FF; }
+      .loading-percent { color: #C9C8E8; }
+      .loading-tip { color: #AAAAC4; }
+    }
+    #pwa-install-banner {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: min(560px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 14px;
+      border: 1px solid rgba(108, 99, 255, 0.18);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 16px 48px rgba(30, 30, 60, 0.16);
+      color: #252538;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      transform: translateY(140%);
+      opacity: 0;
+      transition: opacity 0.24s ease, transform 0.24s ease;
+    }
+    #pwa-install-banner[hidden] {
+      display: none;
+    }
+    #pwa-install-banner.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .pwa-install-copy {
+      min-width: 0;
+      flex: 1;
+      text-align: left;
+    }
+    .pwa-install-title {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+    .pwa-install-desc {
+      display: block;
+      margin-top: 3px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #686882;
+    }
+    .pwa-install-button {
+      min-width: 72px;
+      min-height: 38px;
+      border: 0;
+      border-radius: 10px;
+      background: #6C63FF;
+      color: #FFFFFF;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .pwa-install-close {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(36, 36, 54, 0.08);
+      color: #44445E;
+      font: inherit;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    @media (max-width: 420px) {
+      #pwa-install-banner {
+        align-items: stretch;
+        flex-wrap: wrap;
+      }
+      .pwa-install-copy {
+        flex-basis: calc(100% - 48px);
+      }
+      .pwa-install-button {
+        flex: 1;
+      }
+    }
+    @media (prefers-color-scheme: dark) {
+      #pwa-install-banner {
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(30, 30, 46, 0.97);
+        color: #F5F5FF;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.34);
+      }
+      .pwa-install-desc {
+        color: #B9B8D2;
+      }
+      .pwa-install-button {
+        background: #9C97FF;
+        color: #171722;
+      }
+      .pwa-install-close {
+        background: rgba(255, 255, 255, 0.12);
+        color: #E8E7FF;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading splash (removed by Flutter once first frame is ready) -->
+  <div id="loading-indicator">
+    <div class="loading-panel">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1 class="loading-title">CountDownTodo</h1>
+      <p class="loading-text" id="loading-status">正在连接资源…</p>
+      <div
+        class="loading-progress"
+        id="loading-progress"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        aria-label="加载进度"
+      >
+        <div class="loading-progress-bar" id="loading-progress-bar"></div>
+      </div>
+      <div class="loading-percent" id="loading-percent">0%</div>
+      <p class="loading-tip">
+        网页版 App 首次启动需要加载 Flutter 引擎、中文字体和离线资源，文件较多时可能会久一点；加载完成后再次打开会更快。
+      </p>
+    </div>
+  </div>
+  <div id="pwa-install-banner" hidden>
+    <div class="pwa-install-copy">
+      <strong class="pwa-install-title">安装 CountDownTodo 网页版</strong>
+      <span class="pwa-install-desc">可像 App 一样从桌面打开，并缓存资源以加快下次启动。</span>
+    </div>
+    <button class="pwa-install-button" id="pwa-install-button" type="button">安装</button>
+    <button class="pwa-install-close" id="pwa-install-close" type="button" aria-label="稍后再说">×</button>
+  </div>
+
+  <script>
+    // ── Loading progress --------------------------------------------------
+    (function () {
+      var progress = 0;
+      var completed = false;
+      var splashRemoved = false;
+      var startedAt = Date.now();
+      var expectedBytes = 36 * 1024 * 1024;
+      var bar = document.getElementById('loading-progress-bar');
+      var progressNode = document.getElementById('loading-progress');
+      var percentNode = document.getElementById('loading-percent');
+      var statusNode = document.getElementById('loading-status');
+
+      function resourceBytes() {
+        if (!window.performance || !performance.getEntriesByType) return 0;
+        return performance.getEntriesByType('resource').reduce(function (total, entry) {
+          return total + (entry.transferSize || entry.encodedBodySize || 0);
+        }, 0);
+      }
+
+      function hasFlutterSurface() {
+        var surface = document.querySelector('flutter-view, flt-glass-pane, flt-scene-host');
+        if (!surface) return false;
+        var rect = surface.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }
+
+      function statusFor(value) {
+        if (value >= 98) return '加载完成，正在进入应用…';
+        if (value >= 82) return '正在启动应用界面…';
+        if (value >= 62) return '正在加载字体和离线资源…';
+        if (value >= 36) return '正在加载 Flutter 引擎…';
+        return '正在连接资源…';
+      }
+
+      function setProgress(next, status) {
+        progress = Math.max(progress, Math.min(next, completed ? 100 : 98));
+        var rounded = Math.round(progress);
+        if (bar) bar.style.width = rounded + '%';
+        if (progressNode) progressNode.setAttribute('aria-valuenow', String(rounded));
+        if (percentNode) percentNode.textContent = rounded + '%';
+        if (statusNode) statusNode.textContent = status || statusFor(progress);
+      }
+
+      window.cdtCompleteLoadingProgress = function () {
+        completed = true;
+        progress = 100;
+        setProgress(100, '加载完成，正在进入应用…');
+      };
+
+      window.cdtHideLoadingSplash = function (reason) {
+        var el = document.getElementById('loading-indicator');
+        if (!el || splashRemoved) return;
+        splashRemoved = true;
+        if (window.cdtCompleteLoadingProgress) {
+          window.cdtCompleteLoadingProgress();
+        }
+        if (reason === 'surface' && statusNode) {
+          statusNode.textContent = '应用界面已就绪…';
+        }
+        window.setTimeout(function () {
+          el.classList.add('fade-out');
+          window.setTimeout(function () { el.remove(); }, 500);
+        }, 120);
+      };
+
+      setProgress(3);
+      var timer = window.setInterval(function () {
+        if (completed) {
+          window.clearInterval(timer);
+          return;
+        }
+        var elapsed = Date.now() - startedAt;
+        var bytes = resourceBytes();
+        var timeProgress = 8 + (1 - Math.exp(-elapsed / 12000)) * 90;
+        var byteProgress = bytes > 0 ? 10 + Math.min(bytes / expectedBytes, 1) * 86 : 0;
+        var slowStatus = elapsed > 30000 ? '资源仍在加载，请保持页面打开…' : null;
+        setProgress(Math.max(timeProgress, byteProgress), slowStatus);
+
+        if (elapsed > 8000 && hasFlutterSurface() && progress >= 90) {
+          window.cdtHideLoadingSplash('surface');
+        }
+      }, 250);
+    })();
+
+    // ── Browser Notification Bridge ─────────────────────────
+    (function () {
+      function hasNotificationApi() {
+        return 'Notification' in window;
+      }
+
+      function permission() {
+        if (!hasNotificationApi()) return 'unsupported';
+        if (!window.isSecureContext) return 'blocked_insecure';
+        return Notification.permission;
+      }
+
+      function requestPermission() {
+        if (!hasNotificationApi()) return Promise.resolve('unsupported');
+        if (!window.isSecureContext) return Promise.resolve('blocked_insecure');
+        if (Notification.permission !== 'default') {
+          return Promise.resolve(Notification.permission);
+        }
+        var result = Notification.requestPermission();
+        if (result && typeof result.then === 'function') return result;
+        return Promise.resolve(Notification.permission);
+      }
+
+      function show(title, body, tag) {
+        if (!hasNotificationApi() || Notification.permission !== 'granted') {
+          return false;
+        }
+
+        var options = {
+          body: body || '',
+          icon: 'icons/Icon-192.png',
+          badge: 'icons/Icon-192.png',
+          tag: tag || undefined,
+          renotify: Boolean(tag),
+          data: { url: window.location.href }
+        };
+
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(function (reg) {
+            return reg.showNotification(title, options);
+          }).catch(function () {
+            try {
+              new Notification(title, options);
+            } catch (_) {}
+          });
+          return true;
+        }
+
+        try {
+          new Notification(title, options);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      window.cdtNotifications = {
+        permission: permission,
+        requestPermission: requestPermission,
+        show: show
+      };
+    })();
+
+    // ── PWA Install / Update Bridge ─────────────────────────
+    (function () {
+      var deferredPrompt = null;
+      var pendingWorker = null;
+      var installBannerReady = false;
+      var installDismissKey = 'cdt-pwa-install-dismissed-at';
+      var installDismissMs = 7 * 24 * 60 * 60 * 1000;
+
+      function dispatch(name, detail) {
+        window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+      }
+
+      function isRecentlyDismissed() {
+        var raw = window.localStorage.getItem(installDismissKey);
+        if (!raw) return false;
+        var dismissedAt = Number(raw);
+        return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < installDismissMs;
+      }
+
+      function setInstallBannerVisible(visible) {
+        var banner = document.getElementById('pwa-install-banner');
+        if (!banner) return;
+        if (visible && deferredPrompt && !window.cdtPwa.isStandalone() && !isRecentlyDismissed()) {
+          banner.hidden = false;
+          window.requestAnimationFrame(function () {
+            banner.classList.add('visible');
+          });
+        } else {
+          banner.classList.remove('visible');
+          window.setTimeout(function () {
+            if (!banner.classList.contains('visible')) banner.hidden = true;
+          }, 260);
+        }
+      }
+
+      function hideInstallBannerForNow() {
+        window.localStorage.setItem(installDismissKey, String(Date.now()));
+        setInstallBannerVisible(false);
+      }
+
+      function wireInstallBanner() {
+        if (installBannerReady) return;
+        installBannerReady = true;
+        var installButton = document.getElementById('pwa-install-button');
+        var closeButton = document.getElementById('pwa-install-close');
+        if (installButton) {
+          installButton.addEventListener('click', function () {
+            window.cdtPwa.promptInstall().then(function () {
+              setInstallBannerVisible(false);
+            });
+          });
+        }
+        if (closeButton) {
+          closeButton.addEventListener('click', hideInstallBannerForNow);
+        }
+      }
+
+      window.cdtPwa = {
+        get canInstall() {
+          return Boolean(deferredPrompt);
+        },
+        get hasUpdate() {
+          return Boolean(pendingWorker);
+        },
+        isStandalone: function () {
+          return window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+        },
+        promptInstall: function () {
+          if (!deferredPrompt) {
+            return Promise.resolve({ outcome: 'unavailable' });
+          }
+          var promptEvent = deferredPrompt;
+          deferredPrompt = null;
+          dispatch('cdt-pwa-install-consumed');
+          setInstallBannerVisible(false);
+          promptEvent.prompt();
+          return promptEvent.userChoice.catch(function () {
+            return { outcome: 'dismissed' };
+          });
+        },
+        applyUpdate: function () {
+          if (!pendingWorker) return false;
+          window.sessionStorage.setItem('cdt-pwa-apply-update', '1');
+          pendingWorker.postMessage({ type: 'SKIP_WAITING' });
+          return true;
+        },
+        refreshApp: function () {
+          function reload() {
+            window.location.reload();
+          }
+
+          if (pendingWorker) {
+            window.sessionStorage.setItem('cdt-pwa-apply-update', '1');
+            pendingWorker.postMessage({ type: 'SKIP_WAITING' });
+            return true;
+          }
+
+          if (!('serviceWorker' in navigator)) {
+            reload();
+            return true;
+          }
+
+          navigator.serviceWorker.getRegistration('./').then(function (reg) {
+            if (!reg) {
+              reload();
+              return;
+            }
+            reg.update().catch(function () {
+              return reg;
+            }).then(function () {
+              var worker = reg.waiting || pendingWorker;
+              if (worker) {
+                pendingWorker = worker;
+                window.sessionStorage.setItem('cdt-pwa-apply-update', '1');
+                worker.postMessage({ type: 'SKIP_WAITING' });
+              } else {
+                reload();
+              }
+            });
+          }).catch(reload);
+          return true;
+        },
+      };
+
+      window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        deferredPrompt = event;
+        wireInstallBanner();
+        setInstallBannerVisible(true);
+        dispatch('cdt-pwa-install-available');
+      });
+
+      window.addEventListener('appinstalled', function () {
+        deferredPrompt = null;
+        setInstallBannerVisible(false);
+        dispatch('cdt-pwa-installed');
+      });
+
+      window.cdtSetPendingServiceWorker = function (worker) {
+        pendingWorker = worker;
+        dispatch('cdt-pwa-update-available');
+      };
+
+      window.addEventListener('flutter-first-frame', function () {
+        wireInstallBanner();
+        if (deferredPrompt) setInstallBannerVisible(true);
+      });
+    })();
+
+    // ── Service Worker Registration ──────────────────────────
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js?v=20260701e', { scope: './' }).then(function (reg) {
+          // Listen for updates and prompt user to reload.
+          reg.addEventListener('updatefound', function () {
+            var newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener('statechange', function () {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  window.cdtSetPendingServiceWorker(newWorker);
+                }
+              });
+            }
+          });
+
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            window.cdtSetPendingServiceWorker(reg.waiting);
+          }
+        }).catch(function (err) {
+          console.warn('SW registration failed:', err);
+        });
+
+        // Reload the page when the new SW takes over.
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          var shouldReload = window.sessionStorage.getItem('cdt-pwa-apply-update') === '1';
+          if (!refreshing && shouldReload) {
+            refreshing = true;
+            window.sessionStorage.removeItem('cdt-pwa-apply-update');
+            window.location.reload();
+          }
+        });
+      });
+    }
+
+    // ── Remove loading splash once Flutter signals ready ─────
+    window.addEventListener('flutter-first-frame', function () {
+      if (window.cdtHideLoadingSplash) {
+        window.cdtHideLoadingSplash('first-frame');
+      }
+    });
+  </script>
+
+  <script src="flutter_bootstrap.js?v=20260701e" async></script>
+</body>
+</html>

@@ -1,9 +1,9 @@
 import 'dart:math'; // test
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:uuid/uuid.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
+
+import 'utils/analysis_image_cleanup.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -372,32 +372,7 @@ class TodoItem {
 
   /// 🚀 静态方法：清理过期的图片分析文件（7天以上）
   static Future<void> cleanupAnalysisImages() async {
-    try {
-      final appDir = await getApplicationSupportDirectory();
-      final imageDir = Directory('${appDir.path}/analysis_images');
-      if (!await imageDir.exists()) return;
-
-      final now = DateTime.now();
-      final expiration = now.subtract(const Duration(days: 7));
-
-      final files = imageDir.listSync();
-      int deletedCount = 0;
-
-      for (var file in files) {
-        if (file is File) {
-          final stat = await file.stat();
-          if (stat.modified.isBefore(expiration)) {
-            await file.delete();
-            deletedCount++;
-          }
-        }
-      }
-      if (deletedCount > 0) {
-        debugPrint('🧹 清理了 $deletedCount 个过期的识别图片');
-      }
-    } catch (e) {
-      debugPrint('❌ 清理识别图片失败: $e');
-    }
+    await cleanupAnalysisImagesImpl();
   }
 }
 
@@ -854,6 +829,61 @@ class TodoPlanBlock {
 // 🚀 3. 课表相关
 // ==========================================
 
+/// 学期信息模型
+class SemesterInfo {
+  final String id; // 学期标识，如 "2025-fall", "2026-spring"
+  final String name; // 学期名称，如 "2025秋季学期"
+  final DateTime startDate; // 开学日期
+  final DateTime? endDate; // 放假日期（可选）
+  final bool isCurrent; // 是否为当前学期
+
+  SemesterInfo({
+    required this.id,
+    required this.name,
+    required this.startDate,
+    this.endDate,
+    this.isCurrent = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'start_date': startDate.toIso8601String(),
+        'end_date': endDate?.toIso8601String(),
+        'is_current': isCurrent,
+      };
+
+  factory SemesterInfo.fromJson(Map<String, dynamic> json) => SemesterInfo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        startDate: DateTime.parse(json['start_date']),
+        endDate:
+            json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
+        isCurrent: json['is_current'] ?? false,
+      );
+
+  /// 转换为毫秒时间戳（用于云端同步）
+  Map<String, dynamic> toCloudJson() => {
+        'id': id,
+        'name': name,
+        'start_ms': startDate.millisecondsSinceEpoch,
+        'end_ms': endDate?.millisecondsSinceEpoch,
+        'is_current': isCurrent,
+      };
+
+  factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) =>
+      SemesterInfo(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        startDate:
+            DateTime.fromMillisecondsSinceEpoch(json['start_ms'] as int),
+        endDate: json['end_ms'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(json['end_ms'] as int)
+            : null,
+        isCurrent: json['is_current'] ?? false,
+      );
+}
+
 class CourseItem {
   final String uuid;
   final String courseName;
@@ -865,6 +895,7 @@ class CourseItem {
   final int weekIndex;
   final String roomName;
   final String? lessonType;
+  final String semesterId; // 所属学期标识
   String? teamUuid;
   int version;
   int updatedAt;
@@ -882,6 +913,7 @@ class CourseItem {
     required this.weekIndex,
     required this.roomName,
     this.lessonType,
+    this.semesterId = 'default',
     this.teamUuid,
     this.version = 1,
     int? updatedAt,
@@ -889,15 +921,17 @@ class CourseItem {
     this.isDeleted = false,
   })  : uuid = uuid ??
             generateDeterministicUuid(
-                courseName, weekday, startTime, endTime, weekIndex, roomName),
+                courseName, weekday, startTime, endTime, weekIndex, roomName,
+                semesterId: semesterId),
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch;
 
   static String generateDeterministicUuid(
-      String name, int day, int start, int end, int week, String room) {
+      String name, int day, int start, int end, int week, String room,
+      {String semesterId = 'default'}) {
     const namespace =
         '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // Namespace URL as seed
-    final input = "$name|$day|$start|$end|$week|$room";
+    final input = "$semesterId|$name|$day|$start|$end|$week|$room";
     return const Uuid().v5(namespace, input);
   }
 
@@ -917,6 +951,7 @@ class CourseItem {
         'weekIndex': weekIndex,
         'roomName': roomName,
         'lessonType': lessonType,
+        'semester_id': semesterId,
         'team_uuid': teamUuid,
         'version': version,
         'updated_at': updatedAt,
@@ -935,6 +970,7 @@ class CourseItem {
         weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
         roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
         lessonType: json['lessonType'] ?? json['lesson_type'],
+        semesterId: json['semester_id'] ?? json['semesterId'] ?? 'default',
         teamUuid: json['team_uuid'] ?? json['teamUuid'],
         version: (json['version'] as num?)?.toInt() ?? 1,
         updatedAt: (json['updated_at'] as num?)?.toInt(),
@@ -1087,6 +1123,59 @@ class TeamAnnouncement {
         'is_priority': isPriority ? 1 : 0,
         'is_read': isRead ? 1 : 0,
       };
+}
+
+class TeamShare {
+  final int id;
+  final String shareCode;
+  final String teamUuid;
+  final String? title;
+  final String? description;
+  final bool shareTodos;
+  final bool shareCountdowns;
+  final bool shareAnnouncements;
+  final bool hasPassword;
+  final int? expiresAt;
+  final int viewCount;
+  final int createdAt;
+  final bool isActive;
+  final String? shareUrl;
+
+  TeamShare({
+    required this.id,
+    required this.shareCode,
+    required this.teamUuid,
+    this.title,
+    this.description,
+    this.shareTodos = true,
+    this.shareCountdowns = true,
+    this.shareAnnouncements = true,
+    this.hasPassword = false,
+    this.expiresAt,
+    this.viewCount = 0,
+    required this.createdAt,
+    this.isActive = true,
+    this.shareUrl,
+  });
+
+  bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
+
+  factory TeamShare.fromJson(Map<String, dynamic> json) => TeamShare(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        shareCode: json['share_code']?.toString() ?? '',
+        teamUuid: json['team_uuid']?.toString() ?? '',
+        title: json['title']?.toString(),
+        description: json['description']?.toString(),
+        shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
+        shareCountdowns: json['share_countdowns'] == 1 || json['share_countdowns'] == true,
+        shareAnnouncements: json['share_announcements'] == 1 || json['share_announcements'] == true,
+        hasPassword: json['has_password'] == true || json['has_password'] == 1,
+        expiresAt: (json['expires_at'] as num?)?.toInt(),
+        viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
+        createdAt: (json['created_at'] as num?)?.toInt() ?? 0,
+        isActive: json['is_active'] == 1 || json['is_active'] == true,
+        shareUrl: json['share_url']?.toString(),
+      );
 }
 
 // ==========================================

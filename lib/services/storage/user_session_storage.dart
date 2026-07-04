@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../api_service.dart';
 import '../background_notification_service.dart';
 import '../database_helper.dart';
+import '../../utils/app_platform.dart';
 
 class UserSessionStorage {
   const UserSessionStorage._();
@@ -115,7 +115,7 @@ class UserSessionStorage {
       if (kIsWeb) {
         model = "Web Browser";
         type = "PC";
-      } else if (Platform.isAndroid) {
+      } else if (AppPlatform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
         model = "${androidInfo.manufacturer} ${androidInfo.model}";
         final shortestSide = WidgetsBinding.instance.platformDispatcher.views
@@ -123,13 +123,13 @@ class UserSessionStorage {
             WidgetsBinding
                 .instance.platformDispatcher.views.first.devicePixelRatio;
         type = shortestSide > 600 ? "Tablet" : "Phone";
-      } else if (Platform.isIOS) {
+      } else if (AppPlatform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
         model = iosInfo.utsname.machine;
         type =
             iosInfo.model.toLowerCase().contains("ipad") ? "Tablet" : "Phone";
-      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        model = Platform.operatingSystem;
+      } else if (AppPlatform.isDesktop) {
+        model = AppPlatform.operatingSystem;
         type = "PC";
       }
     } catch (e) {

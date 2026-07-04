@@ -24,7 +24,8 @@ class UnifiedTagManagerScreen extends StatefulWidget {
   });
 
   @override
-  State<UnifiedTagManagerScreen> createState() => _UnifiedTagManagerScreenState();
+  State<UnifiedTagManagerScreen> createState() =>
+      _UnifiedTagManagerScreenState();
 }
 
 class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
@@ -37,15 +38,39 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
   bool _isAddingNewTag = false;
 
   static const List<String> _presetColors = [
-    '#F44336', '#E91E63', '#9C27B0', '#3F51B5', '#2196F3', '#009688',
-    '#4CAF50', '#FF9800', '#607D8B', '#795548',
+    '#F44336',
+    '#E91E63',
+    '#9C27B0',
+    '#3F51B5',
+    '#2196F3',
+    '#009688',
+    '#4CAF50',
+    '#FF9800',
+    '#607D8B',
+    '#795548',
   ];
 
   static const List<String> _extendedColors = [
-    '#EF5350', '#EC407A', '#AB47BC', '#5C6BC0', '#42A5F5', '#26A69A',
-    '#66BB6A', '#FFA726', '#78909C', '#8D6E63', '#F48FB1', '#CE93D8',
-    '#9FA8DA', '#81D4FA', '#80CBC4', '#A5D6A7', '#FFCC80', '#BCAAA4',
-    '#B0BEC5', '#D7CCC8',
+    '#EF5350',
+    '#EC407A',
+    '#AB47BC',
+    '#5C6BC0',
+    '#42A5F5',
+    '#26A69A',
+    '#66BB6A',
+    '#FFA726',
+    '#78909C',
+    '#8D6E63',
+    '#F48FB1',
+    '#CE93D8',
+    '#9FA8DA',
+    '#81D4FA',
+    '#80CBC4',
+    '#A5D6A7',
+    '#FFCC80',
+    '#BCAAA4',
+    '#B0BEC5',
+    '#D7CCC8',
   ];
 
   @override
@@ -149,7 +174,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                 GestureDetector(
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
-                    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                    final username =
+                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
@@ -178,7 +204,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                 GestureDetector(
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
-                    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                    final username =
+                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
@@ -239,7 +266,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   flex: 3,
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     child: Column(
                       children: [
                         if (_tags.isEmpty)
@@ -250,12 +278,15 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                     ),
                   ),
                 ),
-                VerticalDivider(width: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                VerticalDivider(
+                    width: 1,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                 Expanded(
                   flex: 4,
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -275,7 +306,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Column(
                     children: [
                       if (_tags.isEmpty)
@@ -305,11 +337,14 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         children: [
-          Icon(Icons.label_outline, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+          Icon(Icons.label_outline,
+              size: 48,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
           const SizedBox(height: 12),
           Text(
             '还没有标签',
@@ -348,23 +383,30 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       },
       itemBuilder: (ctx, index) {
         final tag = _tags[index];
-        final color = AppColorUtils.hexToColor(tag.color, fallback: colorScheme.primary);
+        final color =
+            AppColorUtils.hexToColor(tag.color, fallback: colorScheme.primary);
         return _buildTagItem(tag, index, color, colorScheme, isWide);
       },
     );
   }
 
-  Widget _buildTagItem(PomodoroTag tag, int index, Color color, ColorScheme colorScheme, bool isWide) {
-    final isEditing = isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
+  Widget _buildTagItem(PomodoroTag tag, int index, Color color,
+      ColorScheme colorScheme, bool isWide) {
+    final isEditing =
+        isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
 
     return Container(
       key: ValueKey(tag.uuid),
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isEditing ? colorScheme.primaryContainer.withValues(alpha: 0.3) : colorScheme.surfaceContainerLow,
+        color: isEditing
+            ? colorScheme.primaryContainer.withValues(alpha: 0.3)
+            : colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isEditing ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.3),
+          color: isEditing
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
       ),
       child: ListTile(
@@ -396,10 +438,14 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               color: color,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6, offset: const Offset(0, 2)),
+                BoxShadow(
+                    color: color.withValues(alpha: 0.3),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2)),
               ],
             ),
-            child: const Icon(Icons.palette_outlined, color: Colors.white, size: 18),
+            child: const Icon(Icons.palette_outlined,
+                color: Colors.white, size: 18),
           ),
         ),
         title: Text(
@@ -413,7 +459,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               Checkbox(
                 value: _selected.contains(tag.uuid),
                 activeColor: color,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6)),
                 onChanged: (val) {
                   setState(() {
                     if (val == true) {
@@ -426,7 +473,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                 },
               ),
             IconButton(
-              icon: Icon(Icons.archive_outlined, size: 20, color: colorScheme.onSurfaceVariant),
+              icon: Icon(Icons.archive_outlined,
+                  size: 20, color: colorScheme.onSurfaceVariant),
               tooltip: '归档',
               onPressed: () => _archiveTag(index),
             ),
@@ -434,7 +482,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               index: index,
               child: Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: Icon(Icons.drag_indicator, size: 20, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                child: Icon(Icons.drag_indicator,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
               ),
             ),
           ],
@@ -460,7 +510,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             });
             _notifyChanges();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('添加成功'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                  content: Text('添加成功'), duration: Duration(seconds: 1)),
             );
           },
         ),
@@ -482,7 +533,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
             });
             _notifyChanges();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('保存成功'), duration: Duration(seconds: 1)),
+              const SnackBar(
+                  content: Text('保存成功'), duration: Duration(seconds: 1)),
             );
           },
         ),
@@ -494,15 +546,19 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
         ),
         child: Column(
           children: [
-            Icon(Icons.edit_outlined, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            Icon(Icons.edit_outlined,
+                size: 48,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
             Text(
               '请在左侧选择标签进行编辑',
-              style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
+              style:
+                  TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -510,24 +566,28 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     }
   }
 
-  Widget _buildRightPanelContainer(ColorScheme colorScheme, {required Widget child}) {
+  Widget _buildRightPanelContainer(ColorScheme colorScheme,
+      {required Widget child}) {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       padding: const EdgeInsets.all(24),
       child: child,
     );
   }
 
-  Widget _buildArchivedSection(ColorScheme colorScheme, {required bool isWide}) {
+  Widget _buildArchivedSection(ColorScheme colorScheme,
+      {required bool isWide}) {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -543,7 +603,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  Icon(Icons.archive, size: 20, color: colorScheme.onSurfaceVariant),
+                  Icon(Icons.archive,
+                      size: 20, color: colorScheme.onSurfaceVariant),
                   const SizedBox(width: 12),
                   Text(
                     '已归档 (${_archivedTags.length})',
@@ -555,7 +616,9 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   ),
                   const Spacer(),
                   Icon(
-                    _showArchived ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    _showArchived
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ],
@@ -571,10 +634,12 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               separatorBuilder: (_, __) => const Divider(height: 1, indent: 48),
               itemBuilder: (ctx, i) {
                 final tag = _archivedTags[i];
-                final color = AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
+                final color =
+                    AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
                 return ListTile(
                   dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   leading: Container(
                     width: 16,
                     height: 16,
@@ -596,7 +661,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text('恢复', style: TextStyle(fontSize: 12)),
                   ),
@@ -627,7 +693,7 @@ class _TagFormSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -648,7 +714,7 @@ class _TagFormSheet extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 18, 
+                  fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: colorScheme.onSurface,
                 ),
@@ -704,15 +770,18 @@ class _TagFormState extends State<_TagForm> {
 
   void _initValues() {
     _nameController = TextEditingController(text: widget.initialName ?? '');
-    _selectedColor = widget.initialColorHex ?? _UnifiedTagManagerScreenState._presetColors[0];
+    _selectedColor = widget.initialColorHex ??
+        _UnifiedTagManagerScreenState._presetColors[0];
   }
 
   @override
   void didUpdateWidget(_TagForm oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialName != oldWidget.initialName || widget.initialColorHex != oldWidget.initialColorHex) {
+    if (widget.initialName != oldWidget.initialName ||
+        widget.initialColorHex != oldWidget.initialColorHex) {
       _nameController.text = widget.initialName ?? '';
-      _selectedColor = widget.initialColorHex ?? _UnifiedTagManagerScreenState._presetColors[0];
+      _selectedColor = widget.initialColorHex ??
+          _UnifiedTagManagerScreenState._presetColors[0];
     }
   }
 
@@ -755,7 +824,7 @@ class _TagFormState extends State<_TagForm> {
           Text(
             widget.title,
             style: TextStyle(
-              fontSize: 18, 
+              fontSize: 18,
               fontWeight: FontWeight.w600,
               color: colorScheme.onSurface,
             ),
@@ -770,18 +839,22 @@ class _TagFormState extends State<_TagForm> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColorUtils.hexToColor(_selectedColor, fallback: Colors.grey),
+                  color: AppColorUtils.hexToColor(_selectedColor,
+                      fallback: Colors.grey),
                   shape: BoxShape.circle,
                   border: Border.all(color: colorScheme.surface, width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColorUtils.hexToColor(_selectedColor, fallback: Colors.grey).withValues(alpha: 0.4),
+                      color: AppColorUtils.hexToColor(_selectedColor,
+                              fallback: Colors.grey)
+                          .withValues(alpha: 0.4),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.color_lens, color: Colors.white, size: 20),
+                child:
+                    const Icon(Icons.color_lens, color: Colors.white, size: 20),
               ),
             ),
             const SizedBox(width: 12),
@@ -792,15 +865,19 @@ class _TagFormState extends State<_TagForm> {
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
                   hintText: '输入标签名称...',
-                  hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                  hintStyle: TextStyle(
+                      color:
+                          colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                   isDense: true,
                   filled: true,
-                  fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  fillColor: colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
               ),
             ),
@@ -813,9 +890,11 @@ class _TagFormState extends State<_TagForm> {
             onPressed: _submit,
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
             ),
-            child: const Text('保存', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            child: const Text('保存',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ),
         ),
       ],
@@ -846,7 +925,8 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   }
 
   void _openCustomColorPickerDialog() {
-    Color pickerColor = AppColorUtils.hexToColor(_selectedHex, fallback: Colors.grey);
+    Color pickerColor =
+        AppColorUtils.hexToColor(_selectedHex, fallback: Colors.grey);
 
     showDialog(
       context: context,
@@ -914,7 +994,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                   Text(
                     '选择颜色',
                     style: TextStyle(
-                      fontSize: 20, 
+                      fontSize: 20,
                       fontWeight: FontWeight.w600,
                       color: colorScheme.onSurface,
                     ),
@@ -922,7 +1002,8 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                   IconButton.filledTonal(
                     icon: const Icon(Icons.close),
                     style: IconButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -938,7 +1019,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     Text(
                       '预设颜色',
                       style: TextStyle(
-                        fontSize: 14, 
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -947,8 +1028,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     Wrap(
                       spacing: 16,
                       runSpacing: 16,
-                      children: _UnifiedTagManagerScreenState._presetColors.map((c) {
-                        final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
+                      children:
+                          _UnifiedTagManagerScreenState._presetColors.map((c) {
+                        final col =
+                            AppColorUtils.hexToColor(c, fallback: Colors.grey);
                         return GestureDetector(
                           onTap: () {
                             widget.onColorSelected(c);
@@ -961,7 +1044,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                               color: col,
                               shape: BoxShape.circle,
                               boxShadow: [
-                                BoxShadow(color: col.withValues(alpha: 0.4), blurRadius: 6, offset: const Offset(0, 2)),
+                                BoxShadow(
+                                    color: col.withValues(alpha: 0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2)),
                               ],
                             ),
                           ),
@@ -972,7 +1058,7 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     Text(
                       '更多颜色',
                       style: TextStyle(
-                        fontSize: 14, 
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -981,8 +1067,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                     Wrap(
                       spacing: 16,
                       runSpacing: 16,
-                      children: _UnifiedTagManagerScreenState._extendedColors.map((c) {
-                        final col = AppColorUtils.hexToColor(c, fallback: Colors.grey);
+                      children: _UnifiedTagManagerScreenState._extendedColors
+                          .map((c) {
+                        final col =
+                            AppColorUtils.hexToColor(c, fallback: Colors.grey);
                         return GestureDetector(
                           onTap: () {
                             widget.onColorSelected(c);
@@ -995,7 +1083,10 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                               color: col,
                               shape: BoxShape.circle,
                               boxShadow: [
-                                BoxShadow(color: col.withValues(alpha: 0.3), blurRadius: 4, offset: const Offset(0, 2)),
+                                BoxShadow(
+                                    color: col.withValues(alpha: 0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2)),
                               ],
                             ),
                           ),
@@ -1011,7 +1102,8 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
                         label: const Text('自定义颜色'),
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
                         ),
                       ),
                     ),

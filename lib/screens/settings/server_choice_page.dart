@@ -35,9 +35,11 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('云端数据接口线路'),
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('云端数据接口线路'),
+            ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

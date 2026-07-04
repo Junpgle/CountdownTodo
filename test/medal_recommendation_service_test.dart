@@ -24,7 +24,11 @@ void main() {
         countdownCompletedCount: 1,
         attendedCourses: const [],
         interruptionRate: 0.08,
-        subjectDistribution: {'Math': 200.0, 'English': 150.0, 'Science': 100.0},
+        subjectDistribution: {
+          'Math': 200.0,
+          'English': 150.0,
+          'Science': 100.0
+        },
         peakHour: 14,
         hourlyDistribution: List.filled(24, 0),
         todoCompletionRate: 0.8,
@@ -37,11 +41,13 @@ void main() {
     });
 
     test('All medals are properly defined', () {
-      expect(MedalRecommendationService.allMedals.length, greaterThanOrEqualTo(21));
+      expect(MedalRecommendationService.allMedals.length,
+          greaterThanOrEqualTo(21));
       expect(MedalRecommendationService.allMedals.isEmpty, false);
 
       // Check uniqueness of IDs
-      final ids = MedalRecommendationService.allMedals.map((m) => m.id).toList();
+      final ids =
+          MedalRecommendationService.allMedals.map((m) => m.id).toList();
       expect(ids.length, equals(ids.toSet().length));
     });
 
@@ -259,8 +265,7 @@ void main() {
     });
 
     test('Full recommendation flow', () {
-      final recommendation =
-          MedalRecommendationService.getRecommendations(
+      final recommendation = MedalRecommendationService.getRecommendations(
         mockSummary,
         450,
         8,

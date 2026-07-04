@@ -114,8 +114,8 @@ class CourseSection extends StatelessWidget {
                     title: const Text('在线登录并导入 (推荐)'),
                     subtitle: const Text('从应用内浏览器登录教务系统直接抓取'),
                     trailing: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: Colors.teal.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
@@ -163,8 +163,8 @@ class CourseSection extends StatelessWidget {
                 context: context,
                 targetId: 'course_upload',
                 child: ListTile(
-                  leading:
-                      Icon(Icons.cloud_upload_outlined, color: Theme.of(context).colorScheme.primary),
+                  leading: Icon(Icons.cloud_upload_outlined,
+                      color: Theme.of(context).colorScheme.primary),
                   title: const Text('上传课表到云端'),
                   subtitle: const Text('用于与电脑或其他设备同步'),
                   trailing: const Icon(Icons.chevron_right),

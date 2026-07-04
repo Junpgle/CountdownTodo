@@ -3,7 +3,8 @@ import '../../models.dart';
 
 class XidianScheduleParser {
   /// 传入 ICS 字符串和 本学期第一周的周一日期
-  static List<CourseItem> parseIcs(String icsString, DateTime semesterStartDate) {
+  static List<CourseItem> parseIcs(
+      String icsString, DateTime semesterStartDate) {
     List<CourseItem> courses = [];
 
     // ICS 文件按行分割，处理一下可能的 \r\n
@@ -15,7 +16,8 @@ class XidianScheduleParser {
     DateTime? dtEnd;
 
     // 将开学日期统一归零时分秒，以确保计算周差准确
-    DateTime semStart = DateTime(semesterStartDate.year, semesterStartDate.month, semesterStartDate.day);
+    DateTime semStart = DateTime(
+        semesterStartDate.year, semesterStartDate.month, semesterStartDate.day);
 
     for (var line in lines) {
       line = line.trim();
@@ -38,7 +40,6 @@ class XidianScheduleParser {
       } else if (line == 'END:VEVENT') {
         // 日程块结束，组装 CourseItem
         if (summary != null && dtStart != null && dtEnd != null) {
-
           // 1. 提取课程名 (ICS中通常是 "课程名 @ 地点")
           String courseName = summary.split('@').first.trim();
 
@@ -66,7 +67,8 @@ class XidianScheduleParser {
           int endTime = localEnd.hour * 100 + localEnd.minute;
 
           // 4. 计算是第几周
-          DateTime eventStartDay = DateTime(localStart.year, localStart.month, localStart.day);
+          DateTime eventStartDay =
+              DateTime(localStart.year, localStart.month, localStart.day);
           int daysDiff = eventStartDay.difference(semStart).inDays;
           int weekIndex = (daysDiff ~/ 7) + 1;
 

@@ -115,7 +115,8 @@ class PauseInterval {
     );
   }
 
-  int get durationMs => (endMs ?? DateTime.now().millisecondsSinceEpoch) - startMs;
+  int get durationMs =>
+      (endMs ?? DateTime.now().millisecondsSinceEpoch) - startMs;
 
   int get durationSeconds => (durationMs / 1000).round();
 
@@ -165,7 +166,7 @@ class PomodoroRecord {
     this.planBlockId,
     this.note,
     this.totalPauseSeconds,
-    List<PauseInterval>? pauseIntervals,
+    this.pauseIntervals,
     this.isDeleted = false,
     this.version = 1,
     int? createdAt,
@@ -174,7 +175,6 @@ class PomodoroRecord {
     this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [],
-        pauseIntervals = pauseIntervals ?? [],
         createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -186,10 +186,49 @@ class PomodoroRecord {
     int? actualDuration,
     String? deviceId,
   }) {
-    final computedActual = actualDuration ??
-        PomodoroRunState.computeActualSeconds(
-            state.sessionStartMs, state.accumulatedMs,
-            endMs: endMs);
+    var accumulatedMs = state.accumulatedMs;
+    final pauseIntervals = state.pauseIntervals
+        .map((interval) =>
+            PauseInterval(startMs: interval.startMs, endMs: interval.endMs))
+        .toList();
+
+    if (state.isPaused) {
+      final pauseStartMs = state.pausedAtMs > 0
+          ? state.pausedAtMs
+          : state.pauseStartMs > 0
+              ? state.pauseStartMs
+              : pauseIntervals.isNotEmpty
+                  ? pauseIntervals.last.startMs
+                  : 0;
+      if (pauseStartMs > 0) {
+        final pauseDuration = endMs - pauseStartMs;
+        if (pauseDuration > 0) {
+          accumulatedMs += pauseDuration;
+        }
+        if (pauseIntervals.isNotEmpty && pauseIntervals.last.isOngoing) {
+          pauseIntervals.last.endMs = endMs;
+        } else {
+          pauseIntervals
+              .add(PauseInterval(startMs: pauseStartMs, endMs: endMs));
+        }
+      }
+    }
+
+    final computedFromState = PomodoroRunState.computeActualSeconds(
+        state.sessionStartMs, accumulatedMs,
+        endMs: endMs);
+    final computedActual = actualDuration != null &&
+            (!state.isPaused || actualDuration <= computedFromState)
+        ? actualDuration
+        : computedFromState;
+    final intervalPauseSeconds = pauseIntervals.fold<int>(
+      0,
+      (sum, interval) => sum + interval.durationSeconds,
+    );
+    final accumulatedPauseSeconds = (accumulatedMs / 1000).round();
+    final totalPauseSeconds = accumulatedPauseSeconds > intervalPauseSeconds
+        ? accumulatedPauseSeconds
+        : intervalPauseSeconds;
     return PomodoroRecord(
       uuid: state.sessionUuid,
       todoUuid: state.todoUuid,
@@ -203,8 +242,8 @@ class PomodoroRecord {
       deviceId: deviceId,
       planBlockId: state.planBlockId,
       note: state.note,
-      totalPauseSeconds: (state.accumulatedMs / 1000).round(),
-      pauseIntervals: List.from(state.pauseIntervals),
+      totalPauseSeconds: totalPauseSeconds,
+      pauseIntervals: pauseIntervals,
     );
   }
 
@@ -236,7 +275,9 @@ class PomodoroRecord {
       'plan_block_id': planBlockId,
       'note': note,
       'total_pause_seconds': totalPauseSeconds,
-      'pause_intervals': pauseIntervals != null ? jsonEncode(pauseIntervals) : null,
+      'pause_intervals': pauseIntervals != null
+          ? jsonEncode(pauseIntervals!.map((e) => e.toJson()).toList())
+          : null,
       'is_deleted': isDeleted ? 1 : 0,
       'version': version,
       'created_at': createdAt,
@@ -641,7 +682,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroTag.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Tag SQL 读取异常: $e");
+      // debugPrint("⚠️ Tag SQL 读取异常: $e");
     }
 
     // 2. 迁移逻辑
@@ -657,7 +698,7 @@ class PomodoroService {
       }
 
       if (s != null) {
-        debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
+        // debugPrint("🚀 [Tags] 正在执行 Prefs -> SQL 迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
           final legacyTags =
@@ -683,7 +724,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroTag.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Tag SQL 读取异常: $e");
+      // debugPrint("⚠️ Tag SQL 读取异常: $e");
     }
     return [];
   }
@@ -966,7 +1007,8 @@ class PomodoroService {
           'note': record.note,
           'total_pause_seconds': record.totalPauseSeconds,
           'pause_intervals': record.pauseIntervals != null
-              ? jsonEncode(record.pauseIntervals!.map((e) => e.toJson()).toList())
+              ? jsonEncode(
+                  record.pauseIntervals!.map((e) => e.toJson()).toList())
               : null,
           'is_deleted': record.isDeleted ? 1 : 0,
           'version': record.version,
@@ -1014,15 +1056,15 @@ class PomodoroService {
           pb.markAsChanged();
           // 4. 保存
           await StorageService.savePlanBlocks(username, [pb]);
-          debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
+          // debugPrint('[PomodoroService] 规划块联动更新成功: ${pb.uuid}');
         }
       } catch (e) {
-        debugPrint('[PomodoroService] 规划块联动失败: $e');
+        // debugPrint('[PomodoroService] 规划块联动失败: $e');
       }
     }
 
-    debugPrint(
-        '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
+    // debugPrint(
+    //     '[PomodoroService] addRecord OK (SQL+Cache), uuid=${record.uuid}');
 
     // 3. 立即尝试同步
     if (!isSyncSource) {
@@ -1046,7 +1088,7 @@ class PomodoroService {
         return maps.map((m) => PomodoroRecord.fromJson(m)).toList();
       }
     } catch (e) {
-      debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");
+      // debugPrint("⚠️ Pomodoro SQL 范围查询异常: $e");
     }
 
     // 逃生通道：Dart 内存过滤
@@ -1107,9 +1149,9 @@ class PomodoroService {
         }
       }
 
-      debugPrint(
-        '[PomodoroService] syncRecordsFromCloud forceFullSync=$forceFullSync, fromMs=$effectiveFromMs',
-      );
+      // debugPrint(
+      //   '[PomodoroService] syncRecordsFromCloud forceFullSync=$forceFullSync, fromMs=$effectiveFromMs',
+      // );
 
       final recordsRaw = await ApiService.fetchPomodoroSessions(
         fromMs: effectiveFromMs,
@@ -1232,7 +1274,7 @@ class PomodoroService {
 
       return hasChange;
     } catch (e) {
-      debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
+      // debugPrint('[PomodoroService] syncRecordsFromCloud error: $e');
       return false;
     }
   }
@@ -1287,7 +1329,8 @@ class PomodoroService {
           deviceId: existing.deviceId ?? remote.deviceId,
           planBlockId: existing.planBlockId ?? remote.planBlockId,
           note: existing.note ?? remote.note,
-          totalPauseSeconds: existing.totalPauseSeconds ?? remote.totalPauseSeconds,
+          totalPauseSeconds:
+              existing.totalPauseSeconds ?? remote.totalPauseSeconds,
           pauseIntervals: existing.pauseIntervals ?? remote.pauseIntervals,
           isDeleted: existing.isDeleted,
           version: existing.version,
@@ -1367,9 +1410,9 @@ class PomodoroService {
 
       final dirty = dedup.values.toList();
 
-      debugPrint(
-        '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
-      );
+      // debugPrint(
+      //   '[PomodoroService] syncRecordsToCloud forceFullSync=$forceFullSync, upload=${dirty.length}/${all.length}',
+      // );
       if (dirty.isEmpty) return;
       final ok = await ApiService.uploadPomodoroRecords(
           dirty.map((r) => r.toJson()).toList());
@@ -1391,7 +1434,7 @@ class PomodoroService {
         }
       }
     } catch (e) {
-      debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
+      // debugPrint('[PomodoroService] syncRecordsToCloud error: $e');
     }
   }
 
@@ -1420,7 +1463,7 @@ class PomodoroService {
       }
 
       if (s != null) {
-        debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
+        // debugPrint("🚀 [Pomodoro] 正在执行 Prefs -> SQL 增量迁移...");
         try {
           final List<dynamic> decoded = jsonDecode(s);
           final legacyRecords =
@@ -1429,12 +1472,12 @@ class PomodoroService {
             await _saveRecordsToSql(legacyRecords);
             await prefs.remove(scopedKey);
             await prefs.remove(_keyRecords);
-            debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
+            // debugPrint("✅ [Pomodoro] 成功迁移 ${legacyRecords.length} 条记录至 SQL");
           }
           await prefs.setBool(migrationKey, true);
           return legacyRecords;
         } catch (e) {
-          debugPrint("❌ [Pomodoro] 迁移失败: $e");
+          // debugPrint("❌ [Pomodoro] 迁移失败: $e");
         }
       }
     }

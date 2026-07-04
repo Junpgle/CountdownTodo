@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/image_input_reader.dart';
 
 class LLMConfig {
   final String provider;
@@ -306,8 +306,9 @@ class LLMService {
     }
     // 2. 自定义视觉模型
     final customModels = await getCustomVisionModels();
-    final custom = customModels.where((m) =>
-        m.modelId == visionModel || m.id == visionModel).firstOrNull;
+    final custom = customModels
+        .where((m) => m.modelId == visionModel || m.id == visionModel)
+        .firstOrNull;
     if (custom != null && custom.apiUrl.isNotEmpty) {
       return (url: custom.apiUrl, key: custom.apiKey);
     }
@@ -494,10 +495,10 @@ class LLMService {
       'max_tokens': 50,
     });
 
-    print('========== 测试连接 ==========');
-    print('API: ${config.apiUrl}');
-    print('Model: ${config.model}');
-    print('==============================');
+    // print('========== 测试连接 ==========');
+    // print('API: ${config.apiUrl}');
+    // print('Model: ${config.model}');
+    // print('==============================');
 
     final response = await http
         .post(
@@ -514,14 +515,14 @@ class LLMService {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
-      print('完整响应: ${response.body}');
+      // print('完整响应: ${response.body}');
       throw Exception(
           '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
     }
 
     final message = choices[0]['message'] as Map<String, dynamic>?;
     if (message == null) {
-      print('完整响应: ${response.body}');
+      // print('完整响应: ${response.body}');
       throw Exception(
           '返回数据格式异常: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
     }
@@ -529,7 +530,7 @@ class LLMService {
     final reasoning = (message['reasoning_content'] as String?) ?? '';
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
-    print('测试响应: $fullContent');
+    // print('测试响应: $fullContent');
     return fullContent;
   }
 
@@ -561,11 +562,11 @@ class LLMService {
       'temperature': 0.1,
     });
 
-    print('========== LLM 文本请求 ==========');
-    print('API: ${config.apiUrl}');
-    print('Model: ${config.model}');
-    print('Prompt:\n$prompt');
-    print('==================================');
+    // print('========== LLM 文本请求 ==========');
+    // print('API: ${config.apiUrl}');
+    // print('Model: ${config.model}');
+    // print('Prompt:\n$prompt');
+    // print('==================================');
 
     final response = await http
         .post(
@@ -576,7 +577,7 @@ class LLMService {
         .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
-      print('LLM 请求失败: ${response.statusCode} - ${response.body}');
+      // print('LLM 请求失败: ${response.statusCode} - ${response.body}');
       throw Exception('API调用失败: ${response.statusCode} - ${response.body}');
     }
 
@@ -592,14 +593,14 @@ class LLMService {
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
 
-    print('========== LLM 文本响应 ==========');
-    print('原始返回:\n$fullContent');
-    print('==================================');
+    // print('========== LLM 文本响应 ==========');
+    // print('原始返回:\n$fullContent');
+    // print('==================================');
 
     final results = _extractJsonList(fullContent);
 
-    print('解析结果: $results');
-    print('==================================');
+    // print('解析结果: $results');
+    // print('==================================');
 
     return results;
   }
@@ -611,38 +612,23 @@ class LLMService {
       throw Exception('大模型未配置，请先在设置中配置API');
     }
 
-    final file = File(imagePath);
-    if (!await file.exists()) {
-      throw Exception('图片文件不存在: $imagePath');
-    }
+    final imageInput = await readImageInput(imagePath);
 
     // 检查文件大小
-    final fileSize = await file.length();
-    print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
+    final fileSize = imageInput.length;
+    // print('图片大小: ${(fileSize / 1024).toStringAsFixed(1)}KB');
 
     if (fileSize > 10 * 1024 * 1024) {
       throw Exception('图片太大，请使用小于10MB的图片');
     }
 
     // 读取并编码图片
-    final bytes = await file.readAsBytes();
+    final bytes = imageInput.bytes;
 
     // 使用 Future.microtask 避免阻塞主线程
     final base64Image = await Future.microtask(() => base64Encode(bytes));
 
-    String mimeType = 'image/jpeg';
-    final ext = imagePath.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'png':
-        mimeType = 'image/png';
-        break;
-      case 'gif':
-        mimeType = 'image/gif';
-        break;
-      case 'webp':
-        mimeType = 'image/webp';
-        break;
-    }
+    final mimeType = imageInput.mimeType;
 
     final now = DateTime.now();
     final nowStr =
@@ -660,7 +646,7 @@ class LLMService {
     };
 
     final imageUrl = 'data:$mimeType;base64,$base64Image';
-    print('Base64 长度: ${imageUrl.length}');
+    // print('Base64 长度: ${imageUrl.length}');
 
     final body = jsonEncode({
       'model': config.visionModel,
@@ -683,12 +669,13 @@ class LLMService {
     bytes.length; // 保持引用但不使用
     base64Image.length;
 
-    print('========== LLM 图片识别请求 ==========');
-    print('API: $visionUrl');
-    print('Model: ${config.visionModel}');
-    print('Image: $imagePath (${(fileSize / 1024).toStringAsFixed(1)}KB)');
-    print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
-    print('====================================');
+    // print('========== LLM 图片识别请求 ==========');
+    // print('API: $visionUrl');
+    // print('Model: ${config.visionModel}');
+    // print(
+    //     'Image: ${imageInput.displayName} (${(fileSize / 1024).toStringAsFixed(1)}KB)');
+    // print('Body 大小: ${(body.length / 1024).toStringAsFixed(1)}KB');
+    // print('====================================');
 
     final response = await http
         .post(
@@ -699,7 +686,7 @@ class LLMService {
         .timeout(const Duration(seconds: 90));
 
     if (response.statusCode != 200) {
-      print('LLM 请求失败: ${response.statusCode} - ${response.body}');
+      // print('LLM 请求失败: ${response.statusCode} - ${response.body}');
       throw Exception('API调用失败: ${response.statusCode}');
     }
 
@@ -715,14 +702,14 @@ class LLMService {
     final fullContent =
         reasoning.isNotEmpty ? '$reasoning\n\n$content' : content;
 
-    print('========== LLM 图片识别响应 ==========');
-    print('原始返回:\n$fullContent');
-    print('=====================================');
+    // print('========== LLM 图片识别响应 ==========');
+    // print('原始返回:\n$fullContent');
+    // print('=====================================');
 
     final results = _extractJsonList(fullContent);
 
-    print('解析结果: $results');
-    print('====================================');
+    // print('解析结果: $results');
+    // print('====================================');
 
     return results;
   }

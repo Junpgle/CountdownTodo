@@ -121,6 +121,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.0.2"
+  cupertino_icons:
+    dependency: "direct main"
+    description:
+      name: cupertino_icons
+      sha256: "41e005c33bd814be4d3096aff55b1908d419fde52ca656c8c47719ec745873cd"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.0.9"
   dbus:
     dependency: transitive
     description:
@@ -137,6 +145,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.3.0"
+  dev_build:
+    dependency: transitive
+    description:
+      name: dev_build
+      sha256: "21df3f741f0f5fc7c45f618e68e206b9f021b1adf83db4004dfaa032996cb0c1"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.1.8+2"
   device_info_plus:
     dependency: "direct main"
     description:
@@ -933,6 +949,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "3.9.1"
+  pool:
+    dependency: transitive
+    description:
+      name: pool
+      sha256: "978783255c543aa3586a1b3c21f6e9d720eb315376a915872c61ef8b5c20177d"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.5.2"
+  process_run:
+    dependency: transitive
+    description:
+      name: process_run
+      sha256: "3af4220bdee974fd6305caab920c8af07cd846696f825e6e84fb4e123b13fde9"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.3.4"
   pub_semver:
     dependency: transitive
     description:
@@ -1115,7 +1147,7 @@ packages:
     source: hosted
     version: "1.10.2"
   sqflite:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: sqflite
       sha256: "58a799e6ac17dd32fbab93813d39ed835a75ccc0f8f85b8955fe318c6712b082"
@@ -1146,6 +1178,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.4.2"
+  sqflite_common_ffi_web:
+    dependency: "direct main"
+    description:
+      name: sqflite_common_ffi_web
+      sha256: "32dc484518fec883cf0d1aa85c767f7cde6757729480b3d8d20e0fac247ef161"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.1.2"
   sqflite_darwin:
     dependency: transitive
     description:
@@ -1387,7 +1427,7 @@ packages:
     source: hosted
     version: "15.2.0"
   web:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: web
       sha256: "868d88a33d8a87b18ffc05f9f030ba328ffefba92d6c127917a2ba740f9cfe4a"

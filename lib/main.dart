@@ -3,24 +3,22 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart'; // 引入 kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'dart:io'; // 用于 Platform Check
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:window_manager/window_manager.dart'; // Desktop 窗口管理
 // video_player_win plugin
 // webview_win_floating plugin
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'update_service.dart';
 import 'utils/page_transitions.dart';
+import 'utils/app_platform.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_dashboard.dart';
 import 'screens/team_management_screen.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
+import 'screens/share_view_screen.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'models.dart';
@@ -36,44 +34,45 @@ import 'services/splash_service.dart';
 import 'services/course_service.dart';
 import 'services/environment_service.dart';
 import 'services/app_deep_link_service.dart';
-import 'windows_island/island_debug.dart';
-import 'windows_island/island_entry.dart' as island_entry;
-import 'windows_island/island_ipc_paths.dart';
-import 'windows_island/island_ui.dart';
+import 'services/platform_bootstrap.dart';
+import 'widgets/island_debug_host.dart';
 
 import 'utils/navigator_utils.dart';
+import 'utils/url_hash.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
+
+const String _webFontFamily = 'NotoSansCJKsc';
+const List<String> _webFontFamilyFallback = [
+  'PingFang SC',
+  'Hiragino Sans GB',
+  'Microsoft YaHei',
+  'Noto Sans CJK SC',
+  'Noto Sans SC',
+  'Source Han Sans SC',
+  'Arial Unicode MS',
+  'sans-serif',
+];
 
 void registerCloseDialogCallback(CloseDialogCallback callback) {
   _onShowCloseDialog = callback;
 }
 
 Future<bool> showCloseDialog() async {
-  debugPrint('[Main] showCloseDialog requested');
+    // debugPrint('[Main] showCloseDialog requested');
   if (_onShowCloseDialog != null) {
     try {
       final result = await _onShowCloseDialog!();
-      debugPrint('[Main] Dialog result: $result');
+      // debugPrint('[Main] Dialog result: $result');
       return result;
     } catch (e) {
-      debugPrint('[Main] Error in close dialog callback: $e');
+      // debugPrint('[Main] Error in close dialog callback: $e');
     }
   }
-  debugPrint(
-      '[Main] No callback registered or error occurred, allowing close by default');
+  // debugPrint(
+  //     '[Main] No callback registered or error occurred, allowing close by default');
   return true;
-}
-
-// 全局绕过 SSL 证书校验，修复 Cloudflare D1 旧服务器 HandshakeException
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-  }
 }
 
 Future<T?> _runStartupTask<T>(
@@ -84,20 +83,20 @@ Future<T?> _runStartupTask<T>(
   try {
     return await future.timeout(timeout);
   } catch (e) {
-    debugPrint('[Main] $label startup skipped: $e');
+    // debugPrint('[Main] $label startup skipped: $e');
     return null;
   }
 }
 
 void _configureRuntimeCaches() {
   final imageCache = PaintingBinding.instance.imageCache;
-  if (kIsWeb) {
+  if (AppPlatform.isWeb) {
     imageCache.maximumSize = 120;
     imageCache.maximumSizeBytes = 80 << 20; // 80MB
     return;
   }
 
-  if (Platform.isAndroid || Platform.isIOS) {
+  if (AppPlatform.isMobile) {
     imageCache.maximumSize = 100;
     imageCache.maximumSizeBytes = 96 << 20; // 96MB
   } else {
@@ -115,9 +114,7 @@ Future<void> main(List<String> args) async {
   // Secondary desktop_multi_window engines must not run the main-window
   // startup chain. In release this can keep the island from ever reaching its
   // own entrypoint, leaving the floating window alive but data-less.
-  if (!kIsWeb && args.isNotEmpty && args[0] == 'multi_window') {
-    await appendIslandIpcLog('main routed multi_window args=${args.join('|')}');
-    await island_entry.islandMain(args);
+  if (await PlatformBootstrap.routeSecondaryWindow(args)) {
     return;
   }
 
@@ -130,11 +127,11 @@ Future<void> main(List<String> args) async {
   _configureRuntimeCaches();
 
   // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-    debugPrint("🛠️ [Main] 检测到桌面平台，正在全局初始化 SQL FFI 引擎...");
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  await _runStartupTask(
+    'PlatformBootstrap.initDatabaseFactory',
+    PlatformBootstrap.initDatabaseFactory(),
+    timeout: const Duration(seconds: 2),
+  );
 
   await _runStartupTask(
     'PageTransitions.init',
@@ -148,13 +145,13 @@ Future<void> main(List<String> args) async {
     timeout: const Duration(seconds: 2),
   );
 
-  // 绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题
-  HttpOverrides.global = MyHttpOverrides();
+  // 原生端绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题；Web 端 no-op。
+  PlatformBootstrap.configureHttpOverrides();
 
   // 初始化 WindowService（监听窗口关闭事件）
   await _runStartupTask(
     'WindowService.init',
-    WindowService.init(),
+    PlatformBootstrap.initWindowService(),
     timeout: const Duration(seconds: 3),
   );
 
@@ -196,20 +193,54 @@ class _MyAppState extends State<MyApp> {
   bool _defaultSplashCompleted = false;
   bool _windowReadyForSplashTransition = true;
   Timer? _defaultSplashFallbackTimer;
+  String? _shareCode;
 
   @override
   void initState() {
     super.initState();
+    // ── 最先检查分享路由，避免启动多余逻辑 ──
+    _checkShareRoute();
     _windowReadyForSplashTransition =
-        kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+        AppPlatform.isWeb || !AppPlatform.isDesktop;
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
-    _defaultSplashFallbackTimer =
-        Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
-    _scheduleSplashReadinessFallback();
-    // 立即开始初始化，不等待首屏动画
-    _initializeApp();
-    // 处理开屏序列逻辑
-    _startSplashSequence();
+    if (_shareCode == null) {
+      // Web release 模式下 URL hash 可能延迟加载，首帧后再检查一次
+      if (kIsWeb) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_shareCode == null) {
+            _checkShareRoute();
+            if (_shareCode != null && mounted) setState(() {});
+          }
+        });
+        // 再给一次机会，防止首帧时 hash 仍未就绪
+        Timer(const Duration(milliseconds: 300), () {
+          if (_shareCode == null) {
+            _checkShareRoute();
+            if (_shareCode != null && mounted) setState(() {});
+          }
+        });
+      }
+      _defaultSplashFallbackTimer =
+          Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
+      _scheduleSplashReadinessFallback();
+      _initializeApp();
+      _startSplashSequence();
+    }
+  }
+
+  void _checkShareRoute() {
+    if (_shareCode != null) return;
+    try {
+      String hash = getUrlHash();
+      if (hash.startsWith('#')) hash = hash.substring(1);
+      if (hash.startsWith('/share')) {
+        final uri = Uri.parse('http://localhost$hash');
+        final code = uri.queryParameters['code'];
+        if (code != null && code.isNotEmpty) {
+          _shareCode = code;
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _startSplashSequence() async {
@@ -227,33 +258,33 @@ class _MyAppState extends State<MyApp> {
         });
       }
     } catch (e) {
-      debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
+      // debugPrint('[Main] 开屏缓存读取失败，跳过节日开屏: $e');
     }
   }
 
   Future<bool> _showCloseConfirmDialog() async {
-    debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
+    // debugPrint('[Main] _showCloseConfirmDialog called, mounted=$mounted');
 
     if (!mounted) {
-      debugPrint('[Main] Widget not mounted, falling back to native dialog');
+      // debugPrint('[Main] Widget not mounted, falling back to native dialog');
       return true;
     }
 
     final context = appNavigatorKey.currentContext;
     if (context == null) {
-      debugPrint(
-          '[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
+      // debugPrint(
+      //     '[Main] appNavigatorKey.currentContext is null, falling back to native dialog');
       return true;
     }
 
     // 确保 Navigator 可用
     if (!context.mounted) {
-      debugPrint('[Main] Context not mounted, falling back to native dialog');
+      // debugPrint('[Main] Context not mounted, falling back to native dialog');
       return true;
     }
 
     try {
-      debugPrint('[Main] Attempting to show Flutter dialog...');
+      // debugPrint('[Main] Attempting to show Flutter dialog...');
       final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -263,14 +294,14 @@ class _MyAppState extends State<MyApp> {
           actions: [
             TextButton(
               onPressed: () {
-                debugPrint('[Main] User chose: minimize');
+                // debugPrint('[Main] User chose: minimize');
                 Navigator.of(dialogContext).pop(false);
               },
               child: const Text('最小化到托盘'),
             ),
             TextButton(
               onPressed: () {
-                debugPrint('[Main] User chose: exit');
+                // debugPrint('[Main] User chose: exit');
                 Navigator.of(dialogContext).pop(true);
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -281,14 +312,14 @@ class _MyAppState extends State<MyApp> {
       ).timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
+          // debugPrint('[Main] Dialog timeout, defaulting to false (minimize)');
           return false;
         },
       );
-      debugPrint('[Main] Dialog result: $result');
+      // debugPrint('[Main] Dialog result: $result');
       return result ?? false;
     } catch (e) {
-      debugPrint('[Main] Dialog error (will use native fallback): $e');
+      // debugPrint('[Main] Dialog error (will use native fallback): $e');
       rethrow; // 抛出异常让 WindowService 使用原生对话框
     }
   }
@@ -343,7 +374,7 @@ class _MyAppState extends State<MyApp> {
         });
       }
     } catch (e) {
-      debugPrint('[Main] 初始化失败: $e');
+      // debugPrint('[Main] 初始化失败: $e');
       if (mounted) {
         setState(() {
           _isChecking = false;
@@ -363,8 +394,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _scheduleSplashReadinessFallback() {
-    if (kIsWeb ||
-        !(Platform.isWindows || Platform.isLinux || Platform.isMacOS) ||
+    if (AppPlatform.isWeb ||
+        !AppPlatform.isDesktop ||
         _windowReadyForSplashTransition) {
       return;
     }
@@ -430,7 +461,7 @@ class _MyAppState extends State<MyApp> {
       await SplashService.fetchAndCacheTodayContent();
       await SplashService.prefetchTomorrowContent();
     } catch (e) {
-      debugPrint('[Main] 开屏内容预取失败: $e');
+      // debugPrint('[Main] 开屏内容预取失败: $e');
     }
   }
 
@@ -477,15 +508,15 @@ class _MyAppState extends State<MyApp> {
         },
         onDeviceDisconnected: () {},
         onMessageReceived: (data) {
-          debugPrint('[Band] 收到消息: $data');
+          // debugPrint('[Band] 收到消息: $data');
         },
         onPermissionGranted: (permissions) {
-          debugPrint('[Band] 权限已授予: $permissions');
+          // debugPrint('[Band] 权限已授予: $permissions');
           BandSyncService.registerListener();
         },
       );
     } catch (e) {
-      debugPrint('[Band] 初始化失败: $e');
+      // debugPrint('[Band] 初始化失败: $e');
     }
 
     // 设置同步数据提供者
@@ -495,7 +526,7 @@ class _MyAppState extends State<MyApp> {
     _bandPomodoroSub =
         BandSyncService.onBandPomodoroAction.listen((actionData) {
       final action = actionData['action']?.toString();
-      debugPrint('[Band] 番茄钟操作: $action');
+      // debugPrint('[Band] 番茄钟操作: $action');
       if (action == 'finish' || action == 'abandon') {
         _handleBandPomodoroAction(action!);
       }
@@ -589,15 +620,15 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _handleBandPomodoroAction(String action) async {
-    debugPrint('[Band] _handleBandPomodoroAction called: $action');
+    // debugPrint('[Band] _handleBandPomodoroAction called: $action');
     final runState = await PomodoroService.loadRunState();
-    debugPrint('[Band] loadRunState result: ${runState?.phase}');
+    // debugPrint('[Band] loadRunState result: ${runState?.phase}');
     if (runState == null || runState.phase == PomodoroPhase.idle) {
-      debugPrint('[Band] 无运行中的番茄钟，忽略操作: $action');
+      // debugPrint('[Band] 无运行中的番茄钟，忽略操作: $action');
       return;
     }
 
-    debugPrint('[Band] 处理手环操作: $action');
+    // debugPrint('[Band] 处理手环操作: $action');
     if (action == 'finish') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -609,11 +640,11 @@ class _MyAppState extends State<MyApp> {
         status: PomodoroRecordStatus.completed,
         endMs: now,
       );
-      debugPrint('[Band] Adding record: ${actualSeconds}s');
+      // debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
-      debugPrint('[Band] Clearing run state');
+      // debugPrint('[Band] Clearing run state');
       await PomodoroService.clearRunState();
-      debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
+      // debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(
@@ -625,12 +656,12 @@ class _MyAppState extends State<MyApp> {
           status: PomodoroRecordStatus.interrupted,
           endMs: now,
         );
-        debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
+        // debugPrint('[Band] Adding abandoned record: ${actualSeconds}s');
         await PomodoroService.addRecord(record);
       }
-      debugPrint('[Band] Clearing run state (abandon)');
+      // debugPrint('[Band] Clearing run state (abandon)');
       await PomodoroService.clearRunState();
-      debugPrint('[Band] 番茄钟已放弃');
+      // debugPrint('[Band] 番茄钟已放弃');
     }
   }
 
@@ -648,48 +679,23 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _initHeavyPlugins() async {
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      try {
-        await FlutterDownloader.initialize(debug: kDebugMode, ignoreSsl: true);
-      } catch (e) {
-        debugPrint("Downloader init failed: $e");
-      }
+    try {
+      await PlatformBootstrap.initMobileDownloader();
+    } catch (e) {
+      // debugPrint("Downloader init failed: $e");
     }
 
-    if (!kIsWeb &&
-        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      // WindowManager 已在 WindowService.init() 中初始化过
-      WindowOptions windowOptions = const WindowOptions(
-        size: Size(1280, 720),
-        center: true,
-        backgroundColor: Colors.transparent,
-        skipTaskbar: false,
-        titleBarStyle: TitleBarStyle.normal,
-      );
-      windowManager.waitUntilReadyToShow(windowOptions, () async {
-        if (mounted && !_windowReadyForSplashTransition) {
-          setState(() {
-            _windowReadyForSplashTransition = true;
-          });
-          _applySplashTransitionIfReady();
-        }
-        await WindowService.restoreStartupBoundsAndRepairViewport();
-        await windowManager.show();
-        await windowManager.focus();
-        WindowService.schedulePostShowViewportRepair();
-        // Try to create the island window on Windows. Before creating, probe
-        // whether desktop_multi_window exposes the core methods we need. If
-        // not, we'll fall back to an in-layout island overlay powered by
-        // FloatWindowService.debugPayload.
-        if (Platform.isWindows) {
-          try {
-            await FloatWindowService.init();
-            // 岛窗口由 HomeDashboard 加载后统一创建, 避免启动竞争
-          } catch (e) {
-            debugPrint('FloatWindowService init failed: $e');
+    if (AppPlatform.isDesktop) {
+      PlatformBootstrap.waitUntilDesktopReady(
+        onReady: () {
+          if (mounted && !_windowReadyForSplashTransition) {
+            setState(() {
+              _windowReadyForSplashTransition = true;
+            });
+            _applySplashTransitionIfReady();
           }
-        }
-      });
+        },
+      );
 
       // 回退保护：避免极端情况下桌面窗口回调未触发导致流程阻塞。
       Future.delayed(const Duration(seconds: 3), () {
@@ -706,6 +712,8 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    _checkShareRoute();
+
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
@@ -731,123 +739,160 @@ class _MyAppState extends State<MyApp> {
                   valueListenable: StorageService.appWallpaperColorNotifier,
                   builder: (context, appWallpaperColor, _) {
                     return DynamicColorBuilder(
-                      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+                      builder: (ColorScheme? lightDynamic,
+                          ColorScheme? darkDynamic) {
                         ColorScheme lightScheme;
                         ColorScheme darkScheme;
 
-                        if (colorMode == 'system_wallpaper' && lightDynamic != null && darkDynamic != null) {
+                        if (colorMode == 'system_wallpaper' &&
+                            lightDynamic != null &&
+                            darkDynamic != null) {
                           lightScheme = lightDynamic.harmonized();
                           darkScheme = darkDynamic.harmonized();
-                        } else if ((colorMode == 'custom' || colorMode == 'image_extracted') && customColor != null) {
-                          lightScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(seedColor: customColor, brightness: Brightness.dark);
-                        } else if (colorMode == 'app_wallpaper' && appWallpaperColor != null) {
-                          lightScheme = ColorScheme.fromSeed(seedColor: appWallpaperColor, brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(seedColor: appWallpaperColor, brightness: Brightness.dark);
+                        } else if ((colorMode == 'custom' ||
+                                colorMode == 'image_extracted') &&
+                            customColor != null) {
+                          lightScheme = ColorScheme.fromSeed(
+                              seedColor: customColor,
+                              brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(
+                              seedColor: customColor,
+                              brightness: Brightness.dark);
+                        } else if (colorMode == 'app_wallpaper' &&
+                            appWallpaperColor != null) {
+                          lightScheme = ColorScheme.fromSeed(
+                              seedColor: appWallpaperColor,
+                              brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(
+                              seedColor: appWallpaperColor,
+                              brightness: Brightness.dark);
                         } else {
-                          lightScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.light);
-                          darkScheme = ColorScheme.fromSeed(seedColor: Theme.of(context).colorScheme.primary, brightness: Brightness.dark);
+                          lightScheme = ColorScheme.fromSeed(
+                              seedColor: Theme.of(context).colorScheme.primary,
+                              brightness: Brightness.light);
+                          darkScheme = ColorScheme.fromSeed(
+                              seedColor: Theme.of(context).colorScheme.primary,
+                              brightness: Brightness.dark);
                         }
 
                         return MacosMenuBar(
-                      child: MaterialApp(
-                        title: 'CountDownTodo',
-                        debugShowCheckedModeBanner: false,
-                        navigatorKey: appNavigatorKey,
-                        themeMode: currentThemeMode,
-                        scrollBehavior: const MaterialScrollBehavior().copyWith(
-                          dragDevices: {
-                            PointerDeviceKind.mouse,
-                            PointerDeviceKind.touch,
-                            PointerDeviceKind.trackpad,
-                            PointerDeviceKind.stylus,
-                          },
-                        ),
-                        theme: ThemeData(
-                          colorScheme: lightScheme,
-                          useMaterial3: true,
-                          pageTransitionsTheme: PageTransitions.theme,
-                        ),
-                        darkTheme: ThemeData(
-                          colorScheme: darkScheme,
-                          useMaterial3: true,
-                          pageTransitionsTheme: PageTransitions.theme,
-                        ),
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: const [
-            Locale('zh', 'CN'),
-            Locale('en', 'US'),
-          ],
-          routes: {
-            '/login': (context) => const LoginScreen(),
-            '/home': (context) => HomeDashboard(username: _loggedInUser ?? ''),
-            '/teams': (context) =>
-                TeamManagementScreen(username: _loggedInUser ?? ''),
-            '/dev/island': (context) => const IslandDebugPage(),
-          },
-          builder: (context, child) {
-            final content = child ?? const SizedBox.shrink();
-            if (!(Platform.isWindows && kDebugMode)) {
-              return content;
-            }
+                          child: MaterialApp(
+                            title: 'CountDownTodo',
+                            debugShowCheckedModeBanner: false,
+                            navigatorKey: appNavigatorKey,
+                            themeMode: currentThemeMode,
+                            scrollBehavior:
+                                const MaterialScrollBehavior().copyWith(
+                              dragDevices: {
+                                PointerDeviceKind.mouse,
+                                PointerDeviceKind.touch,
+                                PointerDeviceKind.trackpad,
+                                PointerDeviceKind.stylus,
+                              },
+                            ),
+                            theme: ThemeData(
+                              colorScheme: lightScheme,
+                              useMaterial3: true,
+                              fontFamily:
+                                  AppPlatform.isWeb ? _webFontFamily : null,
+                              fontFamilyFallback: AppPlatform.isWeb
+                                  ? _webFontFamilyFallback
+                                  : null,
+                              pageTransitionsTheme: PageTransitions.theme,
+                            ),
+                            darkTheme: ThemeData(
+                              colorScheme: darkScheme,
+                              useMaterial3: true,
+                              fontFamily:
+                                  AppPlatform.isWeb ? _webFontFamily : null,
+                              fontFamilyFallback: AppPlatform.isWeb
+                                  ? _webFontFamilyFallback
+                                  : null,
+                              pageTransitionsTheme: PageTransitions.theme,
+                            ),
+                            localizationsDelegates: const [
+                              GlobalMaterialLocalizations.delegate,
+                              GlobalWidgetsLocalizations.delegate,
+                              GlobalCupertinoLocalizations.delegate,
+                            ],
+                            supportedLocales: const [
+                              Locale('zh', 'CN'),
+                              Locale('en', 'US'),
+                            ],
+                            routes: {
+                              '/login': (context) => const LoginScreen(),
+                              '/home': (context) =>
+                                  HomeDashboard(username: _loggedInUser ?? ''),
+                              '/teams': (context) => TeamManagementScreen(
+                                  username: _loggedInUser ?? ''),
+                              '/dev/island': (context) =>
+                                  IslandDebugHost.route(),
+                            },
+                            onGenerateRoute: (settings) {
+                              final name = settings.name ?? '';
+                              if (name.startsWith('/share')) {
+                                final uri = Uri.parse('http://localhost$name');
+                                final code = uri.queryParameters['code'];
+                                if (code != null && code.isNotEmpty) {
+                                  _shareCode = code;
+                                  return MaterialPageRoute(
+                                    builder: (_) =>
+                                        ShareViewScreen(shareCode: code),
+                                  );
+                                }
+                              }
+                              return null;
+                            },
+                            builder: (context, child) {
+                              final content = child ?? const SizedBox.shrink();
+                              if (!IslandDebugHost.shouldShowOverlay) {
+                                return content;
+                              }
 
-            return Stack(
-              children: [
-                content,
-                ValueListenableBuilder<Map<String, dynamic>?>(
-                  valueListenable: FloatWindowService.debugPayload,
-                  builder: (context, payload, _) {
-                    if (payload == null || payload.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return Positioned(
-                      top: 16,
-                      right: 16,
-                      child: SizedBox(
-                        width: 380,
-                        height: 220,
-                        child: IslandUI(
-                          inLayoutDebugMode: true,
-                          payloadNotifier: FloatWindowService.debugPayload,
-                          initialPayload: payload,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-          home: _showDefaultSplash
-              ? DefaultSplashScreen(onComplete: _onDefaultSplashComplete)
-              : _showHolidaySplash
-                  ? SplashScreen(
-                      content: _splashContent!,
-                      onComplete: _onHolidaySplashComplete,
-                    )
-                  : _isChecking
-                      ? Scaffold(
-                          backgroundColor: currentThemeMode == ThemeMode.dark
-                              ? Colors.grey[900]
-                              : Theme.of(context).colorScheme.primary,
-                          body: const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white),
+                              return Stack(
+                                children: [
+                                  content,
+                                  IslandDebugHost.overlay(),
+                                ],
+                              );
+                            },
+                            home: _shareCode != null
+                                ? ShareViewScreen(shareCode: _shareCode!)
+                                : _showDefaultSplash
+                                ? DefaultSplashScreen(
+                                    onComplete: _onDefaultSplashComplete)
+                                : _showHolidaySplash
+                                    ? SplashScreen(
+                                        content: _splashContent!,
+                                        onComplete: _onHolidaySplashComplete,
+                                      )
+                                    : _isChecking
+                                        ? Scaffold(
+                                            backgroundColor: currentThemeMode ==
+                                                    ThemeMode.dark
+                                                ? Colors.grey[900]
+                                                : Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                            body: const Center(
+                                              child: CircularProgressIndicator(
+                                                  color: Colors.white),
+                                            ),
+                                          )
+                                        : _showFeatureGuide
+                                            ? FeatureGuideScreen(
+                                                loggedInUser: _loggedInUser)
+                                            : (_loggedInUser != null &&
+                                                    _loggedInUser!.isNotEmpty)
+                                                ? HomeDashboard(
+                                                    key:
+                                                        ValueKey(_loggedInUser),
+                                                    username: _loggedInUser!,
+                                                  )
+                                                : const LoginScreen(),
                           ),
-                        )
-                      : _showFeatureGuide
-                          ? FeatureGuideScreen(loggedInUser: _loggedInUser)
-                          : (_loggedInUser != null && _loggedInUser!.isNotEmpty)
-                              ? HomeDashboard(
-                                  key: ValueKey(_loggedInUser),
-                                  username: _loggedInUser!,
-                                )
-                              : const LoginScreen(),
-                      ),
+                        );
+                      },
                     );
                   },
                 );
@@ -855,8 +900,6 @@ class _MyAppState extends State<MyApp> {
             );
           },
         );
-      },
-    );
       },
     );
   }

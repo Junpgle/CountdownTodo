@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/help_article.dart';
 import '../../services/feature_tip_service.dart';
 import '../../update_service.dart';
+import '../../utils/app_platform.dart';
 import '../../utils/page_transitions.dart';
 import '../feature_guide_screen.dart';
 import '../pomodoro_screen.dart';
@@ -269,11 +269,11 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
           steps: [
             '通知权限：用于发送待办提醒和专注结束通知。',
             '精确闹钟权限：确保按时推送提醒（Android）。',
-            if (!kIsWeb && Platform.isAndroid) ...[
+            if (!kIsWeb && AppPlatform.isAndroid) ...[
               '使用情况权限：用于屏幕时间统计（Android）。',
               '电池优化：防止专注时被系统杀后台（Android）。',
             ],
-            if (!kIsWeb && Platform.isMacOS) ...[
+            if (!kIsWeb && AppPlatform.isMacOS) ...[
               '通知权限：macOS 系统通知。',
             ],
             '你可以在 设置 > 权限管理 中查看和管理所有权限。',
@@ -321,7 +321,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       );
     }
 
-    if (Platform.isMacOS) {
+    if (AppPlatform.isMacOS) {
       return HelpArticle(
         id: 'widgets_macos',
         title: 'macOS 桌面功能',
@@ -338,7 +338,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       );
     }
 
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       return HelpArticle(
         id: 'widgets_windows',
         title: 'Windows 桌面功能',
@@ -355,7 +355,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
       );
     }
 
-    if (Platform.isAndroid) {
+    if (AppPlatform.isAndroid) {
       return HelpArticle(
         id: 'widgets_android',
         title: 'Android 桌面小组件',

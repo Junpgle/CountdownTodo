@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'dart:convert';
 
 import '../services/api_service.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
-import '../models.dart';
+import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
@@ -74,6 +73,20 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _handleInitialTarget(String target) {
+    if (AppPlatform.isWeb &&
+        {
+          'permissions',
+          'float_window_style',
+          'force_refresh',
+          'island_priority',
+          'tai_db',
+          'live_updates',
+          'island_support',
+          'test_notification',
+        }.contains(target)) {
+      return;
+    }
+
     String paneId;
     Widget Function() paneBuilder;
 
@@ -134,8 +147,8 @@ class _SettingsPageState extends State<SettingsPage> {
           () => CourseSettingsPage(initialTarget: target, isEmbedded: true);
     } else if (interconnectTargets.contains(target)) {
       paneId = 'interconnect';
-      paneBuilder = () =>
-          InterconnectSettingsPage(initialTarget: target, isEmbedded: true, username: _username);
+      paneBuilder = () => InterconnectSettingsPage(
+          initialTarget: target, isEmbedded: true, username: _username);
     } else if (advancedTargets.contains(target)) {
       paneId = 'preference'; // merged into preference
       paneBuilder =
@@ -172,24 +185,26 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
-      if (paneId == 'preference')
+      if (paneId == 'preference') {
         pushWidget = PreferenceSettingsPage(initialTarget: target);
-      else if (paneId == 'course')
+      } else if (paneId == 'course') {
         pushWidget = CourseSettingsPage(initialTarget: target);
-      else if (paneId == 'interconnect')
-        pushWidget = InterconnectSettingsPage(initialTarget: target, username: _username);
-      else if (paneId == 'llm_config')
+      } else if (paneId == 'interconnect') {
+        pushWidget = InterconnectSettingsPage(
+            initialTarget: target, username: _username);
+      } else if (paneId == 'llm_config') {
         pushWidget = const LLMConfigPage();
-      else if (paneId == 'animation')
+      } else if (paneId == 'animation') {
         pushWidget = const AnimationSettingsPage();
-      else if (paneId == 'platform')
+      } else if (paneId == 'platform') {
         pushWidget = PlatformSpecificSettingsPage(initialTarget: target);
-      else if (paneId == 'permissions')
+      } else if (paneId == 'permissions') {
         pushWidget = const PermissionSettingsPage();
-      else if (paneId == 'notifications')
+      } else if (paneId == 'notifications') {
         pushWidget = const NotificationSettingsPage();
-      else
+      } else {
         pushWidget = const AboutScreen();
+      }
 
       Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
     }
@@ -459,7 +474,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
-    } catch (e) {}
+    } catch (e) {
+      // Reminder rescheduling should not block the settings page.
+    }
   }
 
   Future<void> _forceFullSync() async {
@@ -593,11 +610,11 @@ class _SettingsPageState extends State<SettingsPage> {
       case 'llm_config':
         return 'AI 助手配置';
       case 'platform':
-        return Platform.isWindows
+        return AppPlatform.isWindows
             ? 'Windows 专属'
-            : (Platform.isAndroid ? 'Android 专属' : '平台专属');
+            : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属');
       case 'notifications':
-        return '通知管理';
+        return AppPlatform.isWeb ? '浏览器通知' : '通知管理';
       case 'permissions':
         return '权限管理';
       case 'about':
@@ -795,8 +812,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.devices,
                   color: Colors.blue,
                   title: '数据与互联',
-                  widgetBuilder: () =>
-                      InterconnectSettingsPage(isEmbedded: true, username: _username),
+                  widgetBuilder: () => InterconnectSettingsPage(
+                      isEmbedded: true, username: _username),
                 ),
                 _buildMacSidebarItem(
                   id: 'llm_config',
@@ -809,33 +826,34 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 12),
                 const Divider(height: 1),
                 const SizedBox(height: 12),
-
-                _buildMacSidebarItem(
-                  id: 'platform',
-                  icon: Icons.stars_rounded,
-                  color: Colors.deepPurple,
-                  title: Platform.isWindows
-                      ? 'Windows 专属'
-                      : (Platform.isAndroid ? 'Android 专属' : '平台专属'),
-                  widgetBuilder: () =>
-                      const PlatformSpecificSettingsPage(isEmbedded: true),
-                ),
+                if (!AppPlatform.isWeb)
+                  _buildMacSidebarItem(
+                    id: 'platform',
+                    icon: Icons.stars_rounded,
+                    color: Colors.deepPurple,
+                    title: AppPlatform.isWindows
+                        ? 'Windows 专属'
+                        : (AppPlatform.isAndroid ? 'Android 专属' : '平台专属'),
+                    widgetBuilder: () =>
+                        const PlatformSpecificSettingsPage(isEmbedded: true),
+                  ),
                 _buildMacSidebarItem(
                   id: 'notifications',
                   icon: Icons.notifications,
                   color: Colors.amber,
-                  title: '通知管理',
+                  title: AppPlatform.isWeb ? '浏览器通知' : '通知管理',
                   widgetBuilder: () =>
                       const NotificationSettingsPage(isEmbedded: true),
                 ),
-                _buildMacSidebarItem(
-                  id: 'permissions',
-                  icon: Icons.security,
-                  color: Colors.red,
-                  title: '权限管理',
-                  widgetBuilder: () =>
-                      const PermissionSettingsPage(isEmbedded: true),
-                ),
+                if (!AppPlatform.isWeb)
+                  _buildMacSidebarItem(
+                    id: 'permissions',
+                    icon: Icons.security,
+                    color: Colors.red,
+                    title: '权限管理',
+                    widgetBuilder: () =>
+                        const PermissionSettingsPage(isEmbedded: true),
+                  ),
                 _buildMacSidebarItem(
                   id: 'help',
                   icon: Icons.help_outline,
@@ -1034,7 +1052,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading:
                       const Icon(Icons.devices_outlined, color: Colors.blue),
                   title: const Text('数据与互联'),
-                  subtitle: const Text('局域网同步、手环、日历双向同步'),
+                  subtitle: Text(AppPlatform.isWeb
+                      ? '浏览器导入导出、ICS 日历文件与批量标签'
+                      : '局域网同步、手环、日历双向同步'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,
@@ -1060,24 +1080,30 @@ class _SettingsPageState extends State<SettingsPage> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
-                ListTile(
-                  leading:
-                      const Icon(Icons.stars_rounded, color: Colors.deepPurple),
-                  title: Text(Platform.isWindows
-                      ? 'Windows 专属设置'
-                      : (Platform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
-                  subtitle:
-                      Text(Platform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          const PlatformSpecificSettingsPage())),
-                ),
+                if (!AppPlatform.isWeb) ...[
+                  ListTile(
+                    leading: const Icon(Icons.stars_rounded,
+                        color: Colors.deepPurple),
+                    title: Text(AppPlatform.isWindows
+                        ? 'Windows 专属设置'
+                        : (AppPlatform.isAndroid ? 'Android 专属设置' : '平台专属设置')),
+                    subtitle: Text(
+                        AppPlatform.isWindows ? '悬浮窗、屏幕时间、灵动岛' : '活动提醒、权限优化等'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            const PlatformSpecificSettingsPage())),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                ],
                 ListTile(
                   leading: const Icon(Icons.notifications_outlined,
                       color: Colors.amber),
-                  title: const Text('通知管理'),
+                  title: Text(AppPlatform.isWeb ? '浏览器通知' : '通知管理'),
+                  subtitle: Text(AppPlatform.isWeb
+                      ? '权限授权、番茄钟结束、待办和课程提醒'
+                      : '实时活动、定时闹钟与通知偏好'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,
@@ -1085,17 +1111,19 @@ class _SettingsPageState extends State<SettingsPage> {
                           const NotificationSettingsPage())),
                 ),
                 const Divider(height: 1, indent: 56),
-                ListTile(
-                  leading:
-                      const Icon(Icons.security_outlined, color: Colors.red),
-                  title: const Text('权限管理'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                      context,
-                      PageTransitions.slideHorizontal(
-                          const PermissionSettingsPage())),
-                ),
-                const Divider(height: 1, indent: 56),
+                if (!AppPlatform.isWeb) ...[
+                  ListTile(
+                    leading:
+                        const Icon(Icons.security_outlined, color: Colors.red),
+                    title: const Text('权限管理'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                        context,
+                        PageTransitions.slideHorizontal(
+                            const PermissionSettingsPage())),
+                  ),
+                  const Divider(height: 1, indent: 56),
+                ],
                 ListTile(
                   leading:
                       const Icon(Icons.help_outline, color: Colors.blueGrey),

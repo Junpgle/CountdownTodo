@@ -4,8 +4,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'dart:io';
 import '../../utils/page_transitions.dart';
+import '../utils/app_platform.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
@@ -116,7 +116,7 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<void> _loadDeviceInfo() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
-      if (Platform.isAndroid) {
+      if (AppPlatform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
         if (mounted) {
           setState(() {
@@ -126,7 +126,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 'Android ${androidInfo.version.release} (API ${androidInfo.version.sdkInt})';
           });
         }
-      } else if (Platform.isWindows) {
+      } else if (AppPlatform.isWindows) {
         final windowsInfo = await deviceInfo.windowsInfo;
         if (mounted) {
           setState(() {
@@ -136,7 +136,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 'Windows ${windowsInfo.majorVersion}.${windowsInfo.minorVersion}';
           });
         }
-      } else if (Platform.isMacOS) {
+      } else if (AppPlatform.isMacOS) {
         final macInfo = await deviceInfo.macOsInfo;
         if (mounted) {
           setState(() {
@@ -147,7 +147,7 @@ class _AboutScreenState extends State<AboutScreen> {
         }
       }
     } catch (e) {
-      debugPrint('获取设备信息失败: $e');
+      // debugPrint('获取设备信息失败: $e');
     }
   }
 
@@ -172,7 +172,7 @@ class _AboutScreenState extends State<AboutScreen> {
         });
       }
     } catch (e) {
-      debugPrint('获取更新日志失败: $e');
+      // debugPrint('获取更新日志失败: $e');
       if (mounted) {
         setState(() => _isLoadingChangelog = false);
       }
@@ -194,7 +194,7 @@ class _AboutScreenState extends State<AboutScreen> {
         });
       }
     } catch (e) {
-      debugPrint('加载归档日志失败: $e');
+      // debugPrint('加载归档日志失败: $e');
       if (mounted) {
         setState(() => _isLoadingArchive = false);
       }
@@ -222,7 +222,7 @@ class _AboutScreenState extends State<AboutScreen> {
         if (mounted) setState(() => _isLoadingPrivacy = false);
       }
     } catch (e) {
-      debugPrint('获取隐私政策失败: $e');
+      // debugPrint('获取隐私政策失败: $e');
       if (mounted) setState(() => _isLoadingPrivacy = false);
     }
   }

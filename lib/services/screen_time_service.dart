@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/tai_service.dart';
 import '../services/storage/user_session_storage.dart';
+import '../utils/app_platform.dart';
 import '../../storage_service.dart';
 
 class ScreenTimeService {
@@ -12,7 +12,7 @@ class ScreenTimeService {
   static const int syncIntervalMinutes = 2;
 
   static Future<bool> checkPermission() async {
-    if (kIsWeb || !Platform.isAndroid) return true;
+    if (kIsWeb || !AppPlatform.isAndroid) return true;
     try {
       return await _channel.invokeMethod('checkUsagePermission');
     } catch (e) {
@@ -21,7 +21,7 @@ class ScreenTimeService {
   }
 
   static Future<void> openSettings() async {
-    if (Platform.isAndroid) {
+    if (AppPlatform.isAndroid) {
       await _channel.invokeMethod('openUsageSettings');
     }
   }
@@ -32,8 +32,7 @@ class ScreenTimeService {
     List<dynamic> cachedData = await StorageService.getScreenTimeCache();
 
     // 如果是桌面端且无缓存，必须同步一次
-    bool isDesktop =
-        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    bool isDesktop = !kIsWeb && AppPlatform.isDesktop;
 
     if (isDesktop && cachedData.isEmpty) {
       await _performBackgroundSync(userId);
@@ -64,7 +63,7 @@ class ScreenTimeService {
       bool hasScreenTimeData = false;
 
       // 1. 获取本机干干净净的数据，存入【专用上传缓存】
-      if (Platform.isAndroid) {
+      if (AppPlatform.isAndroid) {
         bool hasPermission = await checkPermission();
         if (!hasPermission) {
           // debugPrint("⚠️ Android 屏幕使用权限未授予，跳过屏幕时间采集，其他数据继续同步");
@@ -84,7 +83,7 @@ class ScreenTimeService {
             hasScreenTimeData = true;
           }
         }
-      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      } else if (AppPlatform.isDesktop) {
         final List<Map<String, dynamic>> apps =
             await TaiService.getTodayStats();
         if (apps.isNotEmpty) {
@@ -117,7 +116,7 @@ class ScreenTimeService {
         await StorageService.saveScreenTimeCache(cloudStats);
       }
     } catch (e) {
-      debugPrint("屏幕时间后台同步失败: $e");
+      // debugPrint("屏幕时间后台同步失败: $e");
     }
   }
 

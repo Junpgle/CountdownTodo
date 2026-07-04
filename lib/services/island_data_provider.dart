@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'island_slot_provider.dart';
-import '../windows_island/island_payload.dart';
+import 'island_payload_model.dart';
 
 /// Cache entry for island data
 class _CacheEntry<T> {
@@ -138,17 +138,17 @@ class IslandDataProvider {
         _lastSentState == currentState &&
         _lastSentPayload != null) {
       // No significant change for idle state, skip update
-      debugPrint('[IslandDataProvider] Skip update: idle state unchanged');
+      // debugPrint('[IslandDataProvider] Skip update: idle state unchanged');
       return null;
     }
 
     // Get style
     final style = await getStyle();
-    debugPrint(
-        '[IslandDataProvider] buildPayload: style=$style, endMs=$endMs, forceReset=$forceReset');
+    // debugPrint(
+    //     '[IslandDataProvider] buildPayload: style=$style, endMs=$endMs, forceReset=$forceReset');
     if (style != 1) {
       // Island not enabled
-      debugPrint('[IslandDataProvider] style != 1, returning null');
+      // debugPrint('[IslandDataProvider] style != 1, returning null');
       return null;
     }
 

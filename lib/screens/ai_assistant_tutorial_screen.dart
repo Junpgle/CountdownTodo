@@ -4,10 +4,12 @@ class AiAssistantTutorialScreen extends StatefulWidget {
   const AiAssistantTutorialScreen({super.key});
 
   @override
-  State<AiAssistantTutorialScreen> createState() => _AiAssistantTutorialScreenState();
+  State<AiAssistantTutorialScreen> createState() =>
+      _AiAssistantTutorialScreenState();
 }
 
-class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> with SingleTickerProviderStateMixin {
+class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -129,7 +131,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
                       final startTime = index * stagger;
                       const animationDuration = 0.6;
                       final value = Curves.easeOutQuart.transform(
-                        ((_controller.value - startTime) / animationDuration).clamp(0.0, 1.0),
+                        ((_controller.value - startTime) / animationDuration)
+                            .clamp(0.0, 1.0),
                       );
                       return IgnorePointer(
                         ignoring: value == 0,
@@ -194,7 +197,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,7 +218,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -299,7 +304,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -325,24 +331,33 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       children: [
         Row(
           children: [
-            Expanded(child: _gridItem(context, Icons.history_rounded, '历史会话', '管理往期对话记录')),
+            Expanded(
+                child: _gridItem(
+                    context, Icons.history_rounded, '历史会话', '管理往期对话记录')),
             const SizedBox(width: 12),
-            Expanded(child: _gridItem(context, Icons.add_comment_rounded, '开启新篇', '随时开启全新话题')),
+            Expanded(
+                child: _gridItem(
+                    context, Icons.add_comment_rounded, '开启新篇', '随时开启全新话题')),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _gridItem(context, Icons.psychology_rounded, '深度思考', '应对复杂逻辑推理')),
+            Expanded(
+                child: _gridItem(
+                    context, Icons.psychology_rounded, '深度思考', '应对复杂逻辑推理')),
             const SizedBox(width: 12),
-            Expanded(child: _gridItem(context, Icons.auto_awesome_rounded, '智能注入', '自动获取应用上下文')),
+            Expanded(
+                child: _gridItem(
+                    context, Icons.auto_awesome_rounded, '智能注入', '自动获取应用上下文')),
           ],
         ),
       ],
     );
   }
 
-  Widget _gridItem(BuildContext context, IconData icon, String title, String desc) {
+  Widget _gridItem(
+      BuildContext context, IconData icon, String title, String desc) {
     final colorScheme = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: 1.6,
@@ -351,7 +366,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+          border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -366,7 +382,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
             Expanded(
               child: Text(
                 desc,
-                style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                    fontSize: 11, color: colorScheme.onSurfaceVariant),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -402,7 +419,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       ),
       child: Column(
         children: [
-          Icon(Icons.auto_awesome_rounded, size: 48, color: colorScheme.primary),
+          Icon(Icons.auto_awesome_rounded,
+              size: 48, color: colorScheme.primary),
           const SizedBox(height: 16),
           Text(
             '高效协作，一气呵成',
@@ -524,17 +542,21 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       ),
       child: Column(
         children: [
-          _planningRow(context, Icons.event_note_rounded, '自动避让', 'AI 规划时会自动避开课程表中的已有课程。'),
+          _planningRow(context, Icons.event_note_rounded, '自动避让',
+              'AI 规划时会自动避开课程表中的已有课程。'),
           const SizedBox(height: 12),
-          _planningRow(context, Icons.sync_rounded, '多端同步', '规划块支持远端与本地同步，确保日程在所有设备一致。'),
+          _planningRow(
+              context, Icons.sync_rounded, '多端同步', '规划块支持远端与本地同步，确保日程在所有设备一致。'),
           const SizedBox(height: 12),
-          _planningRow(context, Icons.auto_graph_rounded, '进度追踪', 'AI 可根据番茄钟实际专注时长自动更新规划进度。'),
+          _planningRow(context, Icons.auto_graph_rounded, '进度追踪',
+              'AI 可根据番茄钟实际专注时长自动更新规划进度。'),
         ],
       ),
     );
   }
 
-  Widget _planningRow(BuildContext context, IconData icon, String title, String desc) {
+  Widget _planningRow(
+      BuildContext context, IconData icon, String title, String desc) {
     return Row(
       children: [
         Icon(icon, size: 18, color: Theme.of(context).colorScheme.secondary),
@@ -542,9 +564,14 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
         Expanded(
           child: RichText(
             text: TextSpan(
-              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface, height: 1.4),
+              style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurface,
+                  height: 1.4),
               children: [
-                TextSpan(text: '$title：', style: const TextStyle(fontWeight: FontWeight.bold)),
+                TextSpan(
+                    text: '$title：',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 TextSpan(text: desc),
               ],
             ),
@@ -568,9 +595,11 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
         children: [
           Row(
             children: [
-              Icon(Icons.extension_rounded, size: 20, color: colorScheme.tertiary),
+              Icon(Icons.extension_rounded,
+                  size: 20, color: colorScheme.tertiary),
               const SizedBox(width: 8),
-              const Text('不依赖内置 API 也能用', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('不依赖内置 API 也能用',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 12),
@@ -591,8 +620,10 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
   Widget _proTips(BuildContext context) {
     return Column(
       children: [
-        _tipItem(context, '深度思考', '开启“深度思考”模式（如使用 R1/O1 模型），AI 会展示推理过程，适合处理复杂的日程重排任务。'),
-        _tipItem(context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
+        _tipItem(context, '深度思考',
+            '开启“深度思考”模式（如使用 R1/O1 模型），AI 会展示推理过程，适合处理复杂的日程重排任务。'),
+        _tipItem(
+            context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
         _tipItem(context, '课程组件入口', '在课程表组件中长按或点击菜单，可直接发起针对该课程时间段的 AI 规划。'),
       ],
     );
@@ -610,15 +641,25 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('•', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 18)),
+          Text('•',
+              style: TextStyle(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 2),
-                Text(desc, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, height: 1.4)),
+                Text(desc,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.4)),
               ],
             ),
           ),
@@ -634,7 +675,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,12 +726,14 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
             ),
             child: Row(
               children: [
-                Icon(Icons.lightbulb_outline_rounded, size: 16, color: colorScheme.secondary),
+                Icon(Icons.lightbulb_outline_rounded,
+                    size: 16, color: colorScheme.secondary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '提示：关闭“智能上下文”可停止所有自动注入，节省流量并保护隐私。',
-                    style: TextStyle(fontSize: 12, color: colorScheme.onSecondaryContainer),
+                    style: TextStyle(
+                        fontSize: 12, color: colorScheme.onSecondaryContainer),
                   ),
                 ),
               ],
@@ -700,8 +744,8 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
     );
   }
 
-  Widget _contextDetailItem(
-      BuildContext context, IconData icon, String title, String keywords, String desc) {
+  Widget _contextDetailItem(BuildContext context, IconData icon, String title,
+      String keywords, String desc) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -716,17 +760,21 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
               children: [
                 Row(
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text(title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
                         color: colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         keywords,
-                        style: TextStyle(fontSize: 10, color: colorScheme.primary),
+                        style:
+                            TextStyle(fontSize: 10, color: colorScheme.primary),
                       ),
                     ),
                   ],
@@ -734,7 +782,10 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
                 const SizedBox(height: 4),
                 Text(
                   desc,
-                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant, height: 1.4),
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.4),
                 ),
               ],
             ),
@@ -747,7 +798,12 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen> w
   Widget _divider(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.3)),
+      child: Divider(
+          height: 1,
+          color: Theme.of(context)
+              .colorScheme
+              .outlineVariant
+              .withValues(alpha: 0.3)),
     );
   }
 }

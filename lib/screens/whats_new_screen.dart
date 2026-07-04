@@ -52,7 +52,8 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
       if (manifest != null && mounted) {
         setState(() {
           _changelogHistory = manifest.changelogHistory
-              .where((e) => _normalizeVersion(e.versionName) ==
+              .where((e) =>
+                  _normalizeVersion(e.versionName) ==
                   _normalizeVersion(_currentVersion))
               .toList();
           _loading = false;
@@ -151,8 +152,8 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
         else if (_changelogHistory.isEmpty)
           _buildEmptyNotice(scheme)
         else
-          ..._changelogHistory.map((entry) =>
-              _buildVersionEntry(entry, scheme)),
+          ..._changelogHistory
+              .map((entry) => _buildVersionEntry(entry, scheme)),
       ],
     );
   }
@@ -264,7 +265,8 @@ class _WhatsNewScreenState extends State<WhatsNewScreen> {
             child: Container(
               width: 6,
               height: 6,
-              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+              decoration:
+                  BoxDecoration(color: dotColor, shape: BoxShape.circle),
             ),
           ),
           const SizedBox(width: 10),

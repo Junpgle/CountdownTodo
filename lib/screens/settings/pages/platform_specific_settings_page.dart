@@ -1,14 +1,14 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../../../utils/app_platform.dart';
 import '../../../services/tai_service.dart';
 import '../../../storage_service.dart';
 import '../../../services/float_window_service.dart';
+import '../../../services/island_manager_bridge.dart';
 import '../../../services/island_data_provider.dart';
-import '../../../windows_island/island_manager.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -79,7 +79,7 @@ class _PlatformSpecificSettingsPageState
   }
 
   Future<void> _loadSettings() async {
-    if (Platform.isWindows) {
+    if (AppPlatform.isWindows) {
       final prefs = await SharedPreferences.getInstance();
       String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
       int style = 0;
@@ -201,9 +201,9 @@ class _PlatformSpecificSettingsPageState
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final String pageTitle = Platform.isWindows
+    final String pageTitle = AppPlatform.isWindows
         ? 'Windows 专属设置'
-        : (Platform.isAndroid ? 'Android 专属整合' : '平台专属设置');
+        : (AppPlatform.isAndroid ? 'Android 专属整合' : '平台专属设置');
 
     return Scaffold(
       appBar: widget.isEmbedded
@@ -213,7 +213,7 @@ class _PlatformSpecificSettingsPageState
             ),
       body: ListView(
         children: [
-          if (!Platform.isWindows && !Platform.isAndroid) ...[
+          if (!AppPlatform.isWindows && !AppPlatform.isAndroid) ...[
             const AppEmptyState(
               icon: Icons.stars_rounded,
               title: '当前平台无专属设置',
@@ -221,7 +221,7 @@ class _PlatformSpecificSettingsPageState
               padding: EdgeInsets.only(top: 100, left: 32, right: 32),
             ),
           ],
-          if (Platform.isWindows) ...[
+          if (AppPlatform.isWindows) ...[
             const AppSettingsSectionHeader(
               title: '屏幕时间统计',
               padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),
@@ -268,15 +268,15 @@ class _PlatformSpecificSettingsPageState
                     if (newStyle == 2) {
                       try {
                         IslandDataProvider().invalidateCache();
-                        IslandManager().clearIslandCache('island-1');
+                        IslandManagerBridge.clearIslandCache('island-1');
                       } catch (_) {
                         // Ignore cleanup failures; the setting value was saved.
                       }
                     } else {
                       try {
                         IslandDataProvider().invalidateCache();
-                        IslandManager().clearIslandCache('island-1');
-                        await IslandManager().createIsland('island-1');
+                        IslandManagerBridge.clearIslandCache('island-1');
+                        await IslandManagerBridge.createIsland('island-1');
                       } catch (_) {
                         // Ignore stale island window errors during style changes.
                       }
@@ -306,7 +306,7 @@ class _PlatformSpecificSettingsPageState
                       IslandDataProvider().invalidateCache();
                     } catch (_) {}
                     try {
-                      IslandManager().clearIslandCache('island-1');
+                      IslandManagerBridge.clearIslandCache('island-1');
                     } catch (_) {}
                     try {
                       await FloatWindowService.update(forceReset: true);
@@ -331,7 +331,7 @@ class _PlatformSpecificSettingsPageState
               ),
             ],
           ],
-          if (Platform.isAndroid) ...[
+          if (AppPlatform.isAndroid) ...[
             const AppSettingsSectionHeader(
               title: 'Android 系统特性',
               padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),

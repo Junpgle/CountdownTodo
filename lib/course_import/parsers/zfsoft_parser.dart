@@ -8,10 +8,8 @@ class ZfSoftScheduleParser {
   /// 传入 正方系统导出的 MHTML/HTML 字符串以及学期开始日期
   /// [customTimes] 格式示例: { 1: {'start': 800, 'end': 845}, 2: {'start': 855, 'end': 940} }
   static List<CourseItem> parseHtml(
-      String htmlString,
-      DateTime semesterStartDate,
-      {Map<int, Map<String, int>>? customTimes}
-      ) {
+      String htmlString, DateTime semesterStartDate,
+      {Map<int, Map<String, int>>? customTimes}) {
     List<CourseItem> courses = [];
 
     // 1. 底层解码
@@ -23,7 +21,8 @@ class ZfSoftScheduleParser {
     var courseNodes = document.querySelectorAll('.timetable_con');
 
     // 🚀 预处理：对齐学期周一，确保日期推算不跨周
-    DateTime semesterMonday = semesterStartDate.subtract(Duration(days: semesterStartDate.weekday - 1));
+    DateTime semesterMonday = semesterStartDate
+        .subtract(Duration(days: semesterStartDate.weekday - 1));
 
     for (var node in courseNodes) {
       // 获取课程名称：兼容 u 和 span 两种标题包装方式
@@ -31,7 +30,10 @@ class ZfSoftScheduleParser {
       if (title == null || title.isEmpty) continue;
 
       // 清洗标记
-      title = title.replaceAll(RegExp(r'[★●◆]'), '').replaceAll(RegExp(r'^【.*?】'), '').trim();
+      title = title
+          .replaceAll(RegExp(r'[★●◆]'), '')
+          .replaceAll(RegExp(r'^【.*?】'), '')
+          .trim();
 
       // 🚀 核心修复：根据 td 的 ID 或位置识别星期
       int weekday = 1;
@@ -76,11 +78,14 @@ class ZfSoftScheduleParser {
         String tooltipTitle = tooltipNode?.attributes['title']?.trim() ?? '';
 
         // 识别时间行：精准排除“周学时”、“总学时”
-        if (tooltipTitle == '节/周' || (pText.contains('节') && pText.contains('('))) {
+        if (tooltipTitle == '节/周' ||
+            (pText.contains('节') && pText.contains('('))) {
           timeSegments.add(pText);
-        } else if (tooltipTitle == '上课地点' || (location.isEmpty && pText.contains(RegExp(r'[教楼室区]')))) {
+        } else if (tooltipTitle == '上课地点' ||
+            (location.isEmpty && pText.contains(RegExp(r'[教楼室区]')))) {
           location = pText;
-        } else if (tooltipTitle.contains('教师') || (teacher.isEmpty && pText.length >= 2 && pText.length <= 4)) {
+        } else if (tooltipTitle.contains('教师') ||
+            (teacher.isEmpty && pText.length >= 2 && pText.length <= 4)) {
           teacher = pText;
         }
       }
@@ -99,7 +104,9 @@ class ZfSoftScheduleParser {
         if (pMatch != null) {
           startJc = int.tryParse(pMatch.group(1)!) ?? startJc;
           String? endGroup = pMatch.group(2);
-          endJc = (endGroup != null) ? (int.tryParse(endGroup) ?? startJc) : startJc;
+          endJc = (endGroup != null)
+              ? (int.tryParse(endGroup) ?? startJc)
+              : startJc;
         }
 
         // 解析周次 (确保能解析 18 周这类单独数字)
@@ -109,7 +116,8 @@ class ZfSoftScheduleParser {
         print('[$title] timeStr=$timeStr weeks=$weeks');
 
         for (int week in weeks) {
-          DateTime courseDate = semesterMonday.add(Duration(days: (week - 1) * 7 + (weekday - 1)));
+          DateTime courseDate = semesterMonday
+              .add(Duration(days: (week - 1) * 7 + (weekday - 1)));
           String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
 
           courses.add(CourseItem(
@@ -142,8 +150,18 @@ class ZfSoftScheduleParser {
       return customTimes[jc]!['start'] ?? 800;
     }
     const defaultTimes = {
-      1: 800, 2: 855, 3: 1010, 4: 1105, 5: 1400,
-      6: 1455, 7: 1605, 8: 1700, 9: 1900, 10: 1955, 11: 2050, 12: 2145
+      1: 800,
+      2: 855,
+      3: 1010,
+      4: 1105,
+      5: 1400,
+      6: 1455,
+      7: 1605,
+      8: 1700,
+      9: 1900,
+      10: 1955,
+      11: 2050,
+      12: 2145
     };
     return defaultTimes[jc] ?? 800;
   }
@@ -153,15 +171,26 @@ class ZfSoftScheduleParser {
       return customTimes[jc]!['end'] ?? 940;
     }
     const defaultTimes = {
-      1: 845, 2: 940, 3: 1055, 4: 1150, 5: 1445,
-      6: 1540, 7: 1650, 8: 1745, 9: 1945, 10: 2040, 11: 2135, 12: 2230
+      1: 845,
+      2: 940,
+      3: 1055,
+      4: 1150,
+      5: 1445,
+      6: 1540,
+      7: 1650,
+      8: 1745,
+      9: 1945,
+      10: 2040,
+      11: 2135,
+      12: 2230
     };
     return defaultTimes[jc] ?? 940;
   }
 
   static List<int> _parseZfWeeks(String rawStr) {
     // 移除干扰项：移除包含“节”字的括号内容
-    String content = rawStr.replaceAll(RegExp(r'[(\（][^)\（]*?节[^)\（]*?[)）]'), '');
+    String content =
+        rawStr.replaceAll(RegExp(r'[(\（][^)\（]*?节[^)\（]*?[)）]'), '');
 
     List<int> weeks = [];
 

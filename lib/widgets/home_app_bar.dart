@@ -314,10 +314,12 @@ class _HomeAppBarState extends State<HomeAppBar>
 
     // 应用自定义文字配置
     final config = widget.textConfig;
-    final displayTimeSalutation = config?.customTimeSalutation ?? widget.timeSalutation;
+    final displayTimeSalutation =
+        config?.customTimeSalutation ?? widget.timeSalutation;
     final displayGreeting = widget.currentGreeting;
     final displayDateFormat = config?.dateFormat ?? 'MM月dd日 EEEE';
-    final displayUsername = _formatUsername(widget.username, config?.usernameFormat);
+    final displayUsername =
+        _formatUsername(widget.username, config?.usernameFormat);
 
     final searchBtn = _buildActionButton(
       context,
@@ -366,17 +368,22 @@ class _HomeAppBarState extends State<HomeAppBar>
       backgroundColor: widget.isLight ? Colors.transparent : null,
       elevation: 0,
       toolbarHeight: toolbarH,
-      leading: (isTablet || isLandscape) ? null : IconButton(
-        key: widget.menuKey,
-        icon: const Icon(Icons.menu_rounded),
-        iconSize: 28,
-        color: widget.isLight ? Colors.white : Theme.of(context).colorScheme.onSurface,
-        padding: const EdgeInsets.only(left: 8),
-        onPressed: () {
-          ZoomDrawer.of(context)?.toggle();
-        },
-      ),
-      titleSpacing: (isTablet || isLandscape) ? NavigationToolbar.kMiddleSpacing : 0,
+      leading: (isTablet || isLandscape)
+          ? null
+          : IconButton(
+              key: widget.menuKey,
+              icon: const Icon(Icons.menu_rounded),
+              iconSize: 28,
+              color: widget.isLight
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.onSurface,
+              padding: const EdgeInsets.only(left: 8),
+              onPressed: () {
+                ZoomDrawer.of(context)?.toggle();
+              },
+            ),
+      titleSpacing:
+          (isTablet || isLandscape) ? NavigationToolbar.kMiddleSpacing : 0,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,

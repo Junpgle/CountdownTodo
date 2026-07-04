@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:open_file/open_file.dart';
+import '../../services/file_open_service.dart';
 import '../../services/lan_sync_service.dart';
+import '../../utils/app_platform.dart';
 
 class LanSyncScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -63,7 +63,7 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              OpenFile.open(path);
+              FileOpenService.open(path);
             },
             child: const Text('查看'),
           ),
@@ -223,7 +223,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('账号不匹配'),
-        content: const Text('该设备登录的是其他账号，数据同步（加密）可能会失败。是否继续尝试？\n\n提示：\n1. 建议跨账号使用“发送文件”功能。\n2. 若要同步，请确保对方设备也将“搜索范围”设置为“所有设备”，否则连接会被拒绝。'),
+        content: const Text(
+            '该设备登录的是其他账号，数据同步（加密）可能会失败。是否继续尝试？\n\n提示：\n1. 建议跨账号使用“发送文件”功能。\n2. 若要同步，请确保对方设备也将“搜索范围”设置为“所有设备”，否则连接会被拒绝。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -259,12 +260,18 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   }
 
   Future<void> _pickAndSendFile(LanDevice device) async {
+    if (AppPlatform.isWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('浏览器暂不支持局域网文件发送')),
+      );
+      return;
+    }
     try {
       final result = await FilePicker.platform.pickFiles();
       if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
         setState(() => _isLoading = true);
-        final syncResult = await _service.sendFile(device, file);
+        final syncResult =
+            await _service.sendFilePath(device, result.files.single.path!);
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -383,22 +390,25 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(
-        title: const Text('局域网同步'),
-        actions: [
-          if (_service.isRunning && _devices.isEmpty)
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: _showManualAddDialog,
-              tooltip: '手动添加设备',
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('局域网同步'),
+              actions: [
+                if (_service.isRunning && _devices.isEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: _showManualAddDialog,
+                    tooltip: '手动添加设备',
+                  ),
+                IconButton(
+                  icon:
+                      Icon(_service.isRunning ? Icons.stop : Icons.play_arrow),
+                  onPressed: _toggleService,
+                  tooltip: _service.isRunning ? '停止' : '启动',
+                ),
+              ],
             ),
-          IconButton(
-            icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow),
-            onPressed: _toggleService,
-            tooltip: _service.isRunning ? '停止' : '启动',
-          ),
-        ],
-      ),
       body: Column(
         children: [
           _buildStatusCard(),
@@ -501,7 +511,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                 ),
               if (widget.isEmbedded)
                 IconButton(
-                  icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow, size: 20),
+                  icon: Icon(_service.isRunning ? Icons.stop : Icons.play_arrow,
+                      size: 20),
                   onPressed: _toggleService,
                   tooltip: _service.isRunning ? '停止' : '启动',
                   color: _service.isRunning ? Colors.red : Colors.green,
@@ -543,7 +554,9 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
         children: [
           ListTile(
             leading: CircleAvatar(
-              backgroundColor: isOnline ? Theme.of(context).colorScheme.primary : Colors.grey,
+              backgroundColor: isOnline
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.grey,
               child: const Icon(Icons.devices, color: Colors.white),
             ),
             title: Row(
@@ -594,7 +607,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                         !isOnline ? null : () => _pickAndSendFile(device),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.primary,
-                      side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                      side: BorderSide(
+                          color: Theme.of(context).colorScheme.primary),
                     ),
                   ),
                 ),
@@ -606,8 +620,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
                     onPressed: !isOnline
                         ? null
                         : (device.userId != _service.currentUserId
-                            ? () =>
-                                _showCrossAccountWarning(device, LanSyncConfig())
+                            ? () => _showCrossAccountWarning(
+                                device, LanSyncConfig())
                             : () => _showSelectSyncTypeDialog(device)),
                   ),
                 ),
@@ -652,7 +666,8 @@ class _LanSyncScreenState extends State<LanSyncScreen> {
           LinearProgressIndicator(
             value: _progressValue,
             backgroundColor: Colors.grey[300],
-            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
+            valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.primary),
           ),
         ],
       ),

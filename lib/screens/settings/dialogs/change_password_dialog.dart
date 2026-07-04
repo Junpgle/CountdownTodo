@@ -41,8 +41,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               controller: oldPassCtrl,
               obscureText: true,
               decoration: const InputDecoration(
-                  labelText: "当前密码",
-                  prefixIcon: Icon(Icons.lock_outline)),
+                  labelText: "当前密码", prefixIcon: Icon(Icons.lock_outline)),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -70,39 +69,38 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
           onPressed: isSubmitting
               ? null
               : () async {
-            if (newPassCtrl.text != confirmPassCtrl.text) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('两次输入的新密码不一致')));
-              return;
-            }
-            if (newPassCtrl.text.isEmpty ||
-                oldPassCtrl.text.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请填写完整')));
-              return;
-            }
+                  if (newPassCtrl.text != confirmPassCtrl.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('两次输入的新密码不一致')));
+                    return;
+                  }
+                  if (newPassCtrl.text.isEmpty || oldPassCtrl.text.isEmpty) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('请填写完整')));
+                    return;
+                  }
 
-            setState(() => isSubmitting = true);
-            final res = await ApiService.changePassword(
-                widget.userId, oldPassCtrl.text, newPassCtrl.text);
-            setState(() => isSubmitting = false);
+                  setState(() => isSubmitting = true);
+                  final res = await ApiService.changePassword(
+                      widget.userId, oldPassCtrl.text, newPassCtrl.text);
+                  setState(() => isSubmitting = false);
 
-            if (!mounted) return;
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(res['message'] ??
-                    (res['success'] ? '修改成功' : '修改失败'))));
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(res['message'] ??
+                          (res['success'] ? '修改成功' : '修改失败'))));
 
-            if (res['success']) {
-              widget.onLogout(true);
-            }
-          },
+                  if (res['success']) {
+                    widget.onLogout(true);
+                  }
+                },
           child: isSubmitting
               ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white))
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
               : const Text("确认修改"),
         ),
       ],

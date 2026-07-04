@@ -30,7 +30,7 @@ class _HistoricalCountdownsScreenState
       _history = allCountdowns.where((item) {
         return item.targetDate.difference(DateTime.now()).inDays + 1 < 0;
       }).toList();
-      
+
       // 按照过期目标日降序排列（最近过期的排在最前面）
       _history.sort((a, b) => b.targetDate.compareTo(a.targetDate));
       _isLoading = false;
@@ -51,7 +51,8 @@ class _HistoricalCountdownsScreenState
             ],
           ),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -108,7 +109,8 @@ class _HistoricalCountdownsScreenState
               ),
             ],
           ),
-          actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          actionsPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           actions: [
             TextButton(
               child: Text(
@@ -157,13 +159,17 @@ class _HistoricalCountdownsScreenState
             end: Alignment.bottomRight,
             colors: [
               Theme.of(context).colorScheme.primaryContainer,
-              Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.8),
+              Theme.of(context)
+                  .colorScheme
+                  .secondaryContainer
+                  .withValues(alpha: 0.8),
             ],
           ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
+              color:
+                  Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -282,7 +288,8 @@ class _HistoricalCountdownsScreenState
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.35),
+            color:
+                Theme.of(context).colorScheme.surface.withValues(alpha: 0.35),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -400,7 +407,8 @@ class _HistoricalCountdownsScreenState
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        color: colorScheme.onErrorContainer.withValues(alpha: 0.8),
+                        color:
+                            colorScheme.onErrorContainer.withValues(alpha: 0.8),
                       ),
                     ),
                   ],
@@ -430,14 +438,16 @@ class _HistoricalCountdownsScreenState
                         Icon(
                           Icons.calendar_today_rounded,
                           size: 12,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          color: colorScheme.onSurfaceVariant
+                              .withValues(alpha: 0.7),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           "目标日: ${DateFormat('yyyy-MM-dd').format(item.targetDate)}",
                           style: TextStyle(
                             fontSize: 12,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                            color: colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.8),
                           ),
                         ),
                       ],
@@ -456,7 +466,8 @@ class _HistoricalCountdownsScreenState
                 onPressed: () => _confirmDelete(context, item),
                 style: IconButton.styleFrom(
                   hoverColor: colorScheme.errorContainer.withValues(alpha: 0.1),
-                  highlightColor: colorScheme.errorContainer.withValues(alpha: 0.2),
+                  highlightColor:
+                      colorScheme.errorContainer.withValues(alpha: 0.2),
                 ),
               ),
             ],
@@ -540,7 +551,7 @@ class _HistoricalCountdownsScreenState
               builder: (context, constraints) {
                 final bool isTablet = constraints.maxWidth >= 600;
                 final bool isDesktop = constraints.maxWidth >= 1000;
-                
+
                 // 根据屏幕宽度确定排版列数
                 final int crossAxisCount = isDesktop ? 3 : (isTablet ? 2 : 1);
 
@@ -565,22 +576,25 @@ class _HistoricalCountdownsScreenState
                                 ),
                                 sliver: crossAxisCount > 1
                                     ? SliverGrid(
-                                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                        gridDelegate:
+                                            SliverGridDelegateWithFixedCrossAxisCount(
                                           crossAxisCount: crossAxisCount,
                                           mainAxisSpacing: 16,
                                           crossAxisSpacing: 16,
-                                          childAspectRatio: isDesktop ? 2.5 : 2.25,
+                                          childAspectRatio:
+                                              isDesktop ? 2.5 : 2.25,
                                         ),
                                         delegate: SliverChildBuilderDelegate(
-                                          (context, index) =>
-                                              _buildHistoryCard(context, _history[index]),
+                                          (context, index) => _buildHistoryCard(
+                                              context, _history[index]),
                                           childCount: _history.length,
                                         ),
                                       )
                                     : SliverList(
                                         delegate: SliverChildBuilderDelegate(
                                           (context, index) => Padding(
-                                            padding: const EdgeInsets.only(bottom: 12),
+                                            padding: const EdgeInsets.only(
+                                                bottom: 12),
                                             child: _buildHistoryCard(
                                                 context, _history[index]),
                                           ),
@@ -602,4 +616,3 @@ class _HistoricalCountdownsScreenState
     );
   }
 }
-

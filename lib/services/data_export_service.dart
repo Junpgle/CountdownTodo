@@ -1,21 +1,20 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/data_export_models.dart';
 import '../storage_service.dart';
 import 'api_service.dart';
+import 'browser_file_service.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
 class DataExportService {
   static const int _exportVersion = 1;
 
-  static Future<List<ExportTypeOption>> getAvailableTypes(String username) async {
+  static Future<List<ExportTypeOption>> getAvailableTypes(
+      String username) async {
     final todos = await StorageService.getTodos(username);
     final countdowns = await StorageService.getCountdowns(username);
     final groups = await StorageService.getTodoGroups(username);
@@ -104,7 +103,8 @@ class DataExportService {
       int totalItems = 0;
 
       if (selectedTypes.contains('todos')) {
-        var items = await StorageService.getTodos(username, includeDeleted: true);
+        var items =
+            await StorageService.getTodos(username, includeDeleted: true);
         if (options.removeTeamBinding) {
           items = items.map((t) {
             t.teamUuid = null;
@@ -130,7 +130,8 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('countdowns')) {
-        var items = await StorageService.getCountdowns(username, includeDeleted: true);
+        var items =
+            await StorageService.getCountdowns(username, includeDeleted: true);
         if (options.removeTeamBinding) {
           items = items.map((c) {
             c.teamUuid = null;
@@ -151,7 +152,8 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('todo_groups')) {
-        var items = await StorageService.getTodoGroups(username, includeDeleted: true);
+        var items =
+            await StorageService.getTodoGroups(username, includeDeleted: true);
         if (options.removeTeamBinding) {
           items = items.map((g) {
             g.teamUuid = null;
@@ -182,7 +184,8 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('todo_plan_blocks')) {
-        var items = await StorageService.getPlanBlocks(username, includeDeleted: true);
+        var items =
+            await StorageService.getPlanBlocks(username, includeDeleted: true);
         if (options.removeDeviceId) {
           for (var b in items) {
             b.deviceId = null;
@@ -193,7 +196,8 @@ class DataExportService {
       }
 
       if (selectedTypes.contains('courses')) {
-        var items = await CourseService.getAllCourses(username, applyCalendarAdjustments: false);
+        var items = await CourseService.getAllCourses(username,
+            applyCalendarAdjustments: false);
         if (options.removeTeamBinding) {
           for (var c in items) {
             c.teamUuid = null;
@@ -250,21 +254,30 @@ class DataExportService {
       final jsonString = const JsonEncoder.withIndent('  ').convert(exportJson);
 
       if (saveToFile) {
-        final filePath = await _saveToFile(jsonString);
+        final filePath = await BrowserFileService.saveTextFile(
+          jsonString,
+          _buildExportFileName(),
+          mimeType: 'application/json;charset=utf-8',
+        );
         return ExportResult(
           success: true,
           filePath: filePath,
           totalItems: totalItems,
         );
       } else {
-        await _shareFile(jsonString);
+        await BrowserFileService.shareTextFile(
+          jsonString,
+          'cdt_backup.json',
+          subject: 'CountDownTodo 数据备份',
+          mimeType: 'application/json;charset=utf-8',
+        );
         return ExportResult(
           success: true,
           totalItems: totalItems,
         );
       }
     } catch (e) {
-      debugPrint('❌ DataExportService: exportData error: $e');
+      // debugPrint('❌ DataExportService: exportData error: $e');
       return ExportResult(
         success: false,
         errorMessage: e.toString(),
@@ -273,26 +286,9 @@ class DataExportService {
     }
   }
 
-  static Future<String> _saveToFile(String jsonString) async {
-    final directory = await getApplicationDocumentsDirectory();
+  static String _buildExportFileName() {
     final now = DateTime.now();
-    final fileName =
-        'cdt_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.json';
-    final file = File('${directory.path}/$fileName');
-    await file.writeAsString(jsonString, encoding: utf8);
-    return file.path;
-  }
-
-  static Future<void> _shareFile(String jsonString) async {
-    final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/cdt_backup.json');
-    await file.writeAsString(jsonString, encoding: utf8);
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        subject: 'CountDownTodo 数据备份',
-      ),
-    );
+    return 'cdt_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.json';
   }
 
   static Future<Map<String, dynamic>> _exportSettings(String username) async {
@@ -328,11 +324,22 @@ class DataExportService {
       if (excludedKeys.contains(key)) continue;
 
       // 跳过其他用户的数据（包含 _ 且不是当前用户的）
-      if (key.contains('_') && !key.startsWith('app_') && !key.startsWith('notify_') && !key.startsWith('todo_') && !key.startsWith('semester_') && !key.startsWith('conflict_') && !key.startsWith('system_') && !key.startsWith('course_') && !key.startsWith('category_') && !key.startsWith('llm_') && !key.startsWith('pending_') && !key.startsWith('windows_')) {
+      if (key.contains('_') &&
+          !key.startsWith('app_') &&
+          !key.startsWith('notify_') &&
+          !key.startsWith('todo_') &&
+          !key.startsWith('semester_') &&
+          !key.startsWith('conflict_') &&
+          !key.startsWith('system_') &&
+          !key.startsWith('course_') &&
+          !key.startsWith('category_') &&
+          !key.startsWith('llm_') &&
+          !key.startsWith('pending_') &&
+          !key.startsWith('windows_')) {
         // 检查是否是用户特定的键
         if (key.endsWith(userSuffix) || key.contains('_default')) {
           // 当前用户的数据，导出时去掉用户后缀
-          final baseKey = key.endsWith(userSuffix) 
+          final baseKey = key.endsWith(userSuffix)
               ? key.substring(0, key.length - userSuffix.length)
               : key;
           final value = prefs.get(key);

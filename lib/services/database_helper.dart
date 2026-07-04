@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models.dart';
+import '../utils/app_platform.dart';
+import 'database_path_resolver.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -50,7 +49,7 @@ class DatabaseHelper {
       // 🚀 核心校验：如果当前打开的数据库与当前登录用户不符，则强制关闭并重新打开
       if (_activeUsername != username ||
           !_database!.path.contains('uni_sync_$username')) {
-        debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
+//         debugPrint("🔄 Database: 检测到用户切换 ($username)，正在强制重定向数据库文件...");
         await closeDatabase();
       } else {
         return _database!;
@@ -106,17 +105,18 @@ class DatabaseHelper {
         {'name': 'version', 'type': 'INTEGER DEFAULT 1'},
         {'name': 'updated_at', 'type': 'INTEGER DEFAULT 0'},
         {'name': 'created_at', 'type': 'INTEGER DEFAULT 0'},
+        {'name': 'semester_id', 'type': "TEXT DEFAULT 'default'"},
       ];
 
       for (final column in columnsToAdd) {
         if (!info.any((row) => row['name'] == column['name'])) {
           await db.execute(
               "ALTER TABLE courses ADD COLUMN ${column['name']} ${column['type']};");
-          debugPrint("✅ Database: 修复字段 courses.${column['name']}");
+//           debugPrint("✅ Database: 修复字段 courses.${column['name']}");
         }
       }
     } catch (e) {
-      debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
+//       debugPrint("⚠️ Database: 检查/修复 courses 表结构失败: $e");
     }
   }
 
@@ -134,11 +134,11 @@ class DatabaseHelper {
         if (!info.any((row) => row['name'] == column['name'])) {
           await db.execute(
               "ALTER TABLE todos ADD COLUMN ${column['name']} ${column['type']};");
-          debugPrint("✅ Database: 修复字段 todos.${column['name']}");
+//           debugPrint("✅ Database: 修复字段 todos.${column['name']}");
         }
       }
     } catch (e) {
-      debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
+//       debugPrint("⚠️ Database: 检查/修复 todos 本地来源字段失败: $e");
     }
   }
 
@@ -164,15 +164,15 @@ class DatabaseHelper {
           try {
             await db.execute(
                 "ALTER TABLE todo_plan_blocks ADD COLUMN ${column['name']} ${column['type']};");
-            debugPrint("✅ Database: 修复字段 todo_plan_blocks.${column['name']}");
+//             debugPrint("✅ Database: 修复字段 todo_plan_blocks.${column['name']}");
           } catch (e) {
-            debugPrint(
-                "⚠️ Database: 添加 todo_plan_blocks.${column['name']} 失败: $e");
+//             debugPrint(
+//                 "⚠️ Database: 添加 todo_plan_blocks.${column['name']} 失败: $e");
           }
         }
       }
     } catch (e) {
-      debugPrint("⚠️ Database: 检查/修复 todo_plan_blocks 表结构失败: $e");
+//       debugPrint("⚠️ Database: 检查/修复 todo_plan_blocks 表结构失败: $e");
     }
   }
 
@@ -192,7 +192,7 @@ class DatabaseHelper {
           'CREATE INDEX IF NOT EXISTS idx_suggestion_feedback_lookup '
           'ON suggestion_feedback(keyword, suggestion_type, suggested_value)');
     } catch (e) {
-      debugPrint('⚠️ Database: 检查/修复 suggestion_feedback 表失败: $e');
+//       debugPrint('⚠️ Database: 检查/修复 suggestion_feedback 表失败: $e');
     }
   }
 
@@ -213,7 +213,7 @@ class DatabaseHelper {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_teams_updated_at ON teams(updated_at)');
     } catch (e) {
-      debugPrint('⚠️ Database: 检查/修复 teams 表失败: $e');
+//       debugPrint('⚠️ Database: 检查/修复 teams 表失败: $e');
     }
   }
 
@@ -233,11 +233,11 @@ class DatabaseHelper {
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
-            if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+            if (!kIsWeb && (AppPlatform.isWindows || AppPlatform.isLinux)) {
               try {
                 await db.execute('PRAGMA journal_mode = WAL');
               } catch (e) {
-                debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
+//                 debugPrint("⚠️ Database: PRAGMA journal_mode failed: $e");
               }
             }
           },
@@ -255,9 +255,9 @@ class DatabaseHelper {
                   await db.execute(
                       "ALTER TABLE pomodoro_records ADD COLUMN pause_intervals TEXT;");
                 }
-                debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
+//                 debugPrint('✅ Database: pomodoro_records 新增暂停区间字段 (V32)');
               } catch (e) {
-                debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
+//                 debugPrint('⚠️ Database: 新增暂停区间字段失败: $e');
               }
             }
             if (oldVersion < 31) {
@@ -267,10 +267,11 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'is_archived')) {
                   await db.execute(
                       "ALTER TABLE pomodoro_tags ADD COLUMN is_archived INTEGER DEFAULT 0;");
-                  debugPrint('✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
+//                   debugPrint(
+//                       '✅ Database: pomodoro_tags 新增 is_archived 字段 (V31)');
                 }
               } catch (e) {
-                debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
+//                 debugPrint('⚠️ Database: 新增 is_archived 字段失败: $e');
               }
             }
             if (oldVersion < 30) {
@@ -283,15 +284,15 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'note')) {
                   await db.execute(
                       "ALTER TABLE pomodoro_records ADD COLUMN note TEXT;");
-                  debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
+//                   debugPrint('✅ Database: pomodoro_records 新增 note 字段 (V29)');
                 }
               } catch (e) {
-                debugPrint('⚠️ Database: 新增 note 字段失败: $e');
+//                 debugPrint('⚠️ Database: 新增 note 字段失败: $e');
               }
             }
             if (oldVersion < 28) {
               await ensureSuggestionFeedbackSchema(db);
-              debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
+//               debugPrint('✅ Database: 创建 suggestion_feedback 表 (V28)');
             }
             if (oldVersion < 27) {
               try {
@@ -308,9 +309,9 @@ class DatabaseHelper {
                     updated_at INTEGER DEFAULT 0
                   )
                 ''');
-                debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
+//                 debugPrint('✅ Database: 创建 medal_recommendations 表 (V27)');
               } catch (e) {
-                debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
+//                 debugPrint('⚠️ Database: 创建 medal_recommendations 表失败: $e');
               }
             }
             if (oldVersion < 26) {
@@ -322,11 +323,11 @@ class DatabaseHelper {
                         "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
                     await db.execute(
                         "ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
-                    debugPrint("✅ Database: 修复字段 $table.has_conflict");
+//                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
                   }
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
+//                 debugPrint("⚠️ Database: 修复 pomodoro 冲突字段失败: $e");
               }
             }
 
@@ -340,7 +341,7 @@ class DatabaseHelper {
                 await ensureCourseTableSchema(db);
                 await ensureTodoClientLocalSchema(db);
               } catch (e) {
-                debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
+//                 debugPrint("⚠️ Database: 修复 courses 表字段失败 (V23): $e");
               }
             }
 
@@ -354,9 +355,9 @@ class DatabaseHelper {
                   ignored_at INTEGER
                 )
               ''');
-                debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
+//                 debugPrint('✅ Database: 创建 ignored_remote_items 表 (V22)');
               } catch (e) {
-                debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
+//                 debugPrint('⚠️ Database: 创建 ignored_remote_items 表失败: $e');
               }
             }
             if (oldVersion < 3) {
@@ -379,7 +380,7 @@ class DatabaseHelper {
 
             // 🚀 Version 5: 核心加固 - 补全基础字段与 FTS 模块动态嗅探
             if (oldVersion < 5) {
-              debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
+//               debugPrint("🔄 Database: 执行 Version 5 核心修复程序...");
 
               // 1. 深度补全缺失的核心业务列
               final repairTasks = [
@@ -400,12 +401,12 @@ class DatabaseHelper {
                   if (!info.any((row) => row['name'] == task['col'])) {
                     await db.execute(
                         "ALTER TABLE ${task['table']} ADD COLUMN ${task['col']} ${task['type']};");
-                    debugPrint(
-                        "✅ Database: 修复字段 ${task['table']}.${task['col']}");
+//                     debugPrint(
+//                         "✅ Database: 修复字段 ${task['table']}.${task['col']}");
                   }
                 } catch (e) {
-                  debugPrint(
-                      "⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
+//                   debugPrint(
+//                       "⚠️ Database: 修复字段 ${task['table']}.${task['col']} 失败: $e");
                 }
               }
 
@@ -421,10 +422,10 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'collab_type')) {
                   await db.execute(
                       "ALTER TABLE todos ADD COLUMN collab_type INTEGER DEFAULT 0;");
-                  debugPrint("✅ Database: 修复字段 todos.collab_type");
+//                   debugPrint("✅ Database: 修复字段 todos.collab_type");
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
+//                 debugPrint("⚠️ Database: 修复字段 todos.collab_type 失败: $e");
               }
             }
 
@@ -439,9 +440,9 @@ class DatabaseHelper {
                   PRIMARY KEY(todo_uuid, user_id)
                 )
               ''');
-                debugPrint("✅ Database: 创建 todo_completions 表");
+//                 debugPrint("✅ Database: 创建 todo_completions 表");
               } catch (e) {
-                debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
+//                 debugPrint("⚠️ Database: 创建 todo_completions 表失败: $e");
               }
             }
 
@@ -458,11 +459,11 @@ class DatabaseHelper {
                   if (!info.any((row) => row['name'] == col['name'])) {
                     await db.execute(
                         "ALTER TABLE todos ADD COLUMN ${col['name']} ${col['type']};");
-                    debugPrint("✅ Database: 修复字段 todos.${col['name']}");
+//                     debugPrint("✅ Database: 修复字段 todos.${col['name']}");
                   }
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
+//                 debugPrint("⚠️ Database: 修复字段 todos 循环任务字段失败: $e");
               }
             }
             if (oldVersion < 9) {
@@ -475,7 +476,7 @@ class DatabaseHelper {
                         "ALTER TABLE $table ADD COLUMN has_conflict INTEGER DEFAULT 0;");
                     await db.execute(
                         "ALTER TABLE $table ADD COLUMN conflict_data TEXT;");
-                    debugPrint("✅ Database: 修复字段 $table.has_conflict");
+//                     debugPrint("✅ Database: 修复字段 $table.has_conflict");
                   }
                 }
                 // 特别补全 todos 的 is_all_day
@@ -485,7 +486,7 @@ class DatabaseHelper {
                       "ALTER TABLE todos ADD COLUMN is_all_day INTEGER DEFAULT 0;");
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
+//                 debugPrint("⚠️ Database: 修复冲突检测字段失败: $e");
               }
             }
             if (oldVersion < 10) {
@@ -504,9 +505,9 @@ class DatabaseHelper {
                   operator_name TEXT
                 )
               ''');
-                debugPrint("✅ Database: 创建 local_audit_logs 表");
+//                 debugPrint("✅ Database: 创建 local_audit_logs 表");
               } catch (e) {
-                debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
+//                 debugPrint("⚠️ Database: 创建 local_audit_logs 失败: $e");
               }
             }
             if (oldVersion < 11) {
@@ -548,9 +549,9 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-                debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
+//                 debugPrint("✅ Database: 创建 pomodoro_records 与 courses 表");
               } catch (e) {
-                debugPrint("⚠️ Database: 创建新业务表失败: $e");
+//                 debugPrint("⚠️ Database: 创建新业务表失败: $e");
               }
             }
 
@@ -571,9 +572,9 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-                debugPrint("✅ Database: 创建 time_logs 表");
+//                 debugPrint("✅ Database: 创建 time_logs 表");
               } catch (e) {
-                debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
+//                 debugPrint("⚠️ Database: 创建 time_logs 失败: $e");
               }
             }
 
@@ -591,9 +592,9 @@ class DatabaseHelper {
                   updated_at INTEGER
                 )
               ''');
-                debugPrint("✅ Database: 创建 pomodoro_tags 表");
+//                 debugPrint("✅ Database: 创建 pomodoro_tags 表");
               } catch (e) {
-                debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
+//                 debugPrint("⚠️ Database: 创建 pomodoro_tags 失败: $e");
               }
             }
 
@@ -618,9 +619,9 @@ class DatabaseHelper {
                   team_uuid TEXT
                 )
               ''');
-                debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
+//                 debugPrint("✅ Database: 重新创建 time_logs 表 (V14)");
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V14 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V14 失败: $e");
               }
             }
             if (oldVersion < 15) {
@@ -629,10 +630,10 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'sync_error')) {
                   await db.execute(
                       "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
-                  debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
+//                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V15)");
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V15 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V15 失败: $e");
               }
             }
             if (oldVersion < 17) {
@@ -646,9 +647,9 @@ class DatabaseHelper {
                   UNIQUE(query)
                 )
               ''');
-                debugPrint("✅ Database: 创建 search_history 表 (V17)");
+//                 debugPrint("✅ Database: 创建 search_history 表 (V17)");
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V17 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V17 失败: $e");
               }
             }
             if (oldVersion < 18) {
@@ -662,9 +663,9 @@ class DatabaseHelper {
                     "ALTER TABLE search_history ADD COLUMN evening_count INTEGER DEFAULT 0;");
                 await db.execute(
                     "ALTER TABLE search_history ADD COLUMN night_count INTEGER DEFAULT 0;");
-                debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
+//                 debugPrint("✅ Database: 升级 search_history 分时统计字段 (V18)");
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V18 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V18 失败: $e");
               }
             }
             if (oldVersion < 19) {
@@ -673,11 +674,11 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'is_completed')) {
                   await db.execute(
                       "ALTER TABLE countdowns ADD COLUMN is_completed INTEGER DEFAULT 0;");
-                  debugPrint(
-                      "✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
+//                   debugPrint(
+//                       "✅ Database: 为 countdowns 添加 is_completed 字段 (V19)");
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V19 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V19 失败: $e");
               }
             }
             if (oldVersion < 20) {
@@ -686,10 +687,10 @@ class DatabaseHelper {
                 if (!info.any((row) => row['name'] == 'sync_error')) {
                   await db.execute(
                       "ALTER TABLE op_logs ADD COLUMN sync_error TEXT;");
-                  debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
+//                   debugPrint("✅ Database: 为 op_logs 添加 sync_error 字段 (V20)");
                 }
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V20 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V20 失败: $e");
               }
             }
             if (oldVersion < 21) {
@@ -717,10 +718,10 @@ class DatabaseHelper {
         ignored_at INTEGER
       )
     ''');
-                debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
-                debugPrint('✅ Database: 创建 screen_time 表 (V21)');
+//                 debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+//                 debugPrint('✅ Database: 创建 screen_time 表 (V21)');
               } catch (e) {
-                debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
+//                 debugPrint('⚠️ Database: 创建 screen_time 表失败: $e');
               }
             }
             if (oldVersion < 25) {
@@ -758,9 +759,9 @@ class DatabaseHelper {
                   await db.execute(
                       "ALTER TABLE pomodoro_records ADD COLUMN plan_block_id TEXT;");
                 }
-                debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
+//                 debugPrint("✅ Database: 升级 V25 (新增规划块与关联字段)");
               } catch (e) {
-                debugPrint("⚠️ Database: 升级 V25 失败: $e");
+//                 debugPrint("⚠️ Database: 升级 V25 失败: $e");
               }
             }
           },
@@ -771,11 +772,12 @@ class DatabaseHelper {
             await ensureSuggestionFeedbackSchema(db);
             await ensureTeamsSchema(db);
             await ensureScreenTimeSchema(db);
+            await ensureMissingIndexes(db);
           },
         );
       } catch (e) {
         if (!_isDatabaseLockedError(e) || attempt == 4) rethrow;
-        debugPrint('⏳ Database: 打开数据库遇到锁，${200 * (attempt + 1)}ms 后重试: $e');
+//         debugPrint('⏳ Database: 打开数据库遇到锁，${200 * (attempt + 1)}ms 后重试: $e');
         await Future.delayed(Duration(milliseconds: 200 * (attempt + 1)));
       }
     }
@@ -809,9 +811,9 @@ class DatabaseHelper {
       }
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time (record_date)');
-      debugPrint('✅ Database: screen_time schema ready');
+//       debugPrint('✅ Database: screen_time schema ready');
     } catch (e) {
-      debugPrint('⚠️ Database: screen_time schema repair failed: $e');
+//       debugPrint('⚠️ Database: screen_time schema repair failed: $e');
     }
   }
 
@@ -865,46 +867,7 @@ class DatabaseHelper {
   }
 
   Future<String> _resolveDatabasePath(String targetName) async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
-      final supportDir = await getApplicationSupportDirectory();
-      final dbDir = Directory(join(supportDir.path, 'databases'));
-      if (!await dbDir.exists()) {
-        await dbDir.create(recursive: true);
-      }
-
-      final targetPath = join(dbDir.path, targetName);
-      await _migrateLegacyFfiDatabaseIfNeeded(targetName, targetPath);
-      debugPrint('📁 Database path: $targetPath');
-      return targetPath;
-    }
-
-    final dbPath = await getDatabasesPath();
-    return join(dbPath, targetName);
-  }
-
-  Future<void> _migrateLegacyFfiDatabaseIfNeeded(
-      String targetName, String targetPath) async {
-    try {
-      final targetFile = File(targetPath);
-      if (await targetFile.exists()) return;
-
-      final legacyPath = absolute(
-        join('.dart_tool', 'sqflite_common_ffi', 'databases', targetName),
-      );
-      final legacyFile = File(legacyPath);
-      if (!await legacyFile.exists()) return;
-
-      await legacyFile.copy(targetPath);
-      for (final suffix in const ['-wal', '-shm']) {
-        final sidecar = File('$legacyPath$suffix');
-        if (await sidecar.exists()) {
-          await sidecar.copy('$targetPath$suffix');
-        }
-      }
-      debugPrint('✅ Database: 已从旧 FFI 路径迁移到 AppData: $targetPath');
-    } catch (e) {
-      debugPrint('⚠️ Database: 旧 FFI 数据库迁移失败: $e');
-    }
+    return resolveDatabasePath(targetName);
   }
 
   /// 执行本地回滚 (离线模式)
@@ -1024,7 +987,7 @@ class DatabaseHelper {
             conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
-    debugPrint("✅ Database Migration: $username's data moved to SQLite.");
+//     debugPrint("✅ Database Migration: $username's data moved to SQLite.");
   }
 
   Future _createDB(Database db, int version) async {
@@ -1287,7 +1250,7 @@ class DatabaseHelper {
         ignored_at INTEGER
       )
     ''');
-    debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
+//     debugPrint('✅ Database: onCreate 创建 ignored_remote_items 表');
 
     // 13. 创建规划块表
     await db.execute('''
@@ -1336,6 +1299,24 @@ class DatabaseHelper {
 
     // 16. 创建团队缓存表
     await ensureTeamsSchema(db);
+
+    // 17. 创建性能索引
+    await ensureMissingIndexes(db);
+  }
+
+  static Future<void> ensureMissingIndexes(Database db) async {
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_created ON todos(is_deleted, created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_completed_updated ON todos(is_deleted, is_completed, updated_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_time_logs_start ON time_logs(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_search_history_time ON search_history(timestamp)');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)
@@ -1374,10 +1355,10 @@ class DatabaseHelper {
           SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
         ''');
         await _createFtsTriggers(db);
-        debugPrint("✅ Database: FTS5 搜索引擎就绪并已同步存量数据");
+//         debugPrint("✅ Database: FTS5 搜索引擎就绪并已同步存量数据");
         return;
       } catch (e) {
-        debugPrint("⚠️ Database: FTS5 初始化失败: $e");
+//         debugPrint("⚠️ Database: FTS5 初始化失败: $e");
       }
     }
 
@@ -1402,14 +1383,14 @@ class DatabaseHelper {
           SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0
         ''');
         await _createFtsTriggers(db);
-        debugPrint("✅ Database: FTS4 搜索引擎就绪并已同步存量数据");
+//         debugPrint("✅ Database: FTS4 搜索引擎就绪并已同步存量数据");
         return;
       } catch (e) {
-        debugPrint("⚠️ Database: FTS4 初始化失败: $e");
+//         debugPrint("⚠️ Database: FTS4 初始化失败: $e");
       }
     }
 
-    debugPrint("❌ Database: 硬件/系统不支持 FTS 索引，已切换至 LIKE 模式");
+//     debugPrint("❌ Database: 硬件/系统不支持 FTS 索引，已切换至 LIKE 模式");
   }
 
   /// 🚀 创建 FTS 实时同步触发器
@@ -1495,7 +1476,7 @@ class DatabaseHelper {
           resultScores[r['uuid'].toString()] = (r['updated_at'] as int?) ?? 0;
         }
       } catch (e) {
-        debugPrint("FTS error: $e");
+//         debugPrint("FTS error: $e");
       }
     }
 
@@ -1642,7 +1623,7 @@ class DatabaseHelper {
       }
       return totalRemoved;
     } catch (e) {
-      debugPrint("❌ deduplicateCourses error: $e");
+//       debugPrint("❌ deduplicateCourses error: $e");
       return 0;
     }
   }
@@ -1822,7 +1803,7 @@ class DatabaseHelper {
     String column = 'morning_count';
     if (hour >= 12 && hour < 18) {
       column = 'afternoon_count';
-    } else if (hour >= 18 && hour < 24){
+    } else if (hour >= 18 && hour < 24) {
       column = 'evening_count';
     } else if (hour >= 0 && hour < 6) {
       column = 'night_count';
@@ -1852,7 +1833,7 @@ class DatabaseHelper {
       timeWeightCol = 'afternoon_count';
     } else if (hour >= 18 && hour < 24) {
       timeWeightCol = 'evening_count';
-    }else if (hour >= 0 && hour < 6) {
+    } else if (hour >= 0 && hour < 6) {
       timeWeightCol = 'night_count';
     }
 

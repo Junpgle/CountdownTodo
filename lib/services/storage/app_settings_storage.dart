@@ -210,7 +210,7 @@ class AppSettingsStorage {
 
     if (cachedVersion != null &&
         now - cacheTime < _privacyCacheDuration.inMilliseconds) {
-      debugPrint('[Privacy] Using cached version: $cachedVersion');
+//       debugPrint('[Privacy] Using cached version: $cachedVersion');
       return cachedVersion;
     }
 
@@ -224,7 +224,7 @@ class AppSettingsStorage {
         if (version.isNotEmpty) {
           await prefs.setString(_privacyCachedVersion, version);
           await prefs.setInt(_privacyCacheTime, now);
-          debugPrint('[Privacy] Updated version: $version');
+//           debugPrint('[Privacy] Updated version: $version');
           return version;
         }
       }
@@ -249,10 +249,10 @@ class AppSettingsStorage {
       final match2 = pattern2.firstMatch(content);
       if (match2 != null) return match2.group(1)!;
 
-      debugPrint('[Privacy] Could not extract version date from content');
+//       debugPrint('[Privacy] Could not extract version date from content');
       return '';
     } catch (e) {
-      debugPrint('[Privacy] Error extracting version date: $e');
+//       debugPrint('[Privacy] Error extracting version date: $e');
       return '';
     }
   }

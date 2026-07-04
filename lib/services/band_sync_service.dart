@@ -117,8 +117,8 @@ class BandSyncService {
                 (jsonData['action'] == 'finish' ||
                     jsonData['action'] == 'abandon')) {
               _addLog('手环番茄钟操作: ${jsonData['action']}');
-              debugPrint(
-                  '[BandSyncService] Emitting pomodoro action: ${jsonData['action']}');
+//               debugPrint(
+//                   '[BandSyncService] Emitting pomodoro action: ${jsonData['action']}');
               if (!_pomodoroActionCtrl.isClosed) {
                 _pomodoroActionCtrl.add(jsonData);
               }
@@ -290,7 +290,6 @@ class BandSyncService {
     }
   }
 
-
   /// 同步待办事项
   static Future<bool> syncTodos(List<Map<String, dynamic>> todos) async {
     final success = await _sendListData('todo', todos);
@@ -393,7 +392,8 @@ class BandSyncService {
     return allSuccess;
   }
 
-  static int _estimatePayloadBytes(String type, List<Map<String, dynamic>> data) {
+  static int _estimatePayloadBytes(
+      String type, List<Map<String, dynamic>> data) {
     final payload = {
       'type': type,
       'data': data,
@@ -477,7 +477,7 @@ class BandSyncService {
       _addLog('权限申请后状态: hasPermission=${status['hasPermission']}');
     } catch (e, stack) {
       _addLog('申请权限异常: $e');
-      debugPrint('requestPermission error: $stack');
+//       debugPrint('requestPermission error: $stack');
     }
   }
 

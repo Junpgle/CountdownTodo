@@ -27,8 +27,7 @@ class AiGeneratedTodoWaterBorder extends StatefulWidget {
       _AiGeneratedTodoWaterBorderState();
 }
 
-class _AiGeneratedTodoWaterBorderState
-    extends State<AiGeneratedTodoWaterBorder>
+class _AiGeneratedTodoWaterBorderState extends State<AiGeneratedTodoWaterBorder>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 

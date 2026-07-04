@@ -74,9 +74,8 @@ class _RebindTagPageState extends State<RebindTagPage>
       _allPomodoros = (results[2] as List<PomodoroRecord>)
           .where((p) => !p.isDeleted)
           .toList();
-      _allTimeLogs = (results[3] as List<TimeLogItem>)
-          .where((l) => !l.isDeleted)
-          .toList();
+      _allTimeLogs =
+          (results[3] as List<TimeLogItem>).where((l) => !l.isDeleted).toList();
       _isLoading = false;
     });
   }
@@ -99,7 +98,8 @@ class _RebindTagPageState extends State<RebindTagPage>
       final startMs = _dateRange!.start.millisecondsSinceEpoch;
       final endMs =
           _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
-      list = list.where((p) => p.startTime >= startMs && p.startTime < endMs)
+      list = list
+          .where((p) => p.startTime >= startMs && p.startTime < endMs)
           .toList();
     }
 
@@ -131,7 +131,8 @@ class _RebindTagPageState extends State<RebindTagPage>
       final startMs = _dateRange!.start.millisecondsSinceEpoch;
       final endMs =
           _dateRange!.end.add(const Duration(days: 1)).millisecondsSinceEpoch;
-      list = list.where((l) => l.startTime >= startMs && l.startTime < endMs)
+      list = list
+          .where((l) => l.startTime >= startMs && l.startTime < endMs)
           .toList();
     }
 
@@ -202,8 +203,7 @@ class _RebindTagPageState extends State<RebindTagPage>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认重新绑定'),
-        content: Text(
-            '将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志重新绑定标签'),
+        content: Text('将为 $pomodoroCount 条番茄钟记录和 $timeLogCount 条时间日志重新绑定标签'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -269,8 +269,7 @@ class _RebindTagPageState extends State<RebindTagPage>
             }
           }
         }
-        await StorageService.saveTimeLogs(
-            widget.username, _allTimeLogs,
+        await StorageService.saveTimeLogs(widget.username, _allTimeLogs,
             sync: true);
       }
 
@@ -278,8 +277,7 @@ class _RebindTagPageState extends State<RebindTagPage>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-              '成功为 $pomodoroCount 条番茄钟和 $timeLogCount 条时间日志重新绑定标签'),
+          content: Text('成功为 $pomodoroCount 条番茄钟和 $timeLogCount 条时间日志重新绑定标签'),
         ),
       );
 
@@ -591,7 +589,8 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.touch_app, size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(Icons.touch_app,
+                size: 48, color: colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
               '请先选择要替换的旧标签',
@@ -694,8 +693,8 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm')
-                          .format(DateTime.fromMillisecondsSinceEpoch(
+                      DateFormat('yyyy-MM-dd HH:mm').format(
+                          DateTime.fromMillisecondsSinceEpoch(
                               record.startTime)),
                       style: TextStyle(
                         fontSize: 12,
@@ -743,7 +742,8 @@ class _RebindTagPageState extends State<RebindTagPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.touch_app, size: 48, color: colorScheme.onSurfaceVariant),
+            Icon(Icons.touch_app,
+                size: 48, color: colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
               '请先选择要替换的旧标签',
@@ -785,7 +785,8 @@ class _RebindTagPageState extends State<RebindTagPage>
           child: Row(
             children: [
               Checkbox(
-                value: _selectedTimeLogs.length == logs.length && logs.isNotEmpty,
+                value:
+                    _selectedTimeLogs.length == logs.length && logs.isNotEmpty,
                 tristate: true,
                 onChanged: (value) => _toggleSelectAll(false),
               ),
@@ -823,11 +824,10 @@ class _RebindTagPageState extends State<RebindTagPage>
                 return tag.name;
               }).toList();
 
-              final duration =
-                  DateTime.fromMillisecondsSinceEpoch(log.endTime)
-                      .difference(
-                          DateTime.fromMillisecondsSinceEpoch(log.startTime))
-                      .inMinutes;
+              final duration = DateTime.fromMillisecondsSinceEpoch(log.endTime)
+                  .difference(
+                      DateTime.fromMillisecondsSinceEpoch(log.startTime))
+                  .inMinutes;
 
               return ListTile(
                 leading: Checkbox(
@@ -851,9 +851,8 @@ class _RebindTagPageState extends State<RebindTagPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DateFormat('yyyy-MM-dd HH:mm')
-                          .format(DateTime.fromMillisecondsSinceEpoch(
-                              log.startTime)),
+                      DateFormat('yyyy-MM-dd HH:mm').format(
+                          DateTime.fromMillisecondsSinceEpoch(log.startTime)),
                       style: TextStyle(
                         fontSize: 12,
                         color: colorScheme.onSurfaceVariant,

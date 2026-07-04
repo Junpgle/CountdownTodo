@@ -8,7 +8,8 @@ class TeamMessageCenterScreen extends StatefulWidget {
   const TeamMessageCenterScreen({super.key, required this.managedTeams});
 
   @override
-  _TeamMessageCenterScreenState createState() => _TeamMessageCenterScreenState();
+  _TeamMessageCenterScreenState createState() =>
+      _TeamMessageCenterScreenState();
 }
 
 class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
@@ -34,14 +35,13 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     final Set<String> seenMessageKeys = <String>{};
     try {
       // 🚀 核心优化：并发加载所有管理团队的消息
-      final results = await Future.wait(
-        widget.managedTeams.map((team) => ApiService.fetchTeamSystemMessages(team.uuid))
-      );
+      final results = await Future.wait(widget.managedTeams
+          .map((team) => ApiService.fetchTeamSystemMessages(team.uuid)));
 
       for (int i = 0; i < widget.managedTeams.length; i++) {
         final team = widget.managedTeams[i];
         final res = results[i];
-        
+
         if (res['success'] == true) {
           final msgs = List<dynamic>.from(res['messages'] as List? ?? const []);
           for (var m in msgs) {
@@ -63,7 +63,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
         final int bTs = _asInt(b['timestamp']);
         return bTs.compareTo(aTs);
       });
-      
+
       if (mounted && loadGeneration == _loadGeneration) {
         setState(() {
           _messages = allMessages;
@@ -80,11 +80,13 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
+      backgroundColor:
+          isDark ? const Color(0xFF121212) : const Color(0xFFF7F8FA),
       appBar: AppBar(
-        title: const Text('消息中心', style: TextStyle(fontWeight: FontWeight.bold)),
+        title:
+            const Text('消息中心', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
@@ -94,18 +96,20 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
           ),
         ],
       ),
-      body: _isLoading 
-        ? _buildSkeleton(isDark)
-        : _messages.isEmpty 
-          ? _buildEmptyState(isDark)
-          : RefreshIndicator(
-              onRefresh: _loadAllMessages,
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) => _buildMessageCard(_messages[index], isDark),
-              ),
-            ),
+      body: _isLoading
+          ? _buildSkeleton(isDark)
+          : _messages.isEmpty
+              ? _buildEmptyState(isDark)
+              : RefreshIndicator(
+                  onRefresh: _loadAllMessages,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) =>
+                        _buildMessageCard(_messages[index], isDark),
+                  ),
+                ),
     );
   }
 
@@ -114,7 +118,8 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.mail_outline_rounded, size: 64, color: Colors.grey.withValues(alpha: 0.3)),
+          Icon(Icons.mail_outline_rounded,
+              size: 64, color: Colors.grey.withValues(alpha: 0.3)),
           const SizedBox(height: 16),
           Text('暂无系统消息', style: TextStyle(color: Colors.grey.shade500)),
         ],
@@ -124,13 +129,14 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
 
   Widget _buildMessageCard(dynamic msg, bool isDark) {
     final type = msg['type'];
-    final timeStr = DateFormat('MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(msg['timestamp']));
-    
+    final timeStr = DateFormat('MM-dd HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(msg['timestamp']));
+
     IconData icon;
     Color color;
     String title = "";
-    
-    switch(type) {
+
+    switch (type) {
       case 'JOIN_REQUEST':
         icon = Icons.person_add_rounded;
         color = Theme.of(context).colorScheme.secondary;
@@ -157,7 +163,14 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       decoration: BoxDecoration(
         color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4))
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -179,80 +192,108 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
                             children: [
                               Icon(icon, size: 16, color: color),
                               const SizedBox(width: 8),
-                              Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 13)),
+                              Text(title,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: color,
+                                      fontSize: 13)),
                             ],
                           ),
-                          Text(timeStr, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                          Text(timeStr,
+                              style: TextStyle(
+                                  fontSize: 10, color: Colors.grey.shade500)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
                         msg['message'] ?? "",
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.groups_rounded, size: 12, color: Colors.grey.shade400),
+                          Icon(Icons.groups_rounded,
+                              size: 12, color: Colors.grey.shade400),
                           const SizedBox(width: 4),
-                          Text(msg['team_name'] ?? "", style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                          Text(msg['team_name'] ?? "",
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey.shade500)),
                           if (msg['username'] != null) ...[
                             const SizedBox(width: 8),
-                            const Text("·", style: TextStyle(color: Colors.grey)),
+                            const Text("·",
+                                style: TextStyle(color: Colors.grey)),
                             const SizedBox(width: 8),
-                            Text(msg['username'], style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.black87)),
+                            Text(msg['username'],
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black87)),
                           ]
                         ],
                       ),
-                        if (msg['request_status'] == 0) ...[
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () => _handleJoinRequest(msg, 'reject'),
-                                child: const Text('拒绝', style: TextStyle(color: Colors.redAccent)),
+                      if (msg['request_status'] == 0) ...[
+                        const SizedBox(height: 12),
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () =>
+                                  _handleJoinRequest(msg, 'reject'),
+                              child: const Text('拒绝',
+                                  style: TextStyle(color: Colors.redAccent)),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    Theme.of(context).colorScheme.secondary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
                               ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                onPressed: () => _handleJoinRequest(msg, 'approve'),
-                                child: const Text('同意'),
+                              onPressed: () =>
+                                  _handleJoinRequest(msg, 'approve'),
+                              child: const Text('同意'),
+                            ),
+                          ],
+                        ),
+                      ] else if (msg['request_status'] != null) ...[
+                        const SizedBox(height: 12),
+                        const Divider(height: 1),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: (msg['request_status'] == 1
+                                        ? Colors.green
+                                        : Colors.grey)
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                            ],
-                          ),
-                        ] else if (msg['request_status'] != null) ...[
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: (msg['request_status'] == 1 ? Colors.green : Colors.grey).withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  msg['request_status'] == 1 ? '已同意' : '已拒绝',
-                                  style: TextStyle(
-                                    color: msg['request_status'] == 1 ? Colors.green : Colors.grey.shade600,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                              child: Text(
+                                msg['request_status'] == 1 ? '已同意' : '已拒绝',
+                                style: TextStyle(
+                                  color: msg['request_status'] == 1
+                                      ? Colors.green
+                                      : Colors.grey.shade600,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-                          ),
-                        ]
+                            ),
+                          ],
+                        ),
+                      ]
                     ],
                   ),
                 ),
@@ -275,11 +316,8 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
     }
 
     final res = await ApiService.processJoinRequest(
-      msg['team_uuid'],
-      msg['user_id'],
-      action
-    );
-    
+        msg['team_uuid'], msg['user_id'], action);
+
     if (res['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(action == 'approve' ? '已批准入队' : '已拒绝申请'),
@@ -288,9 +326,9 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
       await _loadAllMessages();
     } else {
       // 🚀 Uni-Sync 4.0: 处理 409 冲突（已在其他设备处理过）
-      final isHandled = res['error']?.toString().contains('已处理') == true || 
-                        res['error']?.toString().contains('并行处理') == true;
-      
+      final isHandled = res['error']?.toString().contains('已处理') == true ||
+          res['error']?.toString().contains('并行处理') == true;
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(res['error'] ?? '操作失败'),
         backgroundColor: isHandled ? Colors.orange : Colors.redAccent,

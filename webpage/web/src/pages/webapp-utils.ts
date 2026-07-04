@@ -76,9 +76,18 @@ export interface CourseItem {
   start_time: number;
   end_time: number;
   week_index: number;
+  semester_id?: string;
 }
 
-export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'pomodoro' | 'multi';
+export interface SemesterInfo {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date?: string;
+  is_current?: boolean;
+}
+
+export type CalendarItemType = 'course' | 'todo' | 'countdown' | 'timelog' | 'pomodoro' | 'plan' | 'multi';
 
 export interface CalendarEntry {
   type: 'todo' | 'countdown';
@@ -87,7 +96,7 @@ export interface CalendarEntry {
 
 export interface DetailItem {
   type: CalendarItemType;
-  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | import('../types').PomodoroRecord | CalendarEntry[];
+  data: CourseItem | import('../types').TodoItem | import('../types').CountdownItem | import('../types').TimeLogItem | import('../types').PomodoroRecord | import('../types').TodoPlanBlock | CalendarEntry[];
 }
 
 // --------------------------------------------------------
@@ -106,6 +115,7 @@ export interface PomodoroTag {
 export interface PomodoroRecord {
   uuid: string;
   todo_uuid: string | null;
+  plan_block_id?: string | null;
   start_time: number;
   end_time: number | null;
   planned_duration: number;

@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../utils/app_platform.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
@@ -73,7 +73,7 @@ class SystemSection extends StatelessWidget {
             ),
           ),
         ],
-        if (!Platform.isWindows) ...[
+        if (!AppPlatform.isWindows) ...[
           const AppSettingsDivider(),
           _buildTile(
             context: context,

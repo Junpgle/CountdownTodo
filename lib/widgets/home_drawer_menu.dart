@@ -76,7 +76,8 @@ class HomeDrawerMenu extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    colorScheme.secondary.withValues(alpha: isDark ? 0.25 : 0.15),
+                    colorScheme.secondary
+                        .withValues(alpha: isDark ? 0.25 : 0.15),
                     Colors.transparent,
                   ],
                   stops: const [0.2, 1.0],
@@ -97,7 +98,8 @@ class HomeDrawerMenu extends StatelessWidget {
           // Content
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.only(left: 20.0, right: 16.0, top: 40.0, bottom: 24.0),
+              padding: const EdgeInsets.only(
+                  left: 20.0, right: 16.0, top: 40.0, bottom: 24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -122,11 +124,13 @@ class HomeDrawerMenu extends StatelessWidget {
                         ),
                         child: CircleAvatar(
                           radius: 28,
-                          backgroundColor: isDark 
+                          backgroundColor: isDark
                               ? colorScheme.surfaceContainerHighest
                               : colorScheme.surface,
                           child: Text(
-                            username.isNotEmpty ? username.substring(0, 1).toUpperCase() : '?',
+                            username.isNotEmpty
+                                ? username.substring(0, 1).toUpperCase()
+                                : '?',
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
@@ -142,12 +146,15 @@ class HomeDrawerMenu extends StatelessWidget {
                           children: [
                             // Greeting Pill Badge
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: colorScheme.primary.withValues(alpha: 0.1),
+                                color:
+                                    colorScheme.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: colorScheme.primary.withValues(alpha: 0.2),
+                                  color: colorScheme.primary
+                                      .withValues(alpha: 0.2),
                                   width: 1,
                                 ),
                               ),
@@ -238,11 +245,12 @@ class HomeDrawerMenu extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 12),
-                  
+
                   // Utilities Group (Frosted Card)
                   Container(
                     decoration: BoxDecoration(
-                      color: colorScheme.surface.withValues(alpha: isDark ? 0.3 : 0.5),
+                      color: colorScheme.surface
+                          .withValues(alpha: isDark ? 0.3 : 0.5),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: colorScheme.onSurface.withValues(alpha: 0.05),
@@ -284,9 +292,9 @@ class HomeDrawerMenu extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Version Info Badge
                   FutureBuilder<PackageInfo>(
                     future: PackageInfo.fromPlatform(),
@@ -295,16 +303,19 @@ class HomeDrawerMenu extends StatelessWidget {
                       return Padding(
                         padding: const EdgeInsets.only(left: 8.0, top: 8.0),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: colorScheme.onSurface.withValues(alpha: 0.05),
+                            color:
+                                colorScheme.onSurface.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             'v${snapshot.data!.version}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: colorScheme.onSurface.withValues(alpha: 0.5),
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.5),
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.0,
                             ),
@@ -332,9 +343,10 @@ class HomeDrawerMenu extends StatelessWidget {
     bool isCompact = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: isCompact ? 2.0 : 4.0, horizontal: 8.0),
+      padding: EdgeInsets.symmetric(
+          vertical: isCompact ? 2.0 : 4.0, horizontal: 8.0),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -343,7 +355,8 @@ class HomeDrawerMenu extends StatelessWidget {
           splashColor: colorScheme.primary.withValues(alpha: 0.1),
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(
-            padding: EdgeInsets.symmetric(vertical: isCompact ? 10.0 : 12.0, horizontal: 12.0),
+            padding: EdgeInsets.symmetric(
+                vertical: isCompact ? 10.0 : 12.0, horizontal: 12.0),
             child: Row(
               children: [
                 // Icon inside a rounded squircle
@@ -354,34 +367,42 @@ class HomeDrawerMenu extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    icon, 
-                    size: isCompact ? 20 : 24, 
+                    icon,
+                    size: isCompact ? 20 : 24,
                     color: colorScheme.primary.withValues(alpha: 0.9),
                   ),
                 ),
                 const SizedBox(width: 16),
-                
+
                 Expanded(
                   child: Text(
                     title,
                     style: TextStyle(
                       fontSize: isCompact ? 15 : 16,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context).textTheme.bodyLarge?.color?.withValues(alpha: 0.9),
+                      color: Theme.of(context)
+                          .textTheme
+                          .bodyLarge
+                          ?.color
+                          ?.withValues(alpha: 0.9),
                     ),
                   ),
                 ),
-                
+
                 if (badgeCount > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.redAccent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       badgeCount > 9 ? '9+' : badgeCount.toString(),
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold),
                     ),
                   )
                 else if (showAlertDot)
@@ -397,7 +418,10 @@ class HomeDrawerMenu extends StatelessWidget {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
-                    color: Theme.of(context).iconTheme.color?.withValues(alpha: 0.3),
+                    color: Theme.of(context)
+                        .iconTheme
+                        .color
+                        ?.withValues(alpha: 0.3),
                   ),
               ],
             ),

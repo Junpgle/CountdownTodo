@@ -53,8 +53,8 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   @override
   void initState() {
     super.initState();
-    debugPrint(
-        '[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
+    // debugPrint(
+    //     '[PomodoroScreen] initState start; initialTab=${widget.initialTab} username=${widget.username}');
     _tabController =
         TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
     _tabController.addListener(() {
@@ -77,14 +77,14 @@ class _PomodoroScreenState extends State<PomodoroScreen>
     // If initial tab is workbench, trigger a reload after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_disposed || !mounted) return;
-      debugPrint(
-          '[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
+      // debugPrint(
+      //     '[PomodoroScreen] postFrameCallback firing; initialTab=${widget.initialTab}');
       if (widget.initialTab == 0) {
         try {
           _workbenchState?.reload();
         } catch (_) {}
-        debugPrint(
-            '[PomodoroScreen] requested workbench reload from postFrameCallback');
+        // debugPrint(
+        //     '[PomodoroScreen] requested workbench reload from postFrameCallback');
       }
     });
 
@@ -167,12 +167,12 @@ class _PomodoroScreenState extends State<PomodoroScreen>
 
   void _setupMethodChannelListener() {
     _notifSubs.add(NotificationService.listen('pomodoroFinishEarly', (call) {
-      debugPrint('[PomodoroScreen] Triggering finishEarly from notification');
+      // debugPrint('[PomodoroScreen] Triggering finishEarly from notification');
       if (!mounted || _disposed) return;
       _workbenchState?.handleFinishEarly();
     }));
     _notifSubs.add(NotificationService.listen('pomodoroAbandon', (call) {
-      debugPrint('[PomodoroScreen] Triggering abandonFocus from notification');
+      // debugPrint('[PomodoroScreen] Triggering abandonFocus from notification');
       if (!mounted || _disposed) return;
       _workbenchState?.handleAbandonFocus();
     }));
