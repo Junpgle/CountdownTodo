@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Monitor, Smartphone, Globe, ChevronRight, ArrowRight, HelpCircle, ExternalLink, Watch, MessageCircle, ChevronDown, ChevronUp, History } from 'lucide-react';
+import { Monitor, Smartphone, Globe, ChevronRight, ArrowRight, HelpCircle, ExternalLink, Watch, MessageCircle, ChevronDown, ChevronUp, History, Command } from 'lucide-react';
 import type { AppInfo } from '../../types';
 
 interface ChangelogEntry {
@@ -15,6 +15,7 @@ interface DownloadSectionProps {
   windowsLiteChangelog: ChangelogEntry[];
   windowsProInfo: AppInfo;
   windowsProChangelog: ChangelogEntry[];
+  macInfo?: AppInfo;
   webInfo: AppInfo;
   webChangelog: ChangelogEntry[];
   bandInfo: AppInfo;
@@ -123,6 +124,7 @@ export const DownloadSection = ({
   windowsLiteInfo,
   windowsLiteChangelog,
   windowsProInfo,
+  macInfo,
   webInfo,
   webChangelog,
   bandInfo,
@@ -167,8 +169,10 @@ export const DownloadSection = ({
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center"><Smartphone className="w-5 h-5" /></div>
                   <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><Monitor className="w-5 h-5" /></div>
+                  <div className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center"><Command className="w-5 h-5" /></div>
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Globe className="w-5 h-5" /></div>
                 </div>
-                <h3 className="text-xl font-black mb-1 text-slate-900 tracking-tight">Android Pro & Windows Pro</h3>
+                <h3 className="text-xl font-black mb-1 text-slate-900 tracking-tight">Android, Windows, macOS & Web Beta</h3>
                 <p className="text-sm text-purple-600 font-bold mb-4">v{androidInfo.version || '1.0.0'}</p>
                 <div className="text-slate-500 text-sm leading-relaxed whitespace-pre-line text-left">{androidInfo.desc || '全功能 Flutter 体验，跨平台数据无缝同步，AI 智能识别待办，桌面灵动岛实时提醒。'}</div>
                 <ChangelogHistory changelog={androidChangelog} accentColor="text-purple-500 hover:text-purple-700" />
@@ -176,11 +180,13 @@ export const DownloadSection = ({
               {/* 右侧：下载按钮 */}
               <div className="flex flex-col gap-3 shrink-0 w-full sm:w-56">
                 {/* Android */}
-                <div>
-                  <a href={androidInfo.url || "#"} className="flex items-center justify-center gap-2 bg-purple-600 text-white py-3.5 rounded-xl font-bold hover:bg-purple-700 transition shadow-lg shadow-purple-500/20">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+                  <a href={androidInfo.url || "#"} className="flex items-center justify-center gap-2 bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 transition shadow-md shadow-purple-500/20">
                     <Smartphone className="w-5 h-5" /> Android 安装包
                   </a>
-                  <p className="text-[11px] text-slate-400 mt-1.5 text-left leading-snug">鸿蒙端可使用卓易通安装，功能可用性自测</p>
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-[11px] text-purple-700 font-bold">鸿蒙端功能可用性自测</span>
+                  </div>
                 </div>
                 {/* Windows + Tai 依赖 合并卡片 */}
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
@@ -190,6 +196,24 @@ export const DownloadSection = ({
                   <div className="flex items-center justify-between mt-2 px-1">
                     <span className="text-[11px] text-emerald-700 font-bold">依赖 Tai 核心服务</span>
                     <a href="https://github.com/Planshit/Tai/releases/download/1.5.0.6/Tai1.5.0.6.zip" target="_blank" rel="noreferrer" className="text-[11px] text-emerald-600 font-bold underline hover:text-emerald-900">下载</a>
+                  </div>
+                </div>
+                {/* macOS */}
+                <div className="bg-slate-100 border border-slate-200 rounded-xl p-3">
+                  <a href={macInfo?.url || "#"} className="flex items-center justify-center gap-2 bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-900 transition shadow-md shadow-slate-500/20">
+                    <Command className="w-5 h-5" /> macOS 安装包
+                  </a>
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-[11px] text-slate-600 font-bold">支持 Apple Silicon</span>
+                  </div>
+                </div>
+                {/* Web Flutter Beta */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <a href="https://cdt.junpgle.me/" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md shadow-blue-500/20">
+                    <Globe className="w-5 h-5" /> Web Flutter Beta
+                  </a>
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-[11px] text-blue-700 font-bold">云端同步，免安装</span>
                   </div>
                 </div>
               </div>

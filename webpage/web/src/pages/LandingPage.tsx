@@ -31,7 +31,7 @@ interface PlatformData {
 }
 
 export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
-  const [androidData, setAndroidData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
+  const [androidData, setAndroidData] = useState<PlatformData & { macUrl?: string }>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [windowsLiteData, setWindowsLiteData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [webData, setWebData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
   const [bandData, setBandData] = useState<PlatformData>({ info: { version: '', url: '', desc: '' }, changelog: [] });
@@ -54,6 +54,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             url: aData.update_info.full_package_url,
             desc: aData.update_info.description
           },
+          macUrl: aData.update_info.mac_package_url,
           changelog: aData.changelog_history || []
         });
 
@@ -120,6 +121,7 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
             windowsLiteChangelog={windowsLiteData.changelog}
             windowsProInfo={androidData.info}
             windowsProChangelog={androidData.changelog}
+            macInfo={{ ...androidData.info, url: androidData.macUrl || '' }}
             webInfo={webData.info}
             webChangelog={webData.changelog}
             bandInfo={bandData.info}

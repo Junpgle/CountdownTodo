@@ -1,5 +1,5 @@
 import { type ReactElement, cloneElement, useState, useEffect } from 'react';
-import { Download, Globe, Github, Sparkles, Watch, Smartphone, Monitor, Database, Shield } from 'lucide-react';
+import { Download, Globe, Github, Sparkles, Watch, Smartphone, Monitor, Database, Shield, Command } from 'lucide-react';
 
 export const Hero = ({ version, date }: { version?: string, date?: string }) => {
   const [activeMessageIndex, setActiveMessageIndex] = useState(0);
@@ -76,7 +76,7 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
             </h1>
             
             <p className="text-xl sm:text-2xl text-slate-500 max-w-2xl mx-auto lg:mx-0 mb-14 leading-relaxed font-medium">
-              跨越设备鸿沟。原生 C++ 极致桌面性能、Material 3 沉浸交互、D1 分布式同步架构。一处落笔，全球共鸣。
+              跨越设备鸿沟，全新上线 macOS 与 Flutter Web 端。更有原生 C++ 极致桌面性能、Material 3 沉浸交互、D1 分布式同步架构。一处落笔，全球共鸣。
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-5 sm:gap-8 mb-16">
@@ -90,9 +90,10 @@ export const Hero = ({ version, date }: { version?: string, date?: string }) => 
             </div>
 
             {/* Premium Badges Grid */}
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-6 sm:gap-10 opacity-30 grayscale hover:grayscale-0 transition-all duration-700">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-4 sm:gap-6 opacity-30 grayscale hover:grayscale-0 transition-all duration-700">
                {[
                  { icon: <Monitor />, label: "Windows" },
+                 { icon: <Command />, label: "macOS" },
                  { icon: <Smartphone />, label: "Android" },
                  { icon: <Watch />, label: "Mi Band" },
                  { icon: <Globe />, label: "Web Pro" },
