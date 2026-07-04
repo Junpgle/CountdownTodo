@@ -204,12 +204,26 @@ class _MyAppState extends State<MyApp> {
         AppPlatform.isWeb || !AppPlatform.isDesktop;
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
     if (_shareCode == null) {
+      // Web release 模式下 URL hash 可能延迟加载，首帧后再检查一次
+      if (kIsWeb) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_shareCode == null) {
+            _checkShareRoute();
+            if (_shareCode != null && mounted) setState(() {});
+          }
+        });
+        // 再给一次机会，防止首帧时 hash 仍未就绪
+        Timer(const Duration(milliseconds: 300), () {
+          if (_shareCode == null) {
+            _checkShareRoute();
+            if (_shareCode != null && mounted) setState(() {});
+          }
+        });
+      }
       _defaultSplashFallbackTimer =
           Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
       _scheduleSplashReadinessFallback();
-      // 立即开始初始化，不等待首屏动画
       _initializeApp();
-      // 处理开屏序列逻辑
       _startSplashSequence();
     }
   }
@@ -700,19 +714,6 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     _checkShareRoute();
 
-    // ── 分享页：直接渲染，跳过所有登录/开屏逻辑 ──
-    if (_shareCode != null) {
-      return MaterialApp(
-        title: 'CountDownTodo',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6750A4)),
-          useMaterial3: true,
-        ),
-        home: ShareViewScreen(shareCode: _shareCode!),
-      );
-    }
-
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
@@ -855,7 +856,9 @@ class _MyAppState extends State<MyApp> {
                                 ],
                               );
                             },
-                            home: _showDefaultSplash
+                            home: _shareCode != null
+                                ? ShareViewScreen(shareCode: _shareCode!)
+                                : _showDefaultSplash
                                 ? DefaultSplashScreen(
                                     onComplete: _onDefaultSplashComplete)
                                 : _showHolidaySplash
