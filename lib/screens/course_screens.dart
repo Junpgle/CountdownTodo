@@ -298,7 +298,12 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     if (mounted) {
       setState(() => _isLoading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _courseExpandCtrl.forward();
+        if (mounted) {
+          _courseExpandCtrl.forward();
+          if (_viewMode == 0 && !_pulseController.isAnimating) {
+            _pulseController.repeat(reverse: true);
+          }
+        }
         _checkCoachMarks();
       });
     }
@@ -680,8 +685,16 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       _viewMode = mode;
       if (mode == 0) {
         _updateWeekTodos();
-      } else if (mode == 2 && !_monthDataPrepared) {
-        _groupDataForMonthView();
+        if (!_pulseController.isAnimating) {
+          _pulseController.repeat(reverse: true);
+        }
+      } else {
+        if (_pulseController.isAnimating) {
+          _pulseController.stop();
+        }
+        if (mode == 2 && !_monthDataPrepared) {
+          _groupDataForMonthView();
+        }
       }
     });
   }
@@ -3484,129 +3497,89 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
                                       isDark ? Colors.white10 : Colors.black12),
                             ],
                             Expanded(
-                              child: TweenAnimationBuilder<double>(
-                                duration: const Duration(milliseconds: 600),
-                                curve: Curves.easeInOutQuart,
-                                tween: Tween<double>(
-                                  begin: _viewMode > 0 ? 1.0 : 0.0,
-                                  end: _viewMode > 0 ? 1.0 : 0.0,
-                                ),
-                                builder: (context, t, child) {
-                                  return ClipRect(
-                                    child: Stack(
-                                      children: [
-                                        // --- 🚀 二周/月视图 & 甘特图 ---
-                                        IgnorePointer(
-                                          ignoring: _viewMode == 0,
-                                          child: AnimatedOpacity(
-                                            duration: const Duration(
-                                                milliseconds: 400),
-                                            opacity: _viewMode > 0 ? 1.0 : 0.0,
-                                            child: Transform.scale(
-                                              scale: _viewMode > 0 ? 1.0 : 0.8,
-                                              child: CourseMonthView(
-                                                key: ValueKey(
-                                                    'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
-                                                selectedMonth: _selectedMonth,
-                                                courseMap: _monthCourseMap,
-                                                todoMap: _monthTodoMap,
-                                                crossDayTodoMap:
-                                                    _monthCrossDayTodoMap,
-                                                logMap: _monthLogMap,
-                                                pomMap: _monthPomMap,
-                                                pomodoroTags: _pomodoroTags,
-                                                activeDataViews:
-                                                    _activeDataViews,
-                                                allTodos: _allTodos,
-                                                viewMode: _viewMode,
-                                                currentWeekMonday:
-                                                    _getMondayOfCurrentWeek(), // 🚀 动态透传起点
-                                                onMonthChanged: (m) => setState(
-                                                    () => _selectedMonth = m),
-                                                onDayTapped: (d) {
-                                                  setState(() =>
-                                                      _selectedMonthDay = d);
-                                                  if (constraints.maxWidth <=
-                                                      900) {
-                                                    _showDayDetailSheet(d);
-                                                  }
-                                                },
-                                                onGanttTodoTap: (todo) {
-                                                  if (todo.dueDate != null) {
-                                                    setState(() =>
-                                                        _selectedMonthDay =
-                                                            todo.dueDate);
-                                                    if (constraints.maxWidth <=
-                                                        900) {
-                                                      _showDayDetailSheet(
-                                                          todo.dueDate!);
-                                                    }
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        // --- 周视图 (使用 child 避免重复 build) ---
-                                        IgnorePointer(
-                                          ignoring: t > 0.5,
-                                          child: Opacity(
-                                            opacity: (1.0 - t).clamp(0.0, 1.0),
-                                            child: Transform.scale(
-                                              scale: 1.0 + (t * 0.2),
-                                              child: child,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                                // 提取为 child, 确保在 TweenAnimationBuilder 动画时周视图不会触发 build
-                                child: AnimatedSwitcher(
-                                  key: _gridKey,
-                                  duration: const Duration(milliseconds: 400),
-                                  transitionBuilder: (child, animation) {
-                                    return Transform.translate(
-                                      offset: Offset(
-                                          _dragOffset * (1.0 - animation.value),
-                                          0),
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: Offset(
-                                              _isNextSlide ? 1.0 : -1.0, 0.0),
-                                          end: Offset.zero,
-                                        ).animate(CurvedAnimation(
-                                            parent: animation,
-                                            curve: Curves.easeOutCubic)),
-                                        child: FadeTransition(
-                                            opacity: animation, child: child),
-                                      ),
-                                    );
-                                  },
-                                  child: RepaintBoundary(
-                                    key: ValueKey('WeekView_$_currentWeek'),
-                                    child: LayoutBuilder(
-                                      builder: (context, innerConstraints) {
-                                        double cellWidth =
-                                            (innerConstraints.maxWidth -
-                                                    timeColumnWidth) /
-                                                7;
-                                        // 🚀 恢复自适应：将全天时间轴按比例缩放到当前屏幕可用高度，无需滑动
-                                        double totalMinutes =
-                                            (endHour - startHour) * 60.0 -
-                                                _totalHiddenMinutes;
-                                        double minuteHeight =
-                                            innerConstraints.maxHeight /
-                                                totalMinutes;
-
-                                        return _buildGrid(
-                                            cellWidth, minuteHeight);
+                              child: _viewMode > 0
+                                  ? CourseMonthView(
+                                      key: ValueKey(
+                                          'MonthView_${_selectedMonth.year}_${_selectedMonth.month}_mode$_viewMode'),
+                                      selectedMonth: _selectedMonth,
+                                      courseMap: _monthCourseMap,
+                                      todoMap: _monthTodoMap,
+                                      crossDayTodoMap:
+                                          _monthCrossDayTodoMap,
+                                      logMap: _monthLogMap,
+                                      pomMap: _monthPomMap,
+                                      pomodoroTags: _pomodoroTags,
+                                      activeDataViews:
+                                          _activeDataViews,
+                                      allTodos: _allTodos,
+                                      viewMode: _viewMode,
+                                      currentWeekMonday:
+                                          _getMondayOfCurrentWeek(),
+                                      onMonthChanged: (m) => setState(
+                                          () => _selectedMonth = m),
+                                      onDayTapped: (d) {
+                                        setState(() =>
+                                            _selectedMonthDay = d);
+                                        if (constraints.maxWidth <=
+                                            900) {
+                                          _showDayDetailSheet(d);
+                                        }
                                       },
+                                      onGanttTodoTap: (todo) {
+                                        if (todo.dueDate != null) {
+                                          setState(() =>
+                                              _selectedMonthDay =
+                                                  todo.dueDate);
+                                          if (constraints.maxWidth <=
+                                              900) {
+                                            _showDayDetailSheet(
+                                                todo.dueDate!);
+                                          }
+                                        }
+                                      },
+                                    )
+                                  : AnimatedSwitcher(
+                                      key: _gridKey,
+                                      duration: const Duration(milliseconds: 400),
+                                      transitionBuilder: (child, animation) {
+                                        return Transform.translate(
+                                          offset: Offset(
+                                              _dragOffset * (1.0 - animation.value),
+                                              0),
+                                          child: SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: Offset(
+                                                  _isNextSlide ? 1.0 : -1.0, 0.0),
+                                              end: Offset.zero,
+                                            ).animate(CurvedAnimation(
+                                                parent: animation,
+                                                curve: Curves.easeOutCubic)),
+                                            child: FadeTransition(
+                                                opacity: animation, child: child),
+                                          ),
+                                        );
+                                      },
+                                      child: RepaintBoundary(
+                                        key: ValueKey('WeekView_$_currentWeek'),
+                                        child: LayoutBuilder(
+                                          builder: (context, innerConstraints) {
+                                            double cellWidth =
+                                                (innerConstraints.maxWidth -
+                                                        timeColumnWidth) /
+                                                    7;
+                                            double totalMinutes =
+                                                (endHour - startHour) * 60.0 -
+                                                    _totalHiddenMinutes;
+                                            double minuteHeight =
+                                                innerConstraints.maxHeight /
+                                                    totalMinutes;
+
+                                            return _buildGrid(
+                                                cellWidth, minuteHeight);
+                                          },
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ),
                             ),
                           ],
                         ),
