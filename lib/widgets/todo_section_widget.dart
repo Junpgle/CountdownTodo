@@ -102,6 +102,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   bool _inlineFolders = true;
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   final Set<String> _animatedTodoIds = {};
+  _TodoSectionViewModel? _cachedVm;
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
@@ -146,6 +147,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       setState(() {
         _inlineFolders = inline;
         _folderDisplayMode = _parseFolderDisplayMode(modeName);
+        _cachedVm = null;
       });
     }
   }
@@ -180,6 +182,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   @override
   void didUpdateWidget(TodoSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.todos != widget.todos || oldWidget.todoGroups != widget.todoGroups) {
+      _cachedVm = null;
+    }
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
       _isTodayExpanded = !widget.todos
           .where((t) => !_isHistoricalTodo(t))
@@ -2535,300 +2540,35 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   }
 
   Widget _buildTodoList() {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    if (_cachedVm != null && _cachedVm!.today != today) {
+      _cachedVm = null;
+    }
+    _cachedVm ??= _computeViewModel();
+    final vm = _cachedVm!;
+
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
-
-    final Iterable<TodoItem> activeTodos = widget.todos.where(
-      (t) {
-        if (t.isDeleted) return false;
-
-        // 🧪 诊断打印：仅在调试模式下打印为何任务被隐藏
-        final bool isHistorical = _isHistoricalTodo(t);
-        final bool matchesTeam =
-            _selectedSubTeamUuid == null || t.teamUuid == _selectedSubTeamUuid;
-
-        if (isHistorical || !matchesTeam) {
-          // debugPrint('👻 Todo [${t.title}] hidden: historical=$isHistorical, teamMatch=$matchesTeam');
-        }
-
-        if (isHistorical) return false;
-        return matchesTeam;
-      },
-    );
 
     final bool hideFolders =
         _folderDisplayMode == _TodoFolderDisplayMode.hidden;
     final bool separateFolders =
         _folderDisplayMode == _TodoFolderDisplayMode.separate;
-    final bool urgentFirstFolders =
-        _folderDisplayMode == _TodoFolderDisplayMode.urgentFirst;
 
-    final Iterable<TodoGroup> activeGroups = hideFolders
-        ? const <TodoGroup>[]
-        : widget.todoGroups.where(
-            (g) {
-              if (g.isDeleted) return false;
-              if (_selectedSubTeamUuid != null) {
-                return g.teamUuid == _selectedSubTeamUuid;
-              }
-              return true;
-            },
-          );
-
-    if (activeTodos.isEmpty && activeGroups.isEmpty) {
+    if (vm.activeTodos.isEmpty && vm.activeGroups.isEmpty) {
       return EmptyState(text: "暂无待办，去添加一个吧", isLight: widget.isLight);
     }
 
-    final int undoneCount = activeTodos.where((t) => !t.isDone).length;
-
-    final DateTime now = DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
-
-    List<_SortedDisplayItem> pastItems = [];
-    List<_SortedDisplayItem> todayItems = [];
-    List<_SortedDisplayItem> futureItems = [];
-    List<Widget> separateGroupWidgets = [];
-
-    final groupTodosMap = <String, List<TodoItem>>{};
-    final List<TodoItem> orphanedTodos = []; // 🚀 孤儿任务容器
-
-    for (var t in widget.todos) {
-      if (t.isDeleted || _isHistoricalTodo(t)) continue;
-
-      final tid = (t.groupId == null || t.groupId!.isEmpty) ? null : t.groupId;
-      if (!hideFolders && tid != null) {
-        // 检查这个组在当前视角下是否存在
-        bool folderExists = widget.todoGroups.any((g) => g.id == tid);
-        if (folderExists) {
-          groupTodosMap.putIfAbsent(tid, () => []).add(t);
-          continue;
-        }
-      }
-      orphanedTodos.add(t);
-    }
-
-    void placeItem(_SortedDisplayItem item) {
-      if (item.date == null) {
-        todayItems.add(item);
-      } else {
-        final d = DateTime(item.date!.year, item.date!.month, item.date!.day);
-        if (d.isBefore(today)) {
-          pastItems.add(item);
-        } else if (d.isAfter(today)) {
-          futureItems.add(item);
-        } else {
-          todayItems.add(item);
-        }
-      }
-    }
-
-    // 1. Process Folders
-    for (var g in widget.todoGroups) {
-      if (hideFolders) break;
-      if (g.isDeleted) continue;
-
-      // 🚀 核心修正：视口过滤
-      // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有文件夹通过
-      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
-        continue;
-      }
-      final allGTodos = groupTodosMap[g.id] ?? [];
-      // 🚀 核心过滤：如果选定了特定团队，则文件夹内的待办也要按团队过滤
-      final gTodos = _selectedSubTeamUuid == null
-          ? allGTodos
-          : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
-
-      if (gTodos.isEmpty) {
-        if (g.isExpanded) {
-          g.isExpanded = false;
-          g.markAsChanged();
-        }
-        continue;
-      }
-
-      bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
-      DateTime? minDate;
-      for (var t in gTodos) {
-        if (!t.isDone && t.dueDate != null) {
-          if (minDate == null || t.dueDate!.isBefore(minDate)) {
-            minDate = t.dueDate;
-          }
-        }
-      }
-      if (minDate == null) {
-        for (var t in gTodos) {
-          if (t.dueDate != null) {
-            if (minDate == null || t.dueDate!.isBefore(minDate)) {
-              minDate = t.dueDate;
-            }
-          }
-        }
-      }
-
-      final w = Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6.0),
-        child: TodoGroupWidget(
-          group: g,
-          groupTodos: gTodos,
-          isLight: widget.isLight,
-          onlyShowMostUrgentTodo: urgentFirstFolders,
-          teamRoles: _teamRoles,
-          onToggle: () {
-            setState(() {
-              g.isExpanded = !g.isExpanded;
-              g.markAsChanged();
-            });
-            widget.onGroupsChanged(widget.todoGroups);
-          },
-          onTodoToggle: (todo) {
-            if (!todo.isDone) {
-              // 这里是取反前的判断，逻辑上是即将变为 Done
-              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-            }
-            todo.isDone = !todo.isDone;
-            todo.markAsChanged();
-            widget.onTodosChanged(widget.todos);
-          },
-          onTodoDropped: (todoId) {
-            final idx = widget.todos.indexWhere((t) => t.id == todoId);
-            if (idx != -1) {
-              setState(() {
-                widget.todos[idx].groupId = g.id;
-                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
-                widget.todos[idx].version += 10;
-                widget.todos[idx].updatedAt =
-                    DateTime.now().millisecondsSinceEpoch;
-              });
-              widget.onTodosChanged(widget.todos);
-            }
-          },
-          onTodoRemoved: (todoId) {
-            final idx = widget.todos.indexWhere((t) => t.id == todoId);
-            if (idx != -1 && widget.todos[idx].groupId != null) {
-              setState(() {
-                widget.todos[idx].groupId = null;
-                // 对于这种结构性调整，大幅提升版本号，确保覆盖另一端的自动重置（由于通常只+1）
-                widget.todos[idx].version += 10;
-                widget.todos[idx].updatedAt =
-                    DateTime.now().millisecondsSinceEpoch;
-              });
-              widget.onTodosChanged(widget.todos);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('自由了！已移出文件夹')),
-              );
-            }
-          },
-          onShowIndependentTodoStatus: _showIndependentTodoStatus,
-          onDelete: () async {
-            final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
-            if (idx != -1) {
-              widget.todoGroups[idx].isDeleted = true;
-              widget.todoGroups[idx].markAsChanged();
-            }
-            await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
-            widget.onGroupsChanged(widget.todoGroups);
-            widget.onRefreshRequested();
-          },
-          onTodoTap: (todo) => _editTodo(todo, context),
-          onTodoDelete: (todo) async {
-            setState(() {
-              // 🚀 跨端联动：删除任务即刻终止番茄钟
-              PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
-              todo.isDeleted = true;
-              todo.markAsChanged();
-            });
-            widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-            await StorageService.deleteTodoGlobally(widget.username, todo.id);
-          },
-        ),
-      );
-
-      // Calculate folder progress
-      double groupProgress = 0.0;
-      for (var t in gTodos) {
-        if (t.isDone) continue;
-        final cDate = DateTime.fromMillisecondsSinceEpoch(
-                t.createdDate ?? t.createdAt,
-                isUtc: true)
-            .toLocal();
-        final end = t.dueDate ??
-            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-        final totalMin = end.difference(cDate).inMinutes;
-        if (totalMin > 0 && now.isAfter(cDate)) {
-          final p =
-              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-          if (p > groupProgress) groupProgress = p;
-        }
-      }
-
-      if (!separateFolders) {
-        placeItem(_SortedDisplayItem(
-          todo: null,
-          group: g,
-          date: minDate,
-          widget: w,
-          isDone: isAllDone,
-          startMs: 0,
-          progress: groupProgress,
-        ));
-      } else {
-        separateGroupWidgets.add(w);
-      }
-    }
-
-    // 2. Process Standalone/Orphaned Todos
-    for (final t in orphanedTodos) {
-      // 🚀 核心修正：视口过滤
-      // 只有在选定特定团队时才进行截流；如果是“全部”(null)，则允许所有散装待办通过
-      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
-        continue;
-      }
-
-      double todoProgress = 0.0;
-      {
-        final cDate = DateTime.fromMillisecondsSinceEpoch(
-                t.createdDate ?? t.createdAt,
-                isUtc: true)
-            .toLocal();
-        final end = t.dueDate ??
-            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
-        final totalMin = end.difference(cDate).inMinutes;
-        if (totalMin > 0 && now.isAfter(cDate)) {
-          todoProgress =
-              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
-        }
-      }
-
-      placeItem(_SortedDisplayItem(
-        todo: t,
-        group: null,
-        date: t.dueDate,
-        widget: const SizedBox.shrink(),
-        isDone: t.isDone,
-        startMs: t.createdDate ?? t.createdAt,
-        progress: todoProgress,
-      ));
-    }
-
-    void sortItems(List<_SortedDisplayItem> list) {
-      list.sort((a, b) {
-        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
-        final progressCmp = b.progress.compareTo(a.progress);
-        if (progressCmp != 0) return progressCmp;
-        if (a.date != null && b.date != null) return a.date!.compareTo(b.date!);
-        if (a.date != null) return -1;
-        if (b.date != null) return 1;
-        return 0;
-      });
-    }
-
-    sortItems(pastItems);
-    sortItems(todayItems);
-    sortItems(futureItems);
+    final int undoneCount = vm.undoneCount;
+    final List<_SortedDisplayItem> pastItems = vm.pastItems;
+    final List<_SortedDisplayItem> todayItems = vm.todayItems;
+    final List<_SortedDisplayItem> futureItems = vm.futureItems;
+    final List<_GroupDisplayData> separateGroupData = vm.separateGroupData;
 
     final List<Widget> sections = [];
 
-    if (separateFolders && separateGroupWidgets.isNotEmpty) {
+    if (separateFolders && separateGroupData.isNotEmpty) {
       sections.add(
         _buildGroupLabel(
           text: "📂 文件夹",
@@ -2839,7 +2579,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       );
       sections.add(Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: separateGroupWidgets,
+        children: separateGroupData
+            .map((data) => _buildGroupWidget(data.group, data.todos))
+            .toList(),
       ));
     }
 
@@ -2865,7 +2607,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     isFuture: false,
                     key: _getTodoDismissKey('dismiss', todo.id));
               }
-              return item.widget;
+              return _buildGroupWidget(item.group!, item.groupTodos!);
             }).toList(),
           ),
         ),
@@ -3087,7 +2829,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             }
                             return Container(
                                 key: ValueKey('group_${item.group!.id}'),
-                                child: item.widget);
+                                child: _buildGroupWidget(item.group!, item.groupTodos!));
                           }).toList(),
                         ),
                       )
@@ -3114,7 +2856,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   isFuture: true,
                   key: _getTodoDismissKey('dismiss', todo.id));
             }
-            return item.widget;
+            return _buildGroupWidget(item.group!, item.groupTodos!);
           }).toList())));
     }
 
@@ -3242,6 +2984,272 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     );
   }
 
+  _TodoSectionViewModel _computeViewModel() {
+    final bool hideFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.hidden;
+    final bool separateFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.separate;
+
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+
+    // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo
+    final groupById = <String, TodoGroup>{};
+    for (final g in widget.todoGroups) {
+      if (g.isDeleted) continue;
+      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) continue;
+      groupById[g.id] = g;
+    }
+
+    // Build todosByGroup map and orphaned list in one pass
+    final todosByGroup = <String, List<TodoItem>>{};
+    final orphanedTodos = <TodoItem>[];
+    for (final t in widget.todos) {
+      if (t.isDeleted || _isHistoricalTodo(t)) continue;
+      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) continue;
+
+      final tid = t.groupId;
+      if (!hideFolders && tid != null && tid.isNotEmpty && groupById.containsKey(tid)) {
+        todosByGroup.putIfAbsent(tid, () => []).add(t);
+      } else {
+        orphanedTodos.add(t);
+      }
+    }
+
+    final Iterable<TodoGroup> activeGroups = hideFolders
+        ? const <TodoGroup>[]
+        : groupById.values;
+
+    final List<TodoItem> activeTodos = [
+      ...todosByGroup.values.expand((list) => list),
+      ...orphanedTodos,
+    ];
+
+    final int undoneCount = activeTodos.where((t) => !t.isDone).length;
+
+    List<_SortedDisplayItem> pastItems = [];
+    List<_SortedDisplayItem> todayItems = [];
+    List<_SortedDisplayItem> futureItems = [];
+    List<_GroupDisplayData> separateGroupData = [];
+
+    void placeItem(_SortedDisplayItem item) {
+      if (item.date == null) {
+        todayItems.add(item);
+      } else {
+        final d = DateTime(item.date!.year, item.date!.month, item.date!.day);
+        if (d.isBefore(today)) {
+          pastItems.add(item);
+        } else if (d.isAfter(today)) {
+          futureItems.add(item);
+        } else {
+          todayItems.add(item);
+        }
+      }
+    }
+
+    // 1. Process Folders - iterate over active groups (already filtered)
+    for (final g in activeGroups) {
+      final allGTodos = todosByGroup[g.id] ?? [];
+      final gTodos = _selectedSubTeamUuid == null
+          ? allGTodos
+          : allGTodos.where((t) => t.teamUuid == _selectedSubTeamUuid).toList();
+
+      if (gTodos.isEmpty) continue;
+
+      bool isAllDone = gTodos.isNotEmpty && gTodos.every((t) => t.isDone);
+      DateTime? minDate;
+      for (var t in gTodos) {
+        if (!t.isDone && t.dueDate != null) {
+          if (minDate == null || t.dueDate!.isBefore(minDate)) {
+            minDate = t.dueDate;
+          }
+        }
+      }
+      if (minDate == null) {
+        for (var t in gTodos) {
+          if (t.dueDate != null) {
+            if (minDate == null || t.dueDate!.isBefore(minDate)) {
+              minDate = t.dueDate;
+            }
+          }
+        }
+      }
+
+      // Calculate folder progress
+      double groupProgress = 0.0;
+      for (var t in gTodos) {
+        if (t.isDone) continue;
+        final cDate = DateTime.fromMillisecondsSinceEpoch(
+                t.createdDate ?? t.createdAt,
+                isUtc: true)
+            .toLocal();
+        final end = t.dueDate ??
+            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          final p =
+              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+          if (p > groupProgress) groupProgress = p;
+        }
+      }
+
+      final groupData = _GroupDisplayData(
+        group: g,
+        todos: gTodos,
+        isAllDone: isAllDone,
+        minDate: minDate,
+        progress: groupProgress,
+      );
+
+      if (!separateFolders) {
+        placeItem(_SortedDisplayItem(
+          todo: null,
+          group: g,
+          date: minDate,
+          isDone: isAllDone,
+          startMs: 0,
+          progress: groupProgress,
+          groupTodos: gTodos,
+        ));
+      } else {
+        separateGroupData.add(groupData);
+      }
+    }
+
+    // 2. Process Standalone/Orphaned Todos
+    for (final t in orphanedTodos) {
+      double todoProgress = 0.0;
+      {
+        final cDate = DateTime.fromMillisecondsSinceEpoch(
+                t.createdDate ?? t.createdAt,
+                isUtc: true)
+            .toLocal();
+        final end = t.dueDate ??
+            DateTime(cDate.year, cDate.month, cDate.day, 23, 59, 59);
+        final totalMin = end.difference(cDate).inMinutes;
+        if (totalMin > 0 && now.isAfter(cDate)) {
+          todoProgress =
+              (now.difference(cDate).inMinutes / totalMin).clamp(0.0, 1.0);
+        }
+      }
+
+      placeItem(_SortedDisplayItem(
+        todo: t,
+        group: null,
+        date: t.dueDate,
+        isDone: t.isDone,
+        startMs: t.createdDate ?? t.createdAt,
+        progress: todoProgress,
+      ));
+    }
+
+    void sortItems(List<_SortedDisplayItem> list) {
+      list.sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        final progressCmp = b.progress.compareTo(a.progress);
+        if (progressCmp != 0) return progressCmp;
+        if (a.date != null && b.date != null) return a.date!.compareTo(b.date!);
+        if (a.date != null) return -1;
+        if (b.date != null) return 1;
+        return 0;
+      });
+    }
+
+    sortItems(pastItems);
+    sortItems(todayItems);
+    sortItems(futureItems);
+
+    return _TodoSectionViewModel(
+      today: today,
+      activeTodos: activeTodos,
+      activeGroups: activeGroups,
+      undoneCount: undoneCount,
+      pastItems: pastItems,
+      todayItems: todayItems,
+      futureItems: futureItems,
+      separateGroupData: separateGroupData,
+    );
+  }
+
+  Widget _buildGroupWidget(TodoGroup g, List<TodoItem> gTodos) {
+    final bool urgentFirstFolders =
+        _folderDisplayMode == _TodoFolderDisplayMode.urgentFirst;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: TodoGroupWidget(
+        group: g,
+        groupTodos: gTodos,
+        isLight: widget.isLight,
+        onlyShowMostUrgentTodo: urgentFirstFolders,
+        teamRoles: _teamRoles,
+        onToggle: () {
+          setState(() {
+            g.isExpanded = !g.isExpanded;
+            g.markAsChanged();
+          });
+          widget.onGroupsChanged(widget.todoGroups);
+        },
+        onTodoToggle: (todo) {
+          if (!todo.isDone) {
+            PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+          }
+          todo.isDone = !todo.isDone;
+          todo.markAsChanged();
+          widget.onTodosChanged(widget.todos);
+        },
+        onTodoDropped: (todoId) {
+          final idx = widget.todos.indexWhere((t) => t.id == todoId);
+          if (idx != -1) {
+            setState(() {
+              widget.todos[idx].groupId = g.id;
+              widget.todos[idx].version += 10;
+              widget.todos[idx].updatedAt =
+                  DateTime.now().millisecondsSinceEpoch;
+            });
+            widget.onTodosChanged(widget.todos);
+          }
+        },
+        onTodoRemoved: (todoId) {
+          final idx = widget.todos.indexWhere((t) => t.id == todoId);
+          if (idx != -1 && widget.todos[idx].groupId != null) {
+            setState(() {
+              widget.todos[idx].groupId = null;
+              widget.todos[idx].version += 10;
+              widget.todos[idx].updatedAt =
+                  DateTime.now().millisecondsSinceEpoch;
+            });
+            widget.onTodosChanged(widget.todos);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('自由了！已移出文件夹')),
+            );
+          }
+        },
+        onShowIndependentTodoStatus: _showIndependentTodoStatus,
+        onDelete: () async {
+          final idx = widget.todoGroups.indexWhere((x) => x.id == g.id);
+          if (idx != -1) {
+            widget.todoGroups[idx].isDeleted = true;
+            widget.todoGroups[idx].markAsChanged();
+          }
+          await StorageService.deleteTodoGroupGlobally(widget.username, g.id);
+          widget.onGroupsChanged(widget.todoGroups);
+          widget.onRefreshRequested();
+        },
+        onTodoTap: (todo) => _editTodo(todo, context),
+        onTodoDelete: (todo) async {
+          setState(() {
+            PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+            todo.isDeleted = true;
+            todo.markAsChanged();
+          });
+          widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+          await StorageService.deleteTodoGlobally(widget.username, todo.id);
+        },
+      ),
+    );
+  }
+
   /// 🚀 Uni-Sync 4.0: 首页动态团队切换 Tab
   Widget _buildTeamFilterTabs() {
     // 1. 提取所有关联的团队信息 (同时扫描任务和文件夹)
@@ -3275,7 +3283,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               label: "全部",
               isSelected: _selectedSubTeamUuid == null,
               onTap: () {
-                setState(() => _selectedSubTeamUuid = null);
+                setState(() {
+                  _selectedSubTeamUuid = null;
+                  _cachedVm = null;
+                });
                 widget.onTeamChanged?.call(null, null);
               },
               useDarkUI: useDarkUI,
@@ -3289,7 +3300,10 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   label: entry.value,
                   isSelected: _selectedSubTeamUuid == entry.key,
                   onTap: () {
-                    setState(() => _selectedSubTeamUuid = entry.key);
+                    setState(() {
+                      _selectedSubTeamUuid = entry.key;
+                      _cachedVm = null;
+                    });
                     widget.onTeamChanged?.call(entry.key, entry.value);
                   },
                   useDarkUI: useDarkUI,
@@ -4853,22 +4867,60 @@ class _AiAssistantContext {
   final List<Team> teams;
 }
 
+class _TodoSectionViewModel {
+  final DateTime today;
+  final List<TodoItem> activeTodos;
+  final Iterable<TodoGroup> activeGroups;
+  final int undoneCount;
+  final List<_SortedDisplayItem> pastItems;
+  final List<_SortedDisplayItem> todayItems;
+  final List<_SortedDisplayItem> futureItems;
+  final List<_GroupDisplayData> separateGroupData;
+
+  _TodoSectionViewModel({
+    required this.today,
+    required this.activeTodos,
+    required this.activeGroups,
+    required this.undoneCount,
+    required this.pastItems,
+    required this.todayItems,
+    required this.futureItems,
+    required this.separateGroupData,
+  });
+}
+
+class _GroupDisplayData {
+  final TodoGroup group;
+  final List<TodoItem> todos;
+  final bool isAllDone;
+  final DateTime? minDate;
+  final double progress;
+
+  _GroupDisplayData({
+    required this.group,
+    required this.todos,
+    required this.isAllDone,
+    this.minDate,
+    required this.progress,
+  });
+}
+
 class _SortedDisplayItem {
   final TodoItem? todo;
   final TodoGroup? group;
   final DateTime? date;
-  final Widget widget;
   final bool isDone;
   final int startMs;
   final double progress;
+  final List<TodoItem>? groupTodos;
 
   _SortedDisplayItem({
     this.todo,
     this.group,
     this.date,
-    required this.widget,
     required this.isDone,
     this.startMs = 0,
     this.progress = 0.0,
+    this.groupTodos,
   });
 }

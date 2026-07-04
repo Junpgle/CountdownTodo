@@ -772,6 +772,7 @@ class DatabaseHelper {
             await ensureSuggestionFeedbackSchema(db);
             await ensureTeamsSchema(db);
             await ensureScreenTimeSchema(db);
+            await ensureMissingIndexes(db);
           },
         );
       } catch (e) {
@@ -1298,6 +1299,24 @@ class DatabaseHelper {
 
     // 16. 创建团队缓存表
     await ensureTeamsSchema(db);
+
+    // 17. 创建性能索引
+    await ensureMissingIndexes(db);
+  }
+
+  static Future<void> ensureMissingIndexes(Database db) async {
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_created ON todos(is_deleted, created_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_completed_updated ON todos(is_deleted, is_completed, updated_at)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_time_logs_start ON time_logs(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_search_history_time ON search_history(timestamp)');
   }
 
   /// 🚀 初始化 FTS 搜索引擎，支持 FTS5 -> FTS4 -> LIKE 逐级降级 (带主动探测)

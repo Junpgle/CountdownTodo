@@ -168,9 +168,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   final GlobalKey _todoHistoryKey = GlobalKey();
   final GlobalKey _countdownHistoryKey = GlobalKey();
   final GlobalKey _todayPlanChartKey = GlobalKey();
-  // 每次自增触发首页专注记录卡片与时间轴刷新
-  final ValueNotifier<int> _timelineRefreshTriggerNotifier =
-      ValueNotifier<int>(0);
+  // 独立刷新信号，避免单一计数器同时触发多个重型模块
+  final ValueNotifier<int> _todoRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
 
   Future<void> _extractColorFromProvider(
       ImageProvider provider, String url) async {
@@ -241,6 +243,11 @@ class _HomeDashboardState extends State<HomeDashboard>
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
+  Timer? _todoNotificationDebouncer;
+  Timer? _teamPendingDebouncer;
+  Timer? _announcementDebouncer;
+  Timer? _todoWidgetDebouncer;
+  Timer? _reminderScheduleDebouncer;
   final ValueNotifier<int> _pomodoroTickNotifier = ValueNotifier<int>(0);
 
   // 🚀 Granular Refresh Notifiers
@@ -342,7 +349,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
     await _saveTodosToSharedFile(nextTodos);
-    _timelineRefreshTriggerNotifier.value++;
+    _timelineRevision.value++;
     _todoUpdateSignalNotifier.value++;
     FloatWindowService.triggerReminderCheck();
     FloatWindowService.invalidateSlotCache();
@@ -531,6 +538,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     for (final sub in _notifSubs) {
       sub.cancel();
     }
+    StorageService.dataRefreshNotifier.removeListener(_loadAllData);
+    StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -550,6 +559,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
+    _todoNotificationDebouncer?.cancel();
+    _teamPendingDebouncer?.cancel();
+    _announcementDebouncer?.cancel();
+    _todoWidgetDebouncer?.cancel();
+    _reminderScheduleDebouncer?.cancel();
     _pomodoroTickNotifier.dispose();
     MacPomodoroStatusBarService.dispose();
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
@@ -647,7 +661,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 更新本地列表
     setState(() {
       _todos = [...newTodos, ..._todos];
-      _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴刷新
+      _todoRevision.value++;
     });
 
     // 保存到数据库
@@ -1828,7 +1842,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                 ),
               ),
             );
-            _timelineRefreshTriggerNotifier.value++;
+            _scheduleRevision.value++;
+            _timelineRevision.value++;
             _loadAllData();
           },
           onAction: () => _startPlanBlockFocus(activeBlock),
@@ -2045,7 +2060,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         ),
       );
       if (mounted) {
-        _timelineRefreshTriggerNotifier.value++;
+        _pomodoroRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
         _loadAllData();
       }
     } catch (e) {
@@ -2063,7 +2080,9 @@ class _HomeDashboardState extends State<HomeDashboard>
         status: PomodoroRecordStatus.interrupted,
       );
       if (mounted) {
-        _timelineRefreshTriggerNotifier.value++;
+        _pomodoroRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
         _loadAllData();
       }
     } catch (e) {
@@ -2462,8 +2481,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkUpdatesSilently();
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
-      // 从番茄钟页或任何前台切换回来时，刷新专注记录卡片
-      if (mounted) _timelineRefreshTriggerNotifier.value++;
+      // 从番茄钟页或任何前台切换回来时，刷新所有卡片
+      if (mounted) {
+        _todoRevision.value++;
+        _scheduleRevision.value++;
+        _timelineRevision.value++;
+        _pomodoroRevision.value++;
+      }
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
       // 清理残留的一次性通知
@@ -2516,7 +2540,8 @@ class _HomeDashboardState extends State<HomeDashboard>
       sourceKey: _pomodoroCardKey,
     );
     if (mounted) {
-      _timelineRefreshTriggerNotifier.value++;
+      _pomodoroRevision.value++;
+      _timelineRevision.value++;
       _loadAllData(deferred: true);
     }
   }
@@ -3065,48 +3090,51 @@ class _HomeDashboardState extends State<HomeDashboard>
           _safeListResult<TodoPlanBlock>(results[5]);
 
       if (mounted) {
-        // 🚀 诊断日志：打印 collabType=1 的 is_completed 值
-        /*for (final t in allTodos.where((t) => t.collabType == 1 && !t.isDeleted)) {
-          debugPrint('🧪 [SyncDiag][_loadAllData] collab1 UUID=${t.id} isDone=${t.isDone} version=${t.version}');
-        }*/
-        // 🚀 Granular Update: Only update notifiers if content actually changed
-        if (!_isListEqual(_todos, allTodos)) {
+        final bool todosChanged = !_isListEqual(_todos, allTodos);
+        final bool groupsChanged = !_isListEqual(_todoGroups, allGroups);
+        final bool countdownsChanged = !_isListEqual(_countdowns, allCountdowns);
+        final bool mathChanged = !_isMapEqual(_mathStats, mathStats);
+        final bool coursesChanged = !_isMapEqual(_dashboardCourseData, courseData);
+        final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
+
+        if (todosChanged) {
           _todos = allTodos;
           _todosNotifier.value = allTodos;
+          _todoUpdateSignalNotifier.value++;
         }
         _hasTeamConflictDot = hasTeamConflict;
-        if (!_isListEqual(_todoGroups, allGroups)) {
+        if (groupsChanged) {
           _todoGroups = allGroups;
           _groupsNotifier.value = allGroups;
         }
-        if (!_isListEqual(_countdowns, allCountdowns)) {
+        if (countdownsChanged) {
           _countdowns = allCountdowns;
           _countdownsNotifier.value = allCountdowns;
         }
-        if (!_isMapEqual(_mathStats, mathStats)) {
+        if (mathChanged) {
           _mathStats = mathStats;
           _mathStatsNotifier.value = mathStats;
         }
-        if (!_isMapEqual(_dashboardCourseData, courseData)) {
+        if (coursesChanged) {
           _dashboardCourseData = courseData;
           _courseDataNotifier.value = courseData;
         }
-        _planBlocks = allPlanBlocks;
+        if (plansChanged) {
+          _planBlocks = allPlanBlocks;
+        }
 
-        _todoUpdateSignalNotifier.value++; // 🚀 触发待办局部更新
-        _timelineRefreshTriggerNotifier.value++; // 🚀 触发时间轴与专注卡片局部更新
+        if (todosChanged || countdownsChanged) {
+          _timelineRevision.value++;
+        }
+        if (plansChanged || coursesChanged) {
+          _scheduleRevision.value++;
+        }
 
-        // 2. 交互与同步逻辑 (异步执行)
-        _syncTodoNotification();
-        _fetchTeamPendingCount(); // 🚀 Uni-Sync 4.0: 加载团队消息计数
-        _fetchActiveAnnouncements(); // 🚀 Uni-Sync 4.0: 获取置顶公告
-        WidgetService.updateTodoWidget(allTodos);
-
-        final allCourses = await CourseService.getAllCourses(widget.username);
-        unawaited(ReminderScheduleService.scheduleAll(
-          todos: allTodos,
-          courses: allCourses,
-        ));
+        _debouncedSyncTodoNotification(todosChanged);
+        _debouncedFetchTeamPending();
+        _debouncedFetchAnnouncements();
+        _debouncedUpdateTodoWidget(allTodos, todosChanged);
+        _debouncedScheduleAllReminders(todosChanged || coursesChanged);
       }
     } catch (e) {
       // debugPrint('❌ [DashboardLoader] 加载失败: $e');
@@ -3321,6 +3349,52 @@ class _HomeDashboardState extends State<HomeDashboard>
     _checkUpcomingEvents();
   }
 
+  void _debouncedSyncTodoNotification(bool needsSync) {
+    _todoNotificationDebouncer?.cancel();
+    if (!needsSync) return;
+    _todoNotificationDebouncer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _syncTodoNotification();
+    });
+  }
+
+  void _debouncedFetchTeamPending() {
+    _teamPendingDebouncer?.cancel();
+    _teamPendingDebouncer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _fetchTeamPendingCount();
+    });
+  }
+
+  void _debouncedFetchAnnouncements() {
+    _announcementDebouncer?.cancel();
+    _announcementDebouncer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _fetchActiveAnnouncements();
+    });
+  }
+
+  void _debouncedUpdateTodoWidget(List<TodoItem> todos, bool needsSync) {
+    _todoWidgetDebouncer?.cancel();
+    if (!needsSync) return;
+    _todoWidgetDebouncer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      WidgetService.updateTodoWidget(_todos);
+    });
+  }
+
+  void _debouncedScheduleAllReminders(bool needsSync) {
+    _reminderScheduleDebouncer?.cancel();
+    if (!needsSync) return;
+    _reminderScheduleDebouncer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      CourseService.getAllCourses(widget.username).then((allCourses) {
+        if (!mounted) return;
+        ReminderScheduleService.scheduleAll(todos: _todos, courses: allCourses);
+      });
+    });
+  }
+
   Future<void> _saveTodosToSharedFile(List<TodoItem> todos) async {
     try {
       await saveIslandTodoSnapshot(todos);
@@ -3363,7 +3437,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     } else {
       _todos = nextTodos;
     }
-    _timelineRefreshTriggerNotifier.value++;
+    _todoRevision.value++;
+    _timelineRevision.value++;
 
     for (var nt in nextTodos) {
       if (nt.isDone) {
@@ -4159,7 +4234,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) {
         setState(() {
           _isSearchOpen = false;
-          _timelineRefreshTriggerNotifier.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
+          _timelineRevision.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
         });
       }
       _loadAllData(deferred: true);
@@ -4339,7 +4414,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget courseSection =
                                         ValueListenableBuilder<int>(
                                       valueListenable:
-                                          _timelineRefreshTriggerNotifier,
+                                          _scheduleRevision,
                                       builder: (context, trigger, _) {
                                         return CourseSectionWidget(
                                           dashboardCourseData:
@@ -4361,7 +4436,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
-                                              _timelineRefreshTriggerNotifier
+                                              _timelineRevision
                                                   .value++;
                                             });
                                     Widget todoSection =
@@ -4504,7 +4579,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _timelineRevision,
                                         builder: (context, trigger, _) {
                                           return PersonalTimelineSection(
                                             username: widget.username,
@@ -4518,7 +4593,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget pomodoroSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
                                             key: _pomodoroCardKey,
@@ -4536,7 +4611,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
                                                 );
-                                                _timelineRefreshTriggerNotifier
+                                                _pomodoroRevision
                                                     .value++;
                                                 _loadAllData();
                                               },
@@ -4549,7 +4624,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget planBlockSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
                                         valueListenable:
-                                            _timelineRefreshTriggerNotifier,
+                                            _scheduleRevision,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
                                             chartKey: _todayPlanChartKey,
@@ -4565,7 +4640,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                               widget.username),
                                                 ),
                                               );
-                                              _timelineRefreshTriggerNotifier
+                                              _scheduleRevision
                                                   .value++;
                                               _loadAllData();
                                             },
@@ -4873,7 +4948,8 @@ class _HomeDashboardState extends State<HomeDashboard>
                 sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
               );
               if (mounted) {
-                _timelineRefreshTriggerNotifier.value++;
+                _pomodoroRevision.value++;
+                _timelineRevision.value++;
                 _loadAllData(deferred: true);
               }
             },

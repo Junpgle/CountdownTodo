@@ -178,13 +178,28 @@ class StorageService {
       String username, DateTime day) async {
     final startOfDay =
         DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-    final endOfDay = DateTime(day.year, day.month, day.day, 23, 59, 59, 999)
+    final endOfDay = DateTime(day.year, day.month, day.day + 1)
         .millisecondsSinceEpoch;
 
-    final all = await getPlanBlocks(username);
-    return all
-        .where((b) => b.startTime >= startOfDay && b.startTime <= endOfDay)
-        .toList();
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> maps = await db.query(
+        'todo_plan_blocks',
+        where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        whereArgs: [startOfDay, endOfDay],
+        orderBy: 'start_time ASC',
+      );
+
+      if (maps.isNotEmpty) {
+        if (maps.length > 50) {
+          return await compute(_parsePlanBlockItemsIsolate, maps);
+        }
+        return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
+      }
+    } catch (e) {
+      debugPrint("⚠️ PlanBlocks SQL 引擎异常: $e");
+    }
+    return [];
   }
 
   // --- 常量定义 ---
