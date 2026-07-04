@@ -72,7 +72,7 @@ class WindowService extends WindowListener with TrayListener {
       await trayManager.setIcon(
         Platform.isWindows
             ? 'assets/icon/app_icon.ico'
-            : 'assets/icon/app_icon.png',
+            : 'assets/icon/app_icon.webp',
       );
       await trayManager.setToolTip('CountDownTodo');
       await _updateTrayMenu();

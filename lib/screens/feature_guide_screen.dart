@@ -660,7 +660,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     .withValues(alpha: 0.3)),
           ),
           clipBehavior: Clip.antiAlias,
-          child: assetPath.toLowerCase().endsWith('.mp4')
+          child: assetPath.toLowerCase().endsWith('.mp4') || assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
               : Image.asset(assetPath, fit: fit),
         ),
@@ -1253,7 +1253,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '屏幕时间统计与时间全览',
           subtitle: '全天候统计你的手机使用情况，智能合并番茄钟与各 App 的使用时长，生成一目了然的时间网格。',
         ),
-        _buildMediaAsset('assets/guide_media/android_lock_screen.png',
+        _buildMediaAsset('assets/guide_media/android_lock_screen.webp',
             fit: BoxFit.contain),
         const SizedBox(height: 24),
         _buildPermissionTile(
@@ -1281,7 +1281,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '精确保活的通知唤醒',
           subtitle: '不论是日程、倒计时、还是番茄钟，我们确保即使应用在后台，也会准时向您推送提醒。',
         ),
-        _buildMediaAsset('assets/guide_media/android_notification.png',
+        _buildMediaAsset('assets/guide_media/android_notification.webp',
             fit: BoxFit.contain),
         const SizedBox(height: 24),
         _buildPermissionTile(
@@ -1319,7 +1319,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '番茄钟与后台长驻',
           subtitle: '为了体验完美的番茄钟跨端同步（WebSocket）与避免锁屏后被系统盲目杀后台，我们需要调整电池优化。',
         ),
-        _buildMediaAsset('assets/guide_media/android_return_desktop.mp4'),
+        _buildMediaAsset('assets/guide_media/android_return_desktop.webm'),
         const SizedBox(height: 24),
         _buildPermissionTile(
           title: '忽略电池优化',
@@ -1350,7 +1350,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           title: '桌面小部件',
           subtitle: '无需打开应用，直接在桌面查看今日课程、待办任务与番茄钟状态。',
         ),
-        _buildMediaAsset('assets/guide_media/android_widget_guide.mp4'),
+        _buildMediaAsset('assets/guide_media/android_widget_guide.webm'),
         const SizedBox(height: 20),
 
         // 🚀 一键添加到桌面按钮 (Android 8.0+)
@@ -1499,7 +1499,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         title: '全端番茄钟与大屏专注',
         subtitle: '在 Windows 桌面端享受沉浸式或浮窗式的番茄钟体验。而且，现在支持跨屏自动无缝流转同步！',
       ),
-      _buildMediaAsset('assets/guide_media/windows_pomodoro.mp4'),
+      _buildMediaAsset('assets/guide_media/windows_pomodoro.webm'),
     ]));
   }
 
@@ -1513,7 +1513,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         title: '无缝接入 Windows 屏幕时间',
         subtitle: '利用本地读取 Tai 软件（专业 Windows 时间追踪应用）的数据库，轻松在应用内部汇总双端时长。',
       ),
-      _buildMediaAsset('assets/guide_media/windows_screen_time.mp4'),
+      _buildMediaAsset('assets/guide_media/windows_screen_time.webm'),
     ]));
   }
 

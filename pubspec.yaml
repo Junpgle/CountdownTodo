@@ -79,7 +79,3 @@ flutter:
     - assets/turnstile/
     - update_manifest.json
     - update_changelog_archive.json
-  fonts:
-    - family: NotoSansCJKsc
-      fonts:
-        - asset: assets/fonts/NotoSansCJKsc-Regular.otf

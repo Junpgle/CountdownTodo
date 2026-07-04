@@ -143,7 +143,7 @@ class _SplashScreenState extends State<SplashScreen>
             opacity: _fadeAnimation,
             child: ClipRect(
               child: Image.asset(
-                'assets/splash/default.jpg',
+                'assets/splash/default.webp',
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,
@@ -186,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen>
             opacity: _fadeAnimation,
             child: ClipRect(
               child: Image.asset(
-                'assets/splash/default_pad.jpg',
+                'assets/splash/default_pad.webp',
                 width: size.width,
                 height: size.height,
                 fit: BoxFit.cover,

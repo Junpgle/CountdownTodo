@@ -20,7 +20,7 @@ class _CourseAdaptationScreenState extends State<CourseAdaptationScreen> {
   void initState() {
     super.initState();
     _controller =
-        VideoPlayerController.asset('assets/guide_media/course_import.mp4')
+        VideoPlayerController.asset('assets/guide_media/course_import.webm')
           ..initialize().then((_) {
             setState(() {});
             _controller.setLooping(true);

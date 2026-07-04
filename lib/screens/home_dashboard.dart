@@ -3982,7 +3982,7 @@ class _HomeDashboardState extends State<HomeDashboard>
           _wallpaperDominantColor = null;
           _extractedWallpaperUrl = null;
           StorageService.setAppWallpaperColor(null);
-          _wallpaperUrl = 'assets/images/default_wallpaper.png';
+          _wallpaperUrl = 'assets/images/default_wallpaper.webp';
           _isWallpaperLoadingError = false; // Reset to allow this to show
         });
       }
@@ -5544,7 +5544,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           widget.onError();
           widget.onImageProvider
-              ?.call(const AssetImage('assets/images/default_wallpaper.png'));
+              ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
         });
       }
     }
@@ -5553,11 +5553,11 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return Image.asset('assets/images/default_wallpaper.png',
+      return Image.asset('assets/images/default_wallpaper.webp',
           fit: BoxFit.cover);
     }
     if (_imageBytes == null) {
-      return Image.asset('assets/images/default_wallpaper.png',
+      return Image.asset('assets/images/default_wallpaper.webp',
           fit: BoxFit.cover);
     }
     return FadeTransition(
