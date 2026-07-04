@@ -445,12 +445,12 @@ class ApiService {
   // ==========================================
 
   static Future<List<dynamic>> fetchCourses(int userId,
-      {String semester = "default"}) async {
+      {String? semester}) async {
     try {
-      final response = await _client.get(
-          Uri.parse(
-              '$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester'),
-          headers: _getHeaders());
+      final uri = semester != null
+          ? Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester')
+          : Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId');
+      final response = await _client.get(uri, headers: _getHeaders());
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }

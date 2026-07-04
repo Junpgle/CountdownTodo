@@ -50,6 +50,7 @@ class _TimelineEvent {
   final Widget Function(double left, double width) builder;
   int columnIndex = 0;
   int maxColumns = 1;
+  int colSpan = 1;
 
   _TimelineEvent({
     required this.top,
@@ -2899,6 +2900,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         if (event.top >= groupBottom && currentGroup.isNotEmpty) {
           for (var e in currentGroup) {
             e.maxColumns = columns.length;
+            e.colSpan = 1;
+            for (int i = e.columnIndex + 1; i < columns.length; i++) {
+              bool overlap = false;
+              for (var other in columns[i]) {
+                if (other.top < e.bottom && other.bottom > e.top) {
+                  overlap = true;
+                  break;
+                }
+              }
+              if (overlap) break;
+              e.colSpan++;
+            }
           }
           columns.clear();
           currentGroup.clear();
@@ -2927,13 +2940,26 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
       for (var e in currentGroup) {
         e.maxColumns = columns.length;
+        e.colSpan = 1;
+        for (int i = e.columnIndex + 1; i < columns.length; i++) {
+          bool overlap = false;
+          for (var other in columns[i]) {
+            if (other.top < e.bottom && other.bottom > e.top) {
+              overlap = true;
+              break;
+            }
+          }
+          if (overlap) break;
+          e.colSpan++;
+        }
       }
 
       double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
       for (var event in dayEvents) {
         double w = (cellWidth - 2) / event.maxColumns;
         double l = leftOffset + 1 + event.columnIndex * w;
-        children.add(event.builder(l, w));
+        double width = w * event.colSpan;
+        children.add(event.builder(l, width));
       }
     }
 
