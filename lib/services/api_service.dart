@@ -1199,6 +1199,142 @@ class ApiService {
   }
 
   // ==========================================
+  // 🔗 10.5 团队分享 (Team Shares)
+  // ==========================================
+
+  static Future<Map<String, dynamic>> createTeamShare({
+    required String teamUuid,
+    String? title,
+    String? description,
+    bool shareTodos = true,
+    bool shareCountdowns = true,
+    bool shareAnnouncements = true,
+    String? password,
+    int? expiresHours,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'team_uuid': teamUuid,
+        'share_todos': shareTodos,
+        'share_countdowns': shareCountdowns,
+        'share_announcements': shareAnnouncements,
+      };
+      if (title != null) body['title'] = title;
+      if (description != null) body['description'] = description;
+      if (password != null && password.isNotEmpty) body['password'] = password;
+      if (expiresHours != null) body['expires_hours'] = expiresHours;
+
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/create'),
+        headers: _getHeaders(),
+        body: jsonEncode(body),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<List<dynamic>> fetchTeamShares(String teamUuid) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares?team_uuid=$teamUuid'),
+        headers: _getHeaders(),
+      );
+      final data = jsonDecode(response.body);
+      return data['shares'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> deleteTeamShare(String shareCode) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/delete'),
+        headers: _getHeaders(),
+        body: jsonEncode({'share_code': shareCode}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateTeamShare({
+    required String shareCode,
+    required bool isActive,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/teams/shares/update'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'share_code': shareCode,
+          'is_active': isActive,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyShareCode(
+      String code, String? password) async {
+    try {
+      final body = <String, dynamic>{};
+      if (password != null && password.isNotEmpty) body['password'] = password;
+
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/shares/$code/verify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchShareData(String code,
+      {String? token}) async {
+    try {
+      var url = '$_effectiveBaseUrl/api/shares/$code/data';
+      if (token != null && token.isNotEmpty) {
+        url += '?token=${Uri.encodeComponent(token)}';
+      }
+      final response = await _client.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestJoinViaShare({
+    required String shareCode,
+    required String email,
+    String? message,
+  }) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$_effectiveBaseUrl/api/shares/$shareCode/request_join'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          if (message != null && message.isNotEmpty) 'message': message,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // ==========================================
   // 🚀 11. 版本记录与回滚 (History & Rollback)
   // ==========================================
 

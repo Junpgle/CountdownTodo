@@ -18,6 +18,7 @@ import 'screens/team_management_screen.dart';
 import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
+import 'screens/share_view_screen.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'models.dart';
@@ -37,6 +38,7 @@ import 'services/platform_bootstrap.dart';
 import 'widgets/island_debug_host.dart';
 
 import 'utils/navigator_utils.dart';
+import 'utils/url_hash.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -191,6 +193,7 @@ class _MyAppState extends State<MyApp> {
   bool _defaultSplashCompleted = false;
   bool _windowReadyForSplashTransition = true;
   Timer? _defaultSplashFallbackTimer;
+  String? _shareCode;
 
   @override
   void initState() {
@@ -198,13 +201,30 @@ class _MyAppState extends State<MyApp> {
     _windowReadyForSplashTransition =
         AppPlatform.isWeb || !AppPlatform.isDesktop;
     WindowService.onShowCloseConfirm = _showCloseConfirmDialog;
-    _defaultSplashFallbackTimer =
-        Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
-    _scheduleSplashReadinessFallback();
-    // 立即开始初始化，不等待首屏动画
-    _initializeApp();
-    // 处理开屏序列逻辑
-    _startSplashSequence();
+    if (_shareCode == null) {
+      _defaultSplashFallbackTimer =
+          Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
+      _scheduleSplashReadinessFallback();
+      // 立即开始初始化，不等待首屏动画
+      _initializeApp();
+      // 处理开屏序列逻辑
+      _startSplashSequence();
+    }
+  }
+
+  void _checkShareRoute() {
+    if (_shareCode != null) return;
+    try {
+      String hash = getUrlHash();
+      if (hash.startsWith('#')) hash = hash.substring(1);
+      if (hash.startsWith('/share')) {
+        final uri = Uri.parse('http://localhost$hash');
+        final code = uri.queryParameters['code'];
+        if (code != null && code.isNotEmpty) {
+          _shareCode = code;
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _startSplashSequence() async {
@@ -676,6 +696,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    _checkShareRoute();
     return ValueListenableBuilder<String>(
       valueListenable: StorageService.themeNotifier,
       builder: (context, themeModeString, child) {
@@ -790,6 +811,27 @@ class _MyAppState extends State<MyApp> {
                               '/dev/island': (context) =>
                                   IslandDebugHost.route(),
                             },
+                            onGenerateRoute: (settings) {
+                              final name = settings.name ?? '';
+                              if (name.startsWith('/share')) {
+                                final uri = Uri.parse('http://localhost$name');
+                                final code = uri.queryParameters['code'];
+                                if (code != null && code.isNotEmpty) {
+                                  _shareCode = code;
+                                  return MaterialPageRoute(
+                                    builder: (_) =>
+                                        ShareViewScreen(shareCode: code),
+                                    settings: settings,
+                                  );
+                                }
+                              }
+                              return null;
+                            },
+                            onUnknownRoute: (_) => MaterialPageRoute(
+                              builder: (_) => _shareCode != null
+                                  ? ShareViewScreen(shareCode: _shareCode!)
+                                  : const LoginScreen(),
+                            ),
                             builder: (context, child) {
                               final content = child ?? const SizedBox.shrink();
                               if (!IslandDebugHost.shouldShowOverlay) {

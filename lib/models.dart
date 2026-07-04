@@ -1125,6 +1125,59 @@ class TeamAnnouncement {
       };
 }
 
+class TeamShare {
+  final int id;
+  final String shareCode;
+  final String teamUuid;
+  final String? title;
+  final String? description;
+  final bool shareTodos;
+  final bool shareCountdowns;
+  final bool shareAnnouncements;
+  final bool hasPassword;
+  final int? expiresAt;
+  final int viewCount;
+  final int createdAt;
+  final bool isActive;
+  final String? shareUrl;
+
+  TeamShare({
+    required this.id,
+    required this.shareCode,
+    required this.teamUuid,
+    this.title,
+    this.description,
+    this.shareTodos = true,
+    this.shareCountdowns = true,
+    this.shareAnnouncements = true,
+    this.hasPassword = false,
+    this.expiresAt,
+    this.viewCount = 0,
+    required this.createdAt,
+    this.isActive = true,
+    this.shareUrl,
+  });
+
+  bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
+
+  factory TeamShare.fromJson(Map<String, dynamic> json) => TeamShare(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        shareCode: json['share_code']?.toString() ?? '',
+        teamUuid: json['team_uuid']?.toString() ?? '',
+        title: json['title']?.toString(),
+        description: json['description']?.toString(),
+        shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
+        shareCountdowns: json['share_countdowns'] == 1 || json['share_countdowns'] == true,
+        shareAnnouncements: json['share_announcements'] == 1 || json['share_announcements'] == true,
+        hasPassword: json['has_password'] == true || json['has_password'] == 1,
+        expiresAt: (json['expires_at'] as num?)?.toInt(),
+        viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
+        createdAt: (json['created_at'] as num?)?.toInt() ?? 0,
+        isActive: json['is_active'] == 1 || json['is_active'] == true,
+        shareUrl: json['share_url']?.toString(),
+      );
+}
+
 // ==========================================
 // 🔍 5. 全局搜索模型 (Global Search)
 // ==========================================
