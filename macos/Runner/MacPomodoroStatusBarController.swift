@@ -44,6 +44,8 @@ class MacPomodoroStatusBarController {
         todoTitle = args["todoTitle"] as? String ?? ""
         isRemote = args["isRemote"] as? Bool ?? false
 
+        NSLog("[MacStatusBar] updatePomodoroStatus: phase=%@, targetEndMs=%lld, mode=%@", phase, targetEndMs, mode)
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.showStatusItem()
@@ -53,6 +55,7 @@ class MacPomodoroStatusBarController {
     }
 
     func clearPomodoroStatus() {
+        NSLog("[MacStatusBar] clearPomodoroStatus called")
         phase = "idle"
         isRemote = false
 
@@ -66,8 +69,10 @@ class MacPomodoroStatusBarController {
 
     private func showStatusItem() {
         if statusItem == nil {
+            NSLog("[MacStatusBar] Creating NSStatusItem")
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             setupMenu()
+            NSLog("[MacStatusBar] NSStatusItem created: %@", statusItem != nil ? "yes" : "no")
         }
     }
 
@@ -109,7 +114,10 @@ class MacPomodoroStatusBarController {
     }
 
     private func refreshDisplay() {
-        guard let button = statusItem?.button else { return }
+        guard let button = statusItem?.button else {
+            NSLog("[MacStatusBar] refreshDisplay: button is nil!")
+            return
+        }
 
         // 远端模式隐藏暂停/结束
         pauseItem?.isHidden = isRemote

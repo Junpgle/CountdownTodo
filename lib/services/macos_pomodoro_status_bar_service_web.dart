@@ -5,5 +5,7 @@ class MacPomodoroStatusBarService {
 
   static Future<void> init() async {}
 
+  static void clearNative() {}
+
   static void dispose() {}
 }

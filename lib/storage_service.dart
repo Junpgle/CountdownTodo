@@ -2049,6 +2049,39 @@ class StorageService {
             todo.markAsChanged();
             needSave = true;
           }
+        } else if (todo.recurrence == RecurrenceType.weekdays &&
+            todayDay.isAfter(baseDay)) {
+          if (todayDay.weekday >= 1 && todayDay.weekday <= 5) {
+            todo.isDone = false;
+            _rollRecurrenceDateToToday(todo, today);
+            todo.markAsChanged();
+            needSave = true;
+          }
+        } else if (todo.recurrence == RecurrenceType.weekly &&
+            todayDay.isAfter(baseDay)) {
+          if (todayDay.weekday == baseDay.weekday) {
+            todo.isDone = false;
+            _rollRecurrenceDateToToday(todo, today);
+            todo.markAsChanged();
+            needSave = true;
+          }
+        } else if (todo.recurrence == RecurrenceType.monthly &&
+            todayDay.isAfter(baseDay)) {
+          if (todayDay.day == baseDay.day) {
+            todo.isDone = false;
+            _rollRecurrenceDateToToday(todo, today);
+            todo.markAsChanged();
+            needSave = true;
+          }
+        } else if (todo.recurrence == RecurrenceType.yearly &&
+            todayDay.isAfter(baseDay)) {
+          if (todayDay.month == baseDay.month &&
+              todayDay.day == baseDay.day) {
+            todo.isDone = false;
+            _rollRecurrenceDateToToday(todo, today);
+            todo.markAsChanged();
+            needSave = true;
+          }
         }
       }
 

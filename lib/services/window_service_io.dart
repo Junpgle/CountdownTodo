@@ -68,14 +68,29 @@ class WindowService extends WindowListener with TrayListener {
 
   static Future<void> _initTray() async {
     try {
+      if (Platform.isMacOS) {
+        final prefs = await SharedPreferences.getInstance();
+        final enabled = prefs.getBool('macos_tray_icon_enabled') ?? true;
+        if (!enabled) {
+          debugPrint('[WindowService] _initTray: macOS tray icon disabled');
+          return;
+        }
+      }
+      debugPrint('[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
       trayManager.addListener(_instance);
+      final iconSize = Platform.isMacOS
+          ? (await SharedPreferences.getInstance()).getInt('macos_tray_icon_size') ?? 18
+          : 18;
       await trayManager.setIcon(
         Platform.isWindows
             ? 'assets/icon/app_icon.ico'
-            : 'assets/icon/app_icon.webp',
+            : 'assets/icon/app_icon.png',
+        iconSize: iconSize,
       );
+      debugPrint('[WindowService] _initTray: setIcon done');
       await trayManager.setToolTip('CountDownTodo');
       await _updateTrayMenu();
+      debugPrint('[WindowService] _initTray: complete');
     } catch (e) {
       debugPrint('[WindowService] initTray error: $e');
     }

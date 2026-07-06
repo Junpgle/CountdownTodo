@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 
@@ -25,6 +26,7 @@ class MacPomodoroStatusBarService {
     if (!Platform.isMacOS) return;
     if (_initialized) return;
     _initialized = true;
+    debugPrint('[MacPomodoroStatusBar] init() called');
 
     // 设置 MethodCallHandler 接收 Swift 端消息
     _channel.setMethodCallHandler(_handleMethodCall);
@@ -32,16 +34,18 @@ class MacPomodoroStatusBarService {
     // 监听本地专注状态
     try {
       final runState = await PomodoroService.loadRunState();
+      debugPrint('[MacPomodoroStatusBar] loadRunState: ${runState?.phase}');
       if (runState != null &&
           (runState.phase == PomodoroPhase.focusing ||
               runState.phase == PomodoroPhase.breaking)) {
         _sendLocalState(runState);
       }
     } catch (e) {
-      // debugPrint('[MacPomodoroStatusBar] init error: $e');
+      debugPrint('[MacPomodoroStatusBar] init error: $e');
     }
 
     _localSub = PomodoroService.onRunStateChanged.listen((state) {
+      debugPrint('[MacPomodoroStatusBar] onRunStateChanged: ${state?.phase}');
       if (state == null) {
         _clearNative();
       } else if (state.phase == PomodoroPhase.focusing ||
@@ -71,6 +75,7 @@ class MacPomodoroStatusBarService {
 
   /// 处理 Swift 端发来的消息
   static Future<dynamic> _handleMethodCall(MethodCall call) async {
+    debugPrint('[MacPomodoroStatusBar] _handleMethodCall: ${call.method}');
     switch (call.method) {
       case 'togglePomodoroPause':
         _actionController.add(MacPomodoroAction.togglePause);
@@ -79,7 +84,11 @@ class MacPomodoroStatusBarService {
     }
   }
 
-  static void _sendLocalState(PomodoroRunState state) {
+  static void _sendLocalState(PomodoroRunState state) async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('macos_status_bar_enabled') ?? true;
+    if (!enabled) return;
+    debugPrint('[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
     _channel.invokeMethod('updatePomodoroStatus', {
       'phase': state.phase.name,
       'targetEndMs': state.targetEndMs,
@@ -94,7 +103,11 @@ class MacPomodoroStatusBarService {
     });
   }
 
-  static void _sendRemoteState(CrossDevicePomodoroState remote) {
+  static void _sendRemoteState(CrossDevicePomodoroState remote) async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('macos_status_bar_enabled') ?? true;
+    if (!enabled) return;
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final isCountUp = remote.mode == 1;
     final targetEndMs = remote.targetEndMs ?? 0;
@@ -126,7 +139,13 @@ class MacPomodoroStatusBarService {
   }
 
   static void _clearNative() {
+    debugPrint('[MacPomodoroStatusBar] _clearNative called');
     _channel.invokeMethod('clearPomodoroStatus');
+  }
+
+  /// 供外部（设置页）主动清除状态栏显示
+  static void clearNative() {
+    _clearNative();
   }
 
   static void dispose() {

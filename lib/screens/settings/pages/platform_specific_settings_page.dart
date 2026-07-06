@@ -9,6 +9,7 @@ import '../../../storage_service.dart';
 import '../../../services/float_window_service.dart';
 import '../../../services/island_manager_bridge.dart';
 import '../../../services/island_data_provider.dart';
+import '../../../services/macos_pomodoro_status_bar_service.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -39,6 +40,9 @@ class _PlatformSpecificSettingsPageState
     'live_updates': GlobalKey(),
     'island_support': GlobalKey(),
     'test_notification': GlobalKey(),
+    'mac_tray_icon': GlobalKey(),
+    'mac_status_bar': GlobalKey(),
+    'mac_icon_size': GlobalKey(),
   };
 
   String? _highlightTarget;
@@ -50,6 +54,11 @@ class _PlatformSpecificSettingsPageState
   // Android Specific
   String _islandStatus = "点击检测设备是否支持";
   String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
+
+  // macOS Specific
+  bool _macTrayIconEnabled = true;
+  bool _macStatusBarEnabled = true;
+  int _macIconSize = 18;
 
   @override
   void initState() {
@@ -79,8 +88,8 @@ class _PlatformSpecificSettingsPageState
   }
 
   Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
     if (AppPlatform.isWindows) {
-      final prefs = await SharedPreferences.getInstance();
       String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
       int style = 0;
       if (username != null && username.isNotEmpty) {
@@ -96,6 +105,15 @@ class _PlatformSpecificSettingsPageState
         setState(() {
           _floatWindowStyle = style;
           _taiDbPath = taiPath ?? '';
+        });
+      }
+    }
+    if (AppPlatform.isMacOS) {
+      if (mounted) {
+        setState(() {
+          _macTrayIconEnabled = prefs.getBool('macos_tray_icon_enabled') ?? true;
+          _macStatusBarEnabled = prefs.getBool('macos_status_bar_enabled') ?? true;
+          _macIconSize = prefs.getInt('macos_tray_icon_size') ?? 18;
         });
       }
     }
@@ -203,7 +221,9 @@ class _PlatformSpecificSettingsPageState
     final colorScheme = Theme.of(context).colorScheme;
     final String pageTitle = AppPlatform.isWindows
         ? 'Windows 专属设置'
-        : (AppPlatform.isAndroid ? 'Android 专属整合' : '平台专属设置');
+        : (AppPlatform.isAndroid
+            ? 'Android 专属整合'
+            : (AppPlatform.isMacOS ? 'macOS 专属设置' : '平台专属设置'));
 
     return Scaffold(
       appBar: widget.isEmbedded
@@ -213,7 +233,9 @@ class _PlatformSpecificSettingsPageState
             ),
       body: ListView(
         children: [
-          if (!AppPlatform.isWindows && !AppPlatform.isAndroid) ...[
+          if (!AppPlatform.isWindows &&
+              !AppPlatform.isAndroid &&
+              !AppPlatform.isMacOS) ...[
             const AppEmptyState(
               icon: Icons.stars_rounded,
               title: '当前平台无专属设置',
@@ -365,6 +387,97 @@ class _PlatformSpecificSettingsPageState
                         fontSize: 12)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _checkIslandSupport,
+              ),
+            ),
+          ],
+          if (AppPlatform.isMacOS) ...[
+            const AppSettingsSectionHeader(
+              title: '菜单栏设置',
+              padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),
+            ),
+            _buildTile(
+              targetId: 'mac_tray_icon',
+              child: ListTile(
+                leading:
+                    Icon(Icons.apps_rounded, color: colorScheme.primary),
+                title: const Text('显示托盘图标'),
+                subtitle: const Text('在菜单栏显示应用图标，支持右键菜单快捷操作'),
+                trailing: Switch(
+                  value: _macTrayIconEnabled,
+                  activeThumbColor: colorScheme.primary,
+                  onChanged: (val) async {
+                    setState(() => _macTrayIconEnabled = val);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('macos_tray_icon_enabled', val);
+                    if (mounted) {
+                      AppSnackBars.success(
+                          context, '设置已保存，重启应用后生效');
+                    }
+                  },
+                ),
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'mac_status_bar',
+              child: ListTile(
+                leading:
+                    Icon(Icons.timer_outlined, color: colorScheme.primary),
+                title: const Text('显示专注计时'),
+                subtitle:
+                    const Text('专注时在菜单栏显示番茄钟倒计时，支持暂停/结束操作'),
+                trailing: Switch(
+                  value: _macStatusBarEnabled,
+                  activeThumbColor: colorScheme.primary,
+                  onChanged: (val) async {
+                    setState(() => _macStatusBarEnabled = val);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('macos_status_bar_enabled', val);
+                    if (!val) {
+                      MacPomodoroStatusBarService.clearNative();
+                    }
+                    if (mounted) {
+                      AppSnackBars.success(context, val
+                          ? '专注计时已开启，下次专注时生效'
+                          : '专注计时已关闭');
+                    }
+                  },
+                ),
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'mac_icon_size',
+              child: ListTile(
+                leading:
+                    Icon(Icons.photo_size_select_large, color: colorScheme.primary),
+                title: const Text('托盘图标大小'),
+                subtitle: Text('当前: $_macIconSize px',
+                    style: TextStyle(
+                        color: colorScheme.onSurfaceVariant, fontSize: 12)),
+                trailing: SizedBox(
+                  width: 160,
+                  child: Slider(
+                    value: _macIconSize.toDouble(),
+                    min: 12,
+                    max: 28,
+                    divisions: 16,
+                    label: '$_macIconSize px',
+                    activeColor: colorScheme.primary,
+                    onChanged: (val) {
+                      setState(() => _macIconSize = val.round());
+                    },
+                    onChangeEnd: (val) async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setInt(
+                          'macos_tray_icon_size', val.round());
+                      if (mounted) {
+                        AppSnackBars.success(
+                            context, '设置已保存，重启应用后生效');
+                      }
+                    },
+                  ),
+                ),
               ),
             ),
           ],

@@ -99,6 +99,7 @@ class MainFlutterWindow: NSWindow {
 
     // Setup status bar controller
     MacPomodoroStatusBarController.shared.setup()
+    NSLog("[MainFlutterWindow] MacPomodoroStatusBarController setup done")
 
     // Status bar MethodChannel
     let statusBarChannel = FlutterMethodChannel(
@@ -106,6 +107,7 @@ class MainFlutterWindow: NSWindow {
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     statusBarChannel.setMethodCallHandler { (call, result) in
+      NSLog("[MainFlutterWindow] statusBarChannel received: %@", call.method)
       switch call.method {
       case "updatePomodoroStatus":
         guard let args = call.arguments as? [String: Any] else {
