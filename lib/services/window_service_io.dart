@@ -27,6 +27,7 @@ class WindowService extends WindowListener with TrayListener {
   static Timer? _debounce;
   static Rect? _startupBounds;
   static bool _suppressBoundsSave = false;
+  static bool _macStatusItemInitialized = false;
 
   static final WindowService _instance = WindowService._internal();
 
@@ -61,14 +62,23 @@ class WindowService extends WindowListener with TrayListener {
         _macAppStatusBarChannel.setMethodCallHandler(_handleMacStatusBarCall);
       }
 
-      if (Platform.isWindows || Platform.isMacOS) {
+      if (Platform.isWindows) {
         await _initTray();
+      }
+      if (Platform.isWindows || Platform.isMacOS) {
         await _initLaunchAtStartup();
       }
       debugPrint('[WindowService] Initialization complete!');
     } catch (e) {
       debugPrint('[WindowService] init error: $e');
     }
+  }
+
+  static Future<void> initMacStatusItemAfterWindowReady() async {
+    if (!Platform.isMacOS || _macStatusItemInitialized) return;
+    _macStatusItemInitialized = true;
+    debugPrint('[WindowService] initMacStatusItemAfterWindowReady starting');
+    await _initTray();
   }
 
   static Future<void> _initTray() async {
@@ -91,34 +101,32 @@ class WindowService extends WindowListener with TrayListener {
       debugPrint(
           '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
       trayManager.addListener(_instance);
-      const iconSize = 18;
-      await trayManager.setIcon(
-        Platform.isWindows
-            ? 'assets/icon/app_icon.ico'
-            : 'assets/icon/app_icon.png',
-        iconSize: iconSize,
-      );
+      await _setTrayIcon();
       debugPrint('[WindowService] _initTray: setIcon done');
       await trayManager.setToolTip('CountDownTodo');
       await _updateTrayMenu();
+      if (Platform.isMacOS) {
+        Future<void>.delayed(const Duration(milliseconds: 800), () async {
+          await _setTrayIcon();
+          await trayManager.setToolTip('CountDownTodo');
+          await _updateTrayMenu();
+          debugPrint('[WindowService] _initTray: macOS delayed refresh done');
+        });
+      }
       debugPrint('[WindowService] _initTray: complete');
     } catch (e) {
       debugPrint('[WindowService] initTray error: $e');
     }
   }
 
-  static Future<dynamic> _handleMacStatusBarCall(MethodCall call) async {
-    switch (call.method) {
-      case 'openSettings':
-        await windowManager.show();
-        await windowManager.focus();
-        appNavigatorKey.currentState?.push(
-          PageTransitions.slideHorizontal(const SettingsPage()),
-        );
-        return true;
-      default:
-        return null;
+  static Future<void> _setTrayIcon() {
+    if (Platform.isMacOS) {
+      return trayManager.setIcon('assets/icon/app_icon.png');
     }
+    return trayManager.setIcon(
+      'assets/icon/app_icon.ico',
+      iconSize: 18,
+    );
   }
 
   static Future<void> _updateTrayMenu() async {
@@ -153,6 +161,20 @@ class WindowService extends WindowListener with TrayListener {
       await trayManager.setContextMenu(menu);
     } catch (e) {
       debugPrint('[WindowService] updateTrayMenu error: $e');
+    }
+  }
+
+  static Future<dynamic> _handleMacStatusBarCall(MethodCall call) async {
+    switch (call.method) {
+      case 'openSettings':
+        await windowManager.show();
+        await windowManager.focus();
+        appNavigatorKey.currentState?.push(
+          PageTransitions.slideHorizontal(const SettingsPage()),
+        );
+        return true;
+      default:
+        return null;
     }
   }
 

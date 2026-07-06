@@ -33,7 +33,6 @@
 		AA0000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000003 /* Assets.xcassets */; };
 		AA0000000000000000000011 /* CountDownTodoWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* CountDownTodoWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BDE24A8527D561DC4C727381 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 330176513A8EE271EC232EE8 /* Pods_RunnerTests.framework */; };
-		CC0000000000000000000003 /* MacAppStatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000004 /* MacAppStatusBarController.swift */; };
 		CC0000000000000000000001 /* MacPomodoroStatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000002 /* MacPomodoroStatusBarController.swift */; };
 		EC877F27DF662B922C6FBA69 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AB6A1710D94CF7315602B1AA /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
@@ -119,7 +118,6 @@
 		AA0000000000000000000004 /* CountDownTodoWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CountDownTodoWidgetExtension.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* CountDownTodoWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CountDownTodoWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB6A1710D94CF7315602B1AA /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		CC0000000000000000000004 /* MacAppStatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppStatusBarController.swift; sourceTree = "<group>"; };
 		CC0000000000000000000002 /* MacPomodoroStatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPomodoroStatusBarController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -222,7 +220,6 @@
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
-				CC0000000000000000000004 /* MacAppStatusBarController.swift */,
 				CC0000000000000000000002 /* MacPomodoroStatusBarController.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
@@ -556,7 +553,6 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
-				CC0000000000000000000003 /* MacAppStatusBarController.swift in Sources */,
 				CC0000000000000000000001 /* MacPomodoroStatusBarController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
