@@ -552,6 +552,99 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
   }
 
+  TodoItem _createRecurringOccurrence(TodoItem todo, DateTime targetDay) {
+    DateTime origStart =
+        DateTime.fromMillisecondsSinceEpoch(todo.createdDate ?? todo.createdAt, isUtc: true).toLocal();
+    DateTime origEnd = todo.dueDate ?? origStart.add(const Duration(hours: 1));
+
+    DateTime newStart = DateTime(targetDay.year, targetDay.month, targetDay.day,
+        origStart.hour, origStart.minute, origStart.second);
+    int startDiffMs = newStart.difference(origStart).inMilliseconds;
+    DateTime newEnd = origEnd.add(Duration(milliseconds: startDiffMs));
+
+    return TodoItem(
+      id: todo.id,
+      title: todo.title,
+      isDone: todo.isDone,
+      isDeleted: todo.isDeleted,
+      version: todo.version,
+      createdAt: todo.createdAt,
+      createdDate: newStart.toUtc().millisecondsSinceEpoch,
+      recurrence: todo.recurrence,
+      customIntervalDays: todo.customIntervalDays,
+      recurrenceEndDate: todo.recurrenceEndDate,
+      dueDate: newEnd,
+      remark: todo.remark,
+      imagePath: todo.imagePath,
+      originalText: todo.originalText,
+      groupId: todo.groupId,
+      reminderMinutes: todo.reminderMinutes,
+      teamUuid: todo.teamUuid,
+      creatorId: todo.creatorId,
+      creatorName: todo.creatorName,
+      teamName: todo.teamName,
+      collabType: todo.collabType,
+      isAllDay: todo.isAllDay,
+      categoryId: todo.categoryId,
+    );
+  }
+
+  List<TodoItem> _expandRecurringTodo(TodoItem todo, DateTime weekStart) {
+    if (todo.recurrence == RecurrenceType.none) return [todo];
+
+    DateTime baseDate = DateTime.fromMillisecondsSinceEpoch(
+            todo.createdDate ?? todo.createdAt, isUtc: true)
+        .toLocal();
+    DateTime? endDate;
+    if (todo.recurrenceEndDate != null) {
+      endDate = DateTime(todo.recurrenceEndDate!.year,
+          todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+    }
+
+    List<TodoItem> occurrences = [];
+
+    for (int i = 0; i < 7; i++) {
+      DateTime targetDay = weekStart.add(Duration(days: i));
+      if (endDate != null && targetDay.isAfter(endDate)) continue;
+      bool matches = false;
+
+      switch (todo.recurrence) {
+        case RecurrenceType.daily:
+          matches = true;
+          break;
+        case RecurrenceType.weekdays:
+          matches = targetDay.weekday >= 1 && targetDay.weekday <= 5;
+          break;
+        case RecurrenceType.weekly:
+          matches = targetDay.weekday == baseDate.weekday;
+          break;
+        case RecurrenceType.monthly:
+          matches = targetDay.day == baseDate.day;
+          break;
+        case RecurrenceType.yearly:
+          matches =
+              targetDay.month == baseDate.month && targetDay.day == baseDate.day;
+          break;
+        case RecurrenceType.customDays:
+          if (todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
+            int diff = DateTime(targetDay.year, targetDay.month, targetDay.day)
+                .difference(DateTime(baseDate.year, baseDate.month, baseDate.day))
+                .inDays;
+            matches = diff >= 0 && diff % todo.customIntervalDays! == 0;
+          }
+          break;
+        case RecurrenceType.none:
+          break;
+      }
+
+      if (matches) {
+        occurrences.add(_createRecurringOccurrence(todo, targetDay));
+      }
+    }
+
+    return occurrences;
+  }
+
   void _updateWeekTodos() {
     _allDayTodosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
     _intraDayTodosPerDay = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []};
@@ -564,36 +657,49 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
 
     for (var todo in _allTodos) {
-      DateTime start = DateTime.fromMillisecondsSinceEpoch(
-              todo.createdDate ?? todo.createdAt,
-              isUtc: true)
-          .toLocal();
-      DateTime end = todo.dueDate ?? start.add(const Duration(hours: 1));
+      bool isRecurring = todo.recurrence != RecurrenceType.none;
+      List<TodoItem> todosToPlace;
 
-      bool isAllDayFlag = todo.dueDate != null &&
-          start.hour == 0 &&
-          start.minute == 0 &&
-          todo.dueDate!.hour == 23 &&
-          todo.dueDate!.minute == 59;
-      bool isCrossDay = !(start.year == end.year &&
-          start.month == end.month &&
-          start.day == end.day);
-      bool treatAsAllDay = isAllDayFlag || isCrossDay;
-
-      if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
-        continue;
+      if (isRecurring) {
+        todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart);
+      } else {
+        todosToPlace = [todo];
       }
 
-      for (int i = 1; i <= 7; i++) {
-        DateTime dayStart = currentWeekMondayStart.add(Duration(days: i - 1));
-        DateTime dayEnd =
-            dayStart.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+      for (var effectiveTodo in todosToPlace) {
+        DateTime start = DateTime.fromMillisecondsSinceEpoch(
+                effectiveTodo.createdDate ?? effectiveTodo.createdAt,
+                isUtc: true)
+            .toLocal();
+        DateTime end =
+            effectiveTodo.dueDate ?? start.add(const Duration(hours: 1));
 
-        if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
-          if (treatAsAllDay) {
-            _allDayTodosPerDay[i]!.add(todo);
-          } else {
-            _intraDayTodosPerDay[i]!.add(todo);
+        bool isAllDayFlag = effectiveTodo.dueDate != null &&
+            start.hour == 0 &&
+            start.minute == 0 &&
+            effectiveTodo.dueDate!.hour == 23 &&
+            effectiveTodo.dueDate!.minute == 59;
+        bool isCrossDay = !(start.year == end.year &&
+            start.month == end.month &&
+            start.day == end.day);
+        bool treatAsAllDay = isAllDayFlag || isCrossDay;
+
+        if (_activeDataViews.contains('hideCrossDay') && isCrossDay) {
+          continue;
+        }
+
+        for (int i = 1; i <= 7; i++) {
+          DateTime dayStart =
+              currentWeekMondayStart.add(Duration(days: i - 1));
+          DateTime dayEnd = dayStart
+              .add(const Duration(hours: 23, minutes: 59, seconds: 59));
+
+          if (start.isBefore(dayEnd) && end.isAfter(dayStart)) {
+            if (treatAsAllDay) {
+              _allDayTodosPerDay[i]!.add(effectiveTodo);
+            } else {
+              _intraDayTodosPerDay[i]!.add(effectiveTodo);
+            }
           }
         }
       }
