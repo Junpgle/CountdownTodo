@@ -53,7 +53,6 @@ private final class MacStatusBarFallbackView: NSView {
 
 class MacPomodoroStatusBarController {
     static let shared = MacPomodoroStatusBarController()
-    private static let statusItemAutosaveName = "com.junpgle.countdowntodo.statusItem.v2"
 
     private enum DisplayMode {
         case none
@@ -166,17 +165,14 @@ class MacPomodoroStatusBarController {
     }
 
     private func ensureStatusItem(length: CGFloat, mode: DisplayMode) -> NSStatusBarButton? {
-        if statusItem == nil || displayMode != mode {
-            if let item = statusItem {
-                NSStatusBar.system.removeStatusItem(item)
-            }
-            NSLog("[MacStatusBar] Creating stable NSStatusItem mode=%@ length=%.1f", String(describing: mode), length)
-            statusItem = NSStatusBar.system.statusItem(withLength: length)
-            statusItem?.autosaveName = Self.statusItemAutosaveName
-            statusItem?.isVisible = true
-            displayMode = mode
+        if statusItem == nil {
+            NSLog("[MacStatusBar] Creating persistent NSStatusItem length=%.1f", length)
+            let item = NSStatusBar.system.statusItem(withLength: length)
+            item.isVisible = true
+            statusItem = item
         }
 
+        displayMode = mode
         statusItem?.isVisible = true
         statusItem?.length = length
 
@@ -219,14 +215,14 @@ class MacPomodoroStatusBarController {
         button.toolTip = "CountDownTodo"
         setupMenu(includePomodoroControls: false)
         NSLog(
-            "[MacStatusBar] app display updated: image=%@ title=%@ length=%.1f visible=%@ autosave=%@",
+            "[MacStatusBar] app display updated: image=%@ title=%@ length=%.1f visible=%@",
             button.image == nil ? "no" : "yes",
             button.title,
             statusItem?.length ?? -1,
-            statusItem?.isVisible == true ? "yes" : "no",
-            statusItem?.autosaveName ?? ""
+            statusItem?.isVisible == true ? "yes" : "no"
         )
         logStatusItemGeometry(button: button, context: "app")
+        updateFallbackVisibility(button: button)
         scheduleGeometryProbe(context: "app")
     }
 
@@ -347,6 +343,7 @@ class MacPomodoroStatusBarController {
             statusItem?.isVisible == true ? "yes" : "no"
         )
         logStatusItemGeometry(button: button, context: "pomodoro")
+        updateFallbackVisibility(button: button)
         scheduleGeometryProbe(context: "pomodoro")
     }
 
@@ -354,6 +351,7 @@ class MacPomodoroStatusBarController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self = self, let button = self.statusItem?.button else { return }
             self.logStatusItemGeometry(button: button, context: "\(context)-probe")
+            self.updateFallbackVisibility(button: button)
         }
     }
 
