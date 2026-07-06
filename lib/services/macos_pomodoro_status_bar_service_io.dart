@@ -16,6 +16,7 @@ class MacPomodoroStatusBarService {
   static StreamSubscription<PomodoroRunState?>? _localSub;
   static StreamSubscription<CrossDevicePomodoroState>? _remoteSub;
   static bool _initialized = false;
+  static PomodoroRunState? _lastLocalActiveState;
 
   /// 状态栏操作事件流（暂停/继续/结束）
   static final StreamController<MacPomodoroAction> _actionController =
@@ -35,10 +36,9 @@ class MacPomodoroStatusBarService {
     try {
       final runState = await PomodoroService.loadRunState();
       debugPrint('[MacPomodoroStatusBar] loadRunState: ${runState?.phase}');
-      if (runState != null &&
-          (runState.phase == PomodoroPhase.focusing ||
-              runState.phase == PomodoroPhase.breaking)) {
-        _sendLocalState(runState);
+      if (_isActiveLocalState(runState)) {
+        _lastLocalActiveState = runState;
+        _sendLocalState(runState!);
       }
     } catch (e) {
       debugPrint('[MacPomodoroStatusBar] init error: $e');
@@ -47,11 +47,13 @@ class MacPomodoroStatusBarService {
     _localSub = PomodoroService.onRunStateChanged.listen((state) {
       debugPrint('[MacPomodoroStatusBar] onRunStateChanged: ${state?.phase}');
       if (state == null) {
+        _lastLocalActiveState = null;
         _clearNative();
-      } else if (state.phase == PomodoroPhase.focusing ||
-          state.phase == PomodoroPhase.breaking) {
+      } else if (_isActiveLocalState(state)) {
+        _lastLocalActiveState = state;
         _sendLocalState(state);
       } else {
+        _lastLocalActiveState = null;
         _clearNative();
       }
     });
@@ -88,7 +90,8 @@ class MacPomodoroStatusBarService {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('macos_status_bar_enabled') ?? true;
     if (!enabled) return;
-    debugPrint('[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
+    debugPrint(
+        '[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
     _channel.invokeMethod('updatePomodoroStatus', {
       'phase': state.phase.name,
       'targetEndMs': state.targetEndMs,
@@ -101,6 +104,12 @@ class MacPomodoroStatusBarService {
       'todoTitle': state.todoTitle ?? '',
       'isRemote': false,
     });
+  }
+
+  static bool _isActiveLocalState(PomodoroRunState? state) {
+    return state != null &&
+        (state.phase == PomodoroPhase.focusing ||
+            state.phase == PomodoroPhase.breaking);
   }
 
   static void _sendRemoteState(CrossDevicePomodoroState remote) async {
@@ -128,14 +137,26 @@ class MacPomodoroStatusBarService {
   }
 
   static void _checkAndClearIfNoLocal() async {
+    final cached = _lastLocalActiveState;
+    if (_isActiveLocalState(cached)) {
+      debugPrint(
+          '[MacPomodoroStatusBar] skip remote clear, cached local active: ${cached!.phase}');
+      _sendLocalState(cached);
+      return;
+    }
+
     // 延迟一点检查本地状态，避免竞态
     await Future.delayed(const Duration(milliseconds: 500));
     final local = await PomodoroService.loadRunState();
-    if (local == null ||
-        (local.phase != PomodoroPhase.focusing &&
-            local.phase != PomodoroPhase.breaking)) {
-      _clearNative();
+    if (_isActiveLocalState(local)) {
+      _lastLocalActiveState = local;
+      debugPrint(
+          '[MacPomodoroStatusBar] skip remote clear, loaded local active: ${local!.phase}');
+      _sendLocalState(local);
+      return;
     }
+
+    _clearNative();
   }
 
   static void _clearNative() {
@@ -153,6 +174,7 @@ class MacPomodoroStatusBarService {
     _localSub = null;
     _remoteSub?.cancel();
     _remoteSub = null;
+    _lastLocalActiveState = null;
     _initialized = false;
   }
 }

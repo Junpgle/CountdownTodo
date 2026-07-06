@@ -33,36 +33,11 @@ class MacPomodoroStatusBarController {
     }
 
     func updatePomodoroStatus(args: [String: Any]) {
-        phase = args["phase"] as? String ?? "idle"
-        targetEndMs = args["targetEndMs"] as? Int64 ?? 0
-        sessionStartMs = args["sessionStartMs"] as? Int64 ?? 0
-        mode = args["mode"] as? String ?? "countdown"
-        isPaused = args["isPaused"] as? Bool ?? false
-        pausedAtMs = args["pausedAtMs"] as? Int64 ?? 0
-        accumulatedMs = args["accumulatedMs"] as? Int64 ?? 0
-        pauseStartMs = args["pauseStartMs"] as? Int64 ?? 0
-        todoTitle = args["todoTitle"] as? String ?? ""
-        isRemote = args["isRemote"] as? Bool ?? false
-
-        NSLog("[MacStatusBar] updatePomodoroStatus: phase=%@, targetEndMs=%lld, mode=%@", phase, targetEndMs, mode)
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.showStatusItem()
-            self.refreshDisplay()
-            self.scheduleNextUpdate()
-        }
+        MacAppStatusBarController.shared.updatePomodoroStatus(args: args)
     }
 
     func clearPomodoroStatus() {
-        NSLog("[MacStatusBar] clearPomodoroStatus called")
-        phase = "idle"
-        isRemote = false
-
-        DispatchQueue.main.async { [weak self] in
-            self?.cancelTimer()
-            self?.removeStatusItem()
-        }
+        MacAppStatusBarController.shared.clearPomodoroStatus()
     }
 
     // MARK: - Private
@@ -71,6 +46,8 @@ class MacPomodoroStatusBarController {
         if statusItem == nil {
             NSLog("[MacStatusBar] Creating NSStatusItem")
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            statusItem?.isVisible = true
+            statusItem?.length = 64
             setupMenu()
             NSLog("[MacStatusBar] NSStatusItem created: %@", statusItem != nil ? "yes" : "no")
         }
@@ -119,6 +96,10 @@ class MacPomodoroStatusBarController {
             return
         }
 
+        button.isHidden = false
+        button.isEnabled = true
+        button.alphaValue = 1
+
         // 远端模式隐藏暂停/结束
         pauseItem?.isHidden = isRemote
         stopItem?.isHidden = isRemote
@@ -150,7 +131,21 @@ class MacPomodoroStatusBarController {
         default:
             removeStatusItem()
             cancelTimer()
+            return
         }
+
+        button.image = nil
+        button.imagePosition = .noImage
+        let font = button.font ?? NSFont.menuBarFont(ofSize: 0)
+        let width = ceil(button.title.size(withAttributes: [.font: font]).width)
+        statusItem?.length = max(56, width + 18)
+        statusItem?.isVisible = true
+        NSLog(
+            "[MacStatusBar] display updated: title=%@ length=%.1f visible=%@",
+            button.title,
+            statusItem?.length ?? -1,
+            statusItem?.isVisible == true ? "yes" : "no"
+        )
     }
 
     private func buildTooltip(status: String) -> String {

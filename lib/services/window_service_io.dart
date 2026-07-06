@@ -21,6 +21,8 @@ class WindowService extends WindowListener with TrayListener {
 
   static const MethodChannel _nativeChannel =
       MethodChannel('com.math_quiz_app/window_native');
+  static const MethodChannel _macAppStatusBarChannel =
+      MethodChannel('countdown_todo/macos_app_status_bar');
 
   static Timer? _debounce;
   static Rect? _startupBounds;
@@ -55,6 +57,9 @@ class WindowService extends WindowListener with TrayListener {
 
       windowManager.addListener(_instance);
       debugPrint('[WindowService] windowManager.addListener(_instance) done');
+      if (Platform.isMacOS) {
+        _macAppStatusBarChannel.setMethodCallHandler(_handleMacStatusBarCall);
+      }
 
       if (Platform.isWindows || Platform.isMacOS) {
         await _initTray();
@@ -75,12 +80,18 @@ class WindowService extends WindowListener with TrayListener {
           debugPrint('[WindowService] _initTray: macOS tray icon disabled');
           return;
         }
+        final iconSize = prefs.getInt('macos_tray_icon_size') ?? 18;
+        await _macAppStatusBarChannel.invokeMethod('setVisible', {
+          'visible': true,
+          'iconSize': iconSize,
+        });
+        debugPrint('[WindowService] _initTray: native macOS status item done');
+        return;
       }
-      debugPrint('[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
+      debugPrint(
+          '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
       trayManager.addListener(_instance);
-      final iconSize = Platform.isMacOS
-          ? (await SharedPreferences.getInstance()).getInt('macos_tray_icon_size') ?? 18
-          : 18;
+      const iconSize = 18;
       await trayManager.setIcon(
         Platform.isWindows
             ? 'assets/icon/app_icon.ico'
@@ -93,6 +104,20 @@ class WindowService extends WindowListener with TrayListener {
       debugPrint('[WindowService] _initTray: complete');
     } catch (e) {
       debugPrint('[WindowService] initTray error: $e');
+    }
+  }
+
+  static Future<dynamic> _handleMacStatusBarCall(MethodCall call) async {
+    switch (call.method) {
+      case 'openSettings':
+        await windowManager.show();
+        await windowManager.focus();
+        appNavigatorKey.currentState?.push(
+          PageTransitions.slideHorizontal(const SettingsPage()),
+        );
+        return true;
+      default:
+        return null;
     }
   }
 

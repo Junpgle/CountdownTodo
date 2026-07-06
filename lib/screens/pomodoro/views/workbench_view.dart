@@ -129,6 +129,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     super.initState();
     FloatWindowService.isWorkbenchMounted = true;
     WidgetsBinding.instance.addObserver(this);
+    MacPomodoroStatusBarService.init();
     _init();
     _listenToRunState();
     _listenToIslandActions();

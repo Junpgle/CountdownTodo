@@ -129,8 +129,10 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     return _courseCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
-  GlobalKey _getTodoCardKey(String id) {
-    final keyStr = 'w${_currentWeek}_$id';
+  GlobalKey _getTodoCardKey(String id, {int? weekday}) {
+    final keyStr = weekday != null
+        ? 'w${_currentWeek}_${id}_d$weekday'
+        : 'w${_currentWeek}_$id';
     return _todoCardKeys.putIfAbsent(keyStr, () => GlobalKey());
   }
 
@@ -592,20 +594,44 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
   List<TodoItem> _expandRecurringTodo(TodoItem todo, DateTime weekStart) {
     if (todo.recurrence == RecurrenceType.none) return [todo];
 
-    DateTime baseDate = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt, isUtc: true)
-        .toLocal();
-    DateTime? endDate;
-    if (todo.recurrenceEndDate != null) {
-      endDate = DateTime(todo.recurrenceEndDate!.year,
-          todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+    // Use the ORIGINAL createdDate as anchor — do NOT use dueDate here,
+    // because _handleRecurrenceLogic rolls dueDate forward daily for
+    // daily/customDays recurrence, which would shift the anchor.
+    final int startMs = todo.createdDate ?? todo.createdAt;
+    final DateTime startDate =
+        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final DateTime anchorDay = DateTime(startDate.year, startDate.month, startDate.day);
+
+    // End boundary: for daily/customDays recurrence, _handleRecurrenceLogic
+    // rolls dueDate forward to today, so dueDate cannot serve as end boundary.
+    // Only use recurrenceEndDate for these types.
+    // For other recurrence types (not rolled), dueDate is a valid end boundary.
+    DateTime? endBoundary;
+    if (todo.recurrence == RecurrenceType.daily ||
+        todo.recurrence == RecurrenceType.customDays) {
+      if (todo.recurrenceEndDate != null) {
+        endBoundary = DateTime(todo.recurrenceEndDate!.year,
+            todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+      }
+    } else {
+      if (todo.dueDate != null) {
+        endBoundary = DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day);
+      } else if (todo.recurrenceEndDate != null) {
+        endBoundary = DateTime(todo.recurrenceEndDate!.year,
+            todo.recurrenceEndDate!.month, todo.recurrenceEndDate!.day);
+      }
     }
 
     List<TodoItem> occurrences = [];
 
     for (int i = 0; i < 7; i++) {
       DateTime targetDay = weekStart.add(Duration(days: i));
-      if (endDate != null && targetDay.isAfter(endDate)) continue;
+
+      // Skip days before the todo was created
+      if (targetDay.isBefore(anchorDay)) continue;
+      // Skip days after the end boundary
+      if (endBoundary != null && targetDay.isAfter(endBoundary)) continue;
+
       bool matches = false;
 
       switch (todo.recurrence) {
@@ -616,20 +642,18 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           matches = targetDay.weekday >= 1 && targetDay.weekday <= 5;
           break;
         case RecurrenceType.weekly:
-          matches = targetDay.weekday == baseDate.weekday;
+          matches = targetDay.weekday == anchorDay.weekday;
           break;
         case RecurrenceType.monthly:
-          matches = targetDay.day == baseDate.day;
+          matches = targetDay.day == anchorDay.day;
           break;
         case RecurrenceType.yearly:
           matches =
-              targetDay.month == baseDate.month && targetDay.day == baseDate.day;
+              targetDay.month == anchorDay.month && targetDay.day == anchorDay.day;
           break;
         case RecurrenceType.customDays:
           if (todo.customIntervalDays != null && todo.customIntervalDays! > 0) {
-            int diff = DateTime(targetDay.year, targetDay.month, targetDay.day)
-                .difference(DateTime(baseDate.year, baseDate.month, baseDate.day))
-                .inDays;
+            int diff = targetDay.difference(anchorDay).inDays;
             matches = diff >= 0 && diff % todo.customIntervalDays! == 0;
           }
           break;
@@ -2104,7 +2128,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           Color todoColor =
               (todo.isDone ? colorScheme.cdtSuccess : colorScheme.cdtWarning)
                   .withValues(alpha: todo.isDone ? 0.5 : 0.85);
-          final todoCardKey = _getTodoCardKey(todo.id);
+          final todoCardKey = _getTodoCardKey(todo.id, weekday: weekday);
           final todoIndex = _intraDayTodosPerDay.values
               .expand((e) => e)
               .toList()

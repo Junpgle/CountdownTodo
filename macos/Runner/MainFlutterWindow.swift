@@ -9,6 +9,7 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
+    super.awakeFromNib()
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
@@ -97,6 +98,26 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    // Native macOS app status bar icon. This avoids relying on Flutter asset
+    // decoding inside tray_manager for the primary menu bar entry.
+    let appStatusBarChannel = FlutterMethodChannel(
+      name: "countdown_todo/macos_app_status_bar",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    MacAppStatusBarController.shared.setup(channel: appStatusBarChannel)
+    appStatusBarChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "setVisible":
+        let args = call.arguments as? [String: Any]
+        let visible = args?["visible"] as? Bool ?? true
+        let iconSize = args?["iconSize"] as? Int ?? 18
+        MacAppStatusBarController.shared.setVisible(visible, iconSize: iconSize)
+        result(true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     // Setup status bar controller
     MacPomodoroStatusBarController.shared.setup()
     NSLog("[MainFlutterWindow] MacPomodoroStatusBarController setup done")
@@ -106,6 +127,7 @@ class MainFlutterWindow: NSWindow {
       name: "countdown_todo/macos_status_bar",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
+    MacAppStatusBarController.shared.setPomodoroChannel(statusBarChannel)
     statusBarChannel.setMethodCallHandler { (call, result) in
       NSLog("[MainFlutterWindow] statusBarChannel received: %@", call.method)
       switch call.method {
@@ -114,16 +136,14 @@ class MainFlutterWindow: NSWindow {
           result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
           return
         }
-        MacPomodoroStatusBarController.shared.updatePomodoroStatus(args: args)
+        MacAppStatusBarController.shared.updatePomodoroStatus(args: args)
         result(true)
       case "clearPomodoroStatus":
-        MacPomodoroStatusBarController.shared.clearPomodoroStatus()
+        MacAppStatusBarController.shared.clearPomodoroStatus()
         result(true)
       default:
         result(FlutterMethodNotImplemented)
       }
     }
-
-    super.awakeFromNib()
   }
 }
