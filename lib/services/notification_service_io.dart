@@ -9,6 +9,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models.dart';
 import '../storage_service.dart';
 import 'storage/app_settings_storage.dart';
+import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 
 class NotificationService {
@@ -24,6 +25,8 @@ class NotificationService {
   static final Map<String, DateTime> _recentGenericNotifications = {};
   static final Set<String> _sentPomodoroEndAlertKeys = {};
   static final Set<String> _shownUpdateNotificationKeys = {};
+  static StreamSubscription<MacIslandReminderAction>?
+      _macReminderActionSubscription;
 
   // 集中式事件分发：所有原生 MethodChannel 调用统一由此广播
   static final StreamController<MethodCall> _eventCtrl =
@@ -145,10 +148,38 @@ class NotificationService {
     try {
       await _plugin.initialize(settings: initializationSettings);
       _initialized = true;
+      if (Platform.isMacOS) {
+        await MacPomodoroStatusBarService.init();
+        _macReminderActionSubscription ??=
+            MacPomodoroStatusBarService.onReminderAction.listen(
+          _handleMacIslandReminderAction,
+        );
+        final stored = await StorageService.getWindowsScheduledReminders();
+        await MacPomodoroStatusBarService.scheduleIslandReminders(
+          stored,
+          clearFirst: true,
+          restoring: true,
+        );
+      }
     } finally {
       if (!_initialized) {
         _initializationFuture = null;
       }
+    }
+  }
+
+  static Future<void> _handleMacIslandReminderAction(
+      MacIslandReminderAction event) async {
+    final notifId = (event.reminder['notifId'] as num?)?.toInt();
+    if (notifId == null) return;
+
+    await cancelReminder(notifId);
+    if (event.type == MacIslandReminderActionType.snoozed) {
+      final snoozed = Map<String, dynamic>.from(event.reminder)
+        ..['triggerAtMs'] = DateTime.now()
+            .add(Duration(minutes: event.snoozeMinutes))
+            .millisecondsSinceEpoch;
+      await scheduleReminders([snoozed], clearFirst: false);
     }
   }
 
@@ -573,6 +604,9 @@ class NotificationService {
     await ensureInitialized();
 
     if (_isDesktopSupported) {
+      final existing = clearFirst
+          ? <Map<String, dynamic>>[]
+          : await StorageService.getWindowsScheduledReminders();
       if (clearFirst) {
         await _plugin.cancelAll();
         await StorageService.saveWindowsScheduledReminders([]);
@@ -601,7 +635,18 @@ class NotificationService {
       }
 
       if (scheduledOnDesktop.isNotEmpty || clearFirst) {
-        await StorageService.saveWindowsScheduledReminders(scheduledOnDesktop);
+        final scheduledIds =
+            scheduledOnDesktop.map((reminder) => reminder['notifId']).toSet();
+        existing.removeWhere(
+            (reminder) => scheduledIds.contains(reminder['notifId']));
+        existing.addAll(scheduledOnDesktop);
+        await StorageService.saveWindowsScheduledReminders(existing);
+      }
+      if (Platform.isMacOS) {
+        await MacPomodoroStatusBarService.scheduleIslandReminders(
+          scheduledOnDesktop,
+          clearFirst: clearFirst,
+        );
       }
       return;
     }

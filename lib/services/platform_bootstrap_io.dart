@@ -72,7 +72,7 @@ class PlatformBootstrap {
       await WindowService.restoreStartupBoundsAndRepairViewport();
       await windowManager.show();
       await windowManager.focus();
-      await WindowService.initMacStatusItemAfterWindowReady();
+      await WindowService.initMacIslandAfterWindowReady();
       WindowService.schedulePostShowViewportRepair();
       if (AppPlatform.isWindows) {
         try {

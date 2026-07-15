@@ -9,6 +9,20 @@ import 'pomodoro_sync_service.dart';
 /// macOS 状态栏番茄钟操作事件
 enum MacPomodoroAction { togglePause, stopFocus }
 
+enum MacIslandReminderActionType { acknowledged, snoozed }
+
+class MacIslandReminderAction {
+  const MacIslandReminderAction({
+    required this.type,
+    required this.reminder,
+    this.snoozeMinutes = 10,
+  });
+
+  final MacIslandReminderActionType type;
+  final Map<String, dynamic> reminder;
+  final int snoozeMinutes;
+}
+
 class MacPomodoroStatusBarService {
   static const MethodChannel _channel =
       MethodChannel('countdown_todo/macos_status_bar');
@@ -17,11 +31,19 @@ class MacPomodoroStatusBarService {
   static StreamSubscription<CrossDevicePomodoroState>? _remoteSub;
   static bool _initialized = false;
   static PomodoroRunState? _lastLocalActiveState;
+  static final Map<int, Timer> _reminderTimers = {};
+  static const Duration _restoreGracePeriod = Duration(minutes: 2);
 
   /// 状态栏操作事件流（暂停/继续/结束）
   static final StreamController<MacPomodoroAction> _actionController =
       StreamController<MacPomodoroAction>.broadcast();
   static Stream<MacPomodoroAction> get onAction => _actionController.stream;
+
+  static final StreamController<MacIslandReminderAction>
+      _reminderActionController =
+      StreamController<MacIslandReminderAction>.broadcast();
+  static Stream<MacIslandReminderAction> get onReminderAction =>
+      _reminderActionController.stream;
 
   static Future<void> init() async {
     if (!Platform.isMacOS) return;
@@ -83,12 +105,117 @@ class MacPomodoroStatusBarService {
         _actionController.add(MacPomodoroAction.togglePause);
       case 'stopPomodoroFocus':
         _actionController.add(MacPomodoroAction.stopFocus);
+      case 'acknowledgeIslandReminder':
+        final reminder = _methodArguments(call.arguments);
+        _reminderActionController.add(MacIslandReminderAction(
+          type: MacIslandReminderActionType.acknowledged,
+          reminder: reminder,
+        ));
+      case 'snoozeIslandReminder':
+        final args = _methodArguments(call.arguments);
+        final reminder = args['reminder'] is Map
+            ? Map<String, dynamic>.from(args['reminder'] as Map)
+            : args;
+        final minutes = (args['minutes'] as num?)?.toInt() ?? 10;
+        _reminderActionController.add(MacIslandReminderAction(
+          type: MacIslandReminderActionType.snoozed,
+          reminder: reminder,
+          snoozeMinutes: minutes,
+        ));
     }
+  }
+
+  static Map<String, dynamic> _methodArguments(dynamic arguments) {
+    if (arguments is Map) {
+      return Map<String, dynamic>.from(arguments);
+    }
+    return <String, dynamic>{};
+  }
+
+  /// 为应用运行期间注册灵动岛提醒；系统通知仍由 NotificationService 负责。
+  static Future<void> scheduleIslandReminders(
+    List<Map<String, dynamic>> reminders, {
+    bool clearFirst = true,
+    bool restoring = false,
+  }) async {
+    if (!Platform.isMacOS) return;
+    final prefs = await SharedPreferences.getInstance();
+    final islandEnabled = prefs.getBool('macos_island_enabled') ??
+        prefs.getBool('macos_status_bar_enabled') ??
+        true;
+    final remindersEnabled =
+        prefs.getBool('macos_island_reminders_enabled') ?? true;
+    if (!islandEnabled || !remindersEnabled) {
+      if (clearFirst) clearIslandReminders();
+      return;
+    }
+
+    if (clearFirst) {
+      for (final timer in _reminderTimers.values) {
+        timer.cancel();
+      }
+      _reminderTimers.clear();
+      await _channel.invokeMethod('clearIslandReminders');
+    }
+
+    final now = DateTime.now();
+    for (final source in reminders) {
+      final reminder = Map<String, dynamic>.from(source);
+      final notifId = (reminder['notifId'] as num?)?.toInt();
+      final triggerAtMs = (reminder['triggerAtMs'] as num?)?.toInt();
+      if (notifId == null || triggerAtMs == null) continue;
+
+      _reminderTimers.remove(notifId)?.cancel();
+      final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
+      final delay = triggerAt.difference(now);
+      if (delay.isNegative) {
+        if (!restoring || delay.abs() > _restoreGracePeriod) continue;
+        await _showIslandReminder(reminder);
+        continue;
+      }
+
+      _reminderTimers[notifId] = Timer(delay, () {
+        _reminderTimers.remove(notifId);
+        final lateness = DateTime.now().difference(triggerAt);
+        if (lateness > _restoreGracePeriod) return;
+        _showIslandReminder(reminder);
+      });
+    }
+  }
+
+  static Future<void> _showIslandReminder(Map<String, dynamic> reminder) async {
+    try {
+      await _channel.invokeMethod('showIslandReminder', reminder);
+    } catch (e) {
+      debugPrint('[MacIsland] show reminder failed: $e');
+    }
+  }
+
+  static void clearIslandReminders() {
+    for (final timer in _reminderTimers.values) {
+      timer.cancel();
+    }
+    _reminderTimers.clear();
+    _channel.invokeMethod('clearIslandReminders');
+  }
+
+  static Future<void> showTestReminder() async {
+    if (!Platform.isMacOS) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _showIslandReminder({
+      'notifId': 39999,
+      'triggerAtMs': now,
+      'title': '灵动岛提醒测试',
+      'text': '位置和内容显示正常，点击“好的”即可关闭',
+      'type': 'upcoming_todo',
+    });
   }
 
   static void _sendLocalState(PomodoroRunState state) async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('macos_status_bar_enabled') ?? true;
+    final enabled = prefs.getBool('macos_island_enabled') ??
+        prefs.getBool('macos_status_bar_enabled') ??
+        true;
     if (!enabled) return;
     debugPrint(
         '[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
@@ -114,7 +241,9 @@ class MacPomodoroStatusBarService {
 
   static void _sendRemoteState(CrossDevicePomodoroState remote) async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('macos_status_bar_enabled') ?? true;
+    final enabled = prefs.getBool('macos_island_enabled') ??
+        prefs.getBool('macos_status_bar_enabled') ??
+        true;
     if (!enabled) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -167,6 +296,18 @@ class MacPomodoroStatusBarService {
   /// 供外部（设置页）主动清除状态栏显示
   static void clearNative() {
     _clearNative();
+  }
+
+  /// 设置变更后立即把当前专注状态同步到灵动岛。
+  static Future<void> syncCurrentStatus() async {
+    if (!Platform.isMacOS) return;
+    final state = await PomodoroService.loadRunState();
+    if (_isActiveLocalState(state)) {
+      _lastLocalActiveState = state;
+      _sendLocalState(state!);
+    } else {
+      _clearNative();
+    }
   }
 
   static void dispose() {

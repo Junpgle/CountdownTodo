@@ -27,7 +27,7 @@ class WindowService extends WindowListener with TrayListener {
   static Timer? _debounce;
   static Rect? _startupBounds;
   static bool _suppressBoundsSave = false;
-  static bool _macStatusItemInitialized = false;
+  static bool _macIslandInitialized = false;
 
   static final WindowService _instance = WindowService._internal();
 
@@ -74,30 +74,32 @@ class WindowService extends WindowListener with TrayListener {
     }
   }
 
-  static Future<void> initMacStatusItemAfterWindowReady() async {
-    if (!Platform.isMacOS || _macStatusItemInitialized) return;
-    _macStatusItemInitialized = true;
-    debugPrint('[WindowService] initMacStatusItemAfterWindowReady starting');
-    await _initTray();
+  static Future<void> initMacIslandAfterWindowReady() async {
+    if (!Platform.isMacOS || _macIslandInitialized) return;
+    _macIslandInitialized = true;
+    debugPrint('[WindowService] macOS island initialization starting');
+    await configureMacIsland();
+  }
+
+  static Future<void> configureMacIsland() async {
+    if (!Platform.isMacOS) return;
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('macos_island_enabled') ??
+        prefs.getBool('macos_status_bar_enabled') ??
+        true;
+    final showOnNotchlessDisplay =
+        prefs.getBool('macos_island_show_without_notch') ?? true;
+    final remindersEnabled =
+        prefs.getBool('macos_island_reminders_enabled') ?? true;
+    await _macAppStatusBarChannel.invokeMethod('configureIsland', {
+      'enabled': enabled,
+      'showOnNotchlessDisplay': showOnNotchlessDisplay,
+      'remindersEnabled': remindersEnabled,
+    });
   }
 
   static Future<void> _initTray() async {
     try {
-      if (Platform.isMacOS) {
-        final prefs = await SharedPreferences.getInstance();
-        final enabled = prefs.getBool('macos_tray_icon_enabled') ?? true;
-        if (!enabled) {
-          debugPrint('[WindowService] _initTray: macOS tray icon disabled');
-          return;
-        }
-        final iconSize = prefs.getInt('macos_tray_icon_size') ?? 18;
-        await _macAppStatusBarChannel.invokeMethod('setVisible', {
-          'visible': true,
-          'iconSize': iconSize,
-        });
-        debugPrint('[WindowService] _initTray: native macOS status item done');
-        return;
-      }
       debugPrint(
           '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
       trayManager.addListener(_instance);

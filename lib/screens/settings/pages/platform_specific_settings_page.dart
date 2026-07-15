@@ -10,6 +10,8 @@ import '../../../services/float_window_service.dart';
 import '../../../services/island_manager_bridge.dart';
 import '../../../services/island_data_provider.dart';
 import '../../../services/macos_pomodoro_status_bar_service.dart';
+import '../../../services/notification_service.dart';
+import '../../../services/window_service.dart';
 import '../../../services/permission_request_coordinator.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
@@ -41,9 +43,10 @@ class _PlatformSpecificSettingsPageState
     'live_updates': GlobalKey(),
     'island_support': GlobalKey(),
     'test_notification': GlobalKey(),
-    'mac_tray_icon': GlobalKey(),
     'mac_status_bar': GlobalKey(),
-    'mac_icon_size': GlobalKey(),
+    'mac_island_reminders': GlobalKey(),
+    'mac_island_without_notch': GlobalKey(),
+    'mac_island_test': GlobalKey(),
   };
 
   String? _highlightTarget;
@@ -58,9 +61,9 @@ class _PlatformSpecificSettingsPageState
   late final PermissionRequestCoordinator _permissionCoordinator;
 
   // macOS Specific
-  bool _macTrayIconEnabled = true;
-  bool _macStatusBarEnabled = true;
-  int _macIconSize = 18;
+  bool _macIslandEnabled = true;
+  bool _macIslandRemindersEnabled = true;
+  bool _macIslandShowWithoutNotch = true;
 
   @override
   void initState() {
@@ -123,9 +126,13 @@ class _PlatformSpecificSettingsPageState
     if (AppPlatform.isMacOS) {
       if (mounted) {
         setState(() {
-          _macTrayIconEnabled = prefs.getBool('macos_tray_icon_enabled') ?? true;
-          _macStatusBarEnabled = prefs.getBool('macos_status_bar_enabled') ?? true;
-          _macIconSize = prefs.getInt('macos_tray_icon_size') ?? 18;
+          _macIslandEnabled = prefs.getBool('macos_island_enabled') ??
+              prefs.getBool('macos_status_bar_enabled') ??
+              true;
+          _macIslandShowWithoutNotch =
+              prefs.getBool('macos_island_show_without_notch') ?? true;
+          _macIslandRemindersEnabled =
+              prefs.getBool('macos_island_reminders_enabled') ?? true;
         });
       }
     }
@@ -401,91 +408,111 @@ class _PlatformSpecificSettingsPageState
           ],
           if (AppPlatform.isMacOS) ...[
             const AppSettingsSectionHeader(
-              title: '菜单栏设置',
+              title: 'Mac 灵动岛',
               padding: EdgeInsets.only(left: 16, bottom: 8, top: 16),
             ),
             _buildTile(
-              targetId: 'mac_tray_icon',
-              child: ListTile(
-                leading:
-                    Icon(Icons.apps_rounded, color: colorScheme.primary),
-                title: const Text('显示托盘图标'),
-                subtitle: const Text('在菜单栏显示应用图标，支持右键菜单快捷操作'),
-                trailing: Switch(
-                  value: _macTrayIconEnabled,
-                  activeThumbColor: colorScheme.primary,
-                  onChanged: (val) async {
-                    setState(() => _macTrayIconEnabled = val);
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('macos_tray_icon_enabled', val);
-                    if (mounted) {
-                      AppSnackBars.success(
-                          context, '设置已保存，重启应用后生效');
-                    }
-                  },
-                ),
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
               targetId: 'mac_status_bar',
               child: ListTile(
-                leading:
-                    Icon(Icons.timer_outlined, color: colorScheme.primary),
-                title: const Text('显示专注计时'),
-                subtitle:
-                    const Text('专注时在菜单栏显示番茄钟倒计时，支持暂停/结束操作'),
+                leading: Icon(Icons.call_to_action_rounded,
+                    color: colorScheme.primary),
+                title: const Text('启用刘海灵动岛'),
+                subtitle: const Text('专注时在屏幕顶部显示倒计时，菜单栏不再显示应用图标'),
                 trailing: Switch(
-                  value: _macStatusBarEnabled,
+                  value: _macIslandEnabled,
                   activeThumbColor: colorScheme.primary,
                   onChanged: (val) async {
-                    setState(() => _macStatusBarEnabled = val);
+                    setState(() => _macIslandEnabled = val);
                     final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('macos_status_bar_enabled', val);
+                    await prefs.setBool('macos_island_enabled', val);
+                    await prefs.setBool('macos_tray_icon_enabled', false);
+                    await WindowService.configureMacIsland();
                     if (!val) {
                       MacPomodoroStatusBarService.clearNative();
+                    } else {
+                      await MacPomodoroStatusBarService.syncCurrentStatus();
                     }
-                    if (mounted) {
-                      AppSnackBars.success(context, val
-                          ? '专注计时已开启，下次专注时生效'
-                          : '专注计时已关闭');
-                    }
+                    if (!context.mounted) return;
+                    AppSnackBars.success(
+                        context, val ? 'Mac 灵动岛已开启' : 'Mac 灵动岛已关闭');
                   },
                 ),
               ),
             ),
             const AppSettingsDivider(indent: 72),
             _buildTile(
-              targetId: 'mac_icon_size',
+              targetId: 'mac_island_reminders',
+              child: ListTile(
+                leading: Icon(Icons.notifications_active_outlined,
+                    color: colorScheme.primary),
+                title: const Text('在灵动岛显示提醒'),
+                subtitle: const Text('待办、课程和计划到点时自动展开，支持稍后提醒'),
+                trailing: Switch(
+                  value: _macIslandRemindersEnabled,
+                  activeThumbColor: colorScheme.primary,
+                  onChanged: _macIslandEnabled
+                      ? (val) async {
+                          setState(() => _macIslandRemindersEnabled = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool(
+                              'macos_island_reminders_enabled', val);
+                          await WindowService.configureMacIsland();
+                          if (val) {
+                            final reminders = await NotificationService
+                                .getScheduledReminders();
+                            await MacPomodoroStatusBarService
+                                .scheduleIslandReminders(
+                              reminders,
+                              clearFirst: true,
+                              restoring: true,
+                            );
+                          } else {
+                            MacPomodoroStatusBarService.clearIslandReminders();
+                          }
+                        }
+                      : null,
+                ),
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'mac_island_test',
+              child: ListTile(
+                enabled: _macIslandEnabled && _macIslandRemindersEnabled,
+                leading: Icon(Icons.play_circle_outline_rounded,
+                    color: _macIslandEnabled && _macIslandRemindersEnabled
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant),
+                title: const Text('测试灵动岛提醒'),
+                subtitle: const Text('立即显示一条测试提醒，用于检查位置和交互'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _macIslandEnabled && _macIslandRemindersEnabled
+                    ? () async {
+                        await MacPomodoroStatusBarService.showTestReminder();
+                      }
+                    : null,
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'mac_island_without_notch',
               child: ListTile(
                 leading:
-                    Icon(Icons.photo_size_select_large, color: colorScheme.primary),
-                title: const Text('托盘图标大小'),
-                subtitle: Text('当前: $_macIconSize px',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant, fontSize: 12)),
-                trailing: SizedBox(
-                  width: 160,
-                  child: Slider(
-                    value: _macIconSize.toDouble(),
-                    min: 12,
-                    max: 28,
-                    divisions: 16,
-                    label: '$_macIconSize px',
-                    activeColor: colorScheme.primary,
-                    onChanged: (val) {
-                      setState(() => _macIconSize = val.round());
-                    },
-                    onChangeEnd: (val) async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setInt(
-                          'macos_tray_icon_size', val.round());
-                      if (mounted) {
-                        AppSnackBars.success(
-                            context, '设置已保存，重启应用后生效');
-                      }
-                    },
-                  ),
+                    Icon(Icons.desktop_mac_rounded, color: colorScheme.primary),
+                title: const Text('无刘海屏幕也显示'),
+                subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
+                trailing: Switch(
+                  value: _macIslandShowWithoutNotch,
+                  activeThumbColor: colorScheme.primary,
+                  onChanged: _macIslandEnabled
+                      ? (val) async {
+                          setState(() => _macIslandShowWithoutNotch = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool(
+                              'macos_island_show_without_notch', val);
+                          await WindowService.configureMacIsland();
+                        }
+                      : null,
                 ),
               ),
             ),

@@ -105,6 +105,17 @@ class MainFlutterWindow: NSWindow {
     MacPomodoroStatusBarController.shared.setAppFlutterChannel(appStatusBarChannel)
     appStatusBarChannel.setMethodCallHandler { (call, result) in
       switch call.method {
+      case "configureIsland":
+        let args = call.arguments as? [String: Any]
+        let enabled = args?["enabled"] as? Bool ?? true
+        let showOnNotchlessDisplay = args?["showOnNotchlessDisplay"] as? Bool ?? true
+        let remindersEnabled = args?["remindersEnabled"] as? Bool ?? true
+        MacPomodoroStatusBarController.shared.configureIsland(
+          enabled: enabled,
+          showOnNotchlessDisplay: showOnNotchlessDisplay,
+          remindersEnabled: remindersEnabled
+        )
+        result(true)
       case "setVisible":
         let args = call.arguments as? [String: Any]
         let visible = args?["visible"] as? Bool ?? true
@@ -137,6 +148,16 @@ class MainFlutterWindow: NSWindow {
         result(true)
       case "clearPomodoroStatus":
         MacPomodoroStatusBarController.shared.clearPomodoroStatus()
+        result(true)
+      case "showIslandReminder":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing reminder", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.showIslandReminder(args: args)
+        result(true)
+      case "clearIslandReminders":
+        MacPomodoroStatusBarController.shared.clearIslandReminders()
         result(true)
       default:
         result(FlutterMethodNotImplemented)
