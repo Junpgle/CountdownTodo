@@ -36,6 +36,8 @@ class MacPomodoroStatusBarService {
   static final Map<int, Timer> _reminderTimers = {};
   static Timer? _activityTimer;
   static bool _activitySyncInProgress = false;
+  static bool _activitySyncPending = false;
+  static int _activitySyncGeneration = 0;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
 
   /// 状态栏操作事件流（暂停/继续/结束）
@@ -53,6 +55,7 @@ class MacPomodoroStatusBarService {
     if (!Platform.isMacOS) return;
     if (_initialized) return;
     _initialized = true;
+    _activitySyncGeneration++;
     debugPrint('[MacPomodoroStatusBar] init() called');
 
     // 设置 MethodCallHandler 接收 Swift 端消息
@@ -335,11 +338,18 @@ class MacPomodoroStatusBarService {
 
   /// 同步当前课程、计划块或明确时段待办，并在下一处起止边界自动重算。
   static Future<void> syncOngoingActivity() async {
-    if (!Platform.isMacOS || !_initialized || _activitySyncInProgress) return;
+    if (!Platform.isMacOS || !_initialized) return;
+    if (_activitySyncInProgress) {
+      _activitySyncPending = true;
+      return;
+    }
     _activitySyncInProgress = true;
+    _activitySyncPending = false;
+    final generation = _activitySyncGeneration;
     _activityTimer?.cancel();
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (!_isActivitySyncCurrent(generation)) return;
       final enabled = prefs.getBool('macos_island_enabled') ??
           prefs.getBool('macos_status_bar_enabled') ??
           true;
@@ -349,8 +359,16 @@ class MacPomodoroStatusBarService {
       }
 
       final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      if (username.trim().isEmpty) {
+        await _channel.invokeMethod('clearOngoingActivity');
+        if (_isActivitySyncCurrent(generation)) {
+          _scheduleActivitySync(const Duration(minutes: 2));
+        }
+        return;
+      }
       final resolution =
           await OngoingActivityService.resolveFromStorage(username);
+      if (!_isActivitySyncCurrent(generation)) return;
       final activity = resolution.activity;
       if (activity == null) {
         await _channel.invokeMethod('clearOngoingActivity');
@@ -363,21 +381,35 @@ class MacPomodoroStatusBarService {
       final delay = boundaryDelay != null && !boundaryDelay.isNegative
           ? boundaryDelay + const Duration(milliseconds: 250)
           : const Duration(minutes: 15);
-      _activityTimer = Timer(
+      if (!_isActivitySyncCurrent(generation)) return;
+      _scheduleActivitySync(
         delay > const Duration(minutes: 15)
             ? const Duration(minutes: 15)
             : delay,
-        () => unawaited(syncOngoingActivity()),
       );
     } catch (e) {
-      debugPrint('[MacIsland] ongoing activity sync failed: $e');
-      _activityTimer = Timer(
-        const Duration(minutes: 2),
-        () => unawaited(syncOngoingActivity()),
-      );
+      if (_isActivitySyncCurrent(generation)) {
+        debugPrint('[MacIsland] ongoing activity sync failed: $e');
+        _scheduleActivitySync(const Duration(minutes: 2));
+      }
     } finally {
       _activitySyncInProgress = false;
+      if (_activitySyncPending && _initialized) {
+        _activitySyncPending = false;
+        unawaited(syncOngoingActivity());
+      }
     }
+  }
+
+  static bool _isActivitySyncCurrent(int generation) =>
+      _initialized && generation == _activitySyncGeneration;
+
+  static void _scheduleActivitySync(Duration delay) {
+    _activityTimer?.cancel();
+    _activityTimer = Timer(
+      delay,
+      () => unawaited(syncOngoingActivity()),
+    );
   }
 
   /// 供外部（设置页）主动清除状态栏显示
@@ -399,6 +431,9 @@ class MacPomodoroStatusBarService {
   }
 
   static void dispose() {
+    _initialized = false;
+    _activitySyncGeneration++;
+    _activitySyncPending = false;
     _localSub?.cancel();
     _localSub = null;
     _remoteSub?.cancel();
@@ -406,8 +441,6 @@ class MacPomodoroStatusBarService {
     StorageService.dataRefreshNotifier.removeListener(_handleDataRefresh);
     _activityTimer?.cancel();
     _activityTimer = null;
-    _activitySyncInProgress = false;
     _lastLocalActiveState = null;
-    _initialized = false;
   }
 }

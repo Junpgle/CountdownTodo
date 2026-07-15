@@ -85,7 +85,7 @@ class OngoingActivityService {
         candidates.add(OngoingActivity(
           id: course.uuid,
           kind: OngoingActivityKind.course,
-          title: course.courseName,
+          title: _firstNonEmpty([course.courseName, '未命名课程']),
           subtitle: course.roomName,
           startMs: range.$1,
           endMs: range.$2,
@@ -96,6 +96,11 @@ class OngoingActivityService {
     for (final block in planBlocks) {
       if (block.isDeleted || !_isDisplayablePlanStatus(block.status)) continue;
       if (block.endTime <= block.startTime) continue;
+      final blockStart =
+          DateTime.fromMillisecondsSinceEpoch(block.startTime).toLocal();
+      final blockEnd =
+          DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
+      if (!_isSameDay(blockStart, blockEnd)) continue;
       _addFutureBoundaries(boundaries, block.startTime, block.endTime, nowMs);
       if (_containsNow(block.startTime, block.endTime, nowMs)) {
         activePlanTodoIds.add(block.todoId);
@@ -129,7 +134,7 @@ class OngoingActivityService {
         candidates.add(OngoingActivity(
           id: todo.id,
           kind: OngoingActivityKind.todo,
-          title: todo.title,
+          title: _firstNonEmpty([todo.title, '未命名待办']),
           subtitle: todo.remark ?? '',
           startMs: startMs,
           endMs: endMs,

@@ -592,6 +592,7 @@ class MacPomodoroStatusBarController {
                 self.clearIslandReminders()
             }
             self.refreshDisplay()
+            self.scheduleNextUpdate()
         }
     }
 
@@ -742,8 +743,8 @@ class MacPomodoroStatusBarController {
         let focusWithActivity = isPomodoroActive && hasActivity
         let width = expanded ? max(hasReminder ? 310 : (hasActivity ? 310 : 286), compactWidth) : compactWidth
         let height: CGFloat = expanded
-            ? max(hasReminder ? 178 : (focusWithActivity ? 214 : (hasActivity ? 190 : 166)),
-                  geometry.topInset + (hasReminder ? 144 : (focusWithActivity ? 180 : (hasActivity ? 156 : 132))))
+            ? max(hasReminder ? 178 : (focusWithActivity ? 214 : (hasActivity ? 204 : 166)),
+                  geometry.topInset + (hasReminder ? 144 : (focusWithActivity ? 180 : (hasActivity ? 170 : 132))))
             : compactHeight
         let frame = NSRect(
             x: screen.frame.midX - width / 2,

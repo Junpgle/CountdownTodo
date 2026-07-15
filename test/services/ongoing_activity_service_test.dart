@@ -91,5 +91,48 @@ void main() {
       expect(result.activity, isNull);
       expect(result.nextBoundary, DateTime(2026, 7, 15, 14));
     });
+
+    test('忽略跨日计划块', () {
+      final plan = TodoPlanBlock(
+        todoId: 'todo-1',
+        titleSnapshot: '夜间长任务',
+        startTime: DateTime(2026, 7, 14, 23).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: const [],
+        planBlocks: [plan],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextBoundary, isNull);
+    });
+
+    test('开始时刻包含、结束时刻排除', () {
+      final todo = TodoItem(
+        title: '边界任务',
+        createdDate: now.millisecondsSinceEpoch,
+        dueDate: now.add(const Duration(hours: 1)),
+      );
+
+      final atStart = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+      final atEnd = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now.add(const Duration(hours: 1)),
+      );
+
+      expect(atStart.activity?.title, '边界任务');
+      expect(atEnd.activity, isNull);
+    });
   });
 }
