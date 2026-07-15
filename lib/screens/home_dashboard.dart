@@ -10,7 +10,6 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
@@ -27,6 +26,7 @@ import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
+import '../services/permission_request_coordinator.dart';
 import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
@@ -91,6 +91,8 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard>
     with WidgetsBindingObserver {
+  late final PermissionRequestCoordinator _permissionCoordinator;
+
   bool _isSameDay(DateTime date1, DateTime date2) {
     return date1.year == date2.year &&
         date1.month == date2.month &&
@@ -363,6 +365,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(context: context);
     WidgetsBinding.instance.addObserver(this);
     // 冷启动清理残留通知
     NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
@@ -535,6 +538,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {
       sub.cancel();
     }
@@ -581,7 +585,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         content: const Text('⏰ 需要「精确闹钟」权限才能在 App 被杀后准时发送提醒'),
         action: SnackBarAction(
           label: '去授权',
-          onPressed: NotificationService.openExactAlarmSettings,
+          onPressed: () async {
+            await _permissionCoordinator.request(
+              AppPermissionKind.exactAlarm,
+            );
+          },
         ),
         duration: const Duration(seconds: 8),
       ),
@@ -2890,9 +2898,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     await NotificationService.init();
     // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
-      if (await Permission.notification.isDenied) {
-        await Permission.notification.request();
-      }
+      await _permissionCoordinator.request(AppPermissionKind.notification);
     }
   }
 
@@ -4528,10 +4534,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               onOpenSettings: () async {
                                                 if (AppPlatform.isAndroid ||
                                                     AppPlatform.isIOS) {
-                                                  await ScreenTimeService
-                                                      .openSettings();
+                                                  await _permissionCoordinator
+                                                      .request(
+                                                    AppPermissionKind
+                                                        .usageStats,
+                                                    onResult: (_) =>
+                                                        _initScreenTime(),
+                                                  );
+                                                } else {
+                                                  _initScreenTime();
                                                 }
-                                                _initScreenTime();
                                               },
                                               onViewDetail: () {
                                                 PageTransitions.pushFromRect(

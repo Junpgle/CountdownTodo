@@ -70,6 +70,12 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   }
 
   @override
+  void dispose() {
+    _permissionHandler.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (AppPlatform.isWeb) {
       return Scaffold(

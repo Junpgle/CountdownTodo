@@ -178,7 +178,9 @@ class PermissionSection extends StatelessWidget {
           if (denied) ...[
             const SizedBox(width: 8),
             FilledButton.tonal(
-              onPressed: () => onRequestOrOpenPermission(key),
+              onPressed: isCheckingPermissions
+                  ? null
+                  : () => onRequestOrOpenPermission(key),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(60, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
