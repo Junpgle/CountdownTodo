@@ -1701,12 +1701,16 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               recurrenceEnd.month,
               recurrenceEnd.day,
             );
+      const openEndedFuturePreviewCount = 14;
       var projectedCount = 0;
       var futureCount = nodes
           .where((node) => node.state == TodoRecurrenceNodeState.future)
           .length;
       while (projectedCount < 90) {
-        if (recurrenceEndDay == null && futureCount >= 2) break;
+        if (recurrenceEndDay == null &&
+            futureCount >= openEndedFuturePreviewCount) {
+          break;
+        }
         projectedStart = _nextRecurrenceStart(projectedStart, todo);
         final projectedDay = DateTime(
           projectedStart.year,
@@ -1739,7 +1743,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       key: ValueKey('recurrence_progress_${seriesId ?? todo.id}'),
       nodes: nodes,
       completedCount: summary.completedCount,
-      totalCount: summary.totalCount,
+      totalCount: todo.recurrenceEndDate == null ? null : summary.totalCount,
       overdueCount: summary.overdueCount,
       onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node),
       onManage: () => _showRecurrenceManagement(todo),
