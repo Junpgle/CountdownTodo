@@ -19,6 +19,7 @@ import '../screens/home_settings_screen.dart';
 import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
 import 'todo_group_widget.dart';
+import 'todo_recurrence_progress.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
@@ -34,6 +35,11 @@ enum _TodoFolderDisplayMode {
   separate,
   urgentFirst,
   hidden,
+}
+
+enum _RecurrenceOccurrenceAction {
+  toggleCompletion,
+  edit,
 }
 
 class TodoSectionWidget extends StatefulWidget {
@@ -103,6 +109,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   final Set<String> _animatedTodoIds = {};
   _TodoSectionViewModel? _cachedVm;
+  int? _cachedVmSignature;
   Map<String, List<TodoItem>> _recurrenceSeriesOccurrences = const {};
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
@@ -1546,6 +1553,26 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     );
   }
 
+  void _openTodoEditor(
+    TodoItem todo, {
+    bool applyToFutureOccurrences = false,
+  }) {
+    Navigator.push(
+      context,
+      PageTransitions.material(
+        builder: (_) => TodoEditScreen(
+          todo: todo,
+          todos: widget.todos,
+          onTodosChanged: widget.onTodosChanged,
+          todoGroups: widget.todoGroups,
+          onGroupsChanged: widget.onGroupsChanged,
+          username: widget.username,
+          applyToFutureOccurrences: applyToFutureOccurrences,
+        ),
+      ),
+    );
+  }
+
   // ─────────────────────────────────────────────
   // 时间标签构建（单行，信息完整）
   // ─────────────────────────────────────────────
@@ -1606,194 +1633,290 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       return const SizedBox.shrink();
     }
 
-    final currentIndex =
-        actualOccurrences.indexWhere((item) => item.id == todo.id);
-    final historyEnd =
-        currentIndex >= 0 ? currentIndex + 1 : actualOccurrences.length;
-    final visibleActual = actualOccurrences
-        .take(historyEnd)
-        .skip((historyEnd - 3).clamp(0, historyEnd))
-        .toList();
-    final nodes = visibleActual.map((item) {
+    final allNodes = <TodoRecurrenceProgressNode>[];
+    final currentStart = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    final occurrenceDuration =
+        todo.dueDate?.difference(currentStart) ?? const Duration(hours: 24);
+    DateTime? previousStart;
+    for (final item in actualOccurrences) {
       final start = DateTime.fromMillisecondsSinceEpoch(
         item.createdDate ?? item.createdAt,
         isUtc: true,
       ).toLocal();
+      if (previousStart != null && todo.recurrence != RecurrenceType.none) {
+        var missingStart = _nextRecurrenceStart(previousStart, todo);
+        var guard = 0;
+        while (missingStart.isBefore(start) && guard < 90) {
+          allNodes.add(TodoRecurrenceProgressNode(
+            date: missingStart,
+            state: missingStart.isAfter(now)
+                ? TodoRecurrenceNodeState.future
+                : missingStart.add(occurrenceDuration).isBefore(now)
+                    ? TodoRecurrenceNodeState.overdue
+                    : TodoRecurrenceNodeState.pending,
+          ));
+          missingStart = _nextRecurrenceStart(missingStart, todo);
+          guard++;
+        }
+      }
       final end = item.dueDate ?? start;
-      final state = item.id == todo.id
-          ? _RecurrenceNodeState.current
-          : item.isDone
-              ? _RecurrenceNodeState.completed
-              : end.isBefore(now)
-                  ? _RecurrenceNodeState.overdue
-                  : _RecurrenceNodeState.pending;
-      return _RecurrenceProgressNode(date: start, state: state);
-    }).toList();
+      final isCurrent = item.id == todo.id;
+      final state = item.isDone
+          ? TodoRecurrenceNodeState.completed
+          : isCurrent
+              ? todo.recurrence == RecurrenceType.none
+                  ? TodoRecurrenceNodeState.neutral
+                  : TodoRecurrenceNodeState.current
+              : start.isAfter(now)
+                  ? TodoRecurrenceNodeState.future
+                  : end.isBefore(now)
+                      ? TodoRecurrenceNodeState.overdue
+                      : TodoRecurrenceNodeState.pending;
+      allNodes.add(TodoRecurrenceProgressNode(
+        date: start,
+        state: state,
+        occurrenceId: item.id,
+        isCurrent: isCurrent,
+      ));
+      previousStart = start;
+    }
+    final currentIndex = allNodes.indexWhere((node) => node.isCurrent);
+    final historyEnd = currentIndex >= 0 ? currentIndex + 1 : allNodes.length;
+    final historyNodes = allNodes.take(historyEnd).toList();
+    final nodes = historyNodes
+        .skip((historyNodes.length - 3).clamp(0, historyNodes.length))
+        .followedBy(allNodes.skip(historyEnd))
+        .toList();
 
     if (todo.recurrence != RecurrenceType.none) {
-      var projectedStart = DateTime.fromMillisecondsSinceEpoch(
-        todo.createdDate ?? todo.createdAt,
-        isUtc: true,
-      ).toLocal();
-      while (nodes.length < 5) {
+      var projectedStart = nodes.isNotEmpty ? nodes.last.date : currentStart;
+      final recurrenceEnd = todo.recurrenceEndDate;
+      final recurrenceEndDay = recurrenceEnd == null
+          ? null
+          : DateTime(
+              recurrenceEnd.year,
+              recurrenceEnd.month,
+              recurrenceEnd.day,
+            );
+      var projectedCount = 0;
+      var futureCount = nodes
+          .where((node) => node.state == TodoRecurrenceNodeState.future)
+          .length;
+      while (projectedCount < 90) {
+        if (recurrenceEndDay == null && futureCount >= 2) break;
         projectedStart = _nextRecurrenceStart(projectedStart, todo);
-        final recurrenceEnd = todo.recurrenceEndDate;
-        if (recurrenceEnd != null && projectedStart.isAfter(recurrenceEnd)) {
+        final projectedDay = DateTime(
+          projectedStart.year,
+          projectedStart.month,
+          projectedStart.day,
+        );
+        if (recurrenceEndDay != null &&
+            projectedDay.isAfter(recurrenceEndDay)) {
           break;
         }
-        nodes.add(_RecurrenceProgressNode(
+        final projectedNode = TodoRecurrenceProgressNode(
           date: projectedStart,
-          state: _RecurrenceNodeState.future,
-        ));
+          state: TodoRecurrenceNodeState.future,
+        );
+        nodes.add(projectedNode);
+        allNodes.add(projectedNode);
+        projectedCount++;
+        futureCount++;
       }
     }
 
-    final completedCount =
-        actualOccurrences.where((item) => item.isDone).length;
-    final overdueCount = actualOccurrences.where((item) {
-      if (item.isDone || item.id == todo.id) return false;
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        item.createdDate ?? item.createdAt,
-        isUtc: true,
-      ).toLocal();
-      return (item.dueDate ?? start).isBefore(now);
-    }).length;
-    final colorScheme = Theme.of(context).colorScheme;
+    // 有结束日期的有限循环展示整个系列的完成进度；开放式循环没有固定
+    // 总期数，因此仍以已经发生的历史和当前期作为统计范围。
+    final summary = _calculateRecurrenceSummary(
+      allNodes: allNodes,
+      historyNodes: historyNodes,
+      hasFixedEnd: todo.recurrenceEndDate != null,
+    );
+    return TodoRecurrenceProgress(
+      key: ValueKey('recurrence_progress_${seriesId ?? todo.id}'),
+      nodes: nodes,
+      completedCount: summary.completedCount,
+      totalCount: summary.totalCount,
+      overdueCount: summary.overdueCount,
+      onNodeTap: (node) => _handleRecurrenceNodeTap(todo, node),
+      onManage: () => _showRecurrenceManagement(todo),
+    );
+  }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(9, 7, 9, 6),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.repeat_rounded, size: 11, color: colorScheme.primary),
-              const SizedBox(width: 4),
-              Text(
-                '循环进度 · $completedCount/${actualOccurrences.length} 已完成'
-                '${overdueCount > 0 ? ' · $overdueCount 逾期' : ''}',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              for (var i = 0; i < nodes.length; i++) ...[
-                if (i > 0)
-                  Expanded(
-                    child: _buildDottedRecurrenceConnector(colorScheme),
-                  ),
-                _buildRecurrenceNode(nodes[i], colorScheme, now),
-              ],
-            ],
-          ),
-        ],
+  Future<void> _handleRecurrenceNodeTap(
+    TodoItem current,
+    TodoRecurrenceProgressNode node,
+  ) async {
+    if (node.isCurrent) {
+      _setTodoCompletion(current, !current.isDone);
+      return;
+    }
+
+    final occurrenceId = node.occurrenceId;
+    if (occurrenceId != null) {
+      final occurrence = widget.todos.cast<TodoItem?>().firstWhere(
+            (item) => item?.id == occurrenceId,
+            orElse: () => null,
+          );
+      if (occurrence != null) {
+        await _showRecurrenceOccurrenceActions(occurrence, node.date);
+        return;
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${DateFormat('M月d日').format(node.date)}的待办实例尚未生成',
+        ),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  Widget _buildDottedRecurrenceConnector(ColorScheme colorScheme) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final count = (constraints.maxWidth / 6).floor().clamp(1, 12);
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(
-          count,
-          (_) => Container(
-            width: 2.5,
-            height: 1.2,
-            decoration: BoxDecoration(
-              color: colorScheme.outlineVariant,
-              borderRadius: BorderRadius.circular(1),
+  Future<void> _showRecurrenceOccurrenceActions(
+    TodoItem occurrence,
+    DateTime occurrenceDate,
+  ) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final action = await showModalBottomSheet<_RecurrenceOccurrenceAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                Icons.event_repeat_rounded,
+                color: colorScheme.primary,
+              ),
+              title: Text(DateFormat('yyyy年M月d日').format(occurrenceDate)),
+              subtitle: Text(occurrence.title),
             ),
-          ),
+            const Divider(height: 1),
+            ListTile(
+              key: const ValueKey('recurrence_occurrence_toggle_completion'),
+              leading: Icon(
+                occurrence.isDone
+                    ? Icons.radio_button_unchecked_rounded
+                    : Icons.check_circle_outline_rounded,
+                color: colorScheme.primary,
+              ),
+              title: Text(occurrence.isDone ? '取消完成' : '标记为完成'),
+              subtitle: const Text('只修改这一期的完成状态'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                _RecurrenceOccurrenceAction.toggleCompletion,
+              ),
+            ),
+            ListTile(
+              key: const ValueKey('recurrence_occurrence_edit'),
+              leading: Icon(
+                Icons.edit_calendar_rounded,
+                color: colorScheme.secondary,
+              ),
+              title: const Text('编辑本期'),
+              subtitle: const Text('修改这一期的标题、时间或备注'),
+              onTap: () => Navigator.pop(
+                sheetContext,
+                _RecurrenceOccurrenceAction.edit,
+              ),
+            ),
+          ],
         ),
-      );
-    });
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _RecurrenceOccurrenceAction.toggleCompletion:
+        _setTodoCompletion(occurrence, !occurrence.isDone);
+      case _RecurrenceOccurrenceAction.edit:
+        _openTodoEditor(occurrence);
+    }
   }
 
-  Widget _buildRecurrenceNode(
-    _RecurrenceProgressNode node,
-    ColorScheme colorScheme,
-    DateTime now,
-  ) {
-    final (Color background, Color foreground, IconData? icon) =
-        switch (node.state) {
-      _RecurrenceNodeState.completed => (
-          colorScheme.primary,
-          colorScheme.onPrimary,
-          Icons.check_rounded
-        ),
-      _RecurrenceNodeState.overdue => (
-          colorScheme.error,
-          colorScheme.onError,
-          Icons.priority_high_rounded
-        ),
-      _RecurrenceNodeState.current => (
-          colorScheme.secondary,
-          colorScheme.onSecondary,
-          Icons.circle
-        ),
-      _RecurrenceNodeState.pending => (
-          colorScheme.tertiaryContainer,
-          colorScheme.onTertiaryContainer,
-          Icons.more_horiz_rounded
-        ),
-      _RecurrenceNodeState.future => (
-          colorScheme.surfaceContainerHighest,
-          colorScheme.outline,
-          null
-        ),
-    };
-    final today = DateTime(now.year, now.month, now.day);
-    final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
-    final label = nodeDay == today ? '今天' : DateFormat('M/d').format(node.date);
+  void _setTodoCompletion(TodoItem todo, bool isDone) {
+    if (todo.isDone == isDone) return;
+    setState(() => todo.isDone = isDone);
+    if (isDone) {
+      PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
+    }
+    todo.markAsChanged();
+    widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+  }
 
-    return SizedBox(
-      width: 31,
-      child: Column(
-        children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: background,
-              shape: BoxShape.circle,
-              border: node.state == _RecurrenceNodeState.future
-                  ? Border.all(color: colorScheme.outlineVariant)
-                  : null,
+  Future<void> _showRecurrenceManagement(TodoItem todo) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading:
+                  Icon(Icons.edit_calendar_rounded, color: colorScheme.primary),
+              title: const Text('只修改本期'),
+              subtitle: const Text('仅编辑当前显示的这一期待办'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openTodoEditor(todo);
+              },
             ),
-            alignment: Alignment.center,
-            child: icon == null
-                ? null
-                : Icon(icon,
-                    size: node.state == _RecurrenceNodeState.current ? 6 : 11,
-                    color: foreground),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 1,
-            style: TextStyle(
-              fontSize: 8.5,
-              fontWeight: node.state == _RecurrenceNodeState.current
-                  ? FontWeight.bold
-                  : FontWeight.w500,
-              color: node.state == _RecurrenceNodeState.current
-                  ? colorScheme.secondary
-                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+            ListTile(
+              leading: Icon(Icons.event_repeat_rounded,
+                  color: colorScheme.secondary),
+              title: const Text('修改后续所有周期'),
+              subtitle: const Text('本期及之后的实例同步采用修改内容'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openTodoEditor(todo, applyToFutureOccurrences: true);
+              },
             ),
-          ),
-        ],
+            if (todo.recurrence != RecurrenceType.none)
+              ListTile(
+                leading:
+                    Icon(Icons.stop_circle_outlined, color: colorScheme.error),
+                title: const Text('在本期结束循环'),
+                subtitle: const Text('保留已有记录，不再产生新的周期'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  final start = DateTime.fromMillisecondsSinceEpoch(
+                    todo.createdDate ?? todo.createdAt,
+                    isUtc: true,
+                  ).toLocal();
+                  setState(() {
+                    final currentStart = todo.createdDate ?? todo.createdAt;
+                    final seriesId = todo.recurrenceSeriesId;
+                    if (seriesId != null && seriesId.isNotEmpty) {
+                      for (final occurrence in widget.todos) {
+                        if (occurrence.id == todo.id ||
+                            occurrence.isDeleted ||
+                            occurrence.recurrenceSeriesId != seriesId ||
+                            (occurrence.createdDate ?? occurrence.createdAt) <=
+                                currentStart) {
+                          continue;
+                        }
+                        occurrence.isDeleted = true;
+                        occurrence.recurrence = RecurrenceType.none;
+                        occurrence.markAsChanged();
+                      }
+                    }
+                    todo.recurrence = RecurrenceType.none;
+                    todo.recurrenceEndDate =
+                        DateTime(start.year, start.month, start.day);
+                    todo.markAsChanged();
+                  });
+                  widget.onTodosChanged(List<TodoItem>.from(widget.todos));
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2810,8 +2933,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   Widget _buildTodoList() {
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
-    if (_cachedVm != null && _cachedVm!.today != today) {
+    final viewModelSignature = _computeViewModelSignature(today);
+    if ((_cachedVm != null && _cachedVm!.today != today) ||
+        _cachedVmSignature != viewModelSignature) {
       _cachedVm = null;
+      _cachedVmSignature = viewModelSignature;
     }
     _cachedVm ??= _computeViewModel();
     final vm = _cachedVm!;
@@ -3278,15 +3404,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
     _recurrenceSeriesOccurrences = seriesOccurrences;
 
-    final seriesRepresentativeIds = <String, String>{};
-    for (final entry in seriesOccurrences.entries) {
-      final activeRecurring = entry.value
-          .where((todo) => todo.recurrence != RecurrenceType.none)
-          .toList();
-      final representative =
-          activeRecurring.isNotEmpty ? activeRecurring.last : entry.value.last;
-      seriesRepresentativeIds[entry.key] = representative.id;
-    }
+    final seriesRepresentativeIds =
+        _buildRecurrenceSeriesRepresentativeIds(seriesOccurrences);
 
     // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo
     final groupById = <String, TodoGroup>{};
@@ -3304,10 +3423,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
       if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid)
         continue;
-      final seriesId = t.recurrenceSeriesId;
-      if (seriesId != null &&
-          seriesRepresentativeIds[seriesId] != null &&
-          seriesRepresentativeIds[seriesId] != t.id) {
+      if (!_shouldDisplayRecurrenceTodo(t, seriesRepresentativeIds)) {
         continue;
       }
 
@@ -3475,6 +3591,122 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       separateGroupData: separateGroupData,
     );
   }
+
+  int _computeViewModelSignature(DateTime today) {
+    return Object.hash(
+      today.millisecondsSinceEpoch,
+      _selectedSubTeamUuid,
+      _folderDisplayMode.index,
+      Object.hashAll(widget.todos.map((todo) => Object.hash(
+            todo.id,
+            todo.isDeleted,
+            todo.isDone,
+            todo.version,
+            todo.createdDate,
+            todo.createdAt,
+            todo.dueDate?.millisecondsSinceEpoch,
+            todo.recurrence.index,
+            todo.recurrenceSeriesId,
+            todo.groupId,
+            todo.teamUuid,
+          ))),
+      Object.hashAll(widget.todoGroups.map((group) => Object.hash(
+            group.id,
+            group.isDeleted,
+            group.isExpanded,
+            group.version,
+            group.teamUuid,
+          ))),
+    );
+  }
+
+  static Map<String, String> _buildRecurrenceSeriesRepresentativeIds(
+    Map<String, List<TodoItem>> seriesOccurrences,
+  ) {
+    final representativeIds = <String, String>{};
+    for (final entry in seriesOccurrences.entries) {
+      TodoItem? latest;
+      TodoItem? latestActive;
+      for (final occurrence in entry.value) {
+        if (occurrence.isDeleted) continue;
+        final start = occurrence.createdDate ?? occurrence.createdAt;
+        if (latest == null ||
+            start > (latest.createdDate ?? latest.createdAt)) {
+          latest = occurrence;
+        }
+        if (occurrence.recurrence != RecurrenceType.none &&
+            (latestActive == null ||
+                start > (latestActive.createdDate ?? latestActive.createdAt))) {
+          latestActive = occurrence;
+        }
+      }
+      final representative = latestActive ?? latest;
+      if (representative != null) {
+        representativeIds[entry.key] = representative.id;
+      }
+    }
+    return representativeIds;
+  }
+
+  static bool _shouldDisplayRecurrenceTodo(
+    TodoItem todo,
+    Map<String, String> seriesRepresentativeIds,
+  ) {
+    final seriesId = todo.recurrenceSeriesId;
+    if (seriesId == null || seriesId.isEmpty) return true;
+    final representativeId = seriesRepresentativeIds[seriesId];
+    return representativeId == null || representativeId == todo.id;
+  }
+
+  @visibleForTesting
+  static List<TodoItem> collapseRecurrenceInstancesForDisplayForTest(
+    List<TodoItem> todos,
+  ) {
+    final seriesOccurrences = <String, List<TodoItem>>{};
+    for (final todo in todos) {
+      final seriesId = todo.recurrenceSeriesId;
+      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      seriesOccurrences.putIfAbsent(seriesId, () => []).add(todo);
+    }
+    final representativeIds =
+        _buildRecurrenceSeriesRepresentativeIds(seriesOccurrences);
+    return todos
+        .where((todo) =>
+            !todo.isDeleted &&
+            _shouldDisplayRecurrenceTodo(todo, representativeIds))
+        .toList();
+  }
+
+  static ({int completedCount, int totalCount, int overdueCount})
+      _calculateRecurrenceSummary({
+    required List<TodoRecurrenceProgressNode> allNodes,
+    required List<TodoRecurrenceProgressNode> historyNodes,
+    required bool hasFixedEnd,
+  }) {
+    final summaryNodes = hasFixedEnd ? allNodes : historyNodes;
+    return (
+      completedCount: summaryNodes
+          .where((node) => node.state == TodoRecurrenceNodeState.completed)
+          .length,
+      totalCount: summaryNodes.length,
+      overdueCount: summaryNodes
+          .where((node) => node.state == TodoRecurrenceNodeState.overdue)
+          .length,
+    );
+  }
+
+  @visibleForTesting
+  static ({int completedCount, int totalCount, int overdueCount})
+      recurrenceSummaryForTest({
+    required List<TodoRecurrenceProgressNode> allNodes,
+    required List<TodoRecurrenceProgressNode> historyNodes,
+    required bool hasFixedEnd,
+  }) =>
+          _calculateRecurrenceSummary(
+            allNodes: allNodes,
+            historyNodes: historyNodes,
+            hasFixedEnd: hasFixedEnd,
+          );
 
   Widget _buildGroupWidget(TodoGroup g, List<TodoItem> gTodos) {
     final bool urgentFirstFolders =
@@ -3927,6 +4159,8 @@ class TodoEditScreen extends StatefulWidget {
   final List<TodoGroup> todoGroups;
   final FutureOr<void> Function(List<TodoGroup>) onGroupsChanged;
   final String username;
+  final bool applyToFutureOccurrences;
+
   const TodoEditScreen(
       {required this.todo,
       required this.todos,
@@ -3934,6 +4168,7 @@ class TodoEditScreen extends StatefulWidget {
       required this.todoGroups,
       required this.onGroupsChanged,
       required this.username,
+      this.applyToFutureOccurrences = false,
       super.key});
   @override
   State<TodoEditScreen> createState() => TodoEditScreenState();
@@ -3987,6 +4222,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   late TextEditingController _remarkCtrl;
   late TextEditingController _customDaysCtrl;
   late DateTime _createdDate;
+  late DateTime _originalCreatedDate;
   DateTime? _dueDate;
   late RecurrenceType _recurrence;
   int? _customDays;
@@ -4034,6 +4270,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             t.createdDate ?? t.createdAt,
             isUtc: true)
         .toLocal();
+    _originalCreatedDate = _createdDate;
     _dueDate = t.dueDate;
     _recurrence = t.recurrence;
     _customDays = t.customIntervalDays;
@@ -4110,10 +4347,76 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<void> _save() async {
     if (_titleCtrl.text.isEmpty) return;
     final todo = widget.todo;
+    final seriesId = todo.recurrenceSeriesId;
+    final startShift = _createdDate.difference(_originalCreatedDate);
+    final editedDuration = _dueDate?.difference(_createdDate);
+
+    if (widget.applyToFutureOccurrences &&
+        seriesId != null &&
+        seriesId.isNotEmpty) {
+      final originalStartMs = _originalCreatedDate.millisecondsSinceEpoch;
+      for (final occurrence in widget.todos) {
+        if (occurrence.id == todo.id ||
+            occurrence.isDeleted ||
+            occurrence.recurrenceSeriesId != seriesId ||
+            (occurrence.createdDate ?? occurrence.createdAt) <
+                originalStartMs) {
+          continue;
+        }
+
+        final occurrenceStart = DateTime.fromMillisecondsSinceEpoch(
+          occurrence.createdDate ?? occurrence.createdAt,
+          isUtc: true,
+        ).toLocal();
+        final shiftedStart = occurrenceStart.add(startShift);
+        final recurrenceEndDay = _recurrenceEndDate == null
+            ? null
+            : DateTime(
+                _recurrenceEndDate!.year,
+                _recurrenceEndDate!.month,
+                _recurrenceEndDate!.day,
+              );
+        final shiftedDay = DateTime(
+          shiftedStart.year,
+          shiftedStart.month,
+          shiftedStart.day,
+        );
+        if (_recurrence == RecurrenceType.none ||
+            (recurrenceEndDay != null &&
+                shiftedDay.isAfter(recurrenceEndDay))) {
+          occurrence.isDeleted = true;
+          occurrence.recurrence = RecurrenceType.none;
+          occurrence.markAsChanged();
+          continue;
+        }
+        occurrence.title = _titleCtrl.text;
+        occurrence.createdDate = shiftedStart.millisecondsSinceEpoch;
+        occurrence.dueDate =
+            editedDuration == null ? null : shiftedStart.add(editedDuration);
+        if (occurrence.recurrence != RecurrenceType.none) {
+          occurrence.recurrence = _recurrence;
+        }
+        occurrence.customIntervalDays = _customDays;
+        occurrence.recurrenceEndDate = _recurrenceEndDate;
+        occurrence.remark =
+            _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
+        occurrence.groupId = _selectedGroupId;
+        occurrence.reminderMinutes = _reminderMinutes;
+        occurrence.teamUuid = _selectedTeamUuid;
+        occurrence.collabType = _collabType;
+        occurrence.isAllDay = _isAllDay;
+        occurrence.markAsChanged();
+      }
+    }
+
     todo.title = _titleCtrl.text;
     todo.createdDate = _createdDate.millisecondsSinceEpoch;
     todo.dueDate = _dueDate;
     todo.recurrence = _recurrence;
+    if (_recurrence != RecurrenceType.none &&
+        (todo.recurrenceSeriesId == null || todo.recurrenceSeriesId!.isEmpty)) {
+      todo.recurrenceSeriesId = todo.id;
+    }
     todo.customIntervalDays = _customDays;
     todo.recurrenceEndDate = _recurrenceEndDate;
     todo.remark =
@@ -4122,6 +4425,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     todo.reminderMinutes = _reminderMinutes;
     todo.teamUuid = _selectedTeamUuid;
     todo.collabType = _collabType;
+    todo.isAllDay = _isAllDay;
     todo.markAsChanged();
 
     if (_syncFolderToTeam &&
@@ -4165,7 +4469,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('编辑待办'),
+        title: Text(widget.applyToFutureOccurrences ? '编辑后续周期' : '编辑待办'),
         backgroundColor: bgColor,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -4212,6 +4516,33 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (widget.applyToFutureOccurrences) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.secondaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.event_repeat_rounded,
+                      size: 18, color: colorScheme.onSecondaryContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '本次保存会同步修改本期及之后已经生成的周期，未来周期也会沿用新规则。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
@@ -5172,15 +5503,6 @@ class _AiAssistantContext {
   final List<TimeLogItem> timeLogs;
   final List<PomodoroRecord> pomodoroRecords;
   final List<Team> teams;
-}
-
-enum _RecurrenceNodeState { completed, overdue, current, pending, future }
-
-class _RecurrenceProgressNode {
-  final DateTime date;
-  final _RecurrenceNodeState state;
-
-  const _RecurrenceProgressNode({required this.date, required this.state});
 }
 
 class _TodoSectionViewModel {

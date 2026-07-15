@@ -15,6 +15,7 @@ import 'time_log_screen.dart';
 import 'course_month_view.dart';
 import '../widgets/app_detail_widgets.dart';
 import '../utils/theme_color_tokens.dart';
+import '../utils/todo_recurrence_calendar_index.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 
@@ -449,7 +450,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     }
 
     // 2. 待办分组 (优化：减少 DateFormat 调用)
+    final recurrenceIndex = TodoRecurrenceCalendarIndex(_allTodos);
     for (var t in _allTodos) {
+      if (!recurrenceIndex.shouldDisplayPersisted(t)) continue;
       DateTime tStart =
           DateTime.fromMillisecondsSinceEpoch(t.createdDate ?? t.createdAt)
               .toLocal();
@@ -680,13 +683,22 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
         _semesterMonday!.add(Duration(days: (_currentWeek - 1) * 7));
     DateTime currentWeekMondayStart = DateTime(
         currentWeekMonday.year, currentWeekMonday.month, currentWeekMonday.day);
+    final recurrenceIndex = TodoRecurrenceCalendarIndex(_allTodos);
 
     for (var todo in _allTodos) {
+      if (!recurrenceIndex.shouldDisplayPersisted(todo)) continue;
       bool isRecurring = todo.recurrence != RecurrenceType.none;
       List<TodoItem> todosToPlace;
 
       if (isRecurring) {
-        todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart);
+        todosToPlace = _expandRecurringTodo(todo, currentWeekMondayStart)
+            .where((occurrence) {
+          final start = DateTime.fromMillisecondsSinceEpoch(
+            occurrence.createdDate ?? occurrence.createdAt,
+            isUtc: true,
+          ).toLocal();
+          return recurrenceIndex.shouldProjectVirtual(todo, start);
+        }).toList();
       } else {
         todosToPlace = [todo];
       }

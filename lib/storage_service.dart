@@ -2026,7 +2026,7 @@ class StorageService {
       _recurrenceCheckCache.clear();
     }
 
-    final cacheKey = 'recurrence_$username';
+    final cacheKey = 'recurrence_instances_v4_$username';
     if (_recurrenceCheckCache.containsKey(cacheKey) || _isCheckingRecurrence) {
       return todos;
     }
@@ -2035,79 +2035,127 @@ class StorageService {
 
     try {
       bool needSave = false;
+      if (_deduplicatePersistedRecurrenceOccurrences(todos)) {
+        needSave = true;
+      }
       final List<TodoItem> generatedOccurrences = [];
       final Set<String> generatedRecurrenceConflictKeys = {};
+      final processedSeriesIds = <String>{};
       for (final todo in List<TodoItem>.from(todos)) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
-        if (todo.recurrenceEndDate != null &&
-            today.isAfter(todo.recurrenceEndDate!)) {
-          continue;
-        }
+
+        final hasSeriesId = todo.recurrenceSeriesId != null &&
+            todo.recurrenceSeriesId!.isNotEmpty;
+        final seriesId = hasSeriesId ? todo.recurrenceSeriesId! : todo.id;
+        todo.recurrenceSeriesId = seriesId;
+        if (!processedSeriesIds.add(seriesId)) continue;
 
         final DateTime baseLocal = _getRecurrenceBaseDate(todo);
         final DateTime baseDay =
             DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
         final DateTime todayDay = DateTime(today.year, today.month, today.day);
-        final int diffDays = todayDay.difference(baseDay).inDays;
-        int? rollByDays;
+        final rollOffsets = _recurrenceRollOffsets(todo, baseDay, todayDay);
+        final recurrence = todo.recurrence;
+        final recurrenceEndDay = todo.recurrenceEndDate == null
+            ? null
+            : DateTime(
+                todo.recurrenceEndDate!.year,
+                todo.recurrenceEndDate!.month,
+                todo.recurrenceEndDate!.day,
+              );
+        final keepSeriesActive =
+            recurrenceEndDay == null || !todayDay.isAfter(recurrenceEndDay);
+        final seriesChain = <TodoItem>[todo];
+        var activeOccurrence = todo;
+        var todoChanged = !hasSeriesId;
 
-        if (todo.recurrence == RecurrenceType.daily &&
-            todayDay.isAfter(baseDay)) {
-          rollByDays = diffDays;
-        } else if (todo.recurrence == RecurrenceType.customDays &&
-            todo.customIntervalDays != null &&
-            todo.customIntervalDays! > 0) {
-          if (diffDays >= todo.customIntervalDays!) {
-            int periods = diffDays ~/ todo.customIntervalDays!;
-            rollByDays = periods * todo.customIntervalDays!;
+        for (var i = 0; i < rollOffsets.length; i++) {
+          final result = _getOrCreateRecurrenceOccurrence(
+            source: todo,
+            rollByDays: rollOffsets[i],
+            seriesId: seriesId,
+            todos: todos,
+            generatedOccurrences: generatedOccurrences,
+          );
+          final occurrence = result.occurrence;
+          final targetRecurrence =
+              i == rollOffsets.length - 1 && keepSeriesActive
+                  ? recurrence
+                  : RecurrenceType.none;
+          if (occurrence.recurrence != targetRecurrence) {
+            occurrence.recurrence = targetRecurrence;
+            if (!result.isNew) occurrence.markAsChanged();
+            needSave = true;
           }
-        } else if (todo.recurrence == RecurrenceType.weekdays &&
-            todayDay.isAfter(baseDay)) {
-          if (todayDay.weekday >= 1 && todayDay.weekday <= 5) {
-            rollByDays = diffDays;
-          }
-        } else if (todo.recurrence == RecurrenceType.weekly &&
-            todayDay.isAfter(baseDay)) {
-          if (todayDay.weekday == baseDay.weekday) {
-            rollByDays = diffDays;
-          }
-        } else if (todo.recurrence == RecurrenceType.monthly &&
-            todayDay.isAfter(baseDay)) {
-          if (todayDay.day == baseDay.day) {
-            rollByDays = diffDays;
-          }
-        } else if (todo.recurrence == RecurrenceType.yearly &&
-            todayDay.isAfter(baseDay)) {
-          if (todayDay.month == baseDay.month && todayDay.day == baseDay.day) {
-            rollByDays = diffDays;
-          }
+          if (result.isNew) needSave = true;
+          seriesChain.add(occurrence);
+          activeOccurrence = occurrence;
         }
 
-        if (rollByDays == null) continue;
+        final repairedPastOccurrences = _repairMissingPastRecurrenceOccurrences(
+          ruleSource: todo,
+          copySource: activeOccurrence,
+          seriesId: seriesId,
+          throughStartMs:
+              activeOccurrence.createdDate ?? activeOccurrence.createdAt,
+          todos: todos,
+          generatedOccurrences: generatedOccurrences,
+        );
+        if (repairedPastOccurrences.isNotEmpty) {
+          seriesChain.addAll(repairedPastOccurrences);
+          needSave = true;
+        }
 
-        final seriesId = todo.recurrenceSeriesId ?? todo.id;
-        todo.recurrenceSeriesId = seriesId;
-
-        if (!todo.isDone) {
-          // 未完成的上一期必须作为独立实例保留下来，否则直接滚动日期会让
-          // 它从“逾期”列表消失。新实例继承循环规则，旧实例则停止循环。
-          final nextOccurrence = _copyForNextRecurrence(todo);
-          _rollRecurrenceDateByDays(nextOccurrence, rollByDays);
-          generatedOccurrences.add(nextOccurrence);
-          final conflictKey =
-              _overlappingRecurrencePairKey(todo, nextOccurrence);
-          if (conflictKey != null) {
-            generatedRecurrenceConflictKeys.add(conflictKey);
-          }
+        if (rollOffsets.isNotEmpty) {
+          // 原实例保留自己的完成状态，当前日期对应实例接管循环锚点。
           todo.recurrence = RecurrenceType.none;
-          todo.markAsChanged();
-        } else {
-          // 保持原有行为：上一期已完成时复用该记录，避免产生多余历史项。
-          todo.isDone = false;
-          _rollRecurrenceDateByDays(todo, rollByDays);
-          todo.markAsChanged();
+          todoChanged = true;
         }
-        needSave = true;
+
+        if (todoChanged) {
+          todo.markAsChanged();
+          needSave = true;
+        }
+
+        if (activeOccurrence.recurrence != RecurrenceType.none) {
+          final activeBase = _getRecurrenceBaseDate(activeOccurrence);
+          final futureOffsets = _futureRecurrenceRollOffsets(
+            activeOccurrence,
+            activeBase,
+          );
+          for (final offset in futureOffsets) {
+            final result = _getOrCreateRecurrenceOccurrence(
+              source: activeOccurrence,
+              rollByDays: offset,
+              seriesId: seriesId,
+              todos: todos,
+              generatedOccurrences: generatedOccurrences,
+            );
+            final occurrence = result.occurrence;
+            if (occurrence.recurrence != RecurrenceType.none) {
+              occurrence.recurrence = RecurrenceType.none;
+              if (!result.isNew) occurrence.markAsChanged();
+              needSave = true;
+            }
+            if (result.isNew) needSave = true;
+            seriesChain.add(occurrence);
+          }
+        }
+
+        final uniqueSeriesChain = <String, TodoItem>{
+          for (final occurrence in seriesChain) occurrence.id: occurrence,
+        }.values.toList();
+        for (var i = 0; i < uniqueSeriesChain.length; i++) {
+          for (var j = i + 1; j < uniqueSeriesChain.length; j++) {
+            final conflictKey = _overlappingRecurrencePairKey(
+              uniqueSeriesChain[i],
+              uniqueSeriesChain[j],
+            );
+            if (conflictKey != null) {
+              generatedRecurrenceConflictKeys.add(conflictKey);
+            }
+          }
+        }
       }
 
       if (needSave) {
@@ -2142,6 +2190,360 @@ class StorageService {
     return todo.dueDate ??
         DateTime.fromMillisecondsSinceEpoch(todo.createdAt, isUtc: true)
             .toLocal();
+  }
+
+  static List<int> _recurrenceRollOffsets(
+    TodoItem todo,
+    DateTime baseDay,
+    DateTime todayDay,
+  ) {
+    var targetDay = todayDay;
+    if (todo.recurrenceEndDate != null) {
+      final end = todo.recurrenceEndDate!;
+      final endDay = DateTime(end.year, end.month, end.day);
+      if (endDay.isBefore(targetDay)) targetDay = endDay;
+    }
+    if (!targetDay.isAfter(baseDay)) return const [];
+
+    final offsets = <int>[];
+    final diffDays = targetDay.difference(baseDay).inDays;
+    switch (todo.recurrence) {
+      case RecurrenceType.daily:
+        for (var day = 1; day <= diffDays; day++) {
+          offsets.add(day);
+        }
+      case RecurrenceType.customDays:
+        final interval = todo.customIntervalDays ?? 0;
+        if (interval > 0) {
+          for (var day = interval; day <= diffDays; day += interval) {
+            offsets.add(day);
+          }
+        }
+      case RecurrenceType.weekdays:
+        for (var day = 1; day <= diffDays; day++) {
+          final candidate = DateTime(
+            baseDay.year,
+            baseDay.month,
+            baseDay.day + day,
+          );
+          if (candidate.weekday != DateTime.saturday &&
+              candidate.weekday != DateTime.sunday) {
+            offsets.add(day);
+          }
+        }
+      case RecurrenceType.weekly:
+        for (var day = 7; day <= diffDays; day += 7) {
+          offsets.add(day);
+        }
+      case RecurrenceType.monthly:
+        for (var month = 1;; month++) {
+          final monthStart = DateTime(baseDay.year, baseDay.month + month);
+          final lastDay =
+              DateTime(monthStart.year, monthStart.month + 1, 0).day;
+          final candidate = DateTime(
+            monthStart.year,
+            monthStart.month,
+            baseDay.day.clamp(1, lastDay),
+          );
+          if (candidate.isAfter(targetDay)) break;
+          offsets.add(candidate.difference(baseDay).inDays);
+        }
+      case RecurrenceType.yearly:
+        for (var year = 1;; year++) {
+          final targetYear = baseDay.year + year;
+          final lastDay = DateTime(targetYear, baseDay.month + 1, 0).day;
+          final candidate = DateTime(
+            targetYear,
+            baseDay.month,
+            baseDay.day.clamp(1, lastDay),
+          );
+          if (candidate.isAfter(targetDay)) break;
+          offsets.add(candidate.difference(baseDay).inDays);
+        }
+      case RecurrenceType.none:
+        break;
+    }
+
+    // 防止长期未启动后一次性生成过量记录，同时优先保留最近周期。
+    const maxBackfilledOccurrences = 90;
+    if (offsets.length <= maxBackfilledOccurrences) return offsets;
+    return offsets.sublist(offsets.length - maxBackfilledOccurrences);
+  }
+
+  @visibleForTesting
+  static List<int> recurrenceRollOffsetsForTest(
+    TodoItem todo,
+    DateTime baseDay,
+    DateTime todayDay,
+  ) =>
+      _recurrenceRollOffsets(todo, baseDay, todayDay);
+
+  @visibleForTesting
+  static List<TodoItem> futureRecurrenceOccurrencesForTest(
+    TodoItem source,
+    List<TodoItem> existing,
+  ) {
+    final generated = <TodoItem>[];
+    final seriesId = source.recurrenceSeriesId ?? source.id;
+    source.recurrenceSeriesId = seriesId;
+    final base = _getRecurrenceBaseDate(source);
+    for (final offset in _futureRecurrenceRollOffsets(source, base)) {
+      final result = _getOrCreateRecurrenceOccurrence(
+        source: source,
+        rollByDays: offset,
+        seriesId: seriesId,
+        todos: existing,
+        generatedOccurrences: generated,
+      );
+      result.occurrence.recurrence = RecurrenceType.none;
+    }
+    return generated;
+  }
+
+  @visibleForTesting
+  static List<TodoItem> repairMissingPastRecurrenceOccurrencesForTest(
+    TodoItem active,
+    List<TodoItem> existing,
+  ) {
+    final generated = <TodoItem>[];
+    final seriesId = active.recurrenceSeriesId ?? active.id;
+    active.recurrenceSeriesId = seriesId;
+    return _repairMissingPastRecurrenceOccurrences(
+      ruleSource: active,
+      copySource: active,
+      seriesId: seriesId,
+      throughStartMs: active.createdDate ?? active.createdAt,
+      todos: existing,
+      generatedOccurrences: generated,
+    );
+  }
+
+  @visibleForTesting
+  static bool deduplicatePersistedRecurrenceOccurrencesForTest(
+    List<TodoItem> todos,
+  ) =>
+      _deduplicatePersistedRecurrenceOccurrences(todos);
+
+  static List<int> _futureRecurrenceRollOffsets(
+    TodoItem todo,
+    DateTime baseLocal,
+  ) {
+    final baseDay = DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
+    final recurrenceEnd = todo.recurrenceEndDate;
+    if (recurrenceEnd != null) {
+      final endDay =
+          DateTime(recurrenceEnd.year, recurrenceEnd.month, recurrenceEnd.day);
+      return _recurrenceRollOffsets(todo, baseDay, endDay);
+    }
+
+    final offsets = <int>[];
+    var cursor = baseLocal;
+    for (var i = 0; i < 2; i++) {
+      final next = _nextRecurrenceDate(cursor, todo);
+      if (next == null || !next.isAfter(cursor)) break;
+      offsets.add(
+          DateTime(next.year, next.month, next.day).difference(baseDay).inDays);
+      cursor = next;
+    }
+    return offsets;
+  }
+
+  static DateTime? _nextRecurrenceDate(DateTime current, TodoItem todo) {
+    switch (todo.recurrence) {
+      case RecurrenceType.daily:
+        return DateTime(current.year, current.month, current.day + 1,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.customDays:
+        final days = todo.customIntervalDays ?? 0;
+        if (days <= 0) return null;
+        return DateTime(current.year, current.month, current.day + days,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.weekly:
+        return DateTime(current.year, current.month, current.day + 7,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.weekdays:
+        var next = DateTime(current.year, current.month, current.day + 1,
+            current.hour, current.minute, current.second, current.millisecond);
+        while (next.weekday == DateTime.saturday ||
+            next.weekday == DateTime.sunday) {
+          next = DateTime(next.year, next.month, next.day + 1, next.hour,
+              next.minute, next.second, next.millisecond);
+        }
+        return next;
+      case RecurrenceType.monthly:
+        final targetMonth = DateTime(current.year, current.month + 1);
+        final lastDay =
+            DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
+        return DateTime(
+          targetMonth.year,
+          targetMonth.month,
+          current.day.clamp(1, lastDay),
+          current.hour,
+          current.minute,
+          current.second,
+          current.millisecond,
+        );
+      case RecurrenceType.yearly:
+        final lastDay = DateTime(current.year + 1, current.month + 1, 0).day;
+        return DateTime(
+          current.year + 1,
+          current.month,
+          current.day.clamp(1, lastDay),
+          current.hour,
+          current.minute,
+          current.second,
+          current.millisecond,
+        );
+      case RecurrenceType.none:
+        return null;
+    }
+  }
+
+  static ({TodoItem occurrence, bool isNew}) _getOrCreateRecurrenceOccurrence({
+    required TodoItem source,
+    required int rollByDays,
+    required String seriesId,
+    required List<TodoItem> todos,
+    required List<TodoItem> generatedOccurrences,
+  }) {
+    final candidate = _copyForNextRecurrence(source);
+    candidate.recurrenceSeriesId = seriesId;
+    _rollRecurrenceDateByDays(candidate, rollByDays);
+    final candidateStart = candidate.createdDate ?? candidate.createdAt;
+    final candidateDayKey = _recurrenceLocalDayKey(candidateStart);
+
+    for (final existing in todos.followedBy(generatedOccurrences)) {
+      if (existing.isDeleted ||
+          existing.recurrenceSeriesId != seriesId ||
+          _recurrenceLocalDayKey(
+                existing.createdDate ?? existing.createdAt,
+              ) !=
+              candidateDayKey) {
+        continue;
+      }
+      return (occurrence: existing, isNew: false);
+    }
+
+    generatedOccurrences.add(candidate);
+    return (occurrence: candidate, isNew: true);
+  }
+
+  static String _recurrenceLocalDayKey(int startMs) {
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    return '${start.year}-${start.month}-${start.day}';
+  }
+
+  static List<TodoItem> _repairMissingPastRecurrenceOccurrences({
+    required TodoItem ruleSource,
+    required TodoItem copySource,
+    required String seriesId,
+    required int throughStartMs,
+    required List<TodoItem> todos,
+    required List<TodoItem> generatedOccurrences,
+  }) {
+    final knownByDay = <String, DateTime>{};
+    for (final occurrence in todos.followedBy(generatedOccurrences)) {
+      if (occurrence.isDeleted || occurrence.recurrenceSeriesId != seriesId) {
+        continue;
+      }
+      final startMs = occurrence.createdDate ?? occurrence.createdAt;
+      if (startMs > throughStartMs) continue;
+      final start =
+          DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+      final day = DateTime(start.year, start.month, start.day);
+      knownByDay['${day.year}-${day.month}-${day.day}'] = day;
+    }
+
+    final knownDays = knownByDay.values.toList()..sort();
+    if (knownDays.length < 2) return const [];
+
+    final copyBase = _getRecurrenceBaseDate(copySource);
+    final copyBaseDay = DateTime(copyBase.year, copyBase.month, copyBase.day);
+    final repaired = <TodoItem>[];
+    for (var index = 0; index < knownDays.length - 1; index++) {
+      final previousDay = knownDays[index];
+      final nextKnownDay = knownDays[index + 1];
+      final candidateOffsets = _recurrenceRollOffsets(
+        ruleSource,
+        previousDay,
+        nextKnownDay,
+      );
+      for (final candidateOffset in candidateOffsets) {
+        final candidateDay = DateTime(
+          previousDay.year,
+          previousDay.month,
+          previousDay.day + candidateOffset,
+        );
+        if (!candidateDay.isBefore(nextKnownDay)) continue;
+
+        final rollByDays = DateTime.utc(
+          candidateDay.year,
+          candidateDay.month,
+          candidateDay.day,
+        )
+            .difference(DateTime.utc(
+              copyBaseDay.year,
+              copyBaseDay.month,
+              copyBaseDay.day,
+            ))
+            .inDays;
+        final result = _getOrCreateRecurrenceOccurrence(
+          source: copySource,
+          rollByDays: rollByDays,
+          seriesId: seriesId,
+          todos: todos,
+          generatedOccurrences: generatedOccurrences,
+        );
+        if (!result.isNew) continue;
+        result.occurrence.recurrence = RecurrenceType.none;
+        repaired.add(result.occurrence);
+      }
+    }
+    return repaired;
+  }
+
+  static bool _deduplicatePersistedRecurrenceOccurrences(
+    List<TodoItem> todos,
+  ) {
+    final occurrencesBySeriesDay = <String, List<TodoItem>>{};
+    for (final todo in todos) {
+      final seriesId = todo.recurrenceSeriesId;
+      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      final startMs = todo.createdDate ?? todo.createdAt;
+      final key = '$seriesId|${_recurrenceLocalDayKey(startMs)}';
+      occurrencesBySeriesDay.putIfAbsent(key, () => []).add(todo);
+    }
+
+    var changed = false;
+    for (final occurrences in occurrencesBySeriesDay.values) {
+      if (occurrences.length <= 1) continue;
+      var canonical = occurrences.first;
+      for (final candidate in occurrences.skip(1)) {
+        final candidateActive = candidate.recurrence != RecurrenceType.none;
+        final canonicalActive = canonical.recurrence != RecurrenceType.none;
+        if ((candidateActive && !canonicalActive) ||
+            (candidateActive == canonicalActive &&
+                candidate.updatedAt > canonical.updatedAt)) {
+          canonical = candidate;
+        }
+      }
+
+      final anyCompleted = occurrences.any((todo) => todo.isDone);
+      if (anyCompleted && !canonical.isDone) {
+        canonical.isDone = true;
+        canonical.markAsChanged();
+        changed = true;
+      }
+      for (final duplicate in occurrences) {
+        if (identical(duplicate, canonical)) continue;
+        duplicate.isDeleted = true;
+        duplicate.recurrence = RecurrenceType.none;
+        duplicate.markAsChanged();
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   static String? _overlappingRecurrencePairKey(
@@ -3783,6 +4185,7 @@ class StorageService {
             if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             final peer = Map<String, dynamic>.from(serverVersion);
+            if (_isSameRecurrenceSeriesPayload(todo, peer)) continue;
             final conflictKey = _scheduleConflictKeyFromPayload(todo, peer);
             if (conflictKey != null &&
                 ignoredScheduleConflictKeys.contains(conflictKey)) {
@@ -3960,6 +4363,12 @@ class StorageService {
     }
   }
 
+  @visibleForTesting
+  static bool recomputeLocalTodoScheduleConflictsForTest(
+    List<TodoItem> todos,
+  ) =>
+      _recomputeLocalTodoScheduleConflicts(todos);
+
   static bool _recomputeLocalTodoScheduleConflicts(
     List<TodoItem> todos, {
     Set<String> ignoredScheduleConflictKeys = const <String>{},
@@ -4010,6 +4419,7 @@ class StorageService {
           final b = bucket[j];
           if (b.startMs >= a.endMs) break;
           if (a.startMs < b.endMs && b.startMs < a.endMs) {
+            if (_isSameRecurrenceSeries(a.todo, b.todo)) continue;
             final conflictKey = _scheduleConflictPairKey(
               a.todo.id,
               a.startMs,
@@ -4133,6 +4543,7 @@ class StorageService {
 
   static String? _scheduleConflictKeyFromPayload(
       TodoItem item, Map<String, dynamic> peer) {
+    if (_isSameRecurrenceSeriesPayload(item, peer)) return null;
     final itemEnd = item.dueDate?.millisecondsSinceEpoch;
     final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
     final peerStart = _parseMillis(peer['start_time'] ??
@@ -4162,6 +4573,31 @@ class StorageService {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value.toString());
+  }
+
+  static bool _isSameRecurrenceSeries(TodoItem first, TodoItem second) {
+    final firstSeries = first.recurrenceSeriesId;
+    final secondSeries = second.recurrenceSeriesId;
+    return firstSeries != null &&
+        firstSeries.isNotEmpty &&
+        secondSeries != null &&
+        secondSeries.isNotEmpty &&
+        firstSeries == secondSeries;
+  }
+
+  static bool _isSameRecurrenceSeriesPayload(
+    TodoItem item,
+    Map<String, dynamic> peer,
+  ) {
+    final itemSeries = item.recurrenceSeriesId;
+    final peerSeries =
+        (peer['recurrence_series_id'] ?? peer['recurrenceSeriesId'])
+            ?.toString();
+    return itemSeries != null &&
+        itemSeries.isNotEmpty &&
+        peerSeries != null &&
+        peerSeries.isNotEmpty &&
+        itemSeries == peerSeries;
   }
 
   static bool _hasVersionConflict(Map<String, dynamic>? data) {
@@ -4255,6 +4691,7 @@ class StorageService {
       'title': interval.todo.title,
       'content': interval.todo.title,
       'team_uuid': interval.todo.teamUuid,
+      'recurrence_series_id': interval.todo.recurrenceSeriesId,
       'schedule_scope':
           (interval.todo.teamUuid != null && interval.todo.teamUuid!.isNotEmpty)
               ? 'team'
