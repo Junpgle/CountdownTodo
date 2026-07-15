@@ -103,6 +103,7 @@ todo.md
 !/test/services/
 /test/services/*
 !/test/services/permission_request_coordinator_test.dart
+!/test/services/ongoing_activity_service_test.dart
 !/test/models/
 /test/models/*
 !/test/models/todo_recurrence_series_test.dart

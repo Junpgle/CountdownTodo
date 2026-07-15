@@ -149,6 +149,16 @@ class MainFlutterWindow: NSWindow {
       case "clearPomodoroStatus":
         MacPomodoroStatusBarController.shared.clearPomodoroStatus()
         result(true)
+      case "updateOngoingActivity":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing activity", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.updateOngoingActivity(args: args)
+        result(true)
+      case "clearOngoingActivity":
+        MacPomodoroStatusBarController.shared.clearOngoingActivity()
+        result(true)
       case "showIslandReminder":
         guard let args = call.arguments as? [String: Any] else {
           result(FlutterError(code: "INVALID_ARGS", message: "Missing reminder", details: nil))

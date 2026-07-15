@@ -25,6 +25,8 @@ class MacPomodoroStatusBarService {
 
   static Future<void> syncCurrentStatus() async {}
 
+  static Future<void> syncOngoingActivity() async {}
+
   static Future<void> scheduleIslandReminders(
     List<Map<String, dynamic>> reminders, {
     bool clearFirst = true,

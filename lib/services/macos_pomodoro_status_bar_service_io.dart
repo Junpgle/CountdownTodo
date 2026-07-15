@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../storage_service.dart';
+import 'ongoing_activity_service.dart';
 import 'pomodoro_service.dart';
 import 'pomodoro_sync_service.dart';
 
@@ -32,6 +34,8 @@ class MacPomodoroStatusBarService {
   static bool _initialized = false;
   static PomodoroRunState? _lastLocalActiveState;
   static final Map<int, Timer> _reminderTimers = {};
+  static Timer? _activityTimer;
+  static bool _activitySyncInProgress = false;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
 
   /// 状态栏操作事件流（暂停/继续/结束）
@@ -86,15 +90,18 @@ class MacPomodoroStatusBarService {
         case 'START':
         case 'SYNC_FOCUS':
         case 'RECONNECT_SYNC':
-          _sendRemoteState(remote);
+          _handleRemoteActiveState(remote);
         case 'STOP':
         case 'INTERRUPT':
         case 'FOCUS_DISCONNECTED':
           _checkAndClearIfNoLocal();
         case 'SWITCH':
-          _sendRemoteState(remote);
+          _handleRemoteActiveState(remote);
       }
     });
+
+    StorageService.dataRefreshNotifier.addListener(_handleDataRefresh);
+    await syncOngoingActivity();
   }
 
   /// 处理 Swift 端发来的消息
@@ -239,6 +246,35 @@ class MacPomodoroStatusBarService {
             state.phase == PomodoroPhase.breaking);
   }
 
+  /// 本机专注优先于 WebSocket 状态，且忽略服务端回推的本机专注事件。
+  static Future<void> _handleRemoteActiveState(
+      CrossDevicePomodoroState remote) async {
+    final cached = _lastLocalActiveState;
+    if (_isActiveLocalState(cached)) {
+      debugPrint(
+          '[MacIsland] keep local focus over ${remote.action}: ${cached!.sessionUuid}');
+      _sendLocalState(cached);
+      return;
+    }
+
+    final local = await PomodoroService.loadRunState();
+    if (_isActiveLocalState(local)) {
+      _lastLocalActiveState = local;
+      debugPrint(
+          '[MacIsland] restore local focus over ${remote.action}: ${local!.sessionUuid}');
+      _sendLocalState(local);
+      return;
+    }
+
+    if (PomodoroSyncService.instance.isFocusSource) {
+      debugPrint(
+          '[MacIsland] ignore local WebSocket echo without active run state: ${remote.action}');
+      return;
+    }
+
+    _sendRemoteState(remote);
+  }
+
   static void _sendRemoteState(CrossDevicePomodoroState remote) async {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('macos_island_enabled') ??
@@ -293,6 +329,57 @@ class MacPomodoroStatusBarService {
     _channel.invokeMethod('clearPomodoroStatus');
   }
 
+  static void _handleDataRefresh() {
+    unawaited(syncOngoingActivity());
+  }
+
+  /// 同步当前课程、计划块或明确时段待办，并在下一处起止边界自动重算。
+  static Future<void> syncOngoingActivity() async {
+    if (!Platform.isMacOS || !_initialized || _activitySyncInProgress) return;
+    _activitySyncInProgress = true;
+    _activityTimer?.cancel();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('macos_island_enabled') ??
+          prefs.getBool('macos_status_bar_enabled') ??
+          true;
+      if (!enabled) {
+        await _channel.invokeMethod('clearOngoingActivity');
+        return;
+      }
+
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final resolution =
+          await OngoingActivityService.resolveFromStorage(username);
+      final activity = resolution.activity;
+      if (activity == null) {
+        await _channel.invokeMethod('clearOngoingActivity');
+      } else {
+        await _channel.invokeMethod('updateOngoingActivity', activity.toMap());
+      }
+
+      final now = DateTime.now();
+      final boundaryDelay = resolution.nextBoundary?.difference(now);
+      final delay = boundaryDelay != null && !boundaryDelay.isNegative
+          ? boundaryDelay + const Duration(milliseconds: 250)
+          : const Duration(minutes: 15);
+      _activityTimer = Timer(
+        delay > const Duration(minutes: 15)
+            ? const Duration(minutes: 15)
+            : delay,
+        () => unawaited(syncOngoingActivity()),
+      );
+    } catch (e) {
+      debugPrint('[MacIsland] ongoing activity sync failed: $e');
+      _activityTimer = Timer(
+        const Duration(minutes: 2),
+        () => unawaited(syncOngoingActivity()),
+      );
+    } finally {
+      _activitySyncInProgress = false;
+    }
+  }
+
   /// 供外部（设置页）主动清除状态栏显示
   static void clearNative() {
     _clearNative();
@@ -308,6 +395,7 @@ class MacPomodoroStatusBarService {
     } else {
       _clearNative();
     }
+    await syncOngoingActivity();
   }
 
   static void dispose() {
@@ -315,6 +403,10 @@ class MacPomodoroStatusBarService {
     _localSub = null;
     _remoteSub?.cancel();
     _remoteSub = null;
+    StorageService.dataRefreshNotifier.removeListener(_handleDataRefresh);
+    _activityTimer?.cancel();
+    _activityTimer = null;
+    _activitySyncInProgress = false;
     _lastLocalActiveState = null;
     _initialized = false;
   }
