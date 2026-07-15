@@ -613,11 +613,27 @@ class NotificationService {
       }
 
       final List<Map<String, dynamic>> scheduledOnDesktop = [];
+      final now = DateTime.now();
 
       for (final r in reminders) {
-        final triggerAtMs = r['triggerAtMs'];
+        final triggerAtMs = (r['triggerAtMs'] as num?)?.toInt();
+        if (triggerAtMs == null) continue;
         final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
-        if (triggerAt.isBefore(DateTime.now())) continue;
+        final startAtMs = (r['startAtMs'] as num?)?.toInt() ??
+            (r['courseStartMs'] as num?)?.toInt();
+        final startAt = startAtMs == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(startAtMs);
+        final shouldRetain =
+            triggerAt.isAfter(now) || (startAt != null && startAt.isAfter(now));
+        if (!shouldRetain) continue;
+        scheduledOnDesktop.add(r);
+
+        // 已进入“提前提醒窗口”但事项尚未开始时，不再向系统预约过去的时间，
+        // 仍保留给 macOS 灵动岛立即补发。
+        if (!triggerAt.isAfter(now)) {
+          continue;
+        }
 
         try {
           await _plugin.zonedSchedule(
@@ -628,7 +644,6 @@ class NotificationService {
             title: r['title'] ?? '',
             body: r['text'] ?? '',
           );
-          scheduledOnDesktop.add(r);
         } catch (e) {
 //           debugPrint('桌面端预约提醒失败: $e');
         }
@@ -656,6 +671,7 @@ class NotificationService {
         final imagePath = r['analysisImagePath']?.toString();
         return {
           'triggerAtMs': r['triggerAtMs'],
+          if (r['startAtMs'] != null) 'startAtMs': r['startAtMs'],
           'title': r['title'] ?? '',
           'text': r['text'] ?? '',
           'notifId': r['notifId'],

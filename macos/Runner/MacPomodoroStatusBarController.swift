@@ -83,10 +83,12 @@ private final class MacIslandView: NSView {
         if reminderActive {
             if acknowledgeRect.contains(point) {
                 onAcknowledgeReminder?()
+                return
             } else if snoozeRect.contains(point) {
                 onSnoozeReminder?()
+                return
             }
-            return
+            if !isFocusActive { return }
         }
         if activityRect.contains(point) {
             onOpenApp?()
@@ -113,6 +115,13 @@ private final class MacIslandView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
+        pauseRect = .zero
+        stopRect = .zero
+        openRect = .zero
+        acknowledgeRect = .zero
+        snoozeRect = .zero
+        activityRect = .zero
+
         let topJoinHeight = hasNotch ? max(topInset, 28) : 6
         let islandRect = NSRect(
             x: 0,
@@ -133,14 +142,16 @@ private final class MacIslandView: NSView {
             NSRect(x: 0, y: 0, width: bounds.width, height: topJoinHeight).fill()
         }
 
-        if reminderActive {
-            drawReminder(topOffset: topJoinHeight)
-        } else if expanded {
+        if expanded {
             if isFocusActive {
                 drawExpanded(topOffset: topJoinHeight)
-                if activityActive {
+                if reminderActive {
+                    drawReminderCard(topOffset: topJoinHeight)
+                } else if activityActive {
                     drawActivityCard(topOffset: topJoinHeight)
                 }
+            } else if reminderActive {
+                drawReminder(topOffset: topJoinHeight)
             } else {
                 drawActivityExpanded(topOffset: topJoinHeight)
             }
@@ -346,6 +357,37 @@ private final class MacIslandView: NSView {
         )
     }
 
+    private func drawReminderCard(topOffset: CGFloat) {
+        let contentTop = max(topOffset + 8, hasNotch ? 38 : 18)
+        let card = NSRect(x: 18, y: contentTop + 86, width: bounds.width - 36, height: 50)
+        let accent = reminderAccent
+        NSColor.white.withAlphaComponent(0.1).setFill()
+        NSBezierPath(roundedRect: card, xRadius: 11, yRadius: 11).fill()
+        accent.setFill()
+        NSBezierPath(ovalIn: NSRect(x: card.minX + 10, y: card.minY + 10, width: 7, height: 7)).fill()
+
+        drawText(
+            reminderTitle,
+            rect: NSRect(x: card.minX + 24, y: card.minY + 4, width: card.width - 128, height: 18),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: .white,
+            alignment: .left
+        )
+        let queueSuffix = reminderQueueCount > 0 ? " · 另 \(reminderQueueCount) 条" : ""
+        drawText(
+            reminderCategory + queueSuffix,
+            rect: NSRect(x: card.minX + 24, y: card.minY + 25, width: card.width - 128, height: 15),
+            font: .systemFont(ofSize: 9.5, weight: .regular),
+            color: .white.withAlphaComponent(0.52),
+            alignment: .left
+        )
+
+        snoozeRect = NSRect(x: card.maxX - 98, y: card.minY + 14, width: 42, height: 23)
+        acknowledgeRect = NSRect(x: card.maxX - 50, y: card.minY + 14, width: 40, height: 23)
+        drawButton(title: "稍后", rect: snoozeRect, color: NSColor.white.withAlphaComponent(0.14))
+        drawButton(title: "好的", rect: acknowledgeRect, color: accent.withAlphaComponent(0.78))
+    }
+
     private func drawActivityProgress(rect: NSRect, accent: NSColor) {
         NSColor.white.withAlphaComponent(0.12).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 2, yRadius: 2).fill()
@@ -365,6 +407,24 @@ private final class MacIslandView: NSView {
         case "course": return .systemBlue
         case "plan_block": return .systemIndigo
         default: return .systemOrange
+        }
+    }
+
+    private var reminderAccent: NSColor {
+        switch reminderType {
+        case "course": return .systemBlue
+        case "special_todo": return .systemPurple
+        case "plan_block": return .systemIndigo
+        default: return .systemOrange
+        }
+    }
+
+    private var reminderCategory: String {
+        switch reminderType {
+        case "course": return "课程提醒"
+        case "special_todo": return "重要提醒"
+        case "plan_block": return "计划提醒"
+        default: return "待办提醒"
         }
     }
 
@@ -401,22 +461,8 @@ private final class MacIslandView: NSView {
         activityRect = .zero
 
         let contentTop = max(topOffset + 8, hasNotch ? 38 : 18)
-        let accent: NSColor
-        let category: String
-        switch reminderType {
-        case "course":
-            accent = .systemBlue
-            category = "课程提醒"
-        case "special_todo":
-            accent = .systemPurple
-            category = "重要提醒"
-        case "plan_block":
-            accent = .systemIndigo
-            category = "计划提醒"
-        default:
-            accent = .systemOrange
-            category = "待办提醒"
-        }
+        let accent = reminderAccent
+        let category = reminderCategory
 
         accent.setFill()
         NSBezierPath(ovalIn: NSRect(x: 18, y: contentTop + 4, width: 10, height: 10)).fill()
@@ -665,6 +711,7 @@ class MacPomodoroStatusBarController {
             }
             self.isExpanded = true
             self.refreshDisplay()
+            self.scheduleNextUpdate()
         }
     }
 
@@ -686,6 +733,7 @@ class MacPomodoroStatusBarController {
     }
 
     private func refreshDisplay() {
+        expireStartedReminders()
         let hasReminder = remindersEnabled && currentReminder != nil
         let hasActivity = isOngoingActivityActive
         guard islandEnabled, isPomodoroActive || hasReminder || hasActivity else {
@@ -727,11 +775,12 @@ class MacPomodoroStatusBarController {
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.group)
         view.setAccessibilityLabel("CountDownTodo 灵动岛")
-        if hasReminder {
-            view.setAccessibilityValue("提醒：\(view.reminderTitle)，\(view.reminderBody)")
-        } else if isPomodoroActive {
+        if isPomodoroActive {
             let activityValue = hasActivity ? "，同时进行：\(activityTitle)" : ""
-            view.setAccessibilityValue("\(phase == "breaking" ? "休息" : "专注")，\(view.timeText)\(activityValue)")
+            let reminderValue = hasReminder ? "，提醒：\(view.reminderTitle)" : ""
+            view.setAccessibilityValue("\(phase == "breaking" ? "休息" : "专注")，\(view.timeText)\(reminderValue)\(activityValue)")
+        } else if hasReminder {
+            view.setAccessibilityValue("提醒：\(view.reminderTitle)，\(view.reminderBody)")
         } else {
             view.setAccessibilityValue("\(view.activityCategory)，\(activityTitle)，\(view.activityRemainingText)")
         }
@@ -741,11 +790,17 @@ class MacPomodoroStatusBarController {
         let compactHeight: CGFloat = geometry.hasNotch ? max(54, geometry.topInset + 25) : 43
         let expanded = hasReminder || isExpanded
         let focusWithActivity = isPomodoroActive && hasActivity
-        let width = expanded ? max(hasReminder ? 310 : (hasActivity ? 310 : 286), compactWidth) : compactWidth
-        let height: CGFloat = expanded
-            ? max(hasReminder ? 178 : (focusWithActivity ? 214 : (hasActivity ? 204 : 166)),
-                  geometry.topInset + (hasReminder ? 144 : (focusWithActivity ? 180 : (hasActivity ? 170 : 132))))
-            : compactHeight
+        let focusWithReminder = isPomodoroActive && hasReminder
+        let width = expanded ? max(focusWithReminder ? 330 : (hasReminder ? 310 : (hasActivity ? 310 : 286)), compactWidth) : compactWidth
+        let height: CGFloat
+        if !expanded {
+            height = compactHeight
+        } else if focusWithReminder {
+            height = max(geometry.hasNotch ? 238 : 218, geometry.topInset + 204)
+        } else {
+            height = max(hasReminder ? 178 : (focusWithActivity ? 214 : (hasActivity ? 204 : 166)),
+                         geometry.topInset + (hasReminder ? 144 : (focusWithActivity ? 180 : (hasActivity ? 170 : 132))))
+        }
         let frame = NSRect(
             x: screen.frame.midX - width / 2,
             y: screen.frame.maxY - height,
@@ -826,7 +881,6 @@ class MacPomodoroStatusBarController {
             flutterChannel?.invokeMethod("acknowledgeIslandReminder", arguments: reminder)
         }
 
-        reminderIds.remove(reminderIdentifier(reminder))
         currentReminder = reminderQueue.isEmpty ? nil : reminderQueue.removeFirst()
         isExpanded = currentReminder != nil
         refreshDisplay()
@@ -836,13 +890,33 @@ class MacPomodoroStatusBarController {
     }
 
     private func reminderIdentifier(_ reminder: [String: Any]) -> String {
+        let trigger = String(describing: reminder["triggerAtMs"] ?? "")
         if let number = reminder["notifId"] as? NSNumber {
-            return number.stringValue
+            return "\(number.stringValue)@\(trigger)"
         }
         if let value = reminder["notifId"] {
-            return String(describing: value)
+            return "\(String(describing: value))@\(trigger)"
         }
-        return "\(reminder["title"] ?? "")@\(reminder["triggerAtMs"] ?? "")"
+        return "\(reminder["title"] ?? "")@\(trigger)"
+    }
+
+    private func expireStartedReminders() {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        func hasStarted(_ reminder: [String: Any]) -> Bool {
+            let startAt = int64Value(reminder["startAtMs"] ?? reminder["courseStartMs"])
+            return startAt > 0 && now >= startAt
+        }
+
+        if let current = currentReminder, hasStarted(current) {
+            currentReminder = nil
+        }
+        reminderQueue.removeAll(where: hasStarted)
+        if currentReminder == nil, !reminderQueue.isEmpty {
+            currentReminder = reminderQueue.removeFirst()
+        }
+        if currentReminder == nil {
+            isExpanded = false
+        }
     }
 
     private func ensureIslandWindow(frame: NSRect, view: MacIslandView) -> MacIslandPanel {
@@ -934,7 +1008,9 @@ class MacPomodoroStatusBarController {
     private func scheduleNextUpdate() {
         cancelTimer()
         guard islandEnabled,
-              (isPomodoroActive && !isPaused) || isOngoingActivityActive else { return }
+              (isPomodoroActive && !isPaused) ||
+              isOngoingActivityActive ||
+              (remindersEnabled && currentReminder != nil) else { return }
         let timer = Timer(timeInterval: 1, target: self, selector: #selector(timerFired), userInfo: nil, repeats: true)
         timer.tolerance = 0.15
         RunLoop.main.add(timer, forMode: .common)

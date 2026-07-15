@@ -145,7 +145,6 @@ class CrossDevicePomodoroState {
 enum SyncConnectionState { disconnected, connecting, connected, error }
 
 class PomodoroSyncService {
-  static const Duration _reconnectDelay = Duration(seconds: 5);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   // ── 单例 ─────────────────────────────────────────────────
@@ -192,7 +191,25 @@ class PomodoroSyncService {
   SyncConnectionState get connectionState => _connState;
 
   String? get focusSourceDevice => _focusSourceDevice;
-  bool get isFocusSource => _focusSourceDevice == _deviceId;
+  bool get isFocusSource => isFromCurrentDevice(_focusSourceDevice);
+
+  bool isFromCurrentDevice(String? sourceDevice) =>
+      deviceIdsMatch(_deviceId, sourceDevice);
+
+  @visibleForTesting
+  static bool deviceIdsMatch(String? currentDevice, String? sourceDevice) {
+    if (currentDevice == null || sourceDevice == null) return false;
+    String normalize(String value) {
+      final trimmed = value.trim();
+      return trimmed.startsWith('flutter_')
+          ? trimmed.substring('flutter_'.length)
+          : trimmed;
+    }
+
+    final current = normalize(currentDevice);
+    final source = normalize(sourceDevice);
+    return current.isNotEmpty && source.isNotEmpty && current == source;
+  }
 
   Future<void> ensureConnected(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
@@ -403,17 +420,22 @@ class PomodoroSyncService {
         );
       }
 
-      if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {
-        _focusSourceDevice = signal.sourceDevice;
+      if (signal.action == 'START' ||
+          signal.action == 'SYNC_FOCUS' ||
+          signal.action == 'RECONNECT_SYNC') {
+        if (signal.sourceDevice?.isNotEmpty == true) {
+          _focusSourceDevice = signal.sourceDevice;
+        }
       } else if (signal.action == 'STOP' ||
           signal.action == 'INTERRUPT' ||
           signal.action == 'FINISH' ||
-          signal.action == 'FOCUS_DISCONNECTED') {
+          signal.action == 'FOCUS_DISCONNECTED' ||
+          signal.action == 'CLEAR_FOCUS') {
         _focusSourceDevice = null;
       }
 
       if (signal.action == 'SYNC_FOCUS' &&
-          signal.sourceDevice == _deviceId &&
+          isFromCurrentDevice(signal.sourceDevice) &&
           onStaleSyncFocus != null) {
         // debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
         onStaleSyncFocus!(signal);

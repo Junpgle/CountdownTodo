@@ -131,7 +131,12 @@ class ReminderScheduleService {
       final triggerAt = refTime.subtract(Duration(minutes: advance));
 
       // 检查是否在调度窗口内 (未来 7 天)
-      if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
+      if (shouldSchedulePreStart(
+        startAt: refTime,
+        triggerAt: triggerAt,
+        now: now,
+        limit: limit,
+      )) {
         if (isSpecialTodo) {
           final label = _getSpecialTodoLabel(todoType);
           // 如果有时间段，显示范围，否则只显示参考时间
@@ -143,6 +148,7 @@ class ReminderScheduleService {
 
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
             'title': '$label ${t.title}',
             'text': t.remark?.isNotEmpty == true
                 ? '${t.remark!} · $timeStr'
@@ -167,6 +173,7 @@ class ReminderScheduleService {
 
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'startAtMs': refTime.toUtc().millisecondsSinceEpoch,
             'title': '⏰ ${t.title}',
             'text': text,
             'notifId': _todoBaseId + i,
@@ -199,9 +206,15 @@ class ReminderScheduleService {
         final courseStart = DateTime(year, month, day, hour, minute);
         final triggerAt =
             courseStart.subtract(Duration(minutes: courseAdvanceMinutes));
-        if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
+        if (shouldSchedulePreStart(
+          startAt: courseStart,
+          triggerAt: triggerAt,
+          now: now,
+          limit: limit,
+        )) {
           reminders.add({
             'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+            'startAtMs': courseStart.toUtc().millisecondsSinceEpoch,
             'courseStartMs': courseStart.toUtc().millisecondsSinceEpoch,
             'courseEndMs':
                 DateTime(year, month, day, c.endTime ~/ 100, c.endTime % 100)
@@ -252,9 +265,15 @@ class ReminderScheduleService {
         remindedBlocks.add(pb);
       }
 
-      if (triggerAt.isAfter(now) && triggerAt.isBefore(limit)) {
+      if (shouldSchedulePreStart(
+        startAt: startTime,
+        triggerAt: triggerAt,
+        now: now,
+        limit: limit,
+      )) {
         reminders.add({
           'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+          'startAtMs': startTime.toUtc().millisecondsSinceEpoch,
           'title': '📅 计划: ${pb.titleSnapshot ?? "未命名任务"}',
           'text':
               '${_hm(startTime)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(pb.endTime))}${pb.remark != null ? " · ${pb.remark}" : ""}',
@@ -277,4 +296,15 @@ class ReminderScheduleService {
 
   static String _hm(DateTime dt) =>
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+  /// 提前提醒时间已过但事项尚未开始时仍应保留，供灵动岛立即补发。
+  static bool shouldSchedulePreStart({
+    required DateTime startAt,
+    required DateTime triggerAt,
+    required DateTime now,
+    required DateTime limit,
+  }) =>
+      startAt.isAfter(now) &&
+      triggerAt.isBefore(limit) &&
+      !triggerAt.isAfter(startAt);
 }

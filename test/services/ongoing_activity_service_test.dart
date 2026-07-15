@@ -1,5 +1,9 @@
 import 'package:CountDownTodo/models.dart';
+import 'package:CountDownTodo/services/macos_pomodoro_status_bar_service_io.dart';
 import 'package:CountDownTodo/services/ongoing_activity_service.dart';
+import 'package:CountDownTodo/services/pomodoro_service.dart';
+import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
+import 'package:CountDownTodo/services/reminder_schedule_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -133,6 +137,178 @@ void main() {
 
       expect(atStart.activity?.title, '边界任务');
       expect(atEnd.activity, isNull);
+    });
+  });
+
+  group('ReminderScheduleService', () {
+    final now = DateTime(2026, 7, 15, 10);
+    final limit = now.add(const Duration(days: 7));
+
+    test('提前提醒时间已过但事项未开始时仍可补发', () {
+      expect(
+        ReminderScheduleService.shouldSchedulePreStart(
+          startAt: now.add(const Duration(minutes: 10)),
+          triggerAt: now.subtract(const Duration(minutes: 5)),
+          now: now,
+          limit: limit,
+        ),
+        isTrue,
+      );
+    });
+
+    test('事项已经开始后不再补发开始前提醒', () {
+      expect(
+        ReminderScheduleService.shouldSchedulePreStart(
+          startAt: now,
+          triggerAt: now.subtract(const Duration(minutes: 15)),
+          now: now,
+          limit: limit,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('MacPomodoroStatusBarService', () {
+    final nowMs = DateTime(2026, 7, 15, 10).millisecondsSinceEpoch;
+
+    test('过期倒计时不会继续阻挡远端专注', () {
+      final state = PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        mode: TimerMode.countdown,
+        targetEndMs: nowMs - 1,
+      );
+
+      expect(
+        MacPomodoroStatusBarService.isUsableLocalState(
+          state,
+          nowMs: nowMs,
+        ),
+        isFalse,
+      );
+    });
+
+    test('暂停状态和正计时仍视为有效本地专注', () {
+      final paused = PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        mode: TimerMode.countdown,
+        targetEndMs: nowMs - 1,
+        isPaused: true,
+      );
+      final countUp = PomodoroRunState(
+        phase: PomodoroPhase.focusing,
+        mode: TimerMode.countUp,
+        targetEndMs: 0,
+      );
+
+      expect(
+        MacPomodoroStatusBarService.isUsableLocalState(
+          paused,
+          nowMs: nowMs,
+        ),
+        isTrue,
+      );
+      expect(
+        MacPomodoroStatusBarService.isUsableLocalState(
+          countUp,
+          nowMs: nowMs,
+        ),
+        isTrue,
+      );
+    });
+
+    test('远端暂停、继续和切换任务会保留完整计时快照', () {
+      final initial = MacPomodoroStatusBarService.mergeRemotePayload(
+        CrossDevicePomodoroState(
+          action: 'SYNC_FOCUS',
+          sessionUuid: 'session-1',
+          todoTitle: '写方案',
+          targetEndMs: nowMs + 25 * 60 * 1000,
+          timestamp: nowMs,
+          mode: 0,
+        ),
+        null,
+        nowMs: nowMs,
+      )!;
+
+      final paused = MacPomodoroStatusBarService.mergeRemotePayload(
+        const CrossDevicePomodoroState(
+          action: 'PAUSE',
+          sessionUuid: 'session-1',
+          pausedAtMs: 100,
+          accumulatedMs: 20,
+          pauseStartMs: 100,
+        ),
+        initial,
+        nowMs: nowMs + 100,
+      )!;
+      expect(paused['isPaused'], isTrue);
+      expect(paused['targetEndMs'], initial['targetEndMs']);
+      expect(paused['todoTitle'], '写方案');
+
+      final resumedTarget = nowMs + 30 * 60 * 1000;
+      final resumed = MacPomodoroStatusBarService.mergeRemotePayload(
+        CrossDevicePomodoroState(
+          action: 'RESUME',
+          sessionUuid: 'session-1',
+          targetEndMs: resumedTarget,
+        ),
+        paused,
+        nowMs: nowMs + 200,
+      )!;
+      expect(resumed['isPaused'], isFalse);
+      expect(resumed['targetEndMs'], resumedTarget);
+
+      final switched = MacPomodoroStatusBarService.mergeRemotePayload(
+        CrossDevicePomodoroState(
+          action: 'SWITCH',
+          sessionUuid: 'session-2',
+          todoTitle: '写代码',
+          timestamp: nowMs + 300,
+        ),
+        resumed,
+        nowMs: nowMs + 300,
+      )!;
+      expect(switched['sessionUuid'], 'session-2');
+      expect(switched['todoTitle'], '写代码');
+      expect(switched['targetEndMs'], resumedTarget);
+      expect(switched['sessionStartMs'], nowMs + 300);
+    });
+
+    test('旧会话的暂停事件不会覆盖当前远端番茄钟', () {
+      final current = <String, dynamic>{
+        'sessionUuid': 'session-current',
+        'targetEndMs': nowMs + 1000,
+      };
+
+      expect(
+        MacPomodoroStatusBarService.mergeRemotePayload(
+          const CrossDevicePomodoroState(
+            action: 'PAUSE',
+            sessionUuid: 'session-old',
+          ),
+          current,
+          nowMs: nowMs,
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('PomodoroSyncService', () {
+    test('设备 ID 比较兼容 flutter_ 前缀', () {
+      expect(
+        PomodoroSyncService.deviceIdsMatch('flutter_mac-1', 'mac-1'),
+        isTrue,
+      );
+      expect(
+        PomodoroSyncService.deviceIdsMatch('mac-1', 'flutter_mac-1'),
+        isTrue,
+      );
+      expect(
+        PomodoroSyncService.deviceIdsMatch('flutter_mac-1', 'flutter_phone-1'),
+        isFalse,
+      );
     });
   });
 }

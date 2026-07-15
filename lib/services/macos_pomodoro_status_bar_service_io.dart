@@ -33,6 +33,7 @@ class MacPomodoroStatusBarService {
   static StreamSubscription<CrossDevicePomodoroState>? _remoteSub;
   static bool _initialized = false;
   static PomodoroRunState? _lastLocalActiveState;
+  static Map<String, dynamic>? _lastRemotePayload;
   static final Map<int, Timer> _reminderTimers = {};
   static Timer? _activityTimer;
   static bool _activitySyncInProgress = false;
@@ -96,9 +97,13 @@ class MacPomodoroStatusBarService {
           _handleRemoteActiveState(remote);
         case 'STOP':
         case 'INTERRUPT':
+        case 'FINISH':
+        case 'CLEAR_FOCUS':
         case 'FOCUS_DISCONNECTED':
           _checkAndClearIfNoLocal();
         case 'SWITCH':
+        case 'PAUSE':
+        case 'RESUME':
           _handleRemoteActiveState(remote);
       }
     });
@@ -165,7 +170,10 @@ class MacPomodoroStatusBarService {
         timer.cancel();
       }
       _reminderTimers.clear();
-      await _channel.invokeMethod('clearIslandReminders');
+      // 重建未来定时器时保留已经展开或已确认的提醒，避免数据刷新造成重复弹出。
+      if (reminders.isEmpty) {
+        await _channel.invokeMethod('clearIslandReminders');
+      }
     }
 
     final now = DateTime.now();
@@ -179,18 +187,47 @@ class MacPomodoroStatusBarService {
       final triggerAt = DateTime.fromMillisecondsSinceEpoch(triggerAtMs);
       final delay = triggerAt.difference(now);
       if (delay.isNegative) {
-        if (!restoring || delay.abs() > _restoreGracePeriod) continue;
+        if (!_shouldDeliverLateReminder(
+          reminder,
+          now: now,
+          triggerAt: triggerAt,
+          restoring: restoring,
+        )) {
+          continue;
+        }
         await _showIslandReminder(reminder);
         continue;
       }
 
       _reminderTimers[notifId] = Timer(delay, () {
         _reminderTimers.remove(notifId);
-        final lateness = DateTime.now().difference(triggerAt);
-        if (lateness > _restoreGracePeriod) return;
+        final firedAt = DateTime.now();
+        if (!_shouldDeliverLateReminder(
+          reminder,
+          now: firedAt,
+          triggerAt: triggerAt,
+          restoring: true,
+        )) {
+          return;
+        }
         _showIslandReminder(reminder);
       });
     }
+  }
+
+  static bool _shouldDeliverLateReminder(
+    Map<String, dynamic> reminder, {
+    required DateTime now,
+    required DateTime triggerAt,
+    required bool restoring,
+  }) {
+    final startAtMs = (reminder['startAtMs'] as num?)?.toInt() ??
+        (reminder['courseStartMs'] as num?)?.toInt();
+    if (startAtMs != null) {
+      final startAt = DateTime.fromMillisecondsSinceEpoch(startAtMs);
+      return now.isBefore(startAt);
+    }
+    return restoring && now.difference(triggerAt) <= _restoreGracePeriod;
   }
 
   static Future<void> _showIslandReminder(Map<String, dynamic> reminder) async {
@@ -227,6 +264,7 @@ class MacPomodoroStatusBarService {
         prefs.getBool('macos_status_bar_enabled') ??
         true;
     if (!enabled) return;
+    _lastRemotePayload = null;
     debugPrint(
         '[MacPomodoroStatusBar] _sendLocalState: phase=${state.phase}, targetEndMs=${state.targetEndMs}');
     _channel.invokeMethod('updatePomodoroStatus', {
@@ -244,9 +282,21 @@ class MacPomodoroStatusBarService {
   }
 
   static bool _isActiveLocalState(PomodoroRunState? state) {
-    return state != null &&
-        (state.phase == PomodoroPhase.focusing ||
-            state.phase == PomodoroPhase.breaking);
+    return isUsableLocalState(state);
+  }
+
+  @visibleForTesting
+  static bool isUsableLocalState(
+    PomodoroRunState? state, {
+    int? nowMs,
+  }) {
+    if (state == null ||
+        (state.phase != PomodoroPhase.focusing &&
+            state.phase != PomodoroPhase.breaking)) {
+      return false;
+    }
+    if (state.isPaused || state.mode == TimerMode.countUp) return true;
+    return state.targetEndMs > (nowMs ?? DateTime.now().millisecondsSinceEpoch);
   }
 
   /// 本机专注优先于 WebSocket 状态，且忽略服务端回推的本机专注事件。
@@ -269,9 +319,9 @@ class MacPomodoroStatusBarService {
       return;
     }
 
-    if (PomodoroSyncService.instance.isFocusSource) {
+    if (PomodoroSyncService.instance.isFromCurrentDevice(remote.sourceDevice)) {
       debugPrint(
-          '[MacIsland] ignore local WebSocket echo without active run state: ${remote.action}');
+          '[MacIsland] ignore local WebSocket echo: ${remote.action}, source=${remote.sourceDevice}');
       return;
     }
 
@@ -285,23 +335,56 @@ class MacPomodoroStatusBarService {
         true;
     if (!enabled) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final isCountUp = remote.mode == 1;
-    final targetEndMs = remote.targetEndMs ?? 0;
-    final timestamp = remote.timestamp ?? now;
+    final payload = mergeRemotePayload(remote, _lastRemotePayload);
+    if (payload == null) return;
+    _lastRemotePayload = payload;
+    _channel.invokeMethod('updatePomodoroStatus', payload);
+  }
 
-    _channel.invokeMethod('updatePomodoroStatus', {
+  @visibleForTesting
+  static Map<String, dynamic>? mergeRemotePayload(
+    CrossDevicePomodoroState remote,
+    Map<String, dynamic>? previous, {
+    int? nowMs,
+  }) {
+    final isIncremental = remote.action == 'SWITCH' ||
+        remote.action == 'PAUSE' ||
+        remote.action == 'RESUME';
+    if (isIncremental && previous == null) return null;
+    final previousSession = previous?['sessionUuid']?.toString();
+    final requiresSameSession =
+        remote.action == 'PAUSE' || remote.action == 'RESUME';
+    if (requiresSameSession &&
+        remote.sessionUuid != null &&
+        previousSession != null &&
+        remote.sessionUuid != previousSession) {
+      return null;
+    }
+
+    final now = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final remoteMode = remote.mode;
+    final previousMode = previous?['mode']?.toString();
+    final mode = remoteMode == null
+        ? (previousMode ?? 'countdown')
+        : (remoteMode == 1 ? 'countUp' : 'countdown');
+    final isPaused = switch (remote.action) {
+      'PAUSE' => true,
+      'RESUME' => false,
+      _ => remote.isPaused ?? (previous?['isPaused'] as bool?) ?? false,
+    };
+    return <String, dynamic>{
       'phase': 'focusing',
-      'targetEndMs': targetEndMs,
-      'sessionStartMs': timestamp,
-      'mode': isCountUp ? 'countUp' : 'countdown',
-      'isPaused': false,
-      'pausedAtMs': 0,
-      'accumulatedMs': 0,
-      'pauseStartMs': 0,
-      'todoTitle': remote.todoTitle ?? '',
+      'sessionUuid': remote.sessionUuid ?? previous?['sessionUuid'] ?? '',
+      'targetEndMs': remote.targetEndMs ?? previous?['targetEndMs'] ?? 0,
+      'sessionStartMs': remote.timestamp ?? previous?['sessionStartMs'] ?? now,
+      'mode': mode,
+      'isPaused': isPaused,
+      'pausedAtMs': remote.pausedAtMs ?? previous?['pausedAtMs'] ?? 0,
+      'accumulatedMs': remote.accumulatedMs ?? previous?['accumulatedMs'] ?? 0,
+      'pauseStartMs': remote.pauseStartMs ?? previous?['pauseStartMs'] ?? 0,
+      'todoTitle': remote.todoTitle ?? previous?['todoTitle'] ?? '',
       'isRemote': true,
-    });
+    };
   }
 
   static void _checkAndClearIfNoLocal() async {
@@ -325,6 +408,7 @@ class MacPomodoroStatusBarService {
     }
 
     _clearNative();
+    _lastRemotePayload = null;
   }
 
   static void _clearNative() {
@@ -424,6 +508,11 @@ class MacPomodoroStatusBarService {
     if (_isActiveLocalState(state)) {
       _lastLocalActiveState = state;
       _sendLocalState(state!);
+    } else if (_lastRemotePayload != null) {
+      await _channel.invokeMethod(
+        'updatePomodoroStatus',
+        _lastRemotePayload,
+      );
     } else {
       _clearNative();
     }
@@ -442,5 +531,6 @@ class MacPomodoroStatusBarService {
     _activityTimer?.cancel();
     _activityTimer = null;
     _lastLocalActiveState = null;
+    _lastRemotePayload = null;
   }
 }
