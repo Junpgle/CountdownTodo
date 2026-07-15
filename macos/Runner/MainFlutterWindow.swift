@@ -136,6 +136,7 @@ class MainFlutterWindow: NSWindow {
       name: "countdown_todo/macos_status_bar",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
+    MacPomodoroStatusBarController.shared.setFlutterChannel(statusBarChannel)
     statusBarChannel.setMethodCallHandler { (call, result) in
       NSLog("[MainFlutterWindow] statusBarChannel received: %@", call.method)
       switch call.method {

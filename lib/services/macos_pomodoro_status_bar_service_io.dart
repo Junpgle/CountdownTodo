@@ -57,6 +57,7 @@ class MacPomodoroStatusBarService {
   static bool _activityRestoreDeferred = false;
   static Timer? _activityRestoreFallbackTimer;
   static Timer? _activityDataRefreshFallbackTimer;
+  static Timer? _overviewSyncTimer;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
   static const Duration _activityRestoreFallbackDelay = Duration(seconds: 12);
   static const Duration _activityDataRefreshFallbackDelay =
@@ -201,26 +202,43 @@ class MacPomodoroStatusBarService {
   /// 仅在用户固定展开灵动岛时读取今日统计，避免把额外查询放入冷启动路径。
   static Future<void> syncIslandOverview() async {
     if (!Platform.isMacOS || !_initialized) return;
+    var countdowns = <CountdownItem>[];
+    var todayRecords = <PomodoroRecord>[];
     try {
       final prefs = await SharedPreferences.getInstance();
       final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
-      final results = await Future.wait<dynamic>([
-        if (username.trim().isEmpty)
-          Future.value(<CountdownItem>[])
-        else
-          StorageService.getCountdowns(username),
-        PomodoroService.getTodayRecords(),
-      ]);
-      final payload = buildIslandOverviewPayload(
-        countdowns: results[0] as List<CountdownItem>,
-        todayRecords: results[1] as List<PomodoroRecord>,
-        localState: _lastLocalActiveState,
-        remotePayload: _lastRemotePayload,
-      );
-      await _channel.invokeMethod('updateIslandOverview', payload);
+      if (username.trim().isNotEmpty) {
+        countdowns = await StorageService.getCountdowns(username);
+      }
     } catch (e) {
-      debugPrint('[MacIsland] overview sync failed: $e');
+      debugPrint('[MacIsland] countdown overview load failed: $e');
     }
+    try {
+      todayRecords = await PomodoroService.getTodayRecords();
+    } catch (e) {
+      debugPrint('[MacIsland] focus overview load failed: $e');
+    }
+    final payload = buildIslandOverviewPayload(
+      countdowns: countdowns,
+      todayRecords: todayRecords,
+      localState: _lastLocalActiveState,
+      remotePayload: _lastRemotePayload,
+    );
+    try {
+      await _channel.invokeMethod('updateIslandOverview', payload);
+      debugPrint(
+          '[MacIsland] overview updated: focus=${payload['todayFocusBaseSeconds']}s, countdown=${payload['countdownTitle']}');
+    } catch (e) {
+      debugPrint('[MacIsland] overview native update failed: $e');
+    }
+  }
+
+  static void _scheduleIslandOverviewSync() {
+    _overviewSyncTimer?.cancel();
+    _overviewSyncTimer = Timer(
+      const Duration(milliseconds: 800),
+      () => unawaited(syncIslandOverview()),
+    );
   }
 
   @visibleForTesting
@@ -428,6 +446,7 @@ class MacPomodoroStatusBarService {
       'todoTitle': state.todoTitle ?? '',
       'isRemote': false,
     });
+    _scheduleIslandOverviewSync();
   }
 
   static bool _isActiveLocalState(PomodoroRunState? state) {
@@ -488,6 +507,7 @@ class MacPomodoroStatusBarService {
     if (payload == null) return;
     _lastRemotePayload = payload;
     _channel.invokeMethod('updatePomodoroStatus', payload);
+    _scheduleIslandOverviewSync();
   }
 
   @visibleForTesting
@@ -619,6 +639,8 @@ class MacPomodoroStatusBarService {
     _activityRestoreFallbackTimer = null;
     _activityDataRefreshFallbackTimer?.cancel();
     _activityDataRefreshFallbackTimer = null;
+    _overviewSyncTimer?.cancel();
+    _overviewSyncTimer = null;
     _activityTimer?.cancel();
     _activitySyncPending = false;
 

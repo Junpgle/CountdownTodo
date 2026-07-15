@@ -249,7 +249,7 @@ private final class MacIslandView: NSView {
                 drawActivityCompact(topOffset: topJoinHeight)
             }
         }
-        if detailed && overviewLoaded {
+        if detailed {
             drawOverviewCards(y: bounds.height - 78)
         }
     }
