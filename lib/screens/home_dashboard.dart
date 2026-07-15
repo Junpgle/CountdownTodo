@@ -231,6 +231,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
   bool _pendingReloadRequested = false;
+  Timer? _dashboardLoadRetryTimer;
+  int _dashboardLoadRetryAttempt = 0;
 
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
@@ -378,10 +380,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadSemesterSettings();
     _loadHomeTextConfig();
     _generateGreeting();
-    _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
-    MacPomodoroStatusBarService.init();
+    // 首页首轮加载完成后会把同一批数据直接交给灵动岛，避免冷启动时
+    // 灵动岛与首页并发执行两套完整的 SQLite 查询。
+    MacPomodoroStatusBarService.init(deferOngoingActivityRestore: true);
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -398,6 +401,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
+    // 在细粒度通知器和刷新监听都就绪后再启动首轮数据读取。
+    unawaited(_loadAllData());
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
@@ -567,6 +572,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
+    _dashboardLoadRetryTimer?.cancel();
     _todoNotificationDebouncer?.cancel();
     _teamPendingDebouncer?.cancel();
     _announcementDebouncer?.cancel();
@@ -3089,6 +3095,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     _isGlobalLoadingNotifier.value = true;
+    var hadTaskFailure = false;
     try {
       //debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
 
@@ -3106,16 +3113,22 @@ class _HomeDashboardState extends State<HomeDashboard>
             "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
       ]);
 
+      hadTaskFailure = results.any((result) => result == null);
+
       final List<TodoItem> allTodos = _mergePendingTodoSnapshots(
-        _safeListResult<TodoItem>(results[0])
+        (results[0] == null
+                ? List<TodoItem>.from(_todos)
+                : _safeListResult<TodoItem>(results[0]))
             .where((t) => !t.isDeleted)
             .toList(),
       );
-      final List<TodoGroup> allGroups = _safeListResult<TodoGroup>(results[1])
+      final List<TodoGroup> allGroups = (results[1] == null
+              ? List<TodoGroup>.from(_todoGroups)
+              : _safeListResult<TodoGroup>(results[1]))
           .where((g) => !g.isDeleted)
           .toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
-        results[2],
+        results[2] ?? _countdowns,
       ).where((c) => !c.isDeleted).toList();
       final conflictDetectionEnabled =
           await StorageService.getConflictDetectionEnabled();
@@ -3146,12 +3159,17 @@ class _HomeDashboardState extends State<HomeDashboard>
               allCountdowns.any(
                   (c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false)));
 
-      final Map<String, dynamic> mathStats =
-          (results[3] ?? {}) as Map<String, dynamic>;
-      final Map<String, dynamic> courseData = (results[4] ??
-          {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
-      final List<TodoPlanBlock> allPlanBlocks =
-          _safeListResult<TodoPlanBlock>(results[5]);
+      final Map<String, dynamic> mathStats = results[3] == null
+          ? Map<String, dynamic>.from(_mathStats)
+          : Map<String, dynamic>.from(results[3] as Map);
+      final Map<String, dynamic> courseData = results[4] == null
+          ? Map<String, dynamic>.from(_dashboardCourseData)
+          : Map<String, dynamic>.from(results[4] as Map);
+      final List<TodoPlanBlock> allPlanBlocks = results[5] == null
+          ? List<TodoPlanBlock>.from(_planBlocks)
+          : _safeListResult<TodoPlanBlock>(results[5]);
+      final activityInputsReady =
+          results[0] != null && results[4] != null && results[5] != null;
 
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
@@ -3194,20 +3212,45 @@ class _HomeDashboardState extends State<HomeDashboard>
           _scheduleRevision.value++;
         }
 
+        if (activityInputsReady) {
+          unawaited(MacPomodoroStatusBarService.syncOngoingActivityFromData(
+            todos: allTodos,
+            planBlocks: allPlanBlocks,
+            courses: _safeListResult<CourseItem>(courseData['courses']),
+          ));
+        }
+
         _debouncedSyncTodoNotification(todosChanged);
         _debouncedFetchTeamPending();
         _debouncedFetchAnnouncements();
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
         _debouncedScheduleAllReminders(todosChanged || coursesChanged);
       }
+      if (!hadTaskFailure) {
+        _dashboardLoadRetryAttempt = 0;
+        _dashboardLoadRetryTimer?.cancel();
+        _dashboardLoadRetryTimer = null;
+      }
     } catch (e) {
+      hadTaskFailure = true;
       // debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
       if (mounted) {
         _isGlobalLoadingNotifier.value = false;
         if (_pendingReloadRequested) {
           _pendingReloadRequested = false;
+          _dashboardLoadRetryTimer?.cancel();
+          _dashboardLoadRetryTimer = null;
           unawaited(_loadAllData());
+        } else if (hadTaskFailure && _dashboardLoadRetryAttempt < 3) {
+          final retryDelay = Duration(
+            milliseconds: 400 * (1 << _dashboardLoadRetryAttempt),
+          );
+          _dashboardLoadRetryAttempt++;
+          _dashboardLoadRetryTimer?.cancel();
+          _dashboardLoadRetryTimer = Timer(retryDelay, () {
+            if (mounted) unawaited(_loadAllData());
+          });
         }
       }
     }

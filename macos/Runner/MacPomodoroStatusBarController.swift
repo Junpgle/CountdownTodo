@@ -907,14 +907,18 @@ class MacPomodoroStatusBarController {
             return startAt > 0 && now >= startAt
         }
 
+        var expiredCurrentReminder = false
         if let current = currentReminder, hasStarted(current) {
             currentReminder = nil
+            expiredCurrentReminder = true
         }
         reminderQueue.removeAll(where: hasStarted)
         if currentReminder == nil, !reminderQueue.isEmpty {
             currentReminder = reminderQueue.removeFirst()
         }
-        if currentReminder == nil {
+        // 没有提醒本身不是收起条件，否则鼠标移入设置的展开状态会在
+        // refreshDisplay() 开头被立即清空，看起来就像悬停事件没有触发。
+        if expiredCurrentReminder && currentReminder == nil {
             isExpanded = false
         }
     }

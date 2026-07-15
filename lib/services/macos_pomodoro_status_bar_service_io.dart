@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models.dart';
 import '../storage_service.dart';
 import 'ongoing_activity_service.dart';
 import 'pomodoro_service.dart';
@@ -39,7 +40,13 @@ class MacPomodoroStatusBarService {
   static bool _activitySyncInProgress = false;
   static bool _activitySyncPending = false;
   static int _activitySyncGeneration = 0;
+  static bool _activityRestoreDeferred = false;
+  static Timer? _activityRestoreFallbackTimer;
+  static Timer? _activityDataRefreshFallbackTimer;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
+  static const Duration _activityRestoreFallbackDelay = Duration(seconds: 12);
+  static const Duration _activityDataRefreshFallbackDelay =
+      Duration(seconds: 6);
 
   /// 状态栏操作事件流（暂停/继续/结束）
   static final StreamController<MacPomodoroAction> _actionController =
@@ -52,11 +59,15 @@ class MacPomodoroStatusBarService {
   static Stream<MacIslandReminderAction> get onReminderAction =>
       _reminderActionController.stream;
 
-  static Future<void> init() async {
+  static Future<void> init({bool deferOngoingActivityRestore = false}) async {
     if (!Platform.isMacOS) return;
     if (_initialized) return;
     _initialized = true;
     _activitySyncGeneration++;
+    _activityRestoreDeferred = deferOngoingActivityRestore;
+    if (deferOngoingActivityRestore) {
+      _scheduleActivityRestoreFallback();
+    }
     debugPrint('[MacPomodoroStatusBar] init() called');
 
     // 设置 MethodCallHandler 接收 Swift 端消息
@@ -109,7 +120,9 @@ class MacPomodoroStatusBarService {
     });
 
     StorageService.dataRefreshNotifier.addListener(_handleDataRefresh);
-    await syncOngoingActivity();
+    if (!deferOngoingActivityRestore) {
+      await syncOngoingActivity();
+    }
   }
 
   /// 处理 Swift 端发来的消息
@@ -417,12 +430,59 @@ class MacPomodoroStatusBarService {
   }
 
   static void _handleDataRefresh() {
-    unawaited(syncOngoingActivity());
+    // 首页冷启动期间会主动提供同一批已加载数据。此时不要抢先再扫一遍
+    // SQLite；如果首页没有成功提供，兜底定时器会恢复数据库读取。
+    if (_activityRestoreDeferred) return;
+    _activityDataRefreshFallbackTimer?.cancel();
+    _activityDataRefreshFallbackTimer = Timer(
+      _activityDataRefreshFallbackDelay,
+      () => unawaited(syncOngoingActivity()),
+    );
+  }
+
+  /// 使用首页已经加载完成的数据刷新灵动岛，避免冷启动时重复扫描 SQLite。
+  static Future<void> syncOngoingActivityFromData({
+    required List<TodoItem> todos,
+    required List<TodoPlanBlock> planBlocks,
+    required List<CourseItem> courses,
+  }) async {
+    if (!Platform.isMacOS || !_initialized) return;
+
+    _activityRestoreDeferred = false;
+    _activityRestoreFallbackTimer?.cancel();
+    _activityRestoreFallbackTimer = null;
+    _activityDataRefreshFallbackTimer?.cancel();
+    _activityDataRefreshFallbackTimer = null;
+    _activityTimer?.cancel();
+    _activitySyncPending = false;
+
+    // 使可能已经开始的数据库兜底失效，避免它稍后覆盖较新的首页快照。
+    _activitySyncGeneration++;
+    final generation = _activitySyncGeneration;
+    try {
+      final resolution = OngoingActivityService.resolve(
+        todos: todos,
+        planBlocks: planBlocks,
+        courses: courses,
+      );
+      if (!_isActivitySyncCurrent(generation)) return;
+      await _publishActivityResolution(resolution, generation: generation);
+    } catch (e) {
+      if (_isActivitySyncCurrent(generation)) {
+        debugPrint('[MacIsland] dashboard activity sync failed: $e');
+        _scheduleActivitySync(const Duration(minutes: 2));
+      }
+    }
   }
 
   /// 同步当前课程、计划块或明确时段待办，并在下一处起止边界自动重算。
   static Future<void> syncOngoingActivity() async {
     if (!Platform.isMacOS || !_initialized) return;
+    _activityRestoreDeferred = false;
+    _activityRestoreFallbackTimer?.cancel();
+    _activityRestoreFallbackTimer = null;
+    _activityDataRefreshFallbackTimer?.cancel();
+    _activityDataRefreshFallbackTimer = null;
     if (_activitySyncInProgress) {
       _activitySyncPending = true;
       return;
@@ -453,24 +513,7 @@ class MacPomodoroStatusBarService {
       final resolution =
           await OngoingActivityService.resolveFromStorage(username);
       if (!_isActivitySyncCurrent(generation)) return;
-      final activity = resolution.activity;
-      if (activity == null) {
-        await _channel.invokeMethod('clearOngoingActivity');
-      } else {
-        await _channel.invokeMethod('updateOngoingActivity', activity.toMap());
-      }
-
-      final now = DateTime.now();
-      final boundaryDelay = resolution.nextBoundary?.difference(now);
-      final delay = boundaryDelay != null && !boundaryDelay.isNegative
-          ? boundaryDelay + const Duration(milliseconds: 250)
-          : const Duration(minutes: 15);
-      if (!_isActivitySyncCurrent(generation)) return;
-      _scheduleActivitySync(
-        delay > const Duration(minutes: 15)
-            ? const Duration(minutes: 15)
-            : delay,
-      );
+      await _publishActivityResolution(resolution, generation: generation);
     } catch (e) {
       if (_isActivitySyncCurrent(generation)) {
         debugPrint('[MacIsland] ongoing activity sync failed: $e');
@@ -487,6 +530,40 @@ class MacPomodoroStatusBarService {
 
   static bool _isActivitySyncCurrent(int generation) =>
       _initialized && generation == _activitySyncGeneration;
+
+  static Future<void> _publishActivityResolution(
+    OngoingActivityResolution resolution, {
+    required int generation,
+  }) async {
+    final activity = resolution.activity;
+    if (activity == null) {
+      await _channel.invokeMethod('clearOngoingActivity');
+    } else {
+      await _channel.invokeMethod('updateOngoingActivity', activity.toMap());
+    }
+
+    if (!_isActivitySyncCurrent(generation)) return;
+    final now = DateTime.now();
+    final boundaryDelay = resolution.nextBoundary?.difference(now);
+    final delay = boundaryDelay != null && !boundaryDelay.isNegative
+        ? boundaryDelay + const Duration(milliseconds: 250)
+        : const Duration(minutes: 15);
+    _scheduleActivitySync(
+      delay > const Duration(minutes: 15) ? const Duration(minutes: 15) : delay,
+    );
+  }
+
+  static void _scheduleActivityRestoreFallback() {
+    _activityRestoreFallbackTimer?.cancel();
+    _activityRestoreFallbackTimer = Timer(
+      _activityRestoreFallbackDelay,
+      () {
+        if (!_initialized || !_activityRestoreDeferred) return;
+        _activityRestoreDeferred = false;
+        unawaited(syncOngoingActivity());
+      },
+    );
+  }
 
   static void _scheduleActivitySync(Duration delay) {
     _activityTimer?.cancel();
@@ -523,11 +600,16 @@ class MacPomodoroStatusBarService {
     _initialized = false;
     _activitySyncGeneration++;
     _activitySyncPending = false;
+    _activityRestoreDeferred = false;
     _localSub?.cancel();
     _localSub = null;
     _remoteSub?.cancel();
     _remoteSub = null;
     StorageService.dataRefreshNotifier.removeListener(_handleDataRefresh);
+    _activityRestoreFallbackTimer?.cancel();
+    _activityRestoreFallbackTimer = null;
+    _activityDataRefreshFallbackTimer?.cancel();
+    _activityDataRefreshFallbackTimer = null;
     _activityTimer?.cancel();
     _activityTimer = null;
     _lastLocalActiveState = null;

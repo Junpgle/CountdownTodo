@@ -1,3 +1,5 @@
+import '../models.dart';
+
 enum MacPomodoroAction { togglePause, stopFocus }
 
 enum MacIslandReminderActionType { acknowledged, snoozed }
@@ -19,13 +21,19 @@ class MacPomodoroStatusBarService {
   static Stream<MacIslandReminderAction> get onReminderAction =>
       const Stream.empty();
 
-  static Future<void> init() async {}
+  static Future<void> init({bool deferOngoingActivityRestore = false}) async {}
 
   static void clearNative() {}
 
   static Future<void> syncCurrentStatus() async {}
 
   static Future<void> syncOngoingActivity() async {}
+
+  static Future<void> syncOngoingActivityFromData({
+    required List<TodoItem> todos,
+    required List<TodoPlanBlock> planBlocks,
+    required List<CourseItem> courses,
+  }) async {}
 
   static Future<void> scheduleIslandReminders(
     List<Map<String, dynamic>> reminders, {
