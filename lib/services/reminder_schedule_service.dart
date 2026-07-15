@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
@@ -150,6 +149,7 @@ class ReminderScheduleService {
                 : timeStr,
             'notifId': _specialTodoBaseId + i,
             'type': 'special_todo',
+            'todoId': t.id,
             'todoType': todoType,
             'timeStr': timeStr,
             'analysisImagePath': t.imagePath,
@@ -171,6 +171,7 @@ class ReminderScheduleService {
             'text': text,
             'notifId': _todoBaseId + i,
             'type': 'upcoming_todo',
+            'todoId': t.id,
             'timeStr': t.dueDate != null && t.createdDate != null
                 ? '${_hm(refTime)} - ${_hm(t.dueDate!.toLocal())}'
                 : _hm(refTime),

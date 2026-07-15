@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +9,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models.dart';
 import '../storage_service.dart';
 import 'storage/app_settings_storage.dart';
+import 'todo_notification_policy.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -20,6 +20,10 @@ class NotificationService {
 
   static Future<void>? _initializationFuture;
   static bool _initialized = false;
+
+  static final Map<String, DateTime> _recentGenericNotifications = {};
+  static final Set<String> _sentPomodoroEndAlertKeys = {};
+  static final Set<String> _shownUpdateNotificationKeys = {};
 
   // 集中式事件分发：所有原生 MethodChannel 调用统一由此广播
   static final StreamController<MethodCall> _eventCtrl =
@@ -166,7 +170,7 @@ class NotificationService {
 
     if (_isDesktopSupported) {
       await _plugin.show(
-        id: courseName.hashCode,
+        id: 12347,
         title: '📚 上课提醒: $courseName',
         body: '$timeStr | 教室: $room | $teacher',
         notificationDetails: _desktopNotificationDetails,
@@ -221,6 +225,18 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
+    final now = DateTime.now();
+    final dedupeKey = '$title\u0000$body';
+    final lastShown = _recentGenericNotifications[dedupeKey];
+    if (lastShown != null &&
+        now.difference(lastShown) < const Duration(minutes: 1)) {
+      return;
+    }
+    _recentGenericNotifications.removeWhere(
+      (_, shownAt) => now.difference(shownAt) > const Duration(minutes: 10),
+    );
+    _recentGenericNotifications[dedupeKey] = now;
+
     await ensureInitialized();
     const androidDetails = AndroidNotificationDetails(
       'system_channel',
@@ -374,6 +390,15 @@ class NotificationService {
     final isSpecialTodo = todoType != 'default';
     final isAllDayTodo = _isAllDayTodo(todo);
 
+    // Keep the safety check at the notification boundary as well as in the
+    // dashboard. This prevents future callers from showing an evening task
+    // hours early merely because its due date is today.
+    if (!isSpecialTodo &&
+        !isAllDayTodo &&
+        !TodoNotificationPolicy.isInsideLiveWindow(todo, DateTime.now())) {
+      return;
+    }
+
     if (isSpecialTodo) {
       if (!await AppSettingsStorage.isSpecialTodoNotificationEnabled()) return;
     } else {
@@ -478,6 +503,10 @@ class NotificationService {
   }) async {
     if (!await AppSettingsStorage.isPomodoroEndNotificationEnabled()) return;
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (!_sentPomodoroEndAlertKeys.add(alertKey)) return;
+    if (_sentPomodoroEndAlertKeys.length > 100) {
+      _sentPomodoroEndAlertKeys.remove(_sentPomodoroEndAlertKeys.first);
+    }
     await ensureInitialized();
 
     if (_isDesktopSupported) {
@@ -519,7 +548,12 @@ class NotificationService {
   /// 取消特定 ID 的特殊待办通知
   /// [notifId] 是通知的 ID
   static Future<void> cancelSpecialTodoNotification(int notifId) async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    if (_isDesktopSupported) {
+      await ensureInitialized();
+      await _plugin.cancel(id: notifId);
+      return;
+    }
     try {
       await _channel.invokeMethod(
           'cancelSpecialTodoNotification', {'notificationId': notifId});
@@ -805,6 +839,9 @@ class NotificationService {
     required String updateContent,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
+    final notificationKey =
+        '$versionName\u0000$updateTitle\u0000$updateContent';
+    if (!_shownUpdateNotificationKeys.add(notificationKey)) return;
     await ensureInitialized();
 
     if (_isDesktopSupported) {
