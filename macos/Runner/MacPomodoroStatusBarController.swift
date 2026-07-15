@@ -58,6 +58,13 @@ private final class MacIslandView: NSView {
     var reminderNextTimeText = "" { didSet { needsDisplay = true } }
     var reminderEntityKind = "" { didSet { needsDisplay = true } }
     var reminderEntityId = "" { didSet { needsDisplay = true } }
+    var overviewLoaded = false { didSet { needsDisplay = true } }
+    var todayFocusBaseSeconds: Int64 = 0 { didSet { needsDisplay = true } }
+    var todayFocusBaseCount = 0 { didSet { needsDisplay = true } }
+    var includeCurrentFocus = false { didSet { needsDisplay = true } }
+    var countdownTitle = "" { didSet { needsDisplay = true } }
+    var countdownTargetMs: Int64 = 0 { didSet { needsDisplay = true } }
+    var countdownDays = -1 { didSet { needsDisplay = true } }
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
     var onTogglePause: (() -> Void)?
@@ -241,6 +248,9 @@ private final class MacIslandView: NSView {
             } else {
                 drawActivityCompact(topOffset: topJoinHeight)
             }
+        }
+        if detailed && overviewLoaded {
+            drawOverviewCards(y: bounds.height - 78)
         }
     }
 
@@ -910,6 +920,96 @@ private final class MacIslandView: NSView {
         }
     }
 
+    private func drawOverviewCards(y: CGFloat) {
+        let gap: CGFloat = 8
+        let cardWidth = (bounds.width - 36 - gap) / 2
+        let focusCard = NSRect(x: 18, y: y, width: cardWidth, height: 32)
+        let countdownCard = NSRect(x: focusCard.maxX + gap, y: y, width: cardWidth, height: 32)
+
+        NSColor.white.withAlphaComponent(0.08).setFill()
+        NSBezierPath(roundedRect: focusCard, xRadius: 9, yRadius: 9).fill()
+        NSBezierPath(roundedRect: countdownCard, xRadius: 9, yRadius: 9).fill()
+
+        drawText(
+            "今日专注",
+            rect: NSRect(x: focusCard.minX + 9, y: focusCard.minY + 3, width: focusCard.width - 62, height: 13),
+            font: .systemFont(ofSize: 8.5, weight: .medium),
+            color: .white.withAlphaComponent(0.5),
+            alignment: .left
+        )
+        drawText(
+            "\(todayFocusDisplayCount) 次",
+            rect: NSRect(x: focusCard.maxX - 48, y: focusCard.minY + 3, width: 39, height: 13),
+            font: .systemFont(ofSize: 8.5, weight: .regular),
+            color: .white.withAlphaComponent(0.42),
+            alignment: .right
+        )
+        drawText(
+            todayFocusDurationText,
+            rect: NSRect(x: focusCard.minX + 9, y: focusCard.minY + 15, width: focusCard.width - 18, height: 14),
+            font: .monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            color: .systemOrange,
+            alignment: .left
+        )
+
+        drawText(
+            countdownTitle.isEmpty ? "最近倒数日" : countdownTitle,
+            rect: NSRect(x: countdownCard.minX + 9, y: countdownCard.minY + 3, width: countdownCard.width - 18, height: 13),
+            font: .systemFont(ofSize: 8.5, weight: .medium),
+            color: .white.withAlphaComponent(countdownTitle.isEmpty ? 0.5 : 0.7),
+            alignment: .left
+        )
+        drawText(
+            countdownRemainingText,
+            rect: NSRect(x: countdownCard.minX + 9, y: countdownCard.minY + 15, width: countdownCard.width - 72, height: 14),
+            font: .monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            color: .systemPurple,
+            alignment: .left
+        )
+        drawText(
+            countdownDateText,
+            rect: NSRect(x: countdownCard.maxX - 65, y: countdownCard.minY + 16, width: 56, height: 13),
+            font: .systemFont(ofSize: 8.5, weight: .regular),
+            color: .white.withAlphaComponent(0.42),
+            alignment: .right
+        )
+    }
+
+    private var currentFocusElapsedSeconds: Int64 {
+        guard includeCurrentFocus, phase == "focusing", focusSessionStartMs > 0 else { return 0 }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let frozenNow = isPaused
+            ? max(focusSessionStartMs, max(focusPausedAtMs, focusPauseStartMs))
+            : now
+        return max(0, frozenNow - focusSessionStartMs - focusAccumulatedMs) / 1000
+    }
+
+    private var todayFocusDisplayCount: Int {
+        todayFocusBaseCount + (currentFocusElapsedSeconds > 0 ? 1 : 0)
+    }
+
+    private var todayFocusDurationText: String {
+        let totalMinutes = max(0, todayFocusBaseSeconds + currentFocusElapsedSeconds) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours <= 0 { return "\(minutes) 分钟" }
+        if minutes == 0 { return "\(hours) 小时" }
+        return "\(hours) 小时 \(minutes) 分"
+    }
+
+    private var countdownRemainingText: String {
+        if countdownDays < 0 { return "暂无" }
+        if countdownDays == 0 { return "就在今天" }
+        return "还有 \(countdownDays) 天"
+    }
+
+    private var countdownDateText: String {
+        guard countdownTargetMs > 0 else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日"
+        return formatter.string(from: Date(timeIntervalSince1970: Double(countdownTargetMs) / 1000))
+    }
+
     private func drawButton(title: String, rect: NSRect, color: NSColor) {
         color.setFill()
         NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10).fill()
@@ -1000,6 +1100,13 @@ class MacPomodoroStatusBarController {
     private var nextActivitySubtitle = ""
     private var nextActivityStartMs: Int64 = 0
     private var nextActivityEndMs: Int64 = 0
+    private var overviewLoaded = false
+    private var todayFocusBaseSeconds: Int64 = 0
+    private var todayFocusBaseCount = 0
+    private var includeCurrentFocus = false
+    private var countdownTitle = ""
+    private var countdownTargetMs: Int64 = 0
+    private var countdownDays = -1
 
     private init() {}
 
@@ -1152,6 +1259,19 @@ class MacPomodoroStatusBarController {
         }
     }
 
+    func updateIslandOverview(args: [String: Any]) {
+        overviewLoaded = true
+        todayFocusBaseSeconds = int64Value(args["todayFocusBaseSeconds"])
+        todayFocusBaseCount = Int(int64Value(args["todayFocusBaseCount"]))
+        includeCurrentFocus = args["includeCurrentFocus"] as? Bool ?? false
+        countdownTitle = args["countdownTitle"] as? String ?? ""
+        countdownTargetMs = int64Value(args["countdownTargetMs"])
+        countdownDays = Int(int64Value(args["countdownDays"]))
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshDisplay()
+        }
+    }
+
     func showIslandReminder(args: [String: Any]) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.islandEnabled, self.remindersEnabled else { return }
@@ -1166,6 +1286,7 @@ class MacPomodoroStatusBarController {
             }
             self.isExpanded = true
             self.isPinnedExpanded = false
+            self.flutterChannel?.invokeMethod("requestIslandOverview", arguments: nil)
             self.refreshDisplay()
             self.scheduleNextUpdate()
         }
@@ -1261,6 +1382,13 @@ class MacPomodoroStatusBarController {
         view.nextActivitySubtitle = nextActivitySubtitle
         view.nextActivityStartMs = nextActivityStartMs
         view.nextActivityEndMs = nextActivityEndMs
+        view.overviewLoaded = overviewLoaded
+        view.todayFocusBaseSeconds = todayFocusBaseSeconds
+        view.todayFocusBaseCount = todayFocusBaseCount
+        view.includeCurrentFocus = includeCurrentFocus
+        view.countdownTitle = countdownTitle
+        view.countdownTargetMs = countdownTargetMs
+        view.countdownDays = countdownDays
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.group)
         view.setAccessibilityLabel("CountDownTodo 灵动岛")
@@ -1290,15 +1418,15 @@ class MacPomodoroStatusBarController {
         } else if detailed {
             let detailedHeight: CGFloat
             if focusWithReminder {
-                detailedHeight = 360
+                detailedHeight = 402
             } else if focusWithActivity {
-                detailedHeight = nextActivityTitle.isEmpty ? 305 : 350
+                detailedHeight = nextActivityTitle.isEmpty ? 347 : 392
             } else if isPomodoroActive {
-                detailedHeight = nextActivityTitle.isEmpty ? 275 : 315
+                detailedHeight = nextActivityTitle.isEmpty ? 317 : 357
             } else if hasReminder {
-                detailedHeight = 270
+                detailedHeight = 312
             } else {
-                detailedHeight = nextActivityTitle.isEmpty ? 245 : 285
+                detailedHeight = nextActivityTitle.isEmpty ? 287 : 327
             }
             height = max(detailedHeight, geometry.topInset + detailedHeight - 34)
         } else {
@@ -1356,6 +1484,9 @@ class MacPomodoroStatusBarController {
             guard let self = self else { return }
             self.isExpanded = expanded
             self.isPinnedExpanded = detailed
+            if detailed {
+                self.flutterChannel?.invokeMethod("requestIslandOverview", arguments: nil)
+            }
             self.refreshDisplay()
         }
         view.onTogglePause = { [weak self] in

@@ -174,6 +174,8 @@ class MacPomodoroStatusBarService {
         _emitCommand(MacIslandCommandType.startFocus, call.arguments);
       case 'completeIslandTodo':
         _emitCommand(MacIslandCommandType.completeTodo, call.arguments);
+      case 'requestIslandOverview':
+        unawaited(syncIslandOverview());
     }
   }
 
@@ -194,6 +196,94 @@ class MacPomodoroStatusBarService {
       return Map<String, dynamic>.from(arguments);
     }
     return <String, dynamic>{};
+  }
+
+  /// 仅在用户固定展开灵动岛时读取今日统计，避免把额外查询放入冷启动路径。
+  static Future<void> syncIslandOverview() async {
+    if (!Platform.isMacOS || !_initialized) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final results = await Future.wait<dynamic>([
+        if (username.trim().isEmpty)
+          Future.value(<CountdownItem>[])
+        else
+          StorageService.getCountdowns(username),
+        PomodoroService.getTodayRecords(),
+      ]);
+      final payload = buildIslandOverviewPayload(
+        countdowns: results[0] as List<CountdownItem>,
+        todayRecords: results[1] as List<PomodoroRecord>,
+        localState: _lastLocalActiveState,
+        remotePayload: _lastRemotePayload,
+      );
+      await _channel.invokeMethod('updateIslandOverview', payload);
+    } catch (e) {
+      debugPrint('[MacIsland] overview sync failed: $e');
+    }
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> buildIslandOverviewPayload({
+    required List<CountdownItem> countdowns,
+    required List<PomodoroRecord> todayRecords,
+    PomodoroRunState? localState,
+    Map<String, dynamic>? remotePayload,
+    DateTime? now,
+  }) {
+    final localNow = (now ?? DateTime.now()).toLocal();
+    final today = DateTime(localNow.year, localNow.month, localNow.day);
+    final activeCountdowns = countdowns.where((countdown) {
+      if (countdown.isDeleted || countdown.isCompleted) return false;
+      final target = countdown.targetDate.toLocal();
+      final targetDay = DateTime(target.year, target.month, target.day);
+      return !targetDay.isBefore(today);
+    }).toList()
+      ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
+    final records = todayRecords.where((record) => !record.isDeleted).toList();
+    final recordedSessionIds = records.map((record) => record.uuid).toSet();
+    final totalSeconds = records.fold<int>(
+      0,
+      (total, record) => total + record.effectiveDuration,
+    );
+
+    var activePhase = '';
+    var activeSessionId = '';
+    var activeStartMs = 0;
+    if (localState != null) {
+      activePhase = localState.phase.name;
+      activeSessionId = localState.sessionUuid;
+      activeStartMs = localState.sessionStartMs;
+    } else if (remotePayload != null) {
+      activePhase = remotePayload['phase']?.toString() ?? '';
+      activeSessionId = remotePayload['sessionUuid']?.toString() ?? '';
+      activeStartMs = (remotePayload['sessionStartMs'] as num?)?.toInt() ?? 0;
+    }
+    final activeStart = activeStartMs > 0
+        ? DateTime.fromMillisecondsSinceEpoch(activeStartMs).toLocal()
+        : null;
+    final includeCurrentFocus = activePhase == PomodoroPhase.focusing.name &&
+        activeStart != null &&
+        activeStart.year == localNow.year &&
+        activeStart.month == localNow.month &&
+        activeStart.day == localNow.day &&
+        !recordedSessionIds.contains(activeSessionId);
+
+    final nearest = activeCountdowns.isEmpty ? null : activeCountdowns.first;
+    final nearestTarget = nearest?.targetDate.toLocal();
+    final nearestDay = nearestTarget == null
+        ? null
+        : DateTime(nearestTarget.year, nearestTarget.month, nearestTarget.day);
+    return <String, dynamic>{
+      'todayFocusBaseSeconds': totalSeconds,
+      'todayFocusBaseCount': records.length,
+      'includeCurrentFocus': includeCurrentFocus,
+      'countdownId': nearest?.id ?? '',
+      'countdownTitle': nearest?.title ?? '',
+      'countdownTargetMs': nearest?.targetDate.millisecondsSinceEpoch ?? 0,
+      'countdownDays': nearestDay?.difference(today).inDays ?? -1,
+    };
   }
 
   /// 为应用运行期间注册灵动岛提醒；系统通知仍由 NotificationService 负责。

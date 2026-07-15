@@ -343,6 +343,55 @@ void main() {
       expect(payload['planBlockId'], 'plan-1');
       expect(payload['note'], '完成第一版');
     });
+
+    test('详情概览会汇总今日专注并选择最近倒数日', () {
+      final now = DateTime(2026, 7, 15, 10);
+      final payload = MacPomodoroStatusBarService.buildIslandOverviewPayload(
+        countdowns: [
+          CountdownItem(
+            title: '已完成纪念日',
+            targetDate: DateTime(2026, 7, 16),
+            isCompleted: true,
+          ),
+          CountdownItem(
+            id: 'countdown-nearest',
+            title: '项目发布',
+            targetDate: DateTime(2026, 7, 17),
+          ),
+          CountdownItem(
+            title: '暑假',
+            targetDate: DateTime(2026, 7, 20),
+          ),
+        ],
+        todayRecords: [
+          PomodoroRecord(
+            uuid: 'record-1',
+            startTime: DateTime(2026, 7, 15, 8).millisecondsSinceEpoch,
+            plannedDuration: 600,
+            actualDuration: 600,
+          ),
+          PomodoroRecord(
+            uuid: 'record-2',
+            startTime: DateTime(2026, 7, 15, 9).millisecondsSinceEpoch,
+            plannedDuration: 1200,
+            actualDuration: 1200,
+          ),
+        ],
+        localState: PomodoroRunState(
+          phase: PomodoroPhase.focusing,
+          sessionUuid: 'running-session',
+          sessionStartMs: DateTime(2026, 7, 15, 9, 45).millisecondsSinceEpoch,
+        ),
+        now: now,
+      );
+
+      expect(payload['todayFocusBaseSeconds'], 1800);
+      expect(payload['todayFocusBaseCount'], 2);
+      expect(payload['includeCurrentFocus'], isTrue);
+      expect(payload['countdownId'], 'countdown-nearest');
+      expect(payload['countdownTitle'], '项目发布');
+      expect(payload['countdownDays'], 2);
+    });
   });
 
   group('PomodoroSyncService', () {
