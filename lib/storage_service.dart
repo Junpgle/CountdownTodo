@@ -2021,6 +2021,7 @@ class StorageService {
     try {
       bool needSave = false;
       final List<TodoItem> generatedOccurrences = [];
+      final Set<String> generatedRecurrenceConflictKeys = {};
       for (final todo in List<TodoItem>.from(todos)) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
         if (todo.recurrenceEndDate != null &&
@@ -2032,15 +2033,15 @@ class StorageService {
         final DateTime baseDay =
             DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
         final DateTime todayDay = DateTime(today.year, today.month, today.day);
+        final int diffDays = todayDay.difference(baseDay).inDays;
         int? rollByDays;
 
         if (todo.recurrence == RecurrenceType.daily &&
             todayDay.isAfter(baseDay)) {
-          rollByDays = 0;
+          rollByDays = diffDays;
         } else if (todo.recurrence == RecurrenceType.customDays &&
             todo.customIntervalDays != null &&
             todo.customIntervalDays! > 0) {
-          int diffDays = todayDay.difference(baseDay).inDays;
           if (diffDays >= todo.customIntervalDays!) {
             int periods = diffDays ~/ todo.customIntervalDays!;
             rollByDays = periods * todo.customIntervalDays!;
@@ -2048,22 +2049,22 @@ class StorageService {
         } else if (todo.recurrence == RecurrenceType.weekdays &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.weekday >= 1 && todayDay.weekday <= 5) {
-            rollByDays = 0;
+            rollByDays = diffDays;
           }
         } else if (todo.recurrence == RecurrenceType.weekly &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.weekday == baseDay.weekday) {
-            rollByDays = 0;
+            rollByDays = diffDays;
           }
         } else if (todo.recurrence == RecurrenceType.monthly &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.day == baseDay.day) {
-            rollByDays = 0;
+            rollByDays = diffDays;
           }
         } else if (todo.recurrence == RecurrenceType.yearly &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.month == baseDay.month && todayDay.day == baseDay.day) {
-            rollByDays = 0;
+            rollByDays = diffDays;
           }
         }
 
@@ -2073,22 +2074,19 @@ class StorageService {
           // 未完成的上一期必须作为独立实例保留下来，否则直接滚动日期会让
           // 它从“逾期”列表消失。新实例继承循环规则，旧实例则停止循环。
           final nextOccurrence = _copyForNextRecurrence(todo);
-          if (rollByDays == 0) {
-            _rollRecurrenceDateToToday(nextOccurrence, today);
-          } else {
-            _rollRecurrenceDateByDays(nextOccurrence, rollByDays);
-          }
+          _rollRecurrenceDateByDays(nextOccurrence, rollByDays);
           generatedOccurrences.add(nextOccurrence);
+          final conflictKey =
+              _overlappingRecurrencePairKey(todo, nextOccurrence);
+          if (conflictKey != null) {
+            generatedRecurrenceConflictKeys.add(conflictKey);
+          }
           todo.recurrence = RecurrenceType.none;
           todo.markAsChanged();
         } else {
           // 保持原有行为：上一期已完成时复用该记录，避免产生多余历史项。
           todo.isDone = false;
-          if (rollByDays == 0) {
-            _rollRecurrenceDateToToday(todo, today);
-          } else {
-            _rollRecurrenceDateByDays(todo, rollByDays);
-          }
+          _rollRecurrenceDateByDays(todo, rollByDays);
           todo.markAsChanged();
         }
         needSave = true;
@@ -2096,6 +2094,15 @@ class StorageService {
 
       if (needSave) {
         todos.addAll(generatedOccurrences);
+        if (generatedRecurrenceConflictKeys.isNotEmpty) {
+          final ignoredKeys = await _getIgnoredScheduleConflictKeys(username)
+            ..addAll(generatedRecurrenceConflictKeys);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setStringList(
+            _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+            ignoredKeys.toList()..sort(),
+          );
+        }
         debugPrint("🚀 [Recurrence] 发现重复任务需要滚动，正在保存...");
         await saveTodos(username, todos, sync: true);
       }
@@ -2110,9 +2117,31 @@ class StorageService {
   }
 
   static DateTime _getRecurrenceBaseDate(TodoItem todo) {
-    if (todo.dueDate != null) return todo.dueDate!;
-    final int ms = todo.createdDate ?? todo.createdAt;
-    return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+    if (todo.createdDate != null) {
+      return DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
+          .toLocal();
+    }
+    return todo.dueDate ??
+        DateTime.fromMillisecondsSinceEpoch(todo.createdAt, isUtc: true)
+            .toLocal();
+  }
+
+  static String? _overlappingRecurrencePairKey(
+      TodoItem previous, TodoItem next) {
+    final previousStart = previous.createdDate ?? previous.createdAt;
+    final previousEnd = previous.dueDate?.millisecondsSinceEpoch;
+    final nextStart = next.createdDate ?? next.createdAt;
+    final nextEnd = next.dueDate?.millisecondsSinceEpoch;
+    if (previousEnd == null || nextEnd == null) return null;
+    if (previousStart >= nextEnd || nextStart >= previousEnd) return null;
+    return _scheduleConflictPairKey(
+      previous.id,
+      previousStart,
+      previousEnd,
+      next.id,
+      nextStart,
+      nextEnd,
+    );
   }
 
   static TodoItem _copyForNextRecurrence(TodoItem source) {
@@ -2136,36 +2165,6 @@ class StorageService {
       isAllDay: source.isAllDay,
       categoryId: source.categoryId,
     );
-  }
-
-  static void _rollRecurrenceDateToToday(TodoItem todo, DateTime now) {
-    if (todo.dueDate != null) {
-      final originalDueDate = todo.dueDate!;
-      todo.dueDate = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        originalDueDate.hour,
-        originalDueDate.minute,
-        originalDueDate.second,
-        originalDueDate.millisecond,
-        originalDueDate.microsecond,
-      );
-    }
-    if (todo.createdDate != null) {
-      final originalCreatedDate =
-          DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
-              .toLocal();
-      todo.createdDate = DateTime(
-              now.year,
-              now.month,
-              now.day,
-              originalCreatedDate.hour,
-              originalCreatedDate.minute,
-              originalCreatedDate.second,
-              originalCreatedDate.millisecond)
-          .millisecondsSinceEpoch;
-    }
   }
 
   static void _rollRecurrenceDateByDays(TodoItem todo, int days) {
@@ -3747,6 +3746,8 @@ class StorageService {
       // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
       // 这里从 conflicts 数组直接补标，确保 ConflictInboxScreen 能看到。
+      final ignoredScheduleConflictKeys =
+          await _getIgnoredScheduleConflictKeys(username);
       if (conflicts.isNotEmpty) {
         final conflictDetectionEnabled = await getConflictDetectionEnabled();
         for (final c in conflicts) {
@@ -3763,6 +3764,11 @@ class StorageService {
             if (!conflictDetectionEnabled) continue;
             final todo = allLocalTodos[todosIndexMap[itemId]!];
             final peer = Map<String, dynamic>.from(serverVersion);
+            final conflictKey = _scheduleConflictKeyFromPayload(todo, peer);
+            if (conflictKey != null &&
+                ignoredScheduleConflictKeys.contains(conflictKey)) {
+              continue;
+            }
             final data = {
               'uuid': todo.id,
               'id': todo.id,
@@ -3856,8 +3862,6 @@ class StorageService {
       }
 
       // 7. 持久化数据
-      final ignoredScheduleConflictKeys =
-          await _getIgnoredScheduleConflictKeys(username);
       // Compute IDs of items whose conflict was cleared in this sync cycle
       final Set<String> recentlyResolvedIds = preMergeConflictIds.where((id) {
         final idx = todosIndexMap[id];
@@ -4106,6 +4110,32 @@ class StorageService {
     final left = '$aId@$aStart-$aEnd';
     final right = '$bId@$bStart-$bEnd';
     return left.compareTo(right) <= 0 ? '$left|$right' : '$right|$left';
+  }
+
+  static String? _scheduleConflictKeyFromPayload(
+      TodoItem item, Map<String, dynamic> peer) {
+    final itemEnd = item.dueDate?.millisecondsSinceEpoch;
+    final peerId = (peer['uuid'] ?? peer['id'] ?? '').toString();
+    final peerStart = _parseMillis(peer['start_time'] ??
+        peer['created_date'] ??
+        peer['createdDate'] ??
+        peer['created_at']);
+    final peerEnd =
+        _parseMillis(peer['end_time'] ?? peer['due_date'] ?? peer['dueDate']);
+    if (itemEnd == null ||
+        peerId.isEmpty ||
+        peerStart == null ||
+        peerEnd == null) {
+      return null;
+    }
+    return _scheduleConflictPairKey(
+      item.id,
+      item.createdDate ?? item.createdAt,
+      itemEnd,
+      peerId,
+      peerStart,
+      peerEnd,
+    );
   }
 
   static int? _parseMillis(dynamic value) {

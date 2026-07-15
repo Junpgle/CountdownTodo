@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../utils/app_platform.dart';
+import 'band_sync_service.dart';
 import 'screen_time_service.dart';
 
 enum AppPermissionKind {
@@ -14,6 +16,9 @@ enum AppPermissionKind {
   requestInstall,
   exactAlarm,
   batteryOptimization,
+  calendar,
+  liveUpdates,
+  bandDeviceManagement,
 }
 
 extension AppPermissionKindDetails on AppPermissionKind {
@@ -24,6 +29,9 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.requestInstall => '安装未知来源应用',
         AppPermissionKind.exactAlarm => '精确提醒',
         AppPermissionKind.batteryOptimization => '忽略电池优化',
+        AppPermissionKind.calendar => '日历读写',
+        AppPermissionKind.liveUpdates => '实时通知',
+        AppPermissionKind.bandDeviceManagement => '小米手环设备管理',
       };
 
   String get rationale => switch (this) {
@@ -33,12 +41,17 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.requestInstall => '用于在应用内安装已经下载的版本更新。',
         AppPermissionKind.exactAlarm => '用于在应用退出后仍按设定时间准时发送提醒。',
         AppPermissionKind.batteryOptimization => '用于减少锁屏后专注计时和实时同步被系统中断。',
+        AppPermissionKind.calendar => '用于将课程、待办和计划写入 Android 系统日历。',
+        AppPermissionKind.liveUpdates => '用于在支持的 Android 设备上展示实时活动和状态更新。',
+        AppPermissionKind.bandDeviceManagement =>
+          '用于向已连接的小米手环同步待办、课程、倒数日和专注状态。',
       };
 
   bool get opensDedicatedSettings => switch (this) {
         AppPermissionKind.usageStats ||
         AppPermissionKind.exactAlarm ||
-        AppPermissionKind.batteryOptimization =>
+        AppPermissionKind.batteryOptimization ||
+        AppPermissionKind.liveUpdates =>
           true,
         _ => false,
       };
@@ -230,10 +243,11 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
       case AppPermissionKind.storage:
         if (AppPlatform.isAndroid) {
           final storage = await Permission.storage.status;
-          final managed = await Permission.manageExternalStorage.status;
-          return storage.isGranted || managed.isGranted
-              ? PermissionStatus.granted
-              : storage;
+          if (await _usesManageExternalStorage()) {
+            final managed = await Permission.manageExternalStorage.status;
+            return managed.isGranted ? PermissionStatus.granted : managed;
+          }
+          return storage;
         }
         return Permission.storage.status;
       case AppPermissionKind.usageStats:
@@ -254,24 +268,51 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         }
       case AppPermissionKind.batteryOptimization:
         return Permission.ignoreBatteryOptimizations.status;
+      case AppPermissionKind.calendar:
+        return Permission.calendarFullAccess.status;
+      case AppPermissionKind.liveUpdates:
+        try {
+          final granted = await _platformChannel.invokeMethod<bool>(
+                'checkLiveUpdatesPermission',
+              ) ??
+              true;
+          return granted ? PermissionStatus.granted : PermissionStatus.denied;
+        } on PlatformException {
+          return PermissionStatus.granted;
+        }
+      case AppPermissionKind.bandDeviceManagement:
+        final connection = await BandSyncService.getConnectionStatus();
+        return connection['hasPermission'] == true
+            ? PermissionStatus.granted
+            : PermissionStatus.denied;
     }
   }
 
   Future<PermissionStatus> _requestPermission(
       AppPermissionKind permission) async {
-    return switch (permission) {
-      AppPermissionKind.notification => Permission.notification.request(),
-      AppPermissionKind.storage => AppPlatform.isAndroid
-          ? Permission.manageExternalStorage.request()
-          : Permission.storage.request(),
-      AppPermissionKind.requestInstall =>
-        Permission.requestInstallPackages.request(),
-      AppPermissionKind.batteryOptimization =>
-        Permission.ignoreBatteryOptimizations.request(),
-      AppPermissionKind.usageStats ||
-      AppPermissionKind.exactAlarm =>
-        status(permission),
-    };
+    switch (permission) {
+      case AppPermissionKind.notification:
+        return Permission.notification.request();
+      case AppPermissionKind.storage:
+        if (AppPlatform.isAndroid && await _usesManageExternalStorage()) {
+          return Permission.manageExternalStorage.request();
+        }
+        return Permission.storage.request();
+      case AppPermissionKind.requestInstall:
+        return Permission.requestInstallPackages.request();
+      case AppPermissionKind.batteryOptimization:
+        return Permission.ignoreBatteryOptimizations.request();
+      case AppPermissionKind.calendar:
+        return Permission.calendarFullAccess.request();
+      case AppPermissionKind.bandDeviceManagement:
+        return await BandSyncService.requestPermission()
+            ? PermissionStatus.granted
+            : PermissionStatus.denied;
+      case AppPermissionKind.usageStats ||
+            AppPermissionKind.exactAlarm ||
+            AppPermissionKind.liveUpdates:
+        return status(permission);
+    }
   }
 
   Future<bool> _openPermissionSettings(AppPermissionKind permission) async {
@@ -295,9 +336,24 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         } on PlatformException {
           return openAppSettings();
         }
+      case AppPermissionKind.liveUpdates:
+        try {
+          return await _platformChannel.invokeMethod<bool>(
+                'openLiveUpdatesSettings',
+              ) ??
+              false;
+        } on PlatformException {
+          return openAppSettings();
+        }
       default:
         return openAppSettings();
     }
+  }
+
+  Future<bool> _usesManageExternalStorage() async {
+    if (!AppPlatform.isAndroid) return false;
+    final androidInfo = await DeviceInfoPlugin().androidInfo;
+    return androidInfo.version.sdkInt >= 30;
   }
 
   Future<bool> _showRationale(AppPermissionKind permission) {

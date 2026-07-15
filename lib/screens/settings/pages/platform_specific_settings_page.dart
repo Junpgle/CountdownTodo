@@ -10,6 +10,7 @@ import '../../../services/float_window_service.dart';
 import '../../../services/island_manager_bridge.dart';
 import '../../../services/island_data_provider.dart';
 import '../../../services/macos_pomodoro_status_bar_service.dart';
+import '../../../services/permission_request_coordinator.dart';
 import '../../../utils/app_dialogs.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -54,6 +55,7 @@ class _PlatformSpecificSettingsPageState
   // Android Specific
   String _islandStatus = "点击检测设备是否支持";
   String _liveUpdatesStatus = "点击检测或去开启 (Android 16+)";
+  late final PermissionRequestCoordinator _permissionCoordinator;
 
   // macOS Specific
   bool _macTrayIconEnabled = true;
@@ -63,12 +65,22 @@ class _PlatformSpecificSettingsPageState
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(
+      context: context,
+      platformChannel: platform,
+    );
     _loadSettings();
     if (widget.initialTarget != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToTarget(widget.initialTarget!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _permissionCoordinator.dispose();
+    super.dispose();
   }
 
   void _scrollToTarget(String target) {
@@ -180,24 +192,21 @@ class _PlatformSpecificSettingsPageState
   // --- Android Methods ---
   Future<void> _checkAndOpenLiveUpdates() async {
     try {
-      final bool hasPermission =
-          await platform.invokeMethod('checkLiveUpdatesPermission') ?? true;
-      if (!hasPermission) {
-        setState(() => _liveUpdatesStatus = "权限未开启，尝试跳转设置...");
-        final bool opened =
-            await platform.invokeMethod('openLiveUpdatesSettings') ?? false;
-
-        if (opened) {
-          if (!mounted) return;
-          AppSnackBars.warning(context, '请在设置中打开"推广的通知/实时更新"权限');
-        } else {
-          setState(() => _liveUpdatesStatus = "跳转失败，设备可能不是 Android 16+");
-        }
-      } else {
+      final result =
+          await _permissionCoordinator.request(AppPermissionKind.liveUpdates);
+      if (!mounted) return;
+      if (result.cancelledByUser) {
+        setState(() => _liveUpdatesStatus = "用户暂未允许实时通知权限");
+      } else if (result.granted) {
         setState(() => _liveUpdatesStatus = "✅ 已拥有实时通知权限");
+      } else {
+        setState(() => _liveUpdatesStatus = "权限仍未开启");
+        AppSnackBars.warning(context, '尚未开启"推广的通知/实时更新"权限');
       }
     } on PlatformException catch (e) {
-      setState(() => _liveUpdatesStatus = "检测失败: '${e.message}'.");
+      if (mounted) {
+        setState(() => _liveUpdatesStatus = "检测失败: '${e.message}'.");
+      }
     }
   }
 
