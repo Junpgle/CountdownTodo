@@ -98,6 +98,14 @@ todo.md
 .tmp
 /aliyun_release
 /test/
+!/test/
+/test/*
+!/test/services/
+/test/services/*
+!/test/services/permission_request_coordinator_test.dart
+!/test/models/
+/test/models/*
+!/test/models/todo_recurrence_series_test.dart
 /macos/build/
 /globalize.md
 /feature.md

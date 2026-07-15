@@ -718,6 +718,11 @@ class StorageService {
     }
 
     for (var item in items) {
+      if (item.recurrence != RecurrenceType.none &&
+          (item.recurrenceSeriesId == null ||
+              item.recurrenceSeriesId!.isEmpty)) {
+        item.recurrenceSeriesId = item.id;
+      }
       final existing = dedupeMap[item.id];
       if (existing == null || item.updatedAt > existing.updatedAt) {
         dedupeMap[item.id] = item;
@@ -800,6 +805,7 @@ class StorageService {
           'due_date',
           'group_id',
           'recurrence',
+          'recurrence_series_id',
           'is_all_day',
           'reminder_minutes',
           'has_conflict',
@@ -870,6 +876,7 @@ class StorageService {
               'updated_at': item.updatedAt,
               'collab_type': item.collabType,
               'recurrence': _normalizedRecurrenceIndex(item),
+              'recurrence_series_id': item.recurrenceSeriesId,
               'custom_interval_days': _normalizedCustomIntervalDays(item),
               'recurrence_end_date':
                   item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
@@ -1271,6 +1278,7 @@ class StorageService {
         'group_id',
         'category_id',
         'recurrence',
+        'recurrence_series_id',
         'is_all_day',
         'reminder_minutes',
         'recurrence_end_date',
@@ -1380,6 +1388,10 @@ class StorageService {
   /// 🚀 Uni-Sync 4.0 增强：原子化更新单条待办，避免全量读写性能开销
   static Future<void> updateSingleTodo(String username, TodoItem item,
       {bool sync = true}) async {
+    if (item.recurrence != RecurrenceType.none &&
+        (item.recurrenceSeriesId == null || item.recurrenceSeriesId!.isEmpty)) {
+      item.recurrenceSeriesId = item.id;
+    }
     // 1. 记录本地审计日志 (必须在更新前，因为需要获取旧快照)
     await _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
 
@@ -1407,6 +1419,7 @@ class StorageService {
           'created_date': item.createdDate,
           'collab_type': item.collabType,
           'recurrence': _normalizedRecurrenceIndex(item),
+          'recurrence_series_id': item.recurrenceSeriesId,
           'custom_interval_days': _normalizedCustomIntervalDays(item),
           // 🚀 核心防御：0 兜底
           'recurrence_end_date':
@@ -1717,6 +1730,7 @@ class StorageService {
                     recurrence: RecurrenceType.values[
                         (_parseNullableInt(m['recurrence']) ?? 0)
                             .clamp(0, RecurrenceType.values.length - 1)],
+                    recurrenceSeriesId: m['recurrence_series_id']?.toString(),
                     customIntervalDays:
                         _parseNullableInt(m['custom_interval_days']),
                     recurrenceEndDate: (m['recurrence_end_date'] != null &&
@@ -1820,6 +1834,7 @@ class StorageService {
               recurrence: RecurrenceType.values[
                   (_parseNullableInt(m['recurrence']) ?? 0)
                       .clamp(0, RecurrenceType.values.length - 1)],
+              recurrenceSeriesId: m['recurrence_series_id']?.toString(),
               customIntervalDays: _parseNullableInt(m['custom_interval_days']),
               recurrenceEndDate: (m['recurrence_end_date'] != null &&
                       m['recurrence_end_date'].toString() != '0')
@@ -2070,6 +2085,9 @@ class StorageService {
 
         if (rollByDays == null) continue;
 
+        final seriesId = todo.recurrenceSeriesId ?? todo.id;
+        todo.recurrenceSeriesId = seriesId;
+
         if (!todo.isDone) {
           // 未完成的上一期必须作为独立实例保留下来，否则直接滚动日期会让
           // 它从“逾期”列表消失。新实例继承循环规则，旧实例则停止循环。
@@ -2149,6 +2167,7 @@ class StorageService {
       title: source.title,
       createdDate: source.createdDate,
       recurrence: source.recurrence,
+      recurrenceSeriesId: source.recurrenceSeriesId ?? source.id,
       customIntervalDays: source.customIntervalDays,
       recurrenceEndDate: source.recurrenceEndDate,
       dueDate: source.dueDate,
@@ -4216,6 +4235,7 @@ class StorageService {
 
   static void _preserveLocalTodoSourceFields(
       TodoItem local, TodoItem incoming) {
+    incoming.recurrenceSeriesId ??= local.recurrenceSeriesId;
     if ((incoming.imagePath == null || incoming.imagePath!.isEmpty) &&
         local.imagePath != null &&
         local.imagePath!.isNotEmpty) {

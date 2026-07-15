@@ -170,6 +170,7 @@ class TodoItem {
   int? createdDate; // 🚀 真正的开始时间戳 (业务逻辑设定的开始日期，毫秒)
 
   RecurrenceType recurrence;
+  String? recurrenceSeriesId;
   int? customIntervalDays;
   DateTime? recurrenceEndDate;
   DateTime? dueDate;
@@ -198,6 +199,7 @@ class TodoItem {
     int? createdAt,
     this.createdDate, // 🚀 新增入参
     this.recurrence = RecurrenceType.none,
+    this.recurrenceSeriesId,
     this.customIntervalDays,
     this.recurrenceEndDate,
     this.dueDate,
@@ -276,6 +278,8 @@ class TodoItem {
             ?.toUtc()
             .millisecondsSinceEpoch, // UTC 毫秒时间戳（任务截止时间，可为 null）
         'recurrence': recurrence.index,
+        'recurrence_series_id': recurrenceSeriesId,
+        'recurrenceSeriesId': recurrenceSeriesId,
         // 循环间隔：同时输出两种键名兼容后端列名(custom_interval_days)和本地存储名(customIntervalDays)
         'customIntervalDays': customIntervalDays,
         'custom_interval_days': customIntervalDays,
@@ -332,6 +336,9 @@ class TodoItem {
 
       recurrence: RecurrenceType
           .values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
+      recurrenceSeriesId:
+          (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
+              ?.toString(),
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
       customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ??
           json['custom_interval_days']?.toString() ??

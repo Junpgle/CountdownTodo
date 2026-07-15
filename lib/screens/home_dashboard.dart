@@ -24,6 +24,7 @@ import '../update_service.dart';
 import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
+import '../services/todo_notification_policy.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
 import '../services/permission_request_coordinator.dart';
@@ -147,7 +148,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   };
   Timer? _courseTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
+  final Set<String> _todosWithScheduledAlarms = {};
+  String? _activeCourseNotificationKey;
   final Set<int> _activeTodoNotifIds = {};
+  bool _isCheckingUpcomingEvents = false;
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
@@ -2239,7 +2243,39 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _checkUpcomingEvents() async {
+    if (_isCheckingUpcomingEvents) return;
+    _isCheckingUpcomingEvents = true;
+    try {
+      await _performUpcomingEventsCheck();
+    } finally {
+      _isCheckingUpcomingEvents = false;
+    }
+  }
+
+  Future<void> _performUpcomingEventsCheck() async {
     DateTime now = DateTime.now();
+    final persistDesktopShownState =
+        AppPlatform.isWindows || AppPlatform.isMacOS;
+    final desktopShownStateKey =
+        'desktop_live_notification_shown_${widget.username}';
+    final desktopPrefs = persistDesktopShownState
+        ? await SharedPreferences.getInstance()
+        : null;
+    final desktopShownKeys = desktopPrefs
+            ?.getStringList(desktopShownStateKey)
+            ?.toSet() ??
+        <String>{};
+
+    Future<void> markDesktopNotificationShown(String key) async {
+      if (desktopPrefs == null || !desktopShownKeys.add(key)) return;
+      while (desktopShownKeys.length > 200) {
+        desktopShownKeys.remove(desktopShownKeys.first);
+      }
+      await desktopPrefs.setStringList(
+        desktopShownStateKey,
+        desktopShownKeys.toList(),
+      );
+    }
 
     // 🚀 核心优化：取消一开始就将上一轮通知全量物理注销的逻辑
     // 改为记录上一轮的活跃 ID，本轮计算结束后做差集物理注销
@@ -2249,9 +2285,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     // ── 获取已注册闹钟，构建课程去重集合 ──
     try {
       final scheduled = await NotificationService.getScheduledReminders();
+      _coursesWithScheduledAlarms.clear();
+      _todosWithScheduledAlarms.clear();
       for (final r in scheduled) {
         if (r['type'] == 'course' && r['courseName'] != null) {
           _coursesWithScheduledAlarms.add(r['courseName'] as String);
+        }
+        if ((r['type'] == 'upcoming_todo' || r['type'] == 'special_todo') &&
+            r['todoId'] != null) {
+          _todosWithScheduledAlarms.add(r['todoId'].toString());
         }
       }
     } catch (_) {}
@@ -2265,6 +2307,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
     bool hasUpcomingCourse = false;
+    String? activeCourseKey;
     for (var course in courses) {
       try {
         final courseTime = _resolveCourseStartTime(course, now);
@@ -2281,13 +2324,20 @@ class _HomeDashboardState extends State<HomeDashboard>
             hasUpcomingCourse = true;
             break;
           }
-          NotificationService.showCourseLiveActivity(
-            courseName: course.courseName,
-            room: course.roomName,
-            timeStr:
-                '${course.formattedStartTime} - ${course.formattedEndTime}',
-            teacher: course.teacherName,
-          );
+          activeCourseKey =
+              '${courseTime.millisecondsSinceEpoch}:${course.courseName}';
+          final desktopEventKey = 'course:$activeCourseKey';
+          if (_activeCourseNotificationKey != activeCourseKey &&
+              !desktopShownKeys.contains(desktopEventKey)) {
+            await NotificationService.showCourseLiveActivity(
+              courseName: course.courseName,
+              room: course.roomName,
+              timeStr:
+                  '${course.formattedStartTime} - ${course.formattedEndTime}',
+              teacher: course.teacherName,
+            );
+            await markDesktopNotificationShown(desktopEventKey);
+          }
           hasUpcomingCourse = true;
           break;
         }
@@ -2298,9 +2348,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
-    if (!hasUpcomingCourse) {
-      NotificationService.cancelSpecialTodoNotification(courseNotificationId);
+    if (!hasUpcomingCourse || activeCourseKey == null) {
+      await NotificationService.cancelSpecialTodoNotification(
+        courseNotificationId,
+      );
     }
+    _activeCourseNotificationKey = activeCourseKey;
 
     // ── 待办提醒 ────────────────────────────────────────────────
     String detectTodoType(String title) {
@@ -2355,8 +2408,16 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     for (final todo in specialTodosToday) {
       final int notifId = todo.id.hashCode;
-      newTodoNotifIds.add(notifId);
-      await NotificationService.showUpcomingTodoNotification(todo);
+      final desktopEventKey =
+          'todo:${todo.id}:${todo.dueDate!.millisecondsSinceEpoch}';
+      if (!_todosWithScheduledAlarms.contains(todo.id)) {
+        newTodoNotifIds.add(notifId);
+        if (!previousTodoIds.contains(notifId) &&
+            !desktopShownKeys.contains(desktopEventKey)) {
+          await NotificationService.showUpcomingTodoNotification(todo);
+          await markDesktopNotificationShown(desktopEventKey);
+        }
+      }
     }
 
     // 2. 普通待办 (非全天): 在时间段内（提前 30 分钟直到截止时间）均显示为活动状态
@@ -2366,26 +2427,23 @@ class _HomeDashboardState extends State<HomeDashboard>
       final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
 
-      DateTime localDueDate = t.dueDate!.toLocal();
-      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
-      bool isAllDay = startDate.hour == 0 &&
-          startDate.minute == 0 &&
-          localDueDate.hour == 23 &&
-          localDueDate.minute == 59;
-      if (isAllDay) return false;
-
-      // 🚀 核心改动：在待办执行的时间段内（提前 30 分钟直到截止时间）皆视为正在活动并在通知栏展示
-      return now.isAfter(startDate.subtract(const Duration(minutes: 30))) &&
-          now.isBefore(localDueDate);
+      return TodoNotificationPolicy.isInsideLiveWindow(t, now);
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
       final int notifId = todo.id.hashCode;
-      newTodoNotifIds.add(notifId);
-      await NotificationService.showUpcomingTodoNotification(todo);
+      final desktopEventKey =
+          'todo:${todo.id}:${todo.dueDate!.millisecondsSinceEpoch}';
+      if (!_todosWithScheduledAlarms.contains(todo.id)) {
+        newTodoNotifIds.add(notifId);
+        // A desktop `show` call raises a new banner. Only raise it when the item
+        // enters the active set; the minute poll should not repeatedly pop it.
+        if (!previousTodoIds.contains(notifId) &&
+            !desktopShownKeys.contains(desktopEventKey)) {
+          await NotificationService.showUpcomingTodoNotification(todo);
+          await markDesktopNotificationShown(desktopEventKey);
+        }
+      }
     }
 
     // 3. 全天待办汇总

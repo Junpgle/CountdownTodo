@@ -573,6 +573,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
       createdAt: todo.createdAt,
       createdDate: newStart.toUtc().millisecondsSinceEpoch,
       recurrence: todo.recurrence,
+      recurrenceSeriesId: todo.recurrenceSeriesId,
       customIntervalDays: todo.customIntervalDays,
       recurrenceEndDate: todo.recurrenceEndDate,
       dueDate: newEnd,

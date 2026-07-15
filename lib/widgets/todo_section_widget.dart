@@ -103,6 +103,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
   final Set<String> _animatedTodoIds = {};
   _TodoSectionViewModel? _cachedVm;
+  Map<String, List<TodoItem>> _recurrenceSeriesOccurrences = const {};
 
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
@@ -182,7 +183,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   @override
   void didUpdateWidget(TodoSectionWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.todos != widget.todos || oldWidget.todoGroups != widget.todoGroups) {
+    if (oldWidget.todos != widget.todos ||
+        oldWidget.todoGroups != widget.todoGroups) {
       _cachedVm = null;
     }
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
@@ -230,6 +232,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
               createdAt: existing.createdAt,
               createdDate: update.createdDate ?? existing.createdDate,
               recurrence: update.recurrence,
+              recurrenceSeriesId: existing.recurrenceSeriesId,
               customIntervalDays: update.customIntervalDays,
               recurrenceEndDate: update.recurrenceEndDate,
               dueDate: update.dueDate,
@@ -1589,6 +1592,262 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
   }
 
+  Widget _buildRecurrenceProgress(TodoItem todo, DateTime now) {
+    final seriesId = todo.recurrenceSeriesId;
+    final actualOccurrences = List<TodoItem>.from(
+      seriesId == null
+          ? <TodoItem>[todo]
+          : (_recurrenceSeriesOccurrences[seriesId] ?? <TodoItem>[todo]),
+    )..sort((a, b) =>
+        (a.createdDate ?? a.createdAt).compareTo(b.createdDate ?? b.createdAt));
+
+    if (todo.recurrence == RecurrenceType.none &&
+        actualOccurrences.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    final currentIndex =
+        actualOccurrences.indexWhere((item) => item.id == todo.id);
+    final historyEnd =
+        currentIndex >= 0 ? currentIndex + 1 : actualOccurrences.length;
+    final visibleActual = actualOccurrences
+        .take(historyEnd)
+        .skip((historyEnd - 3).clamp(0, historyEnd))
+        .toList();
+    final nodes = visibleActual.map((item) {
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        item.createdDate ?? item.createdAt,
+        isUtc: true,
+      ).toLocal();
+      final end = item.dueDate ?? start;
+      final state = item.id == todo.id
+          ? _RecurrenceNodeState.current
+          : item.isDone
+              ? _RecurrenceNodeState.completed
+              : end.isBefore(now)
+                  ? _RecurrenceNodeState.overdue
+                  : _RecurrenceNodeState.pending;
+      return _RecurrenceProgressNode(date: start, state: state);
+    }).toList();
+
+    if (todo.recurrence != RecurrenceType.none) {
+      var projectedStart = DateTime.fromMillisecondsSinceEpoch(
+        todo.createdDate ?? todo.createdAt,
+        isUtc: true,
+      ).toLocal();
+      while (nodes.length < 5) {
+        projectedStart = _nextRecurrenceStart(projectedStart, todo);
+        final recurrenceEnd = todo.recurrenceEndDate;
+        if (recurrenceEnd != null && projectedStart.isAfter(recurrenceEnd)) {
+          break;
+        }
+        nodes.add(_RecurrenceProgressNode(
+          date: projectedStart,
+          state: _RecurrenceNodeState.future,
+        ));
+      }
+    }
+
+    final completedCount =
+        actualOccurrences.where((item) => item.isDone).length;
+    final overdueCount = actualOccurrences.where((item) {
+      if (item.isDone || item.id == todo.id) return false;
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        item.createdDate ?? item.createdAt,
+        isUtc: true,
+      ).toLocal();
+      return (item.dueDate ?? start).isBefore(now);
+    }).length;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(9, 7, 9, 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.repeat_rounded, size: 11, color: colorScheme.primary),
+              const SizedBox(width: 4),
+              Text(
+                '循环进度 · $completedCount/${actualOccurrences.length} 已完成'
+                '${overdueCount > 0 ? ' · $overdueCount 逾期' : ''}',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              for (var i = 0; i < nodes.length; i++) ...[
+                if (i > 0)
+                  Expanded(
+                    child: _buildDottedRecurrenceConnector(colorScheme),
+                  ),
+                _buildRecurrenceNode(nodes[i], colorScheme, now),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDottedRecurrenceConnector(ColorScheme colorScheme) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final count = (constraints.maxWidth / 6).floor().clamp(1, 12);
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(
+          count,
+          (_) => Container(
+            width: 2.5,
+            height: 1.2,
+            decoration: BoxDecoration(
+              color: colorScheme.outlineVariant,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  Widget _buildRecurrenceNode(
+    _RecurrenceProgressNode node,
+    ColorScheme colorScheme,
+    DateTime now,
+  ) {
+    final (Color background, Color foreground, IconData? icon) =
+        switch (node.state) {
+      _RecurrenceNodeState.completed => (
+          colorScheme.primary,
+          colorScheme.onPrimary,
+          Icons.check_rounded
+        ),
+      _RecurrenceNodeState.overdue => (
+          colorScheme.error,
+          colorScheme.onError,
+          Icons.priority_high_rounded
+        ),
+      _RecurrenceNodeState.current => (
+          colorScheme.secondary,
+          colorScheme.onSecondary,
+          Icons.circle
+        ),
+      _RecurrenceNodeState.pending => (
+          colorScheme.tertiaryContainer,
+          colorScheme.onTertiaryContainer,
+          Icons.more_horiz_rounded
+        ),
+      _RecurrenceNodeState.future => (
+          colorScheme.surfaceContainerHighest,
+          colorScheme.outline,
+          null
+        ),
+    };
+    final today = DateTime(now.year, now.month, now.day);
+    final nodeDay = DateTime(node.date.year, node.date.month, node.date.day);
+    final label = nodeDay == today ? '今天' : DateFormat('M/d').format(node.date);
+
+    return SizedBox(
+      width: 31,
+      child: Column(
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: background,
+              shape: BoxShape.circle,
+              border: node.state == _RecurrenceNodeState.future
+                  ? Border.all(color: colorScheme.outlineVariant)
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: icon == null
+                ? null
+                : Icon(icon,
+                    size: node.state == _RecurrenceNodeState.current ? 6 : 11,
+                    color: foreground),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 8.5,
+              fontWeight: node.state == _RecurrenceNodeState.current
+                  ? FontWeight.bold
+                  : FontWeight.w500,
+              color: node.state == _RecurrenceNodeState.current
+                  ? colorScheme.secondary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  DateTime _nextRecurrenceStart(DateTime current, TodoItem todo) {
+    switch (todo.recurrence) {
+      case RecurrenceType.daily:
+        return DateTime(current.year, current.month, current.day + 1,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.customDays:
+        final days = todo.customIntervalDays ?? 1;
+        return DateTime(current.year, current.month, current.day + days,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.weekly:
+        return DateTime(current.year, current.month, current.day + 7,
+            current.hour, current.minute, current.second, current.millisecond);
+      case RecurrenceType.weekdays:
+        var next = DateTime(current.year, current.month, current.day + 1,
+            current.hour, current.minute, current.second, current.millisecond);
+        while (next.weekday == DateTime.saturday ||
+            next.weekday == DateTime.sunday) {
+          next = DateTime(next.year, next.month, next.day + 1, next.hour,
+              next.minute, next.second, next.millisecond);
+        }
+        return next;
+      case RecurrenceType.monthly:
+        final targetMonth = DateTime(current.year, current.month + 1);
+        final lastDay =
+            DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
+        return DateTime(
+          targetMonth.year,
+          targetMonth.month,
+          current.day.clamp(1, lastDay),
+          current.hour,
+          current.minute,
+          current.second,
+          current.millisecond,
+        );
+      case RecurrenceType.yearly:
+        final lastDay = DateTime(current.year + 1, current.month + 1, 0).day;
+        return DateTime(
+          current.year + 1,
+          current.month,
+          current.day.clamp(1, lastDay),
+          current.hour,
+          current.minute,
+          current.second,
+          current.millisecond,
+        );
+      case RecurrenceType.none:
+        return current;
+    }
+  }
+
   // ─────────────────────────────────────────────
   // Compact card: redesigned
   // ─────────────────────────────────────────────
@@ -2382,6 +2641,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                                           : 0.4),
                                                               height: 1.2)),
                                                     ],
+                                                    if (todo.recurrence !=
+                                                            RecurrenceType
+                                                                .none ||
+                                                        todo.recurrenceSeriesId !=
+                                                            null) ...[
+                                                      const SizedBox(height: 6),
+                                                      _buildRecurrenceProgress(
+                                                          todo, now),
+                                                    ],
                                                   ],
                                                 ),
                                               ),
@@ -2829,7 +3097,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                             }
                             return Container(
                                 key: ValueKey('group_${item.group!.id}'),
-                                child: _buildGroupWidget(item.group!, item.groupTodos!));
+                                child: _buildGroupWidget(
+                                    item.group!, item.groupTodos!));
                           }).toList(),
                         ),
                       )
@@ -2993,11 +3262,38 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
 
+    final seriesOccurrences = <String, List<TodoItem>>{};
+    for (final todo in widget.todos) {
+      final seriesId = todo.recurrenceSeriesId;
+      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      if (_selectedSubTeamUuid != null &&
+          todo.teamUuid != _selectedSubTeamUuid) {
+        continue;
+      }
+      seriesOccurrences.putIfAbsent(seriesId, () => []).add(todo);
+    }
+    for (final occurrences in seriesOccurrences.values) {
+      occurrences.sort((a, b) => (a.createdDate ?? a.createdAt)
+          .compareTo(b.createdDate ?? b.createdAt));
+    }
+    _recurrenceSeriesOccurrences = seriesOccurrences;
+
+    final seriesRepresentativeIds = <String, String>{};
+    for (final entry in seriesOccurrences.entries) {
+      final activeRecurring = entry.value
+          .where((todo) => todo.recurrence != RecurrenceType.none)
+          .toList();
+      final representative =
+          activeRecurring.isNotEmpty ? activeRecurring.last : entry.value.last;
+      seriesRepresentativeIds[entry.key] = representative.id;
+    }
+
     // Build groupById map for O(1) lookup - avoid todoGroups.any() per todo
     final groupById = <String, TodoGroup>{};
     for (final g in widget.todoGroups) {
       if (g.isDeleted) continue;
-      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) continue;
+      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid)
+        continue;
       groupById[g.id] = g;
     }
 
@@ -3006,19 +3302,28 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final orphanedTodos = <TodoItem>[];
     for (final t in widget.todos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
-      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) continue;
+      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid)
+        continue;
+      final seriesId = t.recurrenceSeriesId;
+      if (seriesId != null &&
+          seriesRepresentativeIds[seriesId] != null &&
+          seriesRepresentativeIds[seriesId] != t.id) {
+        continue;
+      }
 
       final tid = t.groupId;
-      if (!hideFolders && tid != null && tid.isNotEmpty && groupById.containsKey(tid)) {
+      if (!hideFolders &&
+          tid != null &&
+          tid.isNotEmpty &&
+          groupById.containsKey(tid)) {
         todosByGroup.putIfAbsent(tid, () => []).add(t);
       } else {
         orphanedTodos.add(t);
       }
     }
 
-    final Iterable<TodoGroup> activeGroups = hideFolders
-        ? const <TodoGroup>[]
-        : groupById.values;
+    final Iterable<TodoGroup> activeGroups =
+        hideFolders ? const <TodoGroup>[] : groupById.values;
 
     final List<TodoItem> activeTodos = [
       ...todosByGroup.values.expand((list) => list),
@@ -3183,6 +3488,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         isLight: widget.isLight,
         onlyShowMostUrgentTodo: urgentFirstFolders,
         teamRoles: _teamRoles,
+        recurrenceProgressBuilder: (todo) =>
+            _buildRecurrenceProgress(todo, DateTime.now()),
         onToggle: () {
           setState(() {
             g.isExpanded = !g.isExpanded;
@@ -4865,6 +5172,15 @@ class _AiAssistantContext {
   final List<TimeLogItem> timeLogs;
   final List<PomodoroRecord> pomodoroRecords;
   final List<Team> teams;
+}
+
+enum _RecurrenceNodeState { completed, overdue, current, pending, future }
+
+class _RecurrenceProgressNode {
+  final DateTime date;
+  final _RecurrenceNodeState state;
+
+  const _RecurrenceProgressNode({required this.date, required this.state});
 }
 
 class _TodoSectionViewModel {

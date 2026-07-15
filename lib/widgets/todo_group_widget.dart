@@ -18,6 +18,7 @@ class TodoGroupWidget extends StatefulWidget {
   final Function(TodoItem) onTodoTap;
   final Function(TodoItem) onTodoDelete;
   final Function(TodoItem)? onShowIndependentTodoStatus;
+  final Widget Function(TodoItem)? recurrenceProgressBuilder;
 
   const TodoGroupWidget({
     super.key,
@@ -34,6 +35,7 @@ class TodoGroupWidget extends StatefulWidget {
     required this.onTodoTap,
     required this.onTodoDelete,
     this.onShowIndependentTodoStatus,
+    this.recurrenceProgressBuilder,
   });
 
   @override
@@ -1015,6 +1017,12 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
                                     ),
                                   ],
                                 ),
+                              ],
+                              if ((todo.recurrence != RecurrenceType.none ||
+                                      todo.recurrenceSeriesId != null) &&
+                                  widget.recurrenceProgressBuilder != null) ...[
+                                const SizedBox(height: 6),
+                                widget.recurrenceProgressBuilder!(todo),
                               ],
                             ],
                           ),

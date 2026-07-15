@@ -773,6 +773,7 @@ class AiTodoActionExecutor {
       createdAt: existing.createdAt,
       createdDate: update.createdDate ?? existing.createdDate,
       recurrence: update.recurrence,
+      recurrenceSeriesId: existing.recurrenceSeriesId,
       customIntervalDays: update.customIntervalDays,
       recurrenceEndDate: update.recurrenceEndDate,
       dueDate: update.dueDate,
