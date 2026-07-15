@@ -106,6 +106,13 @@ todo.md
 !/test/models/
 /test/models/*
 !/test/models/todo_recurrence_series_test.dart
+!/test/widgets/
+/test/widgets/*
+!/test/widgets/todo_recurrence_progress_test.dart
+!/test/widgets/todo_section_series_visibility_test.dart
+!/test/utils/
+/test/utils/*
+!/test/utils/todo_recurrence_picker_test.dart
 /macos/build/
 /globalize.md
 /feature.md

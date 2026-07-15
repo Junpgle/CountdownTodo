@@ -11,6 +11,7 @@ import 'pomodoro_screen.dart';
 import 'plan_block_stats_screen.dart';
 import '../services/time_estimation_service.dart';
 import '../utils/page_transitions.dart';
+import '../utils/todo_recurrence_picker.dart';
 import 'todo_chat_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
@@ -1178,7 +1179,14 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     _reminderMinutes = widget.block?.reminderMinutes ?? 5;
     _pomodoroMinutes = widget.block?.pomodoroMinutes ?? 25;
     _pomodoroRounds = widget.block?.pomodoroRounds ?? 0;
-    _todoEntries = _buildTodoEntries(widget.todos, widget.todoGroups);
+    _todoEntries = _buildTodoEntries(
+      collapseRecurrenceSeriesForTodoPicker(
+        widget.todos,
+        now: _start,
+        preferredTodoId: _selectedTodoId,
+      ),
+      widget.todoGroups,
+    );
     final selectedExists =
         _todoEntries.any((entry) => entry.todo?.id == _selectedTodoId);
     if (!selectedExists) {

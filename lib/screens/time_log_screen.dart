@@ -11,6 +11,7 @@ import '../services/ai_todo_action_executor.dart';
 import '../utils/app_color_utils.dart';
 import '../utils/app_dialogs.dart';
 import '../utils/page_transitions.dart';
+import '../utils/todo_recurrence_picker.dart';
 import '../utils/theme_color_tokens.dart';
 import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
