@@ -83,4 +83,18 @@ void main() {
 
     expect(collapsed.single.id, previous.id);
   });
+
+  test('desktop widget keeps one actionable item for a recurrence series', () {
+    final previous = occurrence(14);
+    final current = occurrence(15, recurrence: RecurrenceType.daily);
+    final future = occurrence(16);
+
+    final collapsed = collapseRecurrenceSeriesForTodoPicker(
+      [previous, current, future],
+      now: today,
+    );
+
+    expect(collapsed, hasLength(1));
+    expect(collapsed.single.id, current.id);
+  });
 }

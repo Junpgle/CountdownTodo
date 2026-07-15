@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
+import '../utils/todo_recurrence_picker.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -142,13 +143,16 @@ class WidgetService {
     final List<TimeLogItem> tlogsRaw = results[3] as List<TimeLogItem>;
     final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
+    final widgetTodos = collapseRecurrenceSeriesForTodoPicker(
+      allTodos.where((todo) => !todo.isDone && !todo.isDeleted),
+      now: now,
+    );
 
     // 🛡️ OOM 修复：在主线程对数据做预过滤和字段裁剪，只把轻量 Map 传给 compute()
     // 避免将全量 Dart 对象列表序列化后跨 Isolate 边界导致内存溢出（数据用久后可达 100MB+）
 
     // 1. 待办：只保留未完成未删除的条目，且只取 Isolate 实际用到的字段
-    final List<Map<String, dynamic>> slimTodos = allTodos
-        .where((t) => !t.isDone && !t.isDeleted)
+    final List<Map<String, dynamic>> slimTodos = widgetTodos
         .map((t) => {
               'title': t.title,
               'isDone': t.isDone,
@@ -257,7 +261,7 @@ class WidgetService {
     // macOS：构建富数据快照并刷新 WidgetKit
     if (Platform.isMacOS) {
       final macSnapshot = await _buildMacOSSnapshot(
-          allTodos, allCourses, countdownsRaw, now, today);
+          widgetTodos, allCourses, countdownsRaw, now, today);
       await _updateMacOSWidget(macSnapshot);
     }
   }

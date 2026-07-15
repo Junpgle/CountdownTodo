@@ -2200,6 +2200,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         todoUuid: _boundTodo?.id,
         todoTitle: _boundTodo?.title,
         tagUuids: _selectedTagUuids,
+        tagNames: _tags
+            .where((tag) => _selectedTagUuids.contains(tag.uuid))
+            .map((tag) => tag.name)
+            .toList(),
         sessionStartMs: _sessionStartMs,
         plannedFocusSeconds: _settings.mode == TimerMode.countUp
             ? 0

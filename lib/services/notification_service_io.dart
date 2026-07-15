@@ -678,6 +678,7 @@ class NotificationService {
           if (r['type'] != null) 'type': r['type'],
           if (r['todoType'] != null) 'todoType': r['todoType'],
           if (r['courseName'] != null) 'courseName': r['courseName'],
+          if (r['courseId'] != null) 'courseId': r['courseId'],
           if (r['courseStartMs'] != null) 'courseStartMs': r['courseStartMs'],
           if (r['courseEndMs'] != null) 'courseEndMs': r['courseEndMs'],
           if (r['room'] != null) 'room': r['room'],

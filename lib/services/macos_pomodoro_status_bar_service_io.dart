@@ -14,6 +14,20 @@ enum MacPomodoroAction { togglePause, stopFocus }
 
 enum MacIslandReminderActionType { acknowledged, snoozed }
 
+enum MacIslandCommandType { openEntity, startFocus, completeTodo }
+
+class MacIslandCommand {
+  const MacIslandCommand({
+    required this.type,
+    required this.entityKind,
+    required this.entityId,
+  });
+
+  final MacIslandCommandType type;
+  final String entityKind;
+  final String entityId;
+}
+
 class MacIslandReminderAction {
   const MacIslandReminderAction({
     required this.type,
@@ -58,6 +72,10 @@ class MacPomodoroStatusBarService {
       StreamController<MacIslandReminderAction>.broadcast();
   static Stream<MacIslandReminderAction> get onReminderAction =>
       _reminderActionController.stream;
+
+  static final StreamController<MacIslandCommand> _commandController =
+      StreamController<MacIslandCommand>.broadcast();
+  static Stream<MacIslandCommand> get onCommand => _commandController.stream;
 
   static Future<void> init({bool deferOngoingActivityRestore = false}) async {
     if (!Platform.isMacOS) return;
@@ -150,7 +168,25 @@ class MacPomodoroStatusBarService {
           reminder: reminder,
           snoozeMinutes: minutes,
         ));
+      case 'openIslandEntity':
+        _emitCommand(MacIslandCommandType.openEntity, call.arguments);
+      case 'startIslandActivityFocus':
+        _emitCommand(MacIslandCommandType.startFocus, call.arguments);
+      case 'completeIslandTodo':
+        _emitCommand(MacIslandCommandType.completeTodo, call.arguments);
     }
+  }
+
+  static void _emitCommand(MacIslandCommandType type, dynamic arguments) {
+    final args = _methodArguments(arguments);
+    final entityKind = args['kind']?.toString() ?? '';
+    final entityId = args['id']?.toString() ?? '';
+    if (entityKind.isEmpty || entityId.isEmpty) return;
+    _commandController.add(MacIslandCommand(
+      type: type,
+      entityKind: entityKind,
+      entityId: entityId,
+    ));
   }
 
   static Map<String, dynamic> _methodArguments(dynamic arguments) {
@@ -289,6 +325,16 @@ class MacPomodoroStatusBarService {
       'pausedAtMs': state.pausedAtMs,
       'accumulatedMs': state.accumulatedMs,
       'pauseStartMs': state.pauseStartMs,
+      'currentCycle': state.currentCycle,
+      'totalCycles': state.totalCycles,
+      'plannedFocusSeconds': state.phase == PomodoroPhase.breaking
+          ? state.breakSeconds
+          : state.plannedFocusSeconds,
+      'tagNames': state.tagNames,
+      'note': state.note ?? '',
+      'todoId': state.todoUuid ?? '',
+      'planBlockId': state.planBlockId ?? '',
+      'sourceDeviceName': '本机',
       'todoTitle': state.todoTitle ?? '',
       'isRemote': false,
     });
@@ -395,9 +441,38 @@ class MacPomodoroStatusBarService {
       'pausedAtMs': remote.pausedAtMs ?? previous?['pausedAtMs'] ?? 0,
       'accumulatedMs': remote.accumulatedMs ?? previous?['accumulatedMs'] ?? 0,
       'pauseStartMs': remote.pauseStartMs ?? previous?['pauseStartMs'] ?? 0,
+      'currentCycle': remote.currentCycle ?? previous?['currentCycle'] ?? 1,
+      'totalCycles': remote.totalCycles ?? previous?['totalCycles'] ?? 1,
+      'plannedFocusSeconds': remote.plannedFocusSeconds ??
+          remote.duration ??
+          previous?['plannedFocusSeconds'] ??
+          0,
+      'tagNames': remote.tags.isNotEmpty
+          ? remote.tags
+          : previous?['tagNames'] ?? const <String>[],
+      'note': remote.note ?? previous?['note'] ?? '',
+      'todoId': remote.todoUuid ?? previous?['todoId'] ?? '',
+      'planBlockId': remote.planBlockId ?? previous?['planBlockId'] ?? '',
+      'sourceDeviceName': _remoteDeviceLabel(remote, previous),
       'todoTitle': remote.todoTitle ?? previous?['todoTitle'] ?? '',
       'isRemote': true,
     };
+  }
+
+  static String _remoteDeviceLabel(
+    CrossDevicePomodoroState remote,
+    Map<String, dynamic>? previous,
+  ) {
+    final explicit = remote.sourceDeviceName?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    final previousLabel = previous?['sourceDeviceName']?.toString().trim();
+    if (previousLabel != null && previousLabel.isNotEmpty) return previousLabel;
+    final deviceId = remote.sourceDevice?.replaceFirst('flutter_', '') ?? '';
+    if (deviceId.isEmpty) return '其他设备';
+    final suffix = deviceId.length <= 6
+        ? deviceId
+        : deviceId.substring(deviceId.length - 6);
+    return '设备 · $suffix';
   }
 
   static void _checkAndClearIfNoLocal() async {
@@ -443,6 +518,7 @@ class MacPomodoroStatusBarService {
   /// 使用首页已经加载完成的数据刷新灵动岛，避免冷启动时重复扫描 SQLite。
   static Future<void> syncOngoingActivityFromData({
     required List<TodoItem> todos,
+    required List<TodoGroup> todoGroups,
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
   }) async {
@@ -462,6 +538,7 @@ class MacPomodoroStatusBarService {
     try {
       final resolution = OngoingActivityService.resolve(
         todos: todos,
+        todoGroups: todoGroups,
         planBlocks: planBlocks,
         courses: courses,
       );
@@ -536,10 +613,15 @@ class MacPomodoroStatusBarService {
     required int generation,
   }) async {
     final activity = resolution.activity;
-    if (activity == null) {
+    final nextActivity = resolution.nextActivity;
+    if (activity == null && nextActivity == null) {
       await _channel.invokeMethod('clearOngoingActivity');
     } else {
-      await _channel.invokeMethod('updateOngoingActivity', activity.toMap());
+      final payload = activity?.toMap() ?? <String, dynamic>{};
+      if (nextActivity != null) {
+        payload['nextActivity'] = nextActivity.toMap();
+      }
+      await _channel.invokeMethod('updateOngoingActivity', payload);
     }
 
     if (!_isActivitySyncCurrent(generation)) return;

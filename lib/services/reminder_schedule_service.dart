@@ -224,6 +224,7 @@ class ReminderScheduleService {
             'text': '${_hm(courseStart)} · ${c.roomName}',
             'notifId': _courseBaseId + i,
             'type': 'course',
+            'courseId': c.uuid,
             'courseName': c.courseName,
             'room': c.roomName,
             'timeStr':

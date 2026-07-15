@@ -4,6 +4,20 @@ enum MacPomodoroAction { togglePause, stopFocus }
 
 enum MacIslandReminderActionType { acknowledged, snoozed }
 
+enum MacIslandCommandType { openEntity, startFocus, completeTodo }
+
+class MacIslandCommand {
+  const MacIslandCommand({
+    required this.type,
+    required this.entityKind,
+    required this.entityId,
+  });
+
+  final MacIslandCommandType type;
+  final String entityKind;
+  final String entityId;
+}
+
 class MacIslandReminderAction {
   const MacIslandReminderAction({
     required this.type,
@@ -20,6 +34,7 @@ class MacPomodoroStatusBarService {
   static Stream<MacPomodoroAction> get onAction => const Stream.empty();
   static Stream<MacIslandReminderAction> get onReminderAction =>
       const Stream.empty();
+  static Stream<MacIslandCommand> get onCommand => const Stream.empty();
 
   static Future<void> init({bool deferOngoingActivityRestore = false}) async {}
 
@@ -31,6 +46,7 @@ class MacPomodoroStatusBarService {
 
   static Future<void> syncOngoingActivityFromData({
     required List<TodoItem> todos,
+    required List<TodoGroup> todoGroups,
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
   }) async {}

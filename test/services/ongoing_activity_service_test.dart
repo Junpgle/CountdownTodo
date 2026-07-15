@@ -46,6 +46,7 @@ void main() {
       expect(result.activity?.kind, OngoingActivityKind.course);
       expect(result.activity?.title, '高等数学');
       expect(result.activity?.subtitle, 'A101');
+      expect(result.activity?.detail, '教师');
     });
 
     test('活动计划块会替代其关联待办，避免重复展示', () {
@@ -93,7 +94,31 @@ void main() {
       );
 
       expect(result.activity, isNull);
+      expect(result.nextActivity?.title, '下午会议');
+      expect(result.nextActivity?.kind, OngoingActivityKind.todo);
       expect(result.nextBoundary, DateTime(2026, 7, 15, 14));
+    });
+
+    test('待办和规划会携带分组及关联目标', () {
+      final todo = TodoItem(
+        id: 'todo-grouped',
+        title: '整理周报',
+        groupId: 'group-work',
+        createdDate: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 12),
+      );
+      final group = TodoGroup(id: 'group-work', name: '工作');
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        todoGroups: [group],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.nextActivity?.relatedTodoId, todo.id);
+      expect(result.nextActivity?.groupName, '工作');
     });
 
     test('忽略跨日计划块', () {
@@ -293,9 +318,55 @@ void main() {
         isNull,
       );
     });
+
+    test('远端快照会保留设备、轮次、标签和关联规划', () {
+      final payload = MacPomodoroStatusBarService.mergeRemotePayload(
+        CrossDevicePomodoroState(
+          action: 'START',
+          sourceDevice: 'flutter_device-123456',
+          sourceDeviceName: 'iPhone 17 (Phone)',
+          planBlockId: 'plan-1',
+          currentCycle: 2,
+          totalCycles: 4,
+          plannedFocusSeconds: 1500,
+          tags: const ['学习', '深度工作'],
+          note: '完成第一版',
+        ),
+        null,
+        nowMs: nowMs,
+      )!;
+
+      expect(payload['sourceDeviceName'], 'iPhone 17 (Phone)');
+      expect(payload['currentCycle'], 2);
+      expect(payload['totalCycles'], 4);
+      expect(payload['tagNames'], ['学习', '深度工作']);
+      expect(payload['planBlockId'], 'plan-1');
+      expect(payload['note'], '完成第一版');
+    });
   });
 
   group('PomodoroSyncService', () {
+    test('WebSocket JSON 会解析灵动岛所需的专注详情', () {
+      final state = CrossDevicePomodoroState.fromJson({
+        'action': 'START',
+        'source_device': 'flutter_mac-1',
+        'source_device_name': 'MacBook Pro',
+        'plan_block_id': 'plan-1',
+        'current_cycle': 2,
+        'total_cycles': 4,
+        'planned_focus_seconds': 1500,
+        'tags': ['学习'],
+      });
+
+      expect(state.sourceDevice, 'flutter_mac-1');
+      expect(state.sourceDeviceName, 'MacBook Pro');
+      expect(state.planBlockId, 'plan-1');
+      expect(state.currentCycle, 2);
+      expect(state.totalCycles, 4);
+      expect(state.plannedFocusSeconds, 1500);
+      expect(state.tags, ['学习']);
+    });
+
     test('设备 ID 比较兼容 flutter_ 前缀', () {
       expect(
         PomodoroSyncService.deviceIdsMatch('flutter_mac-1', 'mac-1'),

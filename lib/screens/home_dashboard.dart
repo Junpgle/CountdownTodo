@@ -249,6 +249,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
+  StreamSubscription<MacIslandCommand>? _macIslandCommandSub;
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
   Timer? _todoNotificationDebouncer;
@@ -385,6 +386,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 首页首轮加载完成后会把同一批数据直接交给灵动岛，避免冷启动时
     // 灵动岛与首页并发执行两套完整的 SQLite 查询。
     MacPomodoroStatusBarService.init(deferOngoingActivityRestore: true);
+    _macIslandCommandSub =
+        MacPomodoroStatusBarService.onCommand.listen(_handleMacIslandCommand);
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
@@ -561,6 +564,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
     _localPomodoroSub?.cancel();
+    _macIslandCommandSub?.cancel();
     _remotePomodoroTicker?.cancel();
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
@@ -822,6 +826,162 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
   }
 
+  Future<void> _handleMacIslandCommand(MacIslandCommand command) async {
+    if (!mounted) return;
+    switch (command.type) {
+      case MacIslandCommandType.openEntity:
+        await _openIslandEntity(command.entityKind, command.entityId);
+      case MacIslandCommandType.startFocus:
+        await _startIslandEntityFocus(command.entityKind, command.entityId);
+      case MacIslandCommandType.completeTodo:
+        await _completeIslandTodo(command.entityId);
+    }
+  }
+
+  Future<void> _openIslandEntity(String kind, String id) async {
+    if (kind == 'todo') {
+      final todo = await _findIslandTodo(id);
+      if (todo == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)),
+      );
+      return;
+    }
+
+    if (kind == 'plan_block') {
+      final block = await _findIslandPlanBlock(id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => TodoPlanScreen(
+            username: widget.username,
+            initialDate: block == null
+                ? DateTime.now()
+                : DateTime.fromMillisecondsSinceEpoch(block.startTime),
+            initialTodoId: block?.todoId,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (kind == 'course') {
+      final course = await _findIslandCourse(id);
+      if (course == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
+      );
+      return;
+    }
+
+    _navigateToPomodoro();
+  }
+
+  Future<void> _startIslandEntityFocus(String kind, String id) async {
+    final running = await PomodoroService.loadRunState();
+    if (running != null &&
+        (running.phase == PomodoroPhase.focusing ||
+            running.phase == PomodoroPhase.breaking)) {
+      _navigateToPomodoro();
+      return;
+    }
+
+    if (kind == 'plan_block') {
+      final block = await _findIslandPlanBlock(id);
+      if (block != null) await _startPlanBlockFocus(block);
+      return;
+    }
+    if (kind != 'todo') return;
+
+    final todo = await _findIslandTodo(id);
+    if (todo == null || todo.isDone || todo.isDeleted) return;
+    try {
+      final settings = await PomodoroService.getSettings();
+      await PomodoroControlService.startFocus(
+        settings: settings,
+        boundTodo: todo,
+      );
+      if (!mounted) return;
+      _pomodoroRevision.value++;
+      _navigateToPomodoro();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动专注失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _completeIslandTodo(String id) async {
+    final todo = await _findIslandTodo(id);
+    if (todo == null || todo.isDone || todo.isDeleted) return;
+
+    final running = await PomodoroService.loadRunState();
+    if (running != null &&
+        running.todoUuid == id &&
+        (running.phase == PomodoroPhase.focusing ||
+            running.phase == PomodoroPhase.breaking)) {
+      await PomodoroControlService.stopCurrentFocus(
+        username: widget.username,
+        status: PomodoroRecordStatus.completed,
+        markTodoComplete: true,
+      );
+    } else {
+      todo.isDone = true;
+      todo.markAsChanged();
+      await StorageService.updateSingleTodo(widget.username, todo);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      todo.isDone = true;
+      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+      _todosNotifier.value = List<TodoItem>.from(_todos);
+      _todoUpdateSignalNotifier.value++;
+    });
+    _timelineRevision.value++;
+    _pomodoroRevision.value++;
+    unawaited(_loadAllData());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已完成：${todo.title}')),
+    );
+  }
+
+  Future<TodoItem?> _findIslandTodo(String id) async {
+    for (final todo in _todos) {
+      if (todo.id == id && !todo.isDeleted) return todo;
+    }
+    final todos = await StorageService.getTodos(widget.username);
+    for (final todo in todos) {
+      if (todo.id == id && !todo.isDeleted) return todo;
+    }
+    return null;
+  }
+
+  Future<TodoPlanBlock?> _findIslandPlanBlock(String id) async {
+    for (final block in _planBlocks) {
+      if (block.id == id && !block.isDeleted) return block;
+    }
+    final blocks = await StorageService.getPlanBlocks(widget.username);
+    for (final block in blocks) {
+      if (block.id == id && !block.isDeleted) return block;
+    }
+    return null;
+  }
+
+  Future<CourseItem?> _findIslandCourse(String id) async {
+    final dashboardCourses =
+        _safeListResult<CourseItem>(_dashboardCourseData['courses']);
+    for (final course in dashboardCourses) {
+      if (course.uuid == id && !course.isDeleted) return course;
+    }
+    final courses = await CourseService.getAllCourses(widget.username);
+    for (final course in courses) {
+      if (course.uuid == id && !course.isDeleted) return course;
+    }
+    return null;
+  }
+
   /// 处理 App Shortcut 导航
   Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
@@ -973,25 +1133,35 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (remaining > 0) {
             // debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
-            final allTags = await PomodoroService.getTags();
-            List<String> realTagNames = [];
-            for (String uuid in saved.tagUuids) {
-              final tag = allTags.where((t) => t.uuid == uuid).firstOrNull;
-              if (tag != null) {
-                realTagNames.add(tag.name);
+            final realTagNames = List<String>.from(saved.tagNames);
+            if (realTagNames.isEmpty && saved.tagUuids.isNotEmpty) {
+              final allTags = await PomodoroService.getTags();
+              for (String uuid in saved.tagUuids) {
+                final tag = allTags.where((t) => t.uuid == uuid).firstOrNull;
+                if (tag != null) {
+                  realTagNames.add(tag.name);
+                }
               }
             }
+            final sourceDeviceName =
+                await StorageService.getDeviceFriendlyName();
 
             _syncService.sendReconnectSyncSignal(
               sessionUuid: saved.sessionUuid,
               todoUuid: saved.todoUuid,
               todoTitle: saved.todoTitle,
+              planBlockId: saved.planBlockId,
               durationSeconds: saved.phase == PomodoroPhase.focusing
                   ? saved.plannedFocusSeconds
                   : saved.breakSeconds,
               targetEndMs: saved.targetEndMs,
               tagNames: realTagNames,
+              sourceDeviceName: sourceDeviceName,
               mode: saved.mode.index,
+              currentCycle: saved.currentCycle,
+              totalCycles: saved.totalCycles,
+              plannedFocusSeconds: saved.plannedFocusSeconds,
+              note: saved.note,
               customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
             );
           }
@@ -3215,6 +3385,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (activityInputsReady) {
           unawaited(MacPomodoroStatusBarService.syncOngoingActivityFromData(
             todos: allTodos,
+            todoGroups: allGroups,
             planBlocks: allPlanBlocks,
             courses: _safeListResult<CourseItem>(courseData['courses']),
           ));

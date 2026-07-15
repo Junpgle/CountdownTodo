@@ -447,6 +447,7 @@ class PomodoroRunState {
   String? todoUuid;
   String? todoTitle;
   List<String> tagUuids;
+  List<String> tagNames;
   int sessionStartMs;
   int plannedFocusSeconds;
   TimerMode mode;
@@ -470,6 +471,7 @@ class PomodoroRunState {
     this.todoUuid,
     this.todoTitle,
     List<String>? tagUuids,
+    List<String>? tagNames,
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
     this.mode = TimerMode.countdown,
@@ -482,6 +484,7 @@ class PomodoroRunState {
     this.note,
   })  : sessionUuid = sessionUuid ?? const Uuid().v4(),
         tagUuids = tagUuids ?? [],
+        tagNames = tagNames ?? [],
         pauseIntervals = pauseIntervals ?? [];
 
   /// 计算实际专注秒数（扣除暂停累计时间）
@@ -508,6 +511,7 @@ class PomodoroRunState {
         'todoUuid': todoUuid,
         'todoTitle': todoTitle,
         'tagUuids': tagUuids,
+        'tagNames': tagNames,
         'sessionStartMs': sessionStartMs,
         'plannedFocusSeconds': plannedFocusSeconds,
         'mode': mode.index,
@@ -538,6 +542,8 @@ class PomodoroRunState {
       todoTitle: j['todoTitle'] as String?,
       tagUuids:
           (j['tagUuids'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      tagNames:
+          (j['tagNames'] as List?)?.map((e) => e.toString()).toList() ?? [],
       sessionStartMs: j['sessionStartMs'] as int? ?? 0,
       plannedFocusSeconds: j['plannedFocusSeconds'] as int? ??
           j['actualFocusedSeconds'] as int? ??
