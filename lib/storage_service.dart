@@ -2020,7 +2020,8 @@ class StorageService {
 
     try {
       bool needSave = false;
-      for (var todo in todos) {
+      final List<TodoItem> generatedOccurrences = [];
+      for (final todo in List<TodoItem>.from(todos)) {
         if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
         if (todo.recurrenceEndDate != null &&
             today.isAfter(todo.recurrenceEndDate!)) {
@@ -2031,61 +2032,70 @@ class StorageService {
         final DateTime baseDay =
             DateTime(baseLocal.year, baseLocal.month, baseLocal.day);
         final DateTime todayDay = DateTime(today.year, today.month, today.day);
+        int? rollByDays;
 
         if (todo.recurrence == RecurrenceType.daily &&
             todayDay.isAfter(baseDay)) {
-          todo.isDone = false;
-          _rollRecurrenceDateToToday(todo, today);
-          todo.markAsChanged();
-          needSave = true;
+          rollByDays = 0;
         } else if (todo.recurrence == RecurrenceType.customDays &&
             todo.customIntervalDays != null &&
             todo.customIntervalDays! > 0) {
           int diffDays = todayDay.difference(baseDay).inDays;
           if (diffDays >= todo.customIntervalDays!) {
-            todo.isDone = false;
             int periods = diffDays ~/ todo.customIntervalDays!;
-            _rollRecurrenceDateByDays(todo, periods * todo.customIntervalDays!);
-            todo.markAsChanged();
-            needSave = true;
+            rollByDays = periods * todo.customIntervalDays!;
           }
         } else if (todo.recurrence == RecurrenceType.weekdays &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.weekday >= 1 && todayDay.weekday <= 5) {
-            todo.isDone = false;
-            _rollRecurrenceDateToToday(todo, today);
-            todo.markAsChanged();
-            needSave = true;
+            rollByDays = 0;
           }
         } else if (todo.recurrence == RecurrenceType.weekly &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.weekday == baseDay.weekday) {
-            todo.isDone = false;
-            _rollRecurrenceDateToToday(todo, today);
-            todo.markAsChanged();
-            needSave = true;
+            rollByDays = 0;
           }
         } else if (todo.recurrence == RecurrenceType.monthly &&
             todayDay.isAfter(baseDay)) {
           if (todayDay.day == baseDay.day) {
-            todo.isDone = false;
-            _rollRecurrenceDateToToday(todo, today);
-            todo.markAsChanged();
-            needSave = true;
+            rollByDays = 0;
           }
         } else if (todo.recurrence == RecurrenceType.yearly &&
             todayDay.isAfter(baseDay)) {
-          if (todayDay.month == baseDay.month &&
-              todayDay.day == baseDay.day) {
-            todo.isDone = false;
-            _rollRecurrenceDateToToday(todo, today);
-            todo.markAsChanged();
-            needSave = true;
+          if (todayDay.month == baseDay.month && todayDay.day == baseDay.day) {
+            rollByDays = 0;
           }
         }
+
+        if (rollByDays == null) continue;
+
+        if (!todo.isDone) {
+          // 未完成的上一期必须作为独立实例保留下来，否则直接滚动日期会让
+          // 它从“逾期”列表消失。新实例继承循环规则，旧实例则停止循环。
+          final nextOccurrence = _copyForNextRecurrence(todo);
+          if (rollByDays == 0) {
+            _rollRecurrenceDateToToday(nextOccurrence, today);
+          } else {
+            _rollRecurrenceDateByDays(nextOccurrence, rollByDays);
+          }
+          generatedOccurrences.add(nextOccurrence);
+          todo.recurrence = RecurrenceType.none;
+          todo.markAsChanged();
+        } else {
+          // 保持原有行为：上一期已完成时复用该记录，避免产生多余历史项。
+          todo.isDone = false;
+          if (rollByDays == 0) {
+            _rollRecurrenceDateToToday(todo, today);
+          } else {
+            _rollRecurrenceDateByDays(todo, rollByDays);
+          }
+          todo.markAsChanged();
+        }
+        needSave = true;
       }
 
       if (needSave) {
+        todos.addAll(generatedOccurrences);
         debugPrint("🚀 [Recurrence] 发现重复任务需要滚动，正在保存...");
         await saveTodos(username, todos, sync: true);
       }
@@ -2105,32 +2115,86 @@ class StorageService {
     return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
   }
 
+  static TodoItem _copyForNextRecurrence(TodoItem source) {
+    return TodoItem(
+      title: source.title,
+      createdDate: source.createdDate,
+      recurrence: source.recurrence,
+      customIntervalDays: source.customIntervalDays,
+      recurrenceEndDate: source.recurrenceEndDate,
+      dueDate: source.dueDate,
+      remark: source.remark,
+      imagePath: source.imagePath,
+      originalText: source.originalText,
+      groupId: source.groupId,
+      reminderMinutes: source.reminderMinutes,
+      teamUuid: source.teamUuid,
+      creatorId: source.creatorId,
+      creatorName: source.creatorName,
+      teamName: source.teamName,
+      collabType: source.collabType,
+      isAllDay: source.isAllDay,
+      categoryId: source.categoryId,
+    );
+  }
+
   static void _rollRecurrenceDateToToday(TodoItem todo, DateTime now) {
     if (todo.dueDate != null) {
+      final originalDueDate = todo.dueDate!;
       todo.dueDate = DateTime(
         now.year,
         now.month,
         now.day,
-        todo.dueDate!.hour,
-        todo.dueDate!.minute,
-        todo.dueDate!.second,
+        originalDueDate.hour,
+        originalDueDate.minute,
+        originalDueDate.second,
+        originalDueDate.millisecond,
+        originalDueDate.microsecond,
       );
-    } else if (todo.createdDate != null) {
-      final orig =
+    }
+    if (todo.createdDate != null) {
+      final originalCreatedDate =
           DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
               .toLocal();
       todo.createdDate = DateTime(
-              now.year, now.month, now.day, orig.hour, orig.minute, orig.second)
+              now.year,
+              now.month,
+              now.day,
+              originalCreatedDate.hour,
+              originalCreatedDate.minute,
+              originalCreatedDate.second,
+              originalCreatedDate.millisecond)
           .millisecondsSinceEpoch;
     }
   }
 
   static void _rollRecurrenceDateByDays(TodoItem todo, int days) {
     if (todo.dueDate != null) {
-      todo.dueDate = todo.dueDate!.add(Duration(days: days));
-    } else if (todo.createdDate != null) {
-      todo.createdDate =
-          todo.createdDate! + Duration(days: days).inMilliseconds;
+      final originalDueDate = todo.dueDate!;
+      todo.dueDate = DateTime(
+        originalDueDate.year,
+        originalDueDate.month,
+        originalDueDate.day + days,
+        originalDueDate.hour,
+        originalDueDate.minute,
+        originalDueDate.second,
+        originalDueDate.millisecond,
+        originalDueDate.microsecond,
+      );
+    }
+    if (todo.createdDate != null) {
+      final originalCreatedDate =
+          DateTime.fromMillisecondsSinceEpoch(todo.createdDate!, isUtc: true)
+              .toLocal();
+      todo.createdDate = DateTime(
+        originalCreatedDate.year,
+        originalCreatedDate.month,
+        originalCreatedDate.day + days,
+        originalCreatedDate.hour,
+        originalCreatedDate.minute,
+        originalCreatedDate.second,
+        originalCreatedDate.millisecond,
+      ).millisecondsSinceEpoch;
     }
   }
 
