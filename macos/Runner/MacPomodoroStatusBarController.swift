@@ -94,6 +94,12 @@ private final class MacIslandHostingView: NSHostingView<AnyView> {
     override func mouseExited(with event: NSEvent) {
         onMouseExited?()
     }
+
+    // 灵动岛是 nonactivatingPanel，必须显式接受 first mouse，否则用户
+    // 从其他 App 点击按钮时，第一次点击可能只被窗口系统吞掉。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
 }
 
 private final class MacIslandPanel: NSPanel {
@@ -286,7 +292,10 @@ struct MacIslandSwiftUIView: View {
                     transaction.disablesAnimations = true
                 }
             
-            if model.hasNotch {
+            // 顶部补黑层只用于展开态。是否有实时内容不能作为条件：
+            // 有“当前事项”的界面虽然不是 idle，视觉上仍是收起态；此时
+            // 若叠加矩形补黑层，它会从圆角后面伸出两条直边。
+            if model.hasNotch && model.expanded {
                 Color.black
                     .frame(maxWidth: .infinity)
                     .frame(height: max(model.topInset, 28))
@@ -304,6 +313,7 @@ struct MacIslandSwiftUIView: View {
                         compactNotchView
                             .frame(height: max(model.topInset, 28))
                             .padding(.horizontal, 8)
+                            .onTapGesture { expandFromCompact() }
                     }
                 } else {
                     VStack(spacing: 0) {
@@ -332,14 +342,16 @@ struct MacIslandSwiftUIView: View {
                                     expandedActivityView
                                 }
 
-                                if model.detailed {
+                                if model.detailed && !model.isIdle {
                                     overviewCards.padding(.top, 20)
                                 }
                             } else {
                                 if model.isFocusActive {
                                     compactFocusView
+                                        .onTapGesture { expandFromCompact() }
                                 } else {
                                     compactActivityView
+                                        .onTapGesture { expandFromCompact() }
                                 }
                             }
                         }
@@ -362,26 +374,27 @@ struct MacIslandSwiftUIView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
-        .onTapGesture {
-            if model.expanded {
-                // 详情态只增加/移除底部内容。上半区不参与布局插值，窗口
-                // 的顶部遮罩会自然向下揭示内容，不再先下沉再回弹。
-                let nextDetailed = !model.detailed
-                var transaction = Transaction(animation: nil)
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    model.detailed = nextDetailed
-                }
-                model.onExpansionChanged?(true, nextDetailed)
-            } else {
-                withAnimation(islandExpansionAnimation) {
-                    model.expanded = true
-                    model.detailed = false
-                }
-                model.onExpansionChanged?(true, false)
-            }
-        }
         .colorScheme(.dark)
+    }
+
+    private func expandFromCompact() {
+        guard !model.expanded else { return }
+        withAnimation(islandExpansionAnimation) {
+            model.expanded = true
+            model.detailed = false
+        }
+        model.onExpansionChanged?(true, false)
+    }
+
+    private func toggleDetailed() {
+        guard model.expanded else { return }
+        let nextDetailed = !model.detailed
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            model.detailed = nextDetailed
+        }
+        model.onExpansionChanged?(true, nextDetailed)
     }
     
     var compactNotchView: some View {
@@ -503,13 +516,15 @@ struct MacIslandSwiftUIView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                     Spacer()
-                    Text("\(model.todayFocusDisplayCount) 次")
+                    Text(model.overviewLoaded
+                         ? "\(model.todayFocusDisplayCount) 次"
+                         : "同步中")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .frame(height: 14)
                 
-                Text(model.todayFocusDurationText)
+                Text(model.overviewLoaded ? model.todayFocusDurationText : "—")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(Color(red: 1.0, green: 0.6, blue: 0.0))
                     .frame(height: 18)
@@ -521,18 +536,20 @@ struct MacIslandSwiftUIView: View {
             
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(model.countdownTitle.isEmpty ? "倒数日" : model.countdownTitle)
+                    Text(!model.overviewLoaded || model.countdownTitle.isEmpty
+                         ? "倒数日"
+                         : model.countdownTitle)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
                     Spacer()
-                    Text(model.countdownDateText)
+                    Text(model.overviewLoaded ? model.countdownDateText : "同步中")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .frame(height: 14)
                 
-                Text(model.countdownRemainingText)
+                Text(model.overviewLoaded ? model.countdownRemainingText : "—")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(Color.purple)
                     .frame(height: 18)
@@ -650,6 +667,8 @@ struct MacIslandSwiftUIView: View {
                     .foregroundColor(color)
             }
             .frame(height: 20)
+            .contentShape(Rectangle())
+            .onTapGesture { toggleDetailed() }
             
             Text(model.timeText)
                 .font(.system(size: 42, weight: .bold).monospacedDigit())
@@ -738,6 +757,7 @@ struct MacIslandSwiftUIView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .frame(height: 38)
@@ -749,6 +769,7 @@ struct MacIslandSwiftUIView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .frame(height: 38)
@@ -760,6 +781,7 @@ struct MacIslandSwiftUIView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .frame(height: 38)
@@ -807,28 +829,321 @@ struct MacIslandSwiftUIView: View {
     }
 
     var expandedActivityView: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: model.isIdle ? "checkmark.circle.fill" : "checklist")
-                    .foregroundColor(model.isIdle ? .green : .orange)
-                Text(model.isIdle ? "当前暂无进行中的事项" : model.activityTitle)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+        Group {
+            if model.isIdle {
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("当前暂无进行中的事项")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text(model.nextActivityTitle.isEmpty
+                                 ? "现在没有需要立即处理的内容"
+                                 : "下一项安排已为你准备好")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        Spacer()
+                    }
+
+                    if !model.nextActivityTitle.isEmpty {
+                        Button(action: {
+                            if model.nextActivityId.isEmpty {
+                                model.onOpenApp?()
+                            } else {
+                                model.onOpenEntity?(model.nextActivityKind, model.nextActivityId)
+                            }
+                        }) {
+                            HStack(spacing: 10) {
+                                Image(systemName: activityIconName(model.nextActivityKind))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.orange)
+                                    .frame(width: 20)
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("下一项 · \(activityKindLabel(model.nextActivityKind))")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.45))
+                                    Text(model.nextActivityTitle)
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 8)
+
+                                VStack(alignment: .trailing, spacing: 3) {
+                                    Text(nextActivityStartText)
+                                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                                        .foregroundColor(.orange)
+                                    Text(nextActivityLeadText)
+                                        .font(.system(size: 10.5, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.42))
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58)
+                            .background(Color.white.opacity(0.07))
+                            .cornerRadius(11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    overviewCards
+
+                    Button(action: { model.onOpenApp?() }) {
+                        Text("打开应用")
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 36)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(11)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: activityIconName(model.activityKind))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.activityTitle)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        Text(activityKindLabel(model.activityKind))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.14))
+                            .cornerRadius(6)
+
+                        if !model.activityGroupName.isEmpty {
+                            Text(model.activityGroupName)
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
                 Spacer()
+
+                Text(activityRemainingText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.orange)
             }
-            
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
+            .onTapGesture { toggleDetailed() }
+
+            HStack(spacing: 8) {
+                Image(systemName: "clock")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.55))
+                Text(activityTimeRangeText)
+                    .font(.system(size: 12.5, weight: .medium).monospacedDigit())
+                    .foregroundColor(.white.opacity(0.8))
+                Spacer()
+                Text("正在进行")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.orange)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(0.07))
+            .cornerRadius(10)
+            .padding(.top, 12)
+
+            if !activitySecondaryText.isEmpty {
+                Text(activitySecondaryText)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.62))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 10)
+            }
+
+            if !model.nextActivityTitle.isEmpty {
+                HStack(spacing: 9) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.4))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("下一项")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.42))
+                        Text(model.nextActivityTitle)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.82))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text(nextActivityTimeText)
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundColor(.white.opacity(0.48))
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(10)
+                .padding(.top, 10)
+            }
+
             HStack(spacing: 12) {
-                Button(action: { model.onOpenApp?() }) {
-                    Text("打开应用")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(12)
+                Button(action: {
+                    if model.activityId.isEmpty {
+                        model.onOpenApp?()
+                    } else {
+                        model.onOpenEntity?(model.activityKind, model.activityId)
+                    }
+                }) {
+                    Text("打开详情")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .frame(height: 36)
+                .background(Color.white.opacity(0.15))
+                .cornerRadius(11)
+
+                if canStartActivityFocus {
+                    Button(action: {
+                        model.onStartFocus?(activityFocusKind, activityFocusId)
+                    }) {
+                        Text("开始专注")
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(height: 36)
+                    .background(Color.orange.opacity(0.85))
+                    .cornerRadius(11)
+                }
             }
-            .padding(.top, 8)
+            .frame(height: 36)
+            .padding(.top, 12)
+                }
+            }
         }
+    }
+
+    private var activityTimeRangeText: String {
+        timeRangeText(startMs: model.activityStartMs, endMs: model.activityEndMs)
+    }
+
+    private var nextActivityTimeText: String {
+        timeRangeText(startMs: model.nextActivityStartMs, endMs: model.nextActivityEndMs)
+    }
+
+    private var nextActivityStartText: String {
+        guard model.nextActivityStartMs > 0 else { return "时间待定" }
+        let date = Date(timeIntervalSince1970: Double(model.nextActivityStartMs) / 1000)
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        let time = timeFormatter.string(from: date)
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "今天 \(time)" }
+        if calendar.isDateInTomorrow(date) { return "明天 \(time)" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private var nextActivityLeadText: String {
+        guard model.nextActivityStartMs > 0 else { return "尚未设置时间" }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let minutes = max(0, (model.nextActivityStartMs - now + 59_999) / 60_000)
+        if minutes <= 1 { return "即将开始" }
+        if minutes < 60 { return "\(minutes) 分钟后" }
+        if minutes < 24 * 60 {
+            let hours = minutes / 60
+            let rest = minutes % 60
+            return rest == 0 ? "\(hours) 小时后" : "\(hours) 小时 \(rest) 分后"
+        }
+        return nextActivityTimeText
+    }
+
+    private var activityRemainingText: String {
+        guard model.activityEndMs > 0 else { return "进行中" }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let minutes = max(0, (model.activityEndMs - now + 59_999) / 60_000)
+        if minutes <= 1 { return "即将结束" }
+        if minutes < 60 { return "剩 \(minutes) 分钟" }
+        let hours = minutes / 60
+        let rest = minutes % 60
+        return rest == 0 ? "剩 \(hours) 小时" : "剩 \(hours) 小时 \(rest) 分"
+    }
+
+    private var activitySecondaryText: String {
+        var seen = Set<String>()
+        // 分组已经显示在标题行，这里只补充地点、教师、备注等详情。
+        let values = [model.activitySubtitle, model.activityDetail]
+        return values.compactMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  trimmed != model.activityTitle,
+                  seen.insert(trimmed).inserted else { return nil }
+            return trimmed
+        }.joined(separator: " · ")
+    }
+
+    private var activityFocusKind: String {
+        model.activityKind == "plan_block" ? "plan_block" : "todo"
+    }
+
+    private var activityFocusId: String {
+        if model.activityKind == "plan_block" { return model.activityId }
+        return model.activityRelatedTodoId.isEmpty
+            ? model.activityId
+            : model.activityRelatedTodoId
+    }
+
+    private var canStartActivityFocus: Bool {
+        (model.activityKind == "todo" || model.activityKind == "plan_block")
+            && !activityFocusId.isEmpty
+    }
+
+    private func activityKindLabel(_ kind: String) -> String {
+        switch kind {
+        case "course": return "课程"
+        case "plan_block": return "计划"
+        case "todo": return "待办"
+        default: return "事项"
+        }
+    }
+
+    private func activityIconName(_ kind: String) -> String {
+        switch kind {
+        case "course": return "book.closed.fill"
+        case "plan_block": return "calendar.badge.clock"
+        case "todo": return "checklist"
+        default: return "circle.fill"
+        }
+    }
+
+    private func timeRangeText(startMs: Int64, endMs: Int64) -> String {
+        guard startMs > 0, endMs > 0 else { return "时间未设置" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        let start = formatter.string(from: Date(timeIntervalSince1970: Double(startMs) / 1000))
+        let end = formatter.string(from: Date(timeIntervalSince1970: Double(endMs) / 1000))
+        return "\(start)–\(end)"
     }
     
     var expandedReminderView: some View {
@@ -854,6 +1169,7 @@ struct MacIslandSwiftUIView: View {
                         .padding(.vertical, 8)
                         .background(Color.white.opacity(0.15))
                         .cornerRadius(12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 
@@ -863,6 +1179,7 @@ struct MacIslandSwiftUIView: View {
                         .padding(.vertical, 8)
                         .background(Color.orange)
                         .cornerRadius(12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -895,6 +1212,7 @@ struct MacIslandSwiftUIView: View {
                         .padding(.vertical, 8)
                         .background(Color.white.opacity(0.15))
                         .cornerRadius(12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -904,6 +1222,7 @@ struct MacIslandSwiftUIView: View {
                         .padding(.vertical, 8)
                         .background(Color.blue.opacity(0.85))
                         .cornerRadius(12)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -946,6 +1265,7 @@ struct MacIslandSwiftUIView: View {
                     .padding(.vertical, 6)
                     .background(Color.blue.opacity(0.85))
                     .cornerRadius(9)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -1527,7 +1847,7 @@ class MacPomodoroStatusBarController {
             : 320
         let width = expanded
             ? max(
-                detailed ? 360 : ((focusWithReminder || hasClipboardLink) ? 360 : (hasActivity ? 330 : 320)),
+                detailed ? 360 : ((focusWithReminder || hasClipboardLink || hasActivity) ? 360 : 320),
                 expandedWidthFloor
             )
             : compactWidth
@@ -1565,11 +1885,32 @@ class MacPomodoroStatusBarController {
                 contentHeight = 104
             } else if hasClipboardLink {
                 contentHeight = 104
+            } else if hasActivity {
+                // 标题 36 + 时间卡 48 + 操作区 48。
+                contentHeight = 132
+                let secondaryValues = [
+                    view.activitySubtitle,
+                    view.activityDetail,
+                ]
+                if secondaryValues.contains(where: {
+                    let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return !value.isEmpty && value != view.activityTitle
+                }) {
+                    contentHeight += 42
+                }
+                if !view.nextActivityTitle.isEmpty {
+                    contentHeight += 54
+                }
             } else {
-                contentHeight = 70
+                // 空闲展开态：状态标题 34 + 今日概览 68 + 打开按钮 36，
+                // 加上两段 12pt 间距；存在下一项时再加入 58pt 卡片和间距。
+                contentHeight = 162
+                if !view.nextActivityTitle.isEmpty {
+                    contentHeight += 70
+                }
             }
 
-            if detailed {
+            if detailed && !view.isIdle {
                 contentHeight += 20 + 68
             }
             height = topInset + topPadding + contentHeight + bottomPadding
@@ -1589,7 +1930,10 @@ class MacPomodoroStatusBarController {
             )
         }
         let window = ensureIslandWindow(frame: frame, view: view)
-        window.hasShadow = hasLiveContent || expanded
+        // NSPanel 的系统阴影始终按矩形窗口边界绘制，无法跟随岛体的
+        // BottomRoundedRectangle。开启后会在圆角外露出一圈直角轮廓。
+        // 岛体自身已经提供了完整的不透明背景，因此这里始终关闭原生阴影。
+        window.hasShadow = false
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let shouldAnimate = window.isVisible && !reduceMotion && lastScreenNumber == screenNumber
@@ -1741,7 +2085,9 @@ class MacPomodoroStatusBarController {
             guard let self = self else { return }
             self.isExpanded = expanded
             self.isPinnedExpanded = detailed
-            if detailed {
+            // 空闲概览在普通悬停展开态就会显示，不能再等到用户点击进入
+            // detailed 才请求数据，否则今日专注和倒数日会一直停在默认值。
+            if expanded {
                 self.flutterChannel?.invokeMethod("requestIslandOverview", arguments: nil)
             }
             self.refreshDisplay()
@@ -2030,11 +2376,9 @@ class MacPomodoroStatusBarController {
             defer: false
         )
         window.isOpaque = false
-        window.hasShadow = true
         window.backgroundColor = .clear
         window.title = "CountDownTodo 灵动岛"
-        window.backgroundColor = .clear
-        window.hasShadow = true
+        window.hasShadow = false
         window.animationBehavior = .utilityWindow
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 1)
         window.collectionBehavior = [

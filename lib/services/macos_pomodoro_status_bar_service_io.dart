@@ -58,6 +58,7 @@ class MacPomodoroStatusBarService {
   static Timer? _activityRestoreFallbackTimer;
   static Timer? _activityDataRefreshFallbackTimer;
   static Timer? _overviewSyncTimer;
+  static bool _overviewWasRequested = false;
   static const Duration _restoreGracePeriod = Duration(minutes: 2);
   static const Duration _activityRestoreFallbackDelay = Duration(seconds: 12);
   static const Duration _activityDataRefreshFallbackDelay =
@@ -199,9 +200,10 @@ class MacPomodoroStatusBarService {
     return <String, dynamic>{};
   }
 
-  /// 仅在用户固定展开灵动岛时读取今日统计，避免把额外查询放入冷启动路径。
+  /// 用户首次展开灵动岛后按需读取今日统计，避免把额外查询放入冷启动路径。
   static Future<void> syncIslandOverview() async {
     if (!Platform.isMacOS || !_initialized) return;
+    _overviewWasRequested = true;
     var countdowns = <CountdownItem>[];
     var todayRecords = <PomodoroRecord>[];
     try {
@@ -234,6 +236,8 @@ class MacPomodoroStatusBarService {
   }
 
   static void _scheduleIslandOverviewSync() {
+    // 用户尚未展开过概览时保持懒加载，避免恢复冷启动额外查询。
+    if (!_overviewWasRequested) return;
     _overviewSyncTimer?.cancel();
     _overviewSyncTimer = Timer(
       const Duration(milliseconds: 800),
@@ -612,9 +616,13 @@ class MacPomodoroStatusBarService {
   static void _clearNative() {
     debugPrint('[MacPomodoroStatusBar] _clearNative called');
     _channel.invokeMethod('clearPomodoroStatus');
+    // 专注结束后的记录通常紧接着写入，稍作防抖后刷新概览。
+    _scheduleIslandOverviewSync();
   }
 
   static void _handleDataRefresh() {
+    // 倒数日、专注记录等数据变化后刷新已经启用过的概览。
+    _scheduleIslandOverviewSync();
     // 首页冷启动期间会主动提供同一批已加载数据。此时不要抢先再扫一遍
     // SQLite；如果首页没有成功提供，兜底定时器会恢复数据库读取。
     if (_activityRestoreDeferred) return;
@@ -639,8 +647,6 @@ class MacPomodoroStatusBarService {
     _activityRestoreFallbackTimer = null;
     _activityDataRefreshFallbackTimer?.cancel();
     _activityDataRefreshFallbackTimer = null;
-    _overviewSyncTimer?.cancel();
-    _overviewSyncTimer = null;
     _activityTimer?.cancel();
     _activitySyncPending = false;
 
@@ -804,6 +810,9 @@ class MacPomodoroStatusBarService {
     _activityRestoreFallbackTimer = null;
     _activityDataRefreshFallbackTimer?.cancel();
     _activityDataRefreshFallbackTimer = null;
+    _overviewSyncTimer?.cancel();
+    _overviewSyncTimer = null;
+    _overviewWasRequested = false;
     _activityTimer?.cancel();
     _activityTimer = null;
     _lastLocalActiveState = null;
