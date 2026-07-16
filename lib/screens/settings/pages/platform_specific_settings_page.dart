@@ -46,6 +46,7 @@ class _PlatformSpecificSettingsPageState
     'mac_status_bar': GlobalKey(),
     'mac_island_shortcut': GlobalKey(),
     'mac_island_reminders': GlobalKey(),
+    'mac_island_clipboard_links': GlobalKey(),
     'mac_island_without_notch': GlobalKey(),
     'mac_island_test': GlobalKey(),
   };
@@ -64,6 +65,7 @@ class _PlatformSpecificSettingsPageState
   // macOS Specific
   bool _macIslandEnabled = true;
   bool _macIslandRemindersEnabled = true;
+  bool _macIslandClipboardLinksEnabled = true;
   bool _macIslandShowWithoutNotch = true;
   String _macIslandShortcutKey = '';
   bool _macIslandShortcutCommand = false;
@@ -139,6 +141,8 @@ class _PlatformSpecificSettingsPageState
               prefs.getBool('macos_island_show_without_notch') ?? true;
           _macIslandRemindersEnabled =
               prefs.getBool('macos_island_reminders_enabled') ?? true;
+          _macIslandClipboardLinksEnabled =
+              prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
           _macIslandShortcutKey =
               prefs.getString('macos_island_shortcut_key') ?? '';
           _macIslandShortcutCommand =
@@ -561,6 +565,34 @@ class _PlatformSpecificSettingsPageState
                           } else {
                             MacPomodoroStatusBarService.clearIslandReminders();
                           }
+                        }
+                      : null,
+                ),
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
+              targetId: 'mac_island_clipboard_links',
+              child: ListTile(
+                enabled: _macIslandEnabled,
+                leading: Icon(
+                  Icons.link_rounded,
+                  color: _macIslandEnabled
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+                title: const Text('检测剪贴板网址'),
+                subtitle: const Text('复制网页链接时短暂展开灵动岛，可确认后用浏览器打开'),
+                trailing: Switch(
+                  value: _macIslandClipboardLinksEnabled,
+                  activeThumbColor: colorScheme.primary,
+                  onChanged: _macIslandEnabled
+                      ? (val) async {
+                          setState(() => _macIslandClipboardLinksEnabled = val);
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool(
+                              'macos_island_clipboard_links_enabled', val);
+                          await WindowService.configureMacIsland();
                         }
                       : null,
                 ),

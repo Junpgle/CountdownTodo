@@ -8,6 +8,18 @@ import Carbon
 
 private let islandVisibilityHotKeySignature: OSType = 0x43445449 // "CDTI"
 private let islandVisibilityHotKeyID: UInt32 = 1
+private let islandExpansionAnimation = Animation.spring(
+    response: 0.50,
+    dampingFraction: 0.90,
+    blendDuration: 0.12
+)
+private let islandCollapseAnimation = Animation.spring(
+    response: 0.36,
+    dampingFraction: 0.94,
+    blendDuration: 0.08
+)
+private let islandExpansionDuration: TimeInterval = 0.50
+private let islandCollapseDuration: TimeInterval = 0.36
 
 private func islandVisibilityHotKeyHandler(
     _ nextHandler: EventHandlerCallRef?,
@@ -52,6 +64,15 @@ private final class MacIslandHostingView: NSHostingView<AnyView> {
         super.init(rootView: rootView)
         self.wantsLayer = true
         self.layer?.backgroundColor = NSColor.clear.cgColor
+        // 窗口高度动画时不要缩放一张旧的居中快照，否则顶部会短暂
+        // 离开菜单栏。逐帧重绘可以让新增高度只向下显露。
+        self.layerContentsRedrawPolicy = .duringViewResize
+    }
+
+    // 灵动岛本身已经按真实刘海高度预留了 topInset。NSHostingView 再
+    // 注入系统安全区会造成展开途中出现第二段顶部空隙。
+    override var safeAreaInsets: NSEdgeInsets {
+        NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
     }
     
     @MainActor required dynamic init?(coder aDecoder: NSCoder) {
@@ -142,6 +163,9 @@ class IslandStateModel: ObservableObject {
     @Published var countdownTitle = ""
     @Published var countdownTargetMs: Int64 = 0
     @Published var countdownDays = -1
+    @Published var clipboardLinkActive = false
+    @Published var clipboardLinkDisplay = ""
+    @Published var revealHeight: CGFloat = 0
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
     var onTogglePause: (() -> Void)?
@@ -152,6 +176,8 @@ class IslandStateModel: ObservableObject {
     var onCompleteTodo: ((String) -> Void)?
     var onAcknowledgeReminder: (() -> Void)?
     var onSnoozeReminder: (() -> Void)?
+    var onOpenClipboardLink: (() -> Void)?
+    var onDismissClipboardLink: (() -> Void)?
 
     var isFocusActive: Bool {
         phase == "focusing" || phase == "breaking"
@@ -244,17 +270,32 @@ struct BottomRoundedRectangle: Shape {
 
 struct MacIslandSwiftUIView: View {
     @ObservedObject var model: IslandStateModel
+    @Namespace private var focusTimerNamespace
     
     var body: some View {
         ZStack(alignment: .top) {
             Color.black
+                .frame(maxWidth: .infinity)
+                .frame(height: max(0, model.revealHeight))
                 .clipShape(BottomRoundedRectangle(cornerRadius: model.expanded ? 22 : 18))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .edgesIgnoringSafeArea(.all)
+                // 黑色底板必须跟随宿主窗口逐帧立即铺满。若继承 expanded
+                // 的弹簧事务，它会以自身中心插值尺寸，出现从中间向上下
+                // 生长、刘海连接处短暂缺块的问题。
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
             
             if model.hasNotch {
                 Color.black
                     .frame(height: max(model.topInset, 28))
                     .edgesIgnoringSafeArea(.top)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
             }
             
             if model.hasNotch && !model.expanded {
@@ -277,11 +318,15 @@ struct MacIslandSwiftUIView: View {
                                 expandedFocusView
                                 if model.reminderActive {
                                     reminderCard.padding(.top, 12)
+                                } else if model.clipboardLinkActive {
+                                    clipboardLinkCard.padding(.top, 12)
                                 } else if model.activityActive {
                                     activityCard.padding(.top, 12)
                                 }
                             } else if model.reminderActive {
                                 expandedReminderView
+                            } else if model.clipboardLinkActive {
+                                expandedClipboardLinkView
                             } else {
                                 expandedActivityView
                             }
@@ -303,8 +348,21 @@ struct MacIslandSwiftUIView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .mask(
+            VStack(spacing: 0) {
+                Rectangle()
+                    .frame(height: max(0, model.revealHeight))
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        )
+        .ignoresSafeArea()
         .onTapGesture {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            let animation = model.expanded && model.detailed
+                ? islandCollapseAnimation
+                : islandExpansionAnimation
+            withAnimation(animation) {
                 if model.expanded {
                     if model.detailed {
                         model.detailed = false
@@ -333,14 +391,42 @@ struct MacIslandSwiftUIView: View {
                     .foregroundColor(model.phase == "breaking" ? .blue : .orange)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(compactContextTitle)
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    Text(compactContextDetail)
-                        .font(.system(size: 8.5, weight: .medium))
-                        .foregroundColor(model.isFocusActive ? .purple : .white.opacity(0.48))
-                        .lineLimit(1)
+                    if model.isFocusActive {
+                        Text(compactContextTitle)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .matchedGeometryEffect(
+                                id: "focusEventTitle",
+                                in: focusTimerNamespace,
+                                properties: .position,
+                                anchor: .center
+                            )
+                            .zIndex(9)
+                    } else {
+                        Text(compactContextTitle)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                    if model.isFocusActive && !focusTagSummary.isEmpty {
+                        Text(focusTagSummary)
+                            .font(.system(size: 8.5, weight: .medium))
+                            .foregroundColor(.purple)
+                            .lineLimit(1)
+                            .matchedGeometryEffect(
+                                id: "focusTags",
+                                in: focusTimerNamespace,
+                                properties: .position,
+                                anchor: .center
+                            )
+                            .zIndex(8)
+                    } else {
+                        Text(compactContextDetail)
+                            .font(.system(size: 8.5, weight: .medium))
+                            .foregroundColor(model.isFocusActive ? .purple : .white.opacity(0.48))
+                            .lineLimit(1)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -349,13 +435,24 @@ struct MacIslandSwiftUIView: View {
                 .frame(width: max(model.notchWidth, 160))
 
             VStack(alignment: .trailing, spacing: 1) {
-                Text(model.isFocusActive ? model.timeText : "进行中")
-                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
+                if model.isFocusActive {
+                    Text(model.timeText)
+                        .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .matchedGeometryEffect(
+                            id: "focusTimer",
+                            in: focusTimerNamespace,
+                            properties: .position,
+                            anchor: .center
+                        )
+                        .zIndex(10)
+                } else {
+                    Text("进行中")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
                 Text(compactStatusText)
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
@@ -374,12 +471,17 @@ struct MacIslandSwiftUIView: View {
 
     private var compactContextDetail: String {
         if model.isFocusActive {
-            let tags = model.focusTagNames.prefix(2).joined(separator: " · ")
-            return tags.isEmpty ? (model.phase == "breaking" ? "休息阶段" : "未设置标签") : tags
+            return focusTagSummary.isEmpty
+                ? (model.phase == "breaking" ? "休息阶段" : "未设置标签")
+                : focusTagSummary
         }
         if !model.activityGroupName.isEmpty { return model.activityGroupName }
         if !model.activitySubtitle.isEmpty { return model.activitySubtitle }
         return "当前事项"
+    }
+
+    private var focusTagSummary: String {
+        model.focusTagNames.prefix(2).joined(separator: " · ")
     }
 
     private var compactStatusText: String {
@@ -453,10 +555,31 @@ struct MacIslandSwiftUIView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
-                Text(compactContextDetail)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(color.opacity(0.85))
-                    .lineLimit(1)
+                    .matchedGeometryEffect(
+                        id: "focusEventTitle",
+                        in: focusTimerNamespace,
+                        properties: .position,
+                        anchor: .center
+                    )
+                    .zIndex(9)
+                if !focusTagSummary.isEmpty {
+                    Text(focusTagSummary)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(color.opacity(0.85))
+                        .lineLimit(1)
+                        .matchedGeometryEffect(
+                            id: "focusTags",
+                            in: focusTimerNamespace,
+                            properties: .position,
+                            anchor: .center
+                        )
+                        .zIndex(8)
+                } else {
+                    Text(compactContextDetail)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(color.opacity(0.85))
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)
@@ -465,9 +588,14 @@ struct MacIslandSwiftUIView: View {
                 Text(model.timeText)
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundColor(.white)
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
+                    .fixedSize(horizontal: true, vertical: true)
+                    .matchedGeometryEffect(
+                        id: "focusTimer",
+                        in: focusTimerNamespace,
+                        properties: .position,
+                        anchor: .center
+                    )
+                    .zIndex(10)
                 Text(compactStatusText)
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
@@ -523,17 +651,30 @@ struct MacIslandSwiftUIView: View {
             Text(model.timeText)
                 .font(.system(size: 42, weight: .bold).monospacedDigit())
                 .foregroundColor(.white)
+                .fixedSize(horizontal: true, vertical: true)
+                .matchedGeometryEffect(
+                    id: "focusTimer",
+                    in: focusTimerNamespace,
+                    properties: .position,
+                    anchor: .center
+                )
+                .zIndex(10)
                 .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
                 .padding(.top, 10)
-                .transaction { transaction in
-                    transaction.animation = nil
-                }
             
-            let titleStr = model.todoTitle.isEmpty ? (model.focusTagNames.first ?? "专注中") : model.todoTitle
+            // 与收起态保持完全相同的内容，matched geometry 才不会在滑动中交叉换字。
+            let titleStr = compactContextTitle
             Text(titleStr)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .matchedGeometryEffect(
+                    id: "focusEventTitle",
+                    in: focusTimerNamespace,
+                    properties: .position,
+                    anchor: .center
+                )
+                .zIndex(9)
                 .frame(height: 20)
                 .padding(.top, 8)
             
@@ -549,19 +690,32 @@ struct MacIslandSwiftUIView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 16)
             
-            if model.detailed {
-                if !model.focusTagNames.isEmpty {
-                    HStack {
-                        ForEach(model.focusTagNames, id: \.self) { tag in
-                            Text(tag)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.purple)
-                        }
+            if !focusTagSummary.isEmpty {
+                HStack(spacing: 8) {
+                    Text(focusTagSummary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.purple)
+                        .lineLimit(1)
+                        .matchedGeometryEffect(
+                            id: "focusTags",
+                            in: focusTimerNamespace,
+                            properties: .position,
+                            anchor: .center
+                        )
+                        .zIndex(8)
+
+                    if model.focusTagNames.count > 2 {
+                        Text(model.focusTagNames.dropFirst(2).joined(separator: " · "))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.purple)
+                            .lineLimit(1)
                     }
+                }
                     .frame(height: 16)
                     .padding(.bottom, 16)
-                }
-                
+            }
+
+            if model.detailed {
                 if !model.focusNote.isEmpty {
                     Text(model.focusNote)
                         .font(.system(size: 13))
@@ -712,6 +866,47 @@ struct MacIslandSwiftUIView: View {
             .padding(.top, 8)
         }
     }
+
+    var expandedClipboardLinkView: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .foregroundColor(.blue)
+                Text("检测到剪贴板链接")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+            }
+
+            Text(model.clipboardLinkDisplay)
+                .font(.system(size: 13))
+                .foregroundColor(.white.opacity(0.7))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 12) {
+                Button(action: { model.onDismissClipboardLink?() }) {
+                    Text("忽略")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.15))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: { model.onOpenClipboardLink?() }) {
+                    Text("打开网址")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.blue.opacity(0.85))
+                        .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 8)
+        }
+    }
     
     var reminderCard: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -719,6 +914,37 @@ struct MacIslandSwiftUIView: View {
                 Image(systemName: "bell.fill").foregroundColor(.orange)
                 Text(model.reminderTitle).font(.system(size: 12, weight: .semibold))
             }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(12)
+    }
+
+    var clipboardLinkCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "link")
+                .foregroundColor(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("剪贴板链接")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(model.clipboardLinkDisplay)
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            Button(action: { model.onOpenClipboardLink?() }) {
+                Text("打开网址")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.85))
+                    .cornerRadius(9)
+            }
+            .buttonStyle(.plain)
         }
         .padding(12)
         .background(Color.white.opacity(0.1))
@@ -747,6 +973,8 @@ class MacPomodoroStatusBarController {
     private var islandWindow: MacIslandPanel?
     private var islandModel: IslandStateModel?
     private var timer: Timer?
+    private var islandFrameAnimationTimer: Timer?
+    private var clipboardMonitorTimer: Timer?
     private var appChannel: FlutterMethodChannel?
     private var flutterChannel: FlutterMethodChannel?
     private var observers: [NSObjectProtocol] = []
@@ -755,6 +983,7 @@ class MacPomodoroStatusBarController {
     private var isShortcutHidden = false
     private var showOnNotchlessDisplay = true
     private var remindersEnabled = true
+    private var clipboardLinksEnabled = false
     private var isExpanded = false
     private var isPinnedExpanded = false
     private var isPointerInsideIsland = false
@@ -766,6 +995,10 @@ class MacPomodoroStatusBarController {
     private var visibilityHotKeyRef: EventHotKeyRef?
     private var visibilityHotKeyHandlerRef: EventHandlerRef?
     private var registeredVisibilityShortcut: (keyCode: UInt32, modifiers: UInt32)?
+    private var lastClipboardChangeCount = -1
+    private var clipboardURL: URL?
+    private var clipboardLinkExpiresAt: TimeInterval = 0
+    private var clipboardDidForceExpansion = false
 
     private var phase = "idle"
     private var targetEndMs: Int64 = 0
@@ -851,7 +1084,12 @@ class MacPomodoroStatusBarController {
         flutterChannel = channel
     }
 
-    func configureIsland(enabled: Bool, showOnNotchlessDisplay: Bool, remindersEnabled: Bool) {
+    func configureIsland(
+        enabled: Bool,
+        showOnNotchlessDisplay: Bool,
+        remindersEnabled: Bool,
+        clipboardLinksEnabled: Bool
+    ) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if enabled && !self.islandEnabled {
@@ -860,8 +1098,14 @@ class MacPomodoroStatusBarController {
             self.islandEnabled = enabled
             self.showOnNotchlessDisplay = showOnNotchlessDisplay
             self.remindersEnabled = remindersEnabled
+            self.clipboardLinksEnabled = clipboardLinksEnabled
             if !remindersEnabled {
                 self.clearIslandReminders()
+            }
+            if enabled && clipboardLinksEnabled {
+                self.startClipboardMonitoring()
+            } else {
+                self.stopClipboardMonitoring(clearLink: true)
             }
             self.refreshDisplay()
             self.scheduleNextUpdate()
@@ -1156,7 +1400,8 @@ class MacPomodoroStatusBarController {
         lastMinuteRefreshKey = Int64(Date().timeIntervalSince1970) / 60
         let hasReminder = remindersEnabled && currentReminder != nil
         let hasActivity = isOngoingActivityActive
-        let hasLiveContent = isPomodoroActive || hasReminder || hasActivity
+        let hasClipboardLink = clipboardLinksEnabled && clipboardURL != nil
+        let hasLiveContent = isPomodoroActive || hasReminder || hasActivity || hasClipboardLink
         guard islandEnabled, !isShortcutHidden else {
             hideIsland()
             return
@@ -1184,6 +1429,8 @@ class MacPomodoroStatusBarController {
             isPinnedExpanded = false
             isExpanded = isPointerInsideIsland
         }
+        let expanded = hasReminder || hasClipboardLink || isExpanded
+        let detailed = hasReminder || isPinnedExpanded
 
         let view = ensureIslandModel()
         view.phase = phase
@@ -1191,8 +1438,6 @@ class MacPomodoroStatusBarController {
         view.todoTitle = todoTitle
         view.isPaused = isPaused
         view.isRemote = isRemote
-        view.expanded = hasReminder || isExpanded
-        view.detailed = hasReminder || isPinnedExpanded
         view.hasNotch = geometry.hasNotch
         view.topInset = geometry.topInset
         view.notchWidth = geometry.notchWidth
@@ -1246,6 +1491,9 @@ class MacPomodoroStatusBarController {
         view.countdownTitle = countdownTitle
         view.countdownTargetMs = countdownTargetMs
         view.countdownDays = countdownDays
+        view.clipboardLinkActive = hasClipboardLink
+        view.clipboardLinkDisplay = clipboardURL.map(clipboardDisplayText) ?? ""
+        updateExpansionState(view, expanded: expanded, detailed: detailed)
         // SwiftUI handles accessibility
         // SwiftUI handles accessibility
         // view.setAccessibilityLabel("CountDownTodo 灵动岛")
@@ -1269,15 +1517,16 @@ class MacPomodoroStatusBarController {
         let compactHeight: CGFloat = geometry.hasNotch
             ? (hasLiveContent ? max(geometry.topInset, 28) + 4 : max(geometry.topInset, 28))
             : 68
-        let expanded = hasReminder || isExpanded
-        let detailed = hasReminder || isPinnedExpanded
         let focusWithActivity = isPomodoroActive && hasActivity
         let focusWithReminder = isPomodoroActive && hasReminder
         let expandedWidthFloor: CGFloat = geometry.hasNotch
             ? max(360, geometry.notchWidth + 80)
             : 320
         let width = expanded
-            ? max(detailed ? 360 : (focusWithReminder ? 340 : (hasActivity ? 330 : 320)), expandedWidthFloor)
+            ? max(
+                detailed ? 360 : ((focusWithReminder || hasClipboardLink) ? 360 : (hasActivity ? 330 : 320)),
+                expandedWidthFloor
+            )
             : compactWidth
         let height: CGFloat
         let widthStr: CGFloat = width
@@ -1295,7 +1544,7 @@ class MacPomodoroStatusBarController {
             if isPomodoroActive {
                 // expandedFocusView 的固定内容总高为 204pt。
                 contentHeight = 204
-                if detailed && !view.focusTagNames.isEmpty {
+                if !view.focusTagNames.isEmpty {
                     contentHeight += 32
                 }
                 // 备注可能换行，最终高度由 SwiftUI 实际布局回传；这里不再
@@ -1304,10 +1553,14 @@ class MacPomodoroStatusBarController {
                 // reminderCard/activityCard 是单行内容加 12pt 内边距，实际约 39pt。
                 if hasReminder && !view.reminderTitle.isEmpty {
                     contentHeight += 12 + 39
+                } else if hasClipboardLink {
+                    contentHeight += 12 + 54
                 } else if hasActivity && !view.activityTitle.isEmpty {
                     contentHeight += 12 + 39
                 }
             } else if hasReminder {
+                contentHeight = 104
+            } else if hasClipboardLink {
                 contentHeight = 104
             } else {
                 contentHeight = 70
@@ -1325,6 +1578,13 @@ class MacPomodoroStatusBarController {
             height: height
         )
 
+        let windowWasVisible = islandWindow?.isVisible == true
+        if view.revealHeight <= 0 {
+            setIslandRevealHeight(
+                view,
+                expanded && !windowWasVisible ? compactHeight : height
+            )
+        }
         let window = ensureIslandWindow(frame: frame, view: view)
         window.hasShadow = hasLiveContent || expanded
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
@@ -1332,33 +1592,143 @@ class MacPomodoroStatusBarController {
         let shouldAnimate = window.isVisible && !reduceMotion && lastScreenNumber == screenNumber
         let shouldAnimateFirstExpansion = !window.isVisible && expanded && !reduceMotion
         if shouldAnimateFirstExpansion {
-            let compactFrame = NSRect(
-                x: screen.frame.midX - compactWidth / 2,
-                y: screen.frame.maxY - compactHeight,
-                width: compactWidth,
-                height: compactHeight
-            )
-            window.setFrame(compactFrame, display: true)
             window.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.26
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-                window.animator().setFrame(frame, display: true)
-            }
-        } else if shouldAnimate && !NSEqualRects(window.frame, frame) {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = expanded ? 0.26 : 0.2
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                context.allowsImplicitAnimation = true
-                window.animator().setFrame(frame, display: true)
-            }
+            animateIslandFrame(
+                window,
+                view: view,
+                to: frame,
+                topEdge: screen.frame.maxY,
+                duration: islandExpansionDuration
+            )
+        } else if shouldAnimate
+                    && (!NSEqualRects(window.frame, frame)
+                        || abs(view.revealHeight - height) > 0.5) {
+            animateIslandFrame(
+                window,
+                view: view,
+                to: frame,
+                topEdge: screen.frame.maxY,
+                duration: expanded
+                    ? islandExpansionDuration
+                    : islandCollapseDuration
+            )
         } else {
+            islandFrameAnimationTimer?.invalidate()
+            islandFrameAnimationTimer = nil
             window.setFrame(frame, display: true)
+            setIslandRevealHeight(view, height)
         }
         lastScreenNumber = screenNumber
         // ObservableObject triggers UI update
         window.orderFrontRegardless()
+    }
+
+    /// 展开时先把窗口画布扩到足够高度，再从顶部逐帧增加可见高度。
+    /// matched-geometry 文字因此始终有完整画布，不会像旧实现那样在
+    /// 展开途中被矮窗口裁掉；收回结束后才真正缩小窗口。
+    private func animateIslandFrame(
+        _ window: MacIslandPanel,
+        view: IslandStateModel,
+        to targetFrame: NSRect,
+        topEdge: CGFloat,
+        duration: TimeInterval
+    ) {
+        islandFrameAnimationTimer?.invalidate()
+
+        let currentFrame = window.frame
+        let startFrame = NSRect(
+            x: currentFrame.origin.x,
+            y: topEdge - currentFrame.height,
+            width: currentFrame.width,
+            height: currentFrame.height
+        )
+        let startRevealHeight = view.revealHeight > 0
+            ? view.revealHeight
+            : min(startFrame.height, targetFrame.height)
+        let canvasHeight = max(max(startFrame.height, targetFrame.height), startRevealHeight)
+        let canvasStartFrame = NSRect(
+            x: startFrame.origin.x,
+            y: topEdge - canvasHeight,
+            width: startFrame.width,
+            height: canvasHeight
+        )
+        // 先建立完整的纵向画布；此时遮罩仍保持旧高度，视觉上不会跳变。
+        window.setFrame(canvasStartFrame, display: true)
+        setIslandRevealHeight(view, startRevealHeight)
+
+        let startTime = CACurrentMediaTime()
+        let startMidX = canvasStartFrame.midX
+        let targetMidX = targetFrame.midX
+        var animationTimer: Timer?
+        animationTimer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self, weak window] timer in
+            guard let self = self, let window = window else {
+                timer.invalidate()
+                return
+            }
+
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1, max(0, elapsed / max(duration, 0.001)))
+            // smootherstep：比普通 ease-in-out 的起落更柔和，面板不会像
+            // 突然弹出，也不会在动画末尾生硬刹停。
+            let easedValue = progress * progress * progress
+                * (progress * (progress * 6 - 15) + 10)
+            let eased = CGFloat(easedValue)
+            let width = canvasStartFrame.width
+                + (targetFrame.width - canvasStartFrame.width) * eased
+            let revealHeight = startRevealHeight
+                + (targetFrame.height - startRevealHeight) * eased
+            let midX = startMidX + (targetMidX - startMidX) * eased
+            let nextFrame = NSRect(
+                x: midX - width / 2,
+                y: topEdge - canvasHeight,
+                width: width,
+                height: canvasHeight
+            )
+            window.setFrame(nextFrame, display: true)
+            self.setIslandRevealHeight(view, revealHeight)
+
+            if progress >= 1 {
+                timer.invalidate()
+                window.setFrame(targetFrame, display: true)
+                self.setIslandRevealHeight(view, targetFrame.height)
+                if self.islandFrameAnimationTimer === timer {
+                    self.islandFrameAnimationTimer = nil
+                }
+            }
+        }
+
+        if let animationTimer = animationTimer {
+            islandFrameAnimationTimer = animationTimer
+            RunLoop.main.add(animationTimer, forMode: .common)
+        }
+    }
+
+    private func setIslandRevealHeight(_ view: IslandStateModel, _ height: CGFloat) {
+        guard abs(view.revealHeight - height) > 0.01 else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            view.revealHeight = height
+        }
+    }
+
+    private func updateExpansionState(
+        _ view: IslandStateModel,
+        expanded: Bool,
+        detailed: Bool
+    ) {
+        guard view.expanded != expanded || view.detailed != detailed else { return }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            view.expanded = expanded
+            view.detailed = detailed
+        } else {
+            let isGrowing = (!view.expanded && expanded)
+                || (!view.detailed && detailed)
+            withAnimation(isGrowing ? islandExpansionAnimation : islandCollapseAnimation) {
+                view.expanded = expanded
+                view.detailed = detailed
+            }
+        }
     }
 
     private func ensureIslandModel() -> IslandStateModel {
@@ -1396,6 +1766,12 @@ class MacPomodoroStatusBarController {
         }
         view.onSnoozeReminder = { [weak self] in
             self?.handleCurrentReminder(snoozeMinutes: 10)
+        }
+        view.onOpenClipboardLink = { [weak self] in
+            self?.openClipboardLink()
+        }
+        view.onDismissClipboardLink = { [weak self] in
+            self?.dismissClipboardLink()
         }
         islandModel = view
         return view
@@ -1479,6 +1855,144 @@ class MacPomodoroStatusBarController {
         return details.joined(separator: " · ")
     }
 
+    private func startClipboardMonitoring() {
+        guard clipboardMonitorTimer == nil else { return }
+        lastClipboardChangeCount = NSPasteboard.general.changeCount
+        let monitor = Timer(
+            timeInterval: 1,
+            target: self,
+            selector: #selector(clipboardMonitorFired),
+            userInfo: nil,
+            repeats: true
+        )
+        monitor.tolerance = 0.2
+        RunLoop.main.add(monitor, forMode: .common)
+        clipboardMonitorTimer = monitor
+    }
+
+    private func stopClipboardMonitoring(clearLink: Bool) {
+        clipboardMonitorTimer?.invalidate()
+        clipboardMonitorTimer = nil
+        lastClipboardChangeCount = NSPasteboard.general.changeCount
+        if clearLink {
+            clearClipboardLink(restoreExpansion: true, refresh: false)
+        }
+    }
+
+    @objc private func clipboardMonitorFired() {
+        guard islandEnabled, clipboardLinksEnabled else { return }
+
+        if clipboardURL != nil,
+           Date().timeIntervalSince1970 >= clipboardLinkExpiresAt {
+            dismissClipboardLink()
+        }
+
+        let pasteboard = NSPasteboard.general
+        let changeCount = pasteboard.changeCount
+        guard changeCount != lastClipboardChangeCount else { return }
+        lastClipboardChangeCount = changeCount
+        guard !isShortcutHidden else { return }
+
+        let rawValue = pasteboard.string(forType: .URL)
+            ?? pasteboard.string(forType: .string)
+        guard let rawValue = rawValue,
+              let url = normalizedClipboardURL(rawValue) else {
+            if clipboardURL != nil {
+                dismissClipboardLink()
+            }
+            return
+        }
+
+        if clipboardURL == nil {
+            clipboardDidForceExpansion = !isExpanded
+        }
+        clipboardURL = url
+        clipboardLinkExpiresAt = Date().timeIntervalSince1970 + 15
+        isExpanded = true
+        refreshDisplay()
+    }
+
+    private func normalizedClipboardURL(_ value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 2048 else { return nil }
+        guard trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return nil
+        }
+
+        let lowercased = trimmed.lowercased()
+        let candidate: String
+        if lowercased.hasPrefix("http://") || lowercased.hasPrefix("https://") {
+            candidate = trimmed
+        } else {
+            // 其他显式 scheme 一律拒绝；无 scheme 时只为看起来像域名的
+            // 内容补 https，避免把普通单词误判成网址。
+            guard !trimmed.contains("://"), trimmed.contains(".") else {
+                return nil
+            }
+            candidate = "https://\(trimmed)"
+        }
+
+        guard let components = URLComponents(string: candidate),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.user == nil,
+              components.password == nil,
+              let host = components.host,
+              !host.isEmpty,
+              host == "localhost" || host.contains(".") || host.contains(":") else {
+            return nil
+        }
+        return components.url
+    }
+
+    private func clipboardDisplayText(_ url: URL) -> String {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = components.host else {
+            return url.absoluteString
+        }
+        var display = host
+        if let port = components.port {
+            display += ":\(port)"
+        }
+        if !components.path.isEmpty && components.path != "/" {
+            display += components.path.removingPercentEncoding ?? components.path
+        }
+        if components.query != nil {
+            display += "?…"
+        }
+        if display.count > 160 {
+            return String(display.prefix(78)) + "…" + String(display.suffix(78))
+        }
+        return display
+    }
+
+    private func openClipboardLink() {
+        guard let url = clipboardURL else { return }
+        NSWorkspace.shared.open(url)
+        dismissClipboardLink()
+    }
+
+    private func dismissClipboardLink() {
+        clearClipboardLink(restoreExpansion: true, refresh: true)
+    }
+
+    private func clearClipboardLink(restoreExpansion: Bool, refresh: Bool) {
+        guard clipboardURL != nil else { return }
+        clipboardURL = nil
+        clipboardLinkExpiresAt = 0
+        if restoreExpansion,
+           clipboardDidForceExpansion,
+           currentReminder == nil,
+           !isPinnedExpanded {
+            isExpanded = isPointerInsideIsland
+        }
+        clipboardDidForceExpansion = false
+        if refresh {
+            refreshDisplay()
+            scheduleNextUpdate()
+        }
+    }
+
     private func expireStartedReminders() {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         func hasStarted(_ reminder: [String: Any]) -> Bool {
@@ -1538,14 +2052,26 @@ class MacPomodoroStatusBarController {
             guard let self = self, let view = view else { return }
             self.isPointerInsideIsland = true
             guard !view.expanded else { return }
-            view.expanded = true
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                view.expanded = true
+            } else {
+                withAnimation(islandExpansionAnimation) {
+                    view.expanded = true
+                }
+            }
             view.onExpansionChanged?(true, view.detailed)
         }
         hostingView.onMouseExited = { [weak self, weak view] in
             guard let self = self, let view = view else { return }
             self.isPointerInsideIsland = false
             if view.isIdle || (!view.detailed && view.expanded && !view.reminderActive) {
-                view.expanded = false
+                if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                    view.expanded = false
+                } else {
+                    withAnimation(islandCollapseAnimation) {
+                        view.expanded = false
+                    }
+                }
                 view.onExpansionChanged?(false, false)
             }
         }
@@ -1555,6 +2081,11 @@ class MacPomodoroStatusBarController {
     }
 
     private func hideIsland() {
+        islandFrameAnimationTimer?.invalidate()
+        islandFrameAnimationTimer = nil
+        if let islandModel = islandModel {
+            setIslandRevealHeight(islandModel, 0)
+        }
         isExpanded = false
         isPinnedExpanded = false
         isPointerInsideIsland = false
@@ -1657,7 +2188,11 @@ class MacPomodoroStatusBarController {
         guard isPomodoroActive, let islandModel = islandModel else { return }
         let nextTimeText = calculateTimeText()
         if islandModel.timeText != nextTimeText {
-            islandModel.timeText = nextTimeText
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                islandModel.timeText = nextTimeText
+            }
         }
     }
 

@@ -91,10 +91,13 @@ class WindowService extends WindowListener with TrayListener {
         prefs.getBool('macos_island_show_without_notch') ?? true;
     final remindersEnabled =
         prefs.getBool('macos_island_reminders_enabled') ?? true;
+    final clipboardLinksEnabled =
+        prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
     await _macAppStatusBarChannel.invokeMethod('configureIsland', {
       'enabled': enabled,
       'showOnNotchlessDisplay': showOnNotchlessDisplay,
       'remindersEnabled': remindersEnabled,
+      'clipboardLinksEnabled': clipboardLinksEnabled,
     });
     final shortcutRegistered = await setMacIslandVisibilityShortcut(
       key: enabled ? (prefs.getString('macos_island_shortcut_key') ?? '') : '',

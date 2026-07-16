@@ -110,10 +110,12 @@ class MainFlutterWindow: NSWindow {
         let enabled = args?["enabled"] as? Bool ?? true
         let showOnNotchlessDisplay = args?["showOnNotchlessDisplay"] as? Bool ?? true
         let remindersEnabled = args?["remindersEnabled"] as? Bool ?? true
+        let clipboardLinksEnabled = args?["clipboardLinksEnabled"] as? Bool ?? true
         MacPomodoroStatusBarController.shared.configureIsland(
           enabled: enabled,
           showOnNotchlessDisplay: showOnNotchlessDisplay,
-          remindersEnabled: remindersEnabled
+          remindersEnabled: remindersEnabled,
+          clipboardLinksEnabled: clipboardLinksEnabled
         )
         result(true)
       case "setVisible":
