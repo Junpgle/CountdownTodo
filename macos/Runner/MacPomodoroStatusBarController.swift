@@ -3,6 +3,43 @@ import Cocoa
 import SwiftUI
 import FlutterMacOS
 import QuartzCore
+import Carbon
+
+
+private let islandVisibilityHotKeySignature: OSType = 0x43445449 // "CDTI"
+private let islandVisibilityHotKeyID: UInt32 = 1
+
+private func islandVisibilityHotKeyHandler(
+    _ nextHandler: EventHandlerCallRef?,
+    _ event: EventRef?,
+    _ userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event = event, let userData = userData else {
+        return OSStatus(eventNotHandledErr)
+    }
+
+    var hotKeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotKeyID
+    )
+    guard status == noErr,
+          hotKeyID.signature == islandVisibilityHotKeySignature,
+          hotKeyID.id == islandVisibilityHotKeyID else {
+        return OSStatus(eventNotHandledErr)
+    }
+
+    let controller = Unmanaged<MacPomodoroStatusBarController>
+        .fromOpaque(userData)
+        .takeUnretainedValue()
+    controller.toggleIslandVisibilityFromHotKey()
+    return noErr
+}
 
 
 private final class MacIslandHostingView: NSHostingView<AnyView> {
@@ -55,6 +92,8 @@ class IslandStateModel: ObservableObject {
     @Published var detailed = false
     @Published var hasNotch = false
     @Published var topInset: CGFloat = 0
+    @Published var notchWidth: CGFloat = 0
+    @Published var isIdle = true
     @Published var focusCurrentCycle = 1
     @Published var focusTotalCycles = 1
     @Published var focusPlannedSeconds: Int64 = 0
@@ -218,45 +257,50 @@ struct MacIslandSwiftUIView: View {
                     .edgesIgnoringSafeArea(.top)
             }
             
-            VStack(spacing: 0) {
-                if model.hasNotch {
-                    Spacer().frame(height: max(model.topInset, 28))
-                } else {
-                    Spacer().frame(height: 6)
+            if model.hasNotch && !model.expanded {
+                if !model.isIdle {
+                    compactNotchView
+                        .frame(height: max(model.topInset, 28))
+                        .padding(.horizontal, 8)
                 }
-                
-                Group {
-                    if model.expanded {
-                        if model.isFocusActive {
-                            expandedFocusView
-                            if model.reminderActive {
-                                Spacer().frame(height: 12)
-                                reminderCard
-                            } else if model.activityActive {
-                                Spacer().frame(height: 12)
-                                activityCard
-                            }
-                        } else if model.reminderActive {
-                            expandedReminderView
-                        } else {
-                            expandedActivityView
-                        }
-                        
-                        if model.detailed {
-                            Spacer().frame(height: 20)
-                            overviewCards
-                        }
+            } else {
+                VStack(spacing: 0) {
+                    if model.hasNotch {
+                        Color.clear.frame(height: max(model.topInset, 28))
                     } else {
-                        if model.isFocusActive {
-                            compactFocusView
+                        Color.clear.frame(height: 6)
+                    }
+
+                    VStack(spacing: 0) {
+                        if model.expanded {
+                            if model.isFocusActive {
+                                expandedFocusView
+                                if model.reminderActive {
+                                    reminderCard.padding(.top, 12)
+                                } else if model.activityActive {
+                                    activityCard.padding(.top, 12)
+                                }
+                            } else if model.reminderActive {
+                                expandedReminderView
+                            } else {
+                                expandedActivityView
+                            }
+
+                            if model.detailed {
+                                overviewCards.padding(.top, 20)
+                            }
                         } else {
-                            compactActivityView
+                            if model.isFocusActive {
+                                compactFocusView
+                            } else {
+                                compactActivityView
+                            }
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                    .padding(.top, 8)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
-                .padding(.top, 8)
             }
         }
         .onTapGesture {
@@ -279,6 +323,72 @@ struct MacIslandSwiftUIView: View {
         .colorScheme(.dark)
     }
     
+    var compactNotchView: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: model.isFocusActive
+                      ? (model.phase == "breaking" ? "cup.and.saucer.fill" : "hourglass.tophalf.filled")
+                      : "checklist")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(model.phase == "breaking" ? .blue : .orange)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(compactContextTitle)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text(compactContextDetail)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundColor(model.isFocusActive ? .purple : .white.opacity(0.48))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Color.clear
+                .frame(width: max(model.notchWidth, 160))
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(model.isFocusActive ? model.timeText : "进行中")
+                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                Text(compactStatusText)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private var compactContextTitle: String {
+        if model.isFocusActive {
+            return model.todoTitle.isEmpty ? "自由专注" : model.todoTitle
+        }
+        return model.activityTitle.isEmpty ? "CountDownTodo" : model.activityTitle
+    }
+
+    private var compactContextDetail: String {
+        if model.isFocusActive {
+            let tags = model.focusTagNames.prefix(2).joined(separator: " · ")
+            return tags.isEmpty ? (model.phase == "breaking" ? "休息阶段" : "未设置标签") : tags
+        }
+        if !model.activityGroupName.isEmpty { return model.activityGroupName }
+        if !model.activitySubtitle.isEmpty { return model.activitySubtitle }
+        return "当前事项"
+    }
+
+    private var compactStatusText: String {
+        if model.isPaused { return "已暂停" }
+        if model.phase == "breaking" { return "休息中" }
+        if model.isRemote { return "其他设备" }
+        return model.isFocusActive ? "专注中" : "正在发生"
+    }
+
     
     var overviewCards: some View {
         HStack(spacing: 12) {
@@ -331,35 +441,65 @@ struct MacIslandSwiftUIView: View {
     }
 
     var compactFocusView: some View {
-        HStack {
+        HStack(spacing: 8) {
             let color = model.phase == "breaking" ? Color.blue : Color.purple
             Image(systemName: model.phase == "breaking" ? "cup.and.saucer.fill" : "hourglass.tophalf.filled")
                 .foregroundColor(color)
                 .font(.system(size: 12))
                 .frame(width: 16, alignment: .center)
-            
-            Text(model.timeText)
-                .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                .foregroundColor(.white)
-            
-            Spacer()
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(compactContextTitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(compactContextDetail)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(color.opacity(0.85))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(model.timeText)
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundColor(.white)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+                Text(compactStatusText)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.5))
+                }
         }
-        .frame(height: 24)
+        .frame(height: 34)
     }
     
     var compactActivityView: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "checklist")
                 .foregroundColor(.orange)
                 .font(.system(size: 12))
-            
-            Text(model.activityTitle.isEmpty ? "CountDownTodo" : model.activityTitle)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white)
-            
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(compactContextTitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                Text(compactContextDetail)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.48))
+                    .lineLimit(1)
+            }
+
             Spacer()
+
+            Text("进行中")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
         }
-        .frame(height: 24)
+        .frame(height: 34)
     }
     
     var expandedFocusView: some View {
@@ -383,8 +523,11 @@ struct MacIslandSwiftUIView: View {
             Text(model.timeText)
                 .font(.system(size: 42, weight: .bold).monospacedDigit())
                 .foregroundColor(.white)
-                .frame(height: 50)
+                .frame(maxWidth: .infinity, minHeight: 50, maxHeight: 50)
                 .padding(.top, 10)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
             
             let titleStr = model.todoTitle.isEmpty ? (model.focusTagNames.first ?? "专注中") : model.todoTitle
             Text(titleStr)
@@ -509,9 +652,9 @@ struct MacIslandSwiftUIView: View {
     var expandedActivityView: some View {
         VStack(spacing: 12) {
             HStack {
-                Image(systemName: "checklist")
-                    .foregroundColor(.orange)
-                Text(model.activityTitle)
+                Image(systemName: model.isIdle ? "checkmark.circle.fill" : "checklist")
+                    .foregroundColor(model.isIdle ? .green : .orange)
+                Text(model.isIdle ? "当前暂无进行中的事项" : model.activityTitle)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
@@ -609,14 +752,20 @@ class MacPomodoroStatusBarController {
     private var observers: [NSObjectProtocol] = []
 
     private var islandEnabled = true
+    private var isShortcutHidden = false
     private var showOnNotchlessDisplay = true
     private var remindersEnabled = true
     private var isExpanded = false
     private var isPinnedExpanded = false
+    private var isPointerInsideIsland = false
     private var currentReminder: [String: Any]?
     private var reminderQueue: [[String: Any]] = []
     private var reminderIds: Set<String> = []
     private var lastScreenNumber: NSNumber?
+    private var lastMinuteRefreshKey: Int64 = -1
+    private var visibilityHotKeyRef: EventHotKeyRef?
+    private var visibilityHotKeyHandlerRef: EventHandlerRef?
+    private var registeredVisibilityShortcut: (keyCode: UInt32, modifiers: UInt32)?
 
     private var phase = "idle"
     private var targetEndMs: Int64 = 0
@@ -705,6 +854,9 @@ class MacPomodoroStatusBarController {
     func configureIsland(enabled: Bool, showOnNotchlessDisplay: Bool, remindersEnabled: Bool) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            if enabled && !self.islandEnabled {
+                self.isShortcutHidden = false
+            }
             self.islandEnabled = enabled
             self.showOnNotchlessDisplay = showOnNotchlessDisplay
             self.remindersEnabled = remindersEnabled
@@ -714,6 +866,142 @@ class MacPomodoroStatusBarController {
             self.refreshDisplay()
             self.scheduleNextUpdate()
         }
+    }
+
+    func configureVisibilityShortcut(
+        key: String,
+        command: Bool,
+        option: Bool,
+        control: Bool,
+        shift: Bool
+    ) -> Bool {
+        let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if normalizedKey.isEmpty {
+            unregisterVisibilityHotKey()
+            registeredVisibilityShortcut = nil
+            return true
+        }
+
+        guard let keyCode = carbonKeyCode(for: normalizedKey) else { return false }
+        // 只允许 Shift 会劫持正常的大写字母输入，必须至少包含一个
+        // Command / Option / Control 修饰键。
+        guard command || option || control else { return false }
+        var modifiers: UInt32 = 0
+        if command { modifiers |= UInt32(cmdKey) }
+        if option { modifiers |= UInt32(optionKey) }
+        if control { modifiers |= UInt32(controlKey) }
+        if shift { modifiers |= UInt32(shiftKey) }
+        guard modifiers != 0 else { return false }
+
+        if let current = registeredVisibilityShortcut,
+           current.keyCode == keyCode,
+           current.modifiers == modifiers,
+           visibilityHotKeyRef != nil {
+            return true
+        }
+
+        guard installVisibilityHotKeyHandlerIfNeeded() else { return false }
+        let previousShortcut = registeredVisibilityShortcut
+        unregisterVisibilityHotKey()
+
+        if registerVisibilityHotKey(keyCode: keyCode, modifiers: modifiers) {
+            registeredVisibilityShortcut = (keyCode, modifiers)
+            return true
+        }
+
+        if let previous = previousShortcut,
+           registerVisibilityHotKey(
+               keyCode: previous.keyCode,
+               modifiers: previous.modifiers
+           ) {
+            registeredVisibilityShortcut = previous
+        } else {
+            registeredVisibilityShortcut = nil
+        }
+        return false
+    }
+
+    fileprivate func toggleIslandVisibilityFromHotKey() {
+        guard islandEnabled else { return }
+        isShortcutHidden.toggle()
+        if isShortcutHidden {
+            hideIsland()
+        } else {
+            refreshDisplay()
+            scheduleNextUpdate()
+        }
+    }
+
+    private func installVisibilityHotKeyHandlerIfNeeded() -> Bool {
+        if visibilityHotKeyHandlerRef != nil { return true }
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            islandVisibilityHotKeyHandler,
+            1,
+            &eventType,
+            userData,
+            &visibilityHotKeyHandlerRef
+        )
+        if status != noErr {
+            NSLog("[MacIsland] Failed to install hot key handler: %d", status)
+        }
+        return status == noErr
+    }
+
+    private func registerVisibilityHotKey(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        let hotKeyID = EventHotKeyID(
+            signature: islandVisibilityHotKeySignature,
+            id: islandVisibilityHotKeyID
+        )
+        let status = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &visibilityHotKeyRef
+        )
+        if status != noErr {
+            visibilityHotKeyRef = nil
+            NSLog("[MacIsland] Failed to register visibility hot key: %d", status)
+        }
+        return status == noErr
+    }
+
+    private func unregisterVisibilityHotKey() {
+        if let hotKeyRef = visibilityHotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            visibilityHotKeyRef = nil
+        }
+    }
+
+    private func carbonKeyCode(for key: String) -> UInt32? {
+        let keyCodes: [String: Int] = [
+            "A": kVK_ANSI_A, "B": kVK_ANSI_B, "C": kVK_ANSI_C,
+            "D": kVK_ANSI_D, "E": kVK_ANSI_E, "F": kVK_ANSI_F,
+            "G": kVK_ANSI_G, "H": kVK_ANSI_H, "I": kVK_ANSI_I,
+            "J": kVK_ANSI_J, "K": kVK_ANSI_K, "L": kVK_ANSI_L,
+            "M": kVK_ANSI_M, "N": kVK_ANSI_N, "O": kVK_ANSI_O,
+            "P": kVK_ANSI_P, "Q": kVK_ANSI_Q, "R": kVK_ANSI_R,
+            "S": kVK_ANSI_S, "T": kVK_ANSI_T, "U": kVK_ANSI_U,
+            "V": kVK_ANSI_V, "W": kVK_ANSI_W, "X": kVK_ANSI_X,
+            "Y": kVK_ANSI_Y, "Z": kVK_ANSI_Z,
+            "0": kVK_ANSI_0, "1": kVK_ANSI_1, "2": kVK_ANSI_2,
+            "3": kVK_ANSI_3, "4": kVK_ANSI_4, "5": kVK_ANSI_5,
+            "6": kVK_ANSI_6, "7": kVK_ANSI_7, "8": kVK_ANSI_8,
+            "9": kVK_ANSI_9,
+            "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3,
+            "F4": kVK_F4, "F5": kVK_F5, "F6": kVK_F6,
+            "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9,
+            "F10": kVK_F10, "F11": kVK_F11, "F12": kVK_F12,
+        ]
+        guard let code = keyCodes[key] else { return nil }
+        return UInt32(code)
     }
 
     // 兼容旧通道调用；应用图标不再显示到菜单栏。
@@ -865,9 +1153,11 @@ class MacPomodoroStatusBarController {
 
     private func refreshDisplay() {
         expireStartedReminders()
+        lastMinuteRefreshKey = Int64(Date().timeIntervalSince1970) / 60
         let hasReminder = remindersEnabled && currentReminder != nil
         let hasActivity = isOngoingActivityActive
-        guard islandEnabled, isPomodoroActive || hasReminder || hasActivity else {
+        let hasLiveContent = isPomodoroActive || hasReminder || hasActivity
+        guard islandEnabled, !isShortcutHidden else {
             hideIsland()
             return
         }
@@ -882,6 +1172,18 @@ class MacPomodoroStatusBarController {
             hideIsland()
             return
         }
+        // 普通屏幕没有可供空闲态收纳的物理刘海；没有实时内容时仍然隐藏。
+        guard hasLiveContent || geometry.hasNotch else {
+            hideIsland()
+            return
+        }
+
+        // 实时内容刚结束时不能沿用之前的点击/提醒展开状态。空闲态只在
+        // 指针位于刘海交互区域内时展开，移出后一定完全缩回刘海。
+        if !hasLiveContent {
+            isPinnedExpanded = false
+            isExpanded = isPointerInsideIsland
+        }
 
         let view = ensureIslandModel()
         view.phase = phase
@@ -893,6 +1195,8 @@ class MacPomodoroStatusBarController {
         view.detailed = hasReminder || isPinnedExpanded
         view.hasNotch = geometry.hasNotch
         view.topInset = geometry.topInset
+        view.notchWidth = geometry.notchWidth
+        view.isIdle = !hasLiveContent
         view.focusCurrentCycle = max(1, focusCurrentCycle)
         view.focusTotalCycles = max(1, focusTotalCycles)
         view.focusPlannedSeconds = focusPlannedSeconds
@@ -955,15 +1259,25 @@ class MacPomodoroStatusBarController {
             // view.setAccessibilityValue("\(view.activityCategory)，\(activityTitle)，\(view.activityRemainingText)")
         }
 
-        let activityCompactWidth: CGFloat = hasActivity || isPomodoroActive ? 238 : 196
-        let compactWidth = geometry.hasNotch ? max(activityCompactWidth, geometry.notchWidth + 24) : activityCompactWidth
-        let compactHeight: CGFloat = geometry.hasNotch ? max(54, geometry.topInset + 25) : 43
+        let collapsedNotchWidth = geometry.notchWidth > 0 ? geometry.notchWidth : 180
+        // 收起态只在物理刘海两侧各保留约 80pt。旧的 430pt 下限会覆盖
+        // Android Studio 等菜单项较多的应用，且远宽于实际刘海区域。
+        let liveCompactWidth = max(320, collapsedNotchWidth + 160)
+        let compactWidth: CGFloat = geometry.hasNotch
+            ? (hasLiveContent ? liveCompactWidth : collapsedNotchWidth)
+            : (hasActivity || isPomodoroActive ? 320 : 280)
+        let compactHeight: CGFloat = geometry.hasNotch
+            ? (hasLiveContent ? max(geometry.topInset, 28) + 4 : max(geometry.topInset, 28))
+            : 68
         let expanded = hasReminder || isExpanded
         let detailed = hasReminder || isPinnedExpanded
         let focusWithActivity = isPomodoroActive && hasActivity
         let focusWithReminder = isPomodoroActive && hasReminder
+        let expandedWidthFloor: CGFloat = geometry.hasNotch
+            ? max(360, geometry.notchWidth + 80)
+            : 320
         let width = expanded
-            ? max(detailed ? 360 : (focusWithReminder ? 340 : (hasActivity ? 330 : 320)), compactWidth)
+            ? max(detailed ? 360 : (focusWithReminder ? 340 : (hasActivity ? 330 : 320)), expandedWidthFloor)
             : compactWidth
         let height: CGFloat
         let widthStr: CGFloat = width
@@ -972,54 +1286,36 @@ class MacPomodoroStatusBarController {
         let topInset = hasNotch ? max(geometry.topInset, 28) : 6
         
         if !expanded {
-            height = topInset + 4 + 18 + 8
-        } else if detailed {
-            let topPadding: CGFloat = 8
-            let bottomPadding: CGFloat = 16
-            
-            var contentHeight: CGFloat = 0
-            if isPomodoroActive {
-                // TopBar(20) + Time(50+10) + Title(20+8) + Meta(16+4) + Progress(6+32) + Buttons(38) = 204
-                let baseFocus: CGFloat = 204
-                let tagsHeight: CGFloat = view.focusTagNames.isEmpty ? 0 : 32
-                // Note has 13+24+16=53 height
-                let noteHeight: CGFloat = view.focusNote.isEmpty ? 0 : 53
-                
-                contentHeight += baseFocus + tagsHeight + noteHeight
-                
-                if hasReminder && !view.reminderTitle.isEmpty {
-                    contentHeight += 12 + 62
-                } else if hasActivity && !view.nextActivityTitle.isEmpty {
-                    contentHeight += 12 + 62
-                }
-            } else if hasReminder {
-                contentHeight += 80
-            } else {
-                contentHeight += 80
-            }
-            
-            // Overview Cards (16 + 68)
-            contentHeight += 16 + 68
-            
-            height = topInset + topPadding + contentHeight + bottomPadding
+            height = compactHeight
         } else {
             let topPadding: CGFloat = 8
-            let bottomPadding: CGFloat = 16
-            
-            var contentHeight: CGFloat = 0
+            let bottomPadding: CGFloat = 20
+            var contentHeight: CGFloat
+
             if isPomodoroActive {
-                let baseFocus: CGFloat = 204
-                contentHeight += baseFocus
-                
-                if hasReminder && !view.reminderTitle.isEmpty {
-                    contentHeight += 12 + 62
-                } else if hasActivity && !view.nextActivityTitle.isEmpty {
-                    contentHeight += 12 + 62
+                // expandedFocusView 的固定内容总高为 204pt。
+                contentHeight = 204
+                if detailed && !view.focusTagNames.isEmpty {
+                    contentHeight += 32
                 }
+                // 备注可能换行，最终高度由 SwiftUI 实际布局回传；这里不再
+                // 预留猜测值，避免不可见/空白备注把首次展开窗口撑高。
+
+                // reminderCard/activityCard 是单行内容加 12pt 内边距，实际约 39pt。
+                if hasReminder && !view.reminderTitle.isEmpty {
+                    contentHeight += 12 + 39
+                } else if hasActivity && !view.activityTitle.isEmpty {
+                    contentHeight += 12 + 39
+                }
+            } else if hasReminder {
+                contentHeight = 104
             } else {
-                contentHeight += 80
+                contentHeight = 70
             }
-            
+
+            if detailed {
+                contentHeight += 20 + 68
+            }
             height = topInset + topPadding + contentHeight + bottomPadding
         }
         let frame = NSRect(
@@ -1030,6 +1326,7 @@ class MacPomodoroStatusBarController {
         )
 
         let window = ensureIslandWindow(frame: frame, view: view)
+        window.hasShadow = hasLiveContent || expanded
         let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let shouldAnimate = window.isVisible && !reduceMotion && lastScreenNumber == screenNumber
@@ -1237,14 +1534,17 @@ class MacPomodoroStatusBarController {
         
                 let rootView = AnyView(MacIslandSwiftUIView(model: view))
         let hostingView = MacIslandHostingView(rootView: rootView)
-        hostingView.onMouseEntered = { [weak view] in
-            guard let view = view, !view.expanded else { return }
+        hostingView.onMouseEntered = { [weak self, weak view] in
+            guard let self = self, let view = view else { return }
+            self.isPointerInsideIsland = true
+            guard !view.expanded else { return }
             view.expanded = true
             view.onExpansionChanged?(true, view.detailed)
         }
-        hostingView.onMouseExited = { [weak view] in
-            guard let view = view else { return }
-            if !view.detailed && view.expanded && !view.reminderActive {
+        hostingView.onMouseExited = { [weak self, weak view] in
+            guard let self = self, let view = view else { return }
+            self.isPointerInsideIsland = false
+            if view.isIdle || (!view.detailed && view.expanded && !view.reminderActive) {
                 view.expanded = false
                 view.onExpansionChanged?(false, false)
             }
@@ -1257,6 +1557,7 @@ class MacPomodoroStatusBarController {
     private func hideIsland() {
         isExpanded = false
         isPinnedExpanded = false
+        isPointerInsideIsland = false
         cancelTimer()
         islandWindow?.orderOut(nil)
     }
@@ -1332,7 +1633,32 @@ class MacPomodoroStatusBarController {
     }
 
     @objc private func timerFired() {
-        refreshDisplay()
+        let previousReminderId = currentReminder.map(reminderIdentifier)
+        let activityWasActive = isOngoingActivityActive
+        expireStartedReminders()
+        let reminderId = currentReminder.map(reminderIdentifier)
+        let activityIsActive = isOngoingActivityActive
+
+        // 提醒切换、提醒结束或活动跨过结束边界时，仍需完整刷新布局。
+        if previousReminderId != reminderId || activityWasActive != activityIsActive {
+            refreshDisplay()
+            return
+        }
+
+        let minuteKey = Int64(Date().timeIntervalSince1970) / 60
+        if minuteKey != lastMinuteRefreshKey {
+            // 课程倒计时、活动剩余时间和今日统计只需按分钟刷新。
+            refreshDisplay()
+            return
+        }
+
+        // 番茄钟每秒只更新一个固定尺寸的文本，避免重写整个 SwiftUI 模型
+        // 以及重复计算窗口尺寸造成视觉抖动。
+        guard isPomodoroActive, let islandModel = islandModel else { return }
+        let nextTimeText = calculateTimeText()
+        if islandModel.timeText != nextTimeText {
+            islandModel.timeText = nextTimeText
+        }
     }
 
     private func showMainWindow() {

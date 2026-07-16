@@ -96,6 +96,42 @@ class WindowService extends WindowListener with TrayListener {
       'showOnNotchlessDisplay': showOnNotchlessDisplay,
       'remindersEnabled': remindersEnabled,
     });
+    final shortcutRegistered = await setMacIslandVisibilityShortcut(
+      key: enabled ? (prefs.getString('macos_island_shortcut_key') ?? '') : '',
+      command: prefs.getBool('macos_island_shortcut_command') ?? false,
+      option: prefs.getBool('macos_island_shortcut_option') ?? false,
+      control: prefs.getBool('macos_island_shortcut_control') ?? false,
+      shift: prefs.getBool('macos_island_shortcut_shift') ?? false,
+    );
+    if (!shortcutRegistered) {
+      debugPrint('[WindowService] macOS island shortcut registration failed');
+    }
+  }
+
+  static Future<bool> setMacIslandVisibilityShortcut({
+    required String key,
+    required bool command,
+    required bool option,
+    required bool control,
+    required bool shift,
+  }) async {
+    if (!Platform.isMacOS) return false;
+    try {
+      return await _macAppStatusBarChannel.invokeMethod<bool>(
+            'setIslandVisibilityShortcut',
+            {
+              'key': key,
+              'command': command,
+              'option': option,
+              'control': control,
+              'shift': shift,
+            },
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      debugPrint('[WindowService] set macOS island shortcut failed: $error');
+      return false;
+    }
   }
 
   static Future<void> _initTray() async {

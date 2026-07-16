@@ -44,6 +44,7 @@ class _PlatformSpecificSettingsPageState
     'island_support': GlobalKey(),
     'test_notification': GlobalKey(),
     'mac_status_bar': GlobalKey(),
+    'mac_island_shortcut': GlobalKey(),
     'mac_island_reminders': GlobalKey(),
     'mac_island_without_notch': GlobalKey(),
     'mac_island_test': GlobalKey(),
@@ -64,6 +65,11 @@ class _PlatformSpecificSettingsPageState
   bool _macIslandEnabled = true;
   bool _macIslandRemindersEnabled = true;
   bool _macIslandShowWithoutNotch = true;
+  String _macIslandShortcutKey = '';
+  bool _macIslandShortcutCommand = false;
+  bool _macIslandShortcutOption = false;
+  bool _macIslandShortcutControl = false;
+  bool _macIslandShortcutShift = false;
 
   @override
   void initState() {
@@ -133,9 +139,71 @@ class _PlatformSpecificSettingsPageState
               prefs.getBool('macos_island_show_without_notch') ?? true;
           _macIslandRemindersEnabled =
               prefs.getBool('macos_island_reminders_enabled') ?? true;
+          _macIslandShortcutKey =
+              prefs.getString('macos_island_shortcut_key') ?? '';
+          _macIslandShortcutCommand =
+              prefs.getBool('macos_island_shortcut_command') ?? false;
+          _macIslandShortcutOption =
+              prefs.getBool('macos_island_shortcut_option') ?? false;
+          _macIslandShortcutControl =
+              prefs.getBool('macos_island_shortcut_control') ?? false;
+          _macIslandShortcutShift =
+              prefs.getBool('macos_island_shortcut_shift') ?? false;
         });
       }
     }
+  }
+
+  _MacIslandShortcut get _macIslandShortcut => _MacIslandShortcut(
+        key: _macIslandShortcutKey,
+        command: _macIslandShortcutCommand,
+        option: _macIslandShortcutOption,
+        control: _macIslandShortcutControl,
+        shift: _macIslandShortcutShift,
+      );
+
+  Future<void> _editMacIslandShortcut() async {
+    final shortcut = await showDialog<_MacIslandShortcut>(
+      context: context,
+      builder: (context) =>
+          _MacIslandShortcutDialog(initialShortcut: _macIslandShortcut),
+    );
+    if (shortcut == null || !mounted) return;
+
+    final registered = await WindowService.setMacIslandVisibilityShortcut(
+      key: shortcut.key,
+      command: shortcut.command,
+      option: shortcut.option,
+      control: shortcut.control,
+      shift: shortcut.shift,
+    );
+    if (!registered) {
+      if (mounted) {
+        AppSnackBars.error(context, '快捷键已被其他应用占用，请换一个组合');
+      }
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await Future.wait([
+      prefs.setString('macos_island_shortcut_key', shortcut.key),
+      prefs.setBool('macos_island_shortcut_command', shortcut.command),
+      prefs.setBool('macos_island_shortcut_option', shortcut.option),
+      prefs.setBool('macos_island_shortcut_control', shortcut.control),
+      prefs.setBool('macos_island_shortcut_shift', shortcut.shift),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _macIslandShortcutKey = shortcut.key;
+      _macIslandShortcutCommand = shortcut.command;
+      _macIslandShortcutOption = shortcut.option;
+      _macIslandShortcutControl = shortcut.control;
+      _macIslandShortcutShift = shortcut.shift;
+    });
+    AppSnackBars.success(
+      context,
+      shortcut.isEmpty ? '已清除灵动岛隐藏快捷键' : '快捷键已设为 ${shortcut.displayText}',
+    );
   }
 
   Widget _buildTile({required String targetId, required Widget child}) {
@@ -441,6 +509,30 @@ class _PlatformSpecificSettingsPageState
             ),
             const AppSettingsDivider(indent: 72),
             _buildTile(
+              targetId: 'mac_island_shortcut',
+              child: ListTile(
+                enabled: _macIslandEnabled,
+                leading: Icon(
+                  Icons.keyboard_command_key_rounded,
+                  color: _macIslandEnabled
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+                title: const Text('隐藏/恢复灵动岛快捷键'),
+                subtitle: Text(
+                  _macIslandShortcut.isEmpty
+                      ? '未设置；设置全局快捷键后可临时让出菜单栏空间'
+                      : '按 ${_macIslandShortcut.displayText} 隐藏，再按一次恢复',
+                ),
+                trailing: OutlinedButton(
+                  onPressed: _macIslandEnabled ? _editMacIslandShortcut : null,
+                  child: Text(_macIslandShortcut.isEmpty ? '设置' : '修改'),
+                ),
+                onTap: _macIslandEnabled ? _editMacIslandShortcut : null,
+              ),
+            ),
+            const AppSettingsDivider(indent: 72),
+            _buildTile(
               targetId: 'mac_island_reminders',
               child: ListTile(
                 leading: Icon(Icons.notifications_active_outlined,
@@ -519,6 +611,185 @@ class _PlatformSpecificSettingsPageState
           ],
         ],
       ),
+    );
+  }
+}
+
+class _MacIslandShortcut {
+  const _MacIslandShortcut({
+    required this.key,
+    required this.command,
+    required this.option,
+    required this.control,
+    required this.shift,
+  });
+
+  const _MacIslandShortcut.empty()
+      : key = '',
+        command = false,
+        option = false,
+        control = false,
+        shift = false;
+
+  final String key;
+  final bool command;
+  final bool option;
+  final bool control;
+  final bool shift;
+
+  bool get isEmpty => key.isEmpty;
+  bool get hasGlobalModifier => command || option || control;
+
+  String get displayText {
+    if (isEmpty) return '未设置';
+    final buffer = StringBuffer();
+    if (control) buffer.write('⌃');
+    if (option) buffer.write('⌥');
+    if (shift) buffer.write('⇧');
+    if (command) buffer.write('⌘');
+    buffer.write(key);
+    return buffer.toString();
+  }
+}
+
+class _MacIslandShortcutDialog extends StatefulWidget {
+  const _MacIslandShortcutDialog({required this.initialShortcut});
+
+  final _MacIslandShortcut initialShortcut;
+
+  @override
+  State<_MacIslandShortcutDialog> createState() =>
+      _MacIslandShortcutDialogState();
+}
+
+class _MacIslandShortcutDialogState extends State<_MacIslandShortcutDialog> {
+  late final FocusNode _focusNode;
+  late _MacIslandShortcut _shortcut;
+  String? _validationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(debugLabel: 'macIslandShortcutRecorder');
+    _shortcut = widget.initialShortcut;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  String? _normalizedKey(LogicalKeyboardKey logicalKey) {
+    final label = logicalKey.keyLabel.toUpperCase();
+    if (RegExp(r'^[A-Z0-9]$').hasMatch(label)) return label;
+    if (RegExp(r'^F(?:[1-9]|1[0-2])$').hasMatch(label)) return label;
+    return null;
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
+    final key = _normalizedKey(event.logicalKey);
+    if (key == null) return;
+
+    final keyboard = HardwareKeyboard.instance;
+    final shortcut = _MacIslandShortcut(
+      key: key,
+      command: keyboard.isMetaPressed,
+      option: keyboard.isAltPressed,
+      control: keyboard.isControlPressed,
+      shift: keyboard.isShiftPressed,
+    );
+    if (!shortcut.hasGlobalModifier) {
+      setState(() => _validationMessage = '请至少同时按住 ⌘、⌥ 或 ⌃ 中的一个；⇧ 不能单独使用');
+      return;
+    }
+    setState(() {
+      _shortcut = shortcut;
+      _validationMessage = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('设置灵动岛快捷键'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('按下“修饰键 + 字母、数字或 F1–F12”。快捷键在其他 App 中也能使用。'),
+            const SizedBox(height: 16),
+            KeyboardListener(
+              focusNode: _focusNode,
+              autofocus: true,
+              onKeyEvent: _handleKeyEvent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _focusNode.requestFocus,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _focusNode.hasFocus
+                          ? colorScheme.primary
+                          : colorScheme.outlineVariant,
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    _shortcut.isEmpty ? '请按快捷键' : _shortcut.displayText,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: _shortcut.isEmpty
+                          ? colorScheme.onSurfaceVariant
+                          : colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_validationMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _validationMessage!,
+                style: TextStyle(color: colorScheme.error, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (!widget.initialShortcut.isEmpty)
+          TextButton(
+            onPressed: () => Navigator.pop(
+              context,
+              const _MacIslandShortcut.empty(),
+            ),
+            child: const Text('清除'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _shortcut.isEmpty
+              ? null
+              : () => Navigator.pop(context, _shortcut),
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

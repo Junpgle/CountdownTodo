@@ -122,6 +122,16 @@ class MainFlutterWindow: NSWindow {
         let iconSize = args?["iconSize"] as? Int ?? 18
         MacPomodoroStatusBarController.shared.setAppStatusVisible(visible, iconSize: iconSize)
         result(true)
+      case "setIslandVisibilityShortcut":
+        let args = call.arguments as? [String: Any]
+        let success = MacPomodoroStatusBarController.shared.configureVisibilityShortcut(
+          key: args?["key"] as? String ?? "",
+          command: args?["command"] as? Bool ?? false,
+          option: args?["option"] as? Bool ?? false,
+          control: args?["control"] as? Bool ?? false,
+          shift: args?["shift"] as? Bool ?? false
+        )
+        result(success)
       default:
         result(FlutterMethodNotImplemented)
       }

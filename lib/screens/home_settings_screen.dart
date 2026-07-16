@@ -131,7 +131,8 @@ class _SettingsPageState extends State<SettingsPage> {
       'tai_db',
       'live_updates',
       'island_support',
-      'test_notification'
+      'test_notification',
+      'mac_island_shortcut'
     ];
 
     if (accountTargets.contains(target)) {
