@@ -8,15 +8,13 @@ import Carbon
 
 private let islandVisibilityHotKeySignature: OSType = 0x43445449 // "CDTI"
 private let islandVisibilityHotKeyID: UInt32 = 1
-private let islandExpansionAnimation = Animation.spring(
-    response: 0.50,
-    dampingFraction: 0.90,
-    blendDuration: 0.12
+private let islandExpansionAnimation = Animation.timingCurve(
+    0.22, 0.72, 0.18, 1.0,
+    duration: 0.50
 )
-private let islandCollapseAnimation = Animation.spring(
-    response: 0.36,
-    dampingFraction: 0.94,
-    blendDuration: 0.08
+private let islandCollapseAnimation = Animation.timingCurve(
+    0.40, 0.0, 0.60, 1.0,
+    duration: 0.36
 )
 private let islandExpansionDuration: TimeInterval = 0.50
 private let islandCollapseDuration: TimeInterval = 0.36
@@ -365,23 +363,22 @@ struct MacIslandSwiftUIView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea()
         .onTapGesture {
-            let animation = model.expanded && model.detailed
-                ? islandCollapseAnimation
-                : islandExpansionAnimation
-            withAnimation(animation) {
-                if model.expanded {
-                    if model.detailed {
-                        model.detailed = false
-                        model.onExpansionChanged?(true, false)
-                    } else {
-                        model.detailed = true
-                        model.onExpansionChanged?(true, true)
-                    }
-                } else {
+            if model.expanded {
+                // 详情态只增加/移除底部内容。上半区不参与布局插值，窗口
+                // 的顶部遮罩会自然向下揭示内容，不再先下沉再回弹。
+                let nextDetailed = !model.detailed
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    model.detailed = nextDetailed
+                }
+                model.onExpansionChanged?(true, nextDetailed)
+            } else {
+                withAnimation(islandExpansionAnimation) {
                     model.expanded = true
                     model.detailed = false
-                    model.onExpansionChanged?(true, false)
                 }
+                model.onExpansionChanged?(true, false)
             }
         }
         .colorScheme(.dark)
