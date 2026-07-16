@@ -290,73 +290,79 @@ struct MacIslandSwiftUIView: View {
             
             if model.hasNotch {
                 Color.black
+                    .frame(maxWidth: .infinity)
                     .frame(height: max(model.topInset, 28))
-                    .edgesIgnoringSafeArea(.top)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .edgesIgnoringSafeArea(.all)
                     .transaction { transaction in
                         transaction.animation = nil
                         transaction.disablesAnimations = true
                     }
             }
-            
-            if model.hasNotch && !model.expanded {
-                if !model.isIdle {
-                    compactNotchView
-                        .frame(height: max(model.topInset, 28))
-                        .padding(.horizontal, 8)
-                }
-            } else {
-                VStack(spacing: 0) {
-                    if model.hasNotch {
-                        Color.clear.frame(height: max(model.topInset, 28))
-                    } else {
-                        Color.clear.frame(height: 6)
+
+            Group {
+                if model.hasNotch && !model.expanded {
+                    if !model.isIdle {
+                        compactNotchView
+                            .frame(height: max(model.topInset, 28))
+                            .padding(.horizontal, 8)
                     }
-
+                } else {
                     VStack(spacing: 0) {
-                        if model.expanded {
-                            if model.isFocusActive {
-                                expandedFocusView
-                                if model.reminderActive {
-                                    reminderCard.padding(.top, 12)
-                                } else if model.clipboardLinkActive {
-                                    clipboardLinkCard.padding(.top, 12)
-                                } else if model.activityActive {
-                                    activityCard.padding(.top, 12)
-                                }
-                            } else if model.reminderActive {
-                                expandedReminderView
-                            } else if model.clipboardLinkActive {
-                                expandedClipboardLinkView
-                            } else {
-                                expandedActivityView
-                            }
-
-                            if model.detailed {
-                                overviewCards.padding(.top, 20)
-                            }
+                        if model.hasNotch {
+                            Color.clear.frame(height: max(model.topInset, 28))
                         } else {
-                            if model.isFocusActive {
-                                compactFocusView
+                            Color.clear.frame(height: 6)
+                        }
+
+                        VStack(spacing: 0) {
+                            if model.expanded {
+                                if model.isFocusActive {
+                                    expandedFocusView
+                                    if model.reminderActive {
+                                        reminderCard.padding(.top, 12)
+                                    } else if model.clipboardLinkActive {
+                                        clipboardLinkCard.padding(.top, 12)
+                                    } else if model.activityActive {
+                                        activityCard.padding(.top, 12)
+                                    }
+                                } else if model.reminderActive {
+                                    expandedReminderView
+                                } else if model.clipboardLinkActive {
+                                    expandedClipboardLinkView
+                                } else {
+                                    expandedActivityView
+                                }
+
+                                if model.detailed {
+                                    overviewCards.padding(.top, 20)
+                                }
                             } else {
-                                compactActivityView
+                                if model.isFocusActive {
+                                    compactFocusView
+                                } else {
+                                    compactActivityView
+                                }
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                        .padding(.top, 8)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                    .padding(.top, 8)
                 }
             }
+            // 只裁切移动中的文字/按钮，黑色底板和刘海顶部连接层不参与
+            // 遮罩，避免展开过程中屏幕顶部再次出现透明缺口。
+            .mask(
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .frame(height: max(0, model.revealHeight))
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .mask(
-            VStack(spacing: 0) {
-                Rectangle()
-                    .frame(height: max(0, model.revealHeight))
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        )
         .ignoresSafeArea()
         .onTapGesture {
             let animation = model.expanded && model.detailed
