@@ -30,6 +30,7 @@ class DatabaseHelper {
     'updated_at',
     'collab_type',
     'recurrence',
+    'recurrence_series_id',
     'custom_interval_days',
     'recurrence_end_date',
     'reminder_minutes',
@@ -128,6 +129,7 @@ class DatabaseHelper {
       final columnsToAdd = [
         {'name': 'image_path', 'type': 'TEXT'},
         {'name': 'original_text', 'type': 'TEXT'},
+        {'name': 'recurrence_series_id', 'type': 'TEXT'},
       ];
 
       for (final column in columnsToAdd) {
@@ -973,6 +975,8 @@ class DatabaseHelper {
               'team_name': json['team_name'] ?? json['teamName'],
               'group_id': json['group_id'] ?? json['groupId'],
               'recurrence': json['recurrence'] ?? 0,
+              'recurrence_series_id':
+                  json['recurrence_series_id'] ?? json['recurrenceSeriesId'],
               'custom_interval_days': json['custom_interval_days'] ??
                   json['customIntervalDays'] ??
                   0,
@@ -1018,6 +1022,7 @@ class DatabaseHelper {
         updated_at $integerType,
         collab_type $integerType DEFAULT 0,
         recurrence $integerType DEFAULT 0,
+        recurrence_series_id TEXT,
         custom_interval_days INTEGER NOT NULL DEFAULT 0,
         recurrence_end_date INTEGER,
         reminder_minutes INTEGER,

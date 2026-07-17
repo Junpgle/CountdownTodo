@@ -10,7 +10,6 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
@@ -25,8 +24,10 @@ import '../update_service.dart';
 import '../services/api_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
+import '../services/todo_notification_policy.dart';
 import '../services/widget_service.dart';
 import '../services/screen_time_service.dart';
+import '../services/permission_request_coordinator.dart';
 import '../services/macos_pomodoro_status_bar_service.dart';
 import '../services/course_service.dart';
 import '../services/course_calendar_adjustment_service.dart';
@@ -91,6 +92,8 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard>
     with WidgetsBindingObserver {
+  late final PermissionRequestCoordinator _permissionCoordinator;
+
   bool _isSameDay(DateTime date1, DateTime date2) {
     return date1.year == date2.year &&
         date1.month == date2.month &&
@@ -145,7 +148,10 @@ class _HomeDashboardState extends State<HomeDashboard>
   };
   Timer? _courseTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
+  final Set<String> _todosWithScheduledAlarms = {};
+  String? _activeCourseNotificationKey;
   final Set<int> _activeTodoNotifIds = {};
+  bool _isCheckingUpcomingEvents = false;
   Timer? _todoPersistDebounce;
   Completer<void>? _todoPersistDebounceCompleter;
   Future<void> _todoPersistChain = Future.value();
@@ -219,12 +225,16 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasShownUpdate = false;
   bool _hasCheckedHolidayPreset = false;
   bool _showCoachMarks = false;
+  Future<void>? _startupPromptsFuture;
+  bool _startupPromptsCompleted = false;
   TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
   bool _pendingReloadRequested = false;
+  Timer? _dashboardLoadRetryTimer;
+  int _dashboardLoadRetryAttempt = 0;
 
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _navigatingToPomodoro = false;
@@ -241,6 +251,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   Timer? _localPomodoroTicker;
   int _localPomodoroRemaining = 0;
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
+  StreamSubscription<MacIslandCommand>? _macIslandCommandSub;
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
   Timer? _todoNotificationDebouncer;
@@ -363,6 +374,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(context: context);
     WidgetsBinding.instance.addObserver(this);
     // 冷启动清理残留通知
     NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
@@ -371,15 +383,16 @@ class _HomeDashboardState extends State<HomeDashboard>
     _loadSemesterSettings();
     _loadHomeTextConfig();
     _generateGreeting();
-    _loadAllData();
     _initManifestWallpaper();
     WidgetService.init();
-    MacPomodoroStatusBarService.init();
+    // 首页首轮加载完成后会把同一批数据直接交给灵动岛，避免冷启动时
+    // 灵动岛与首页并发执行两套完整的 SQLite 查询。
+    MacPomodoroStatusBarService.init(deferOngoingActivityRestore: true);
+    _macIslandCommandSub =
+        MacPomodoroStatusBarService.onCommand.listen(_handleMacIslandCommand);
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
-    _checkCoachMarks();
-
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
     _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
@@ -391,6 +404,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
     StorageService.dataRefreshNotifier.addListener(_loadAllData);
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
+    // 在细粒度通知器和刷新监听都就绪后再启动首轮数据读取。
+    unawaited(_loadAllData());
 
     // 🚀 使用集中式事件分发，避免多个页面覆盖同一个 MethodChannel handler
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
@@ -453,9 +468,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _initNotifications();
-      });
+      // 首次进入首页的交互按固定顺序串行，避免公告、操作指引和
+      // 系统权限弹窗同时出现。
+      unawaited(_runStartupPrompts());
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
@@ -466,11 +481,6 @@ class _HomeDashboardState extends State<HomeDashboard>
           _initIslandOnStartup();
           _checkOfficialHolidayPreset();
         }
-      });
-
-      // 保活：检查精确闹钟权限（Android 12+），仅首次提示一次
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        if (mounted) _checkExactAlarmPermission();
       });
 
       ExternalShareHandler.init(
@@ -493,7 +503,6 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkPendingTodoConfirm();
 
       _checkAutoSync();
-      _checkUpdatesSilently();
 
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         _checkUpcomingEvents();
@@ -535,6 +544,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   @override
   void dispose() {
+    _permissionCoordinator.dispose();
     for (final sub in _notifSubs) {
       sub.cancel();
     }
@@ -548,6 +558,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
     _localPomodoroSub?.cancel();
+    _macIslandCommandSub?.cancel();
     _remotePomodoroTicker?.cancel();
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
@@ -559,6 +570,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _collaborativeSyncDebouncer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
     _bannerRefreshTimer?.cancel();
+    _dashboardLoadRetryTimer?.cancel();
     _todoNotificationDebouncer?.cancel();
     _teamPendingDebouncer?.cancel();
     _announcementDebouncer?.cancel();
@@ -581,7 +593,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         content: const Text('⏰ 需要「精确闹钟」权限才能在 App 被杀后准时发送提醒'),
         action: SnackBarAction(
           label: '去授权',
-          onPressed: NotificationService.openExactAlarmSettings,
+          onPressed: () async {
+            await _permissionCoordinator.request(
+              AppPermissionKind.exactAlarm,
+            );
+          },
         ),
         duration: const Duration(seconds: 8),
       ),
@@ -804,6 +820,162 @@ class _HomeDashboardState extends State<HomeDashboard>
     });
   }
 
+  Future<void> _handleMacIslandCommand(MacIslandCommand command) async {
+    if (!mounted) return;
+    switch (command.type) {
+      case MacIslandCommandType.openEntity:
+        await _openIslandEntity(command.entityKind, command.entityId);
+      case MacIslandCommandType.startFocus:
+        await _startIslandEntityFocus(command.entityKind, command.entityId);
+      case MacIslandCommandType.completeTodo:
+        await _completeIslandTodo(command.entityId);
+    }
+  }
+
+  Future<void> _openIslandEntity(String kind, String id) async {
+    if (kind == 'todo') {
+      final todo = await _findIslandTodo(id);
+      if (todo == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.slideHorizontal(TodoDetailScreen(todo: todo)),
+      );
+      return;
+    }
+
+    if (kind == 'plan_block') {
+      final block = await _findIslandPlanBlock(id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => TodoPlanScreen(
+            username: widget.username,
+            initialDate: block == null
+                ? DateTime.now()
+                : DateTime.fromMillisecondsSinceEpoch(block.startTime),
+            initialTodoId: block?.todoId,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (kind == 'course') {
+      final course = await _findIslandCourse(id);
+      if (course == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.slideHorizontal(CourseDetailScreen(course: course)),
+      );
+      return;
+    }
+
+    _navigateToPomodoro();
+  }
+
+  Future<void> _startIslandEntityFocus(String kind, String id) async {
+    final running = await PomodoroService.loadRunState();
+    if (running != null &&
+        (running.phase == PomodoroPhase.focusing ||
+            running.phase == PomodoroPhase.breaking)) {
+      _navigateToPomodoro();
+      return;
+    }
+
+    if (kind == 'plan_block') {
+      final block = await _findIslandPlanBlock(id);
+      if (block != null) await _startPlanBlockFocus(block);
+      return;
+    }
+    if (kind != 'todo') return;
+
+    final todo = await _findIslandTodo(id);
+    if (todo == null || todo.isDone || todo.isDeleted) return;
+    try {
+      final settings = await PomodoroService.getSettings();
+      await PomodoroControlService.startFocus(
+        settings: settings,
+        boundTodo: todo,
+      );
+      if (!mounted) return;
+      _pomodoroRevision.value++;
+      _navigateToPomodoro();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动专注失败: $e')),
+      );
+    }
+  }
+
+  Future<void> _completeIslandTodo(String id) async {
+    final todo = await _findIslandTodo(id);
+    if (todo == null || todo.isDone || todo.isDeleted) return;
+
+    final running = await PomodoroService.loadRunState();
+    if (running != null &&
+        running.todoUuid == id &&
+        (running.phase == PomodoroPhase.focusing ||
+            running.phase == PomodoroPhase.breaking)) {
+      await PomodoroControlService.stopCurrentFocus(
+        username: widget.username,
+        status: PomodoroRecordStatus.completed,
+        markTodoComplete: true,
+      );
+    } else {
+      todo.isDone = true;
+      todo.markAsChanged();
+      await StorageService.updateSingleTodo(widget.username, todo);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      todo.isDone = true;
+      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+      _todosNotifier.value = List<TodoItem>.from(_todos);
+      _todoUpdateSignalNotifier.value++;
+    });
+    _timelineRevision.value++;
+    _pomodoroRevision.value++;
+    unawaited(_loadAllData());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已完成：${todo.title}')),
+    );
+  }
+
+  Future<TodoItem?> _findIslandTodo(String id) async {
+    for (final todo in _todos) {
+      if (todo.id == id && !todo.isDeleted) return todo;
+    }
+    final todos = await StorageService.getTodos(widget.username);
+    for (final todo in todos) {
+      if (todo.id == id && !todo.isDeleted) return todo;
+    }
+    return null;
+  }
+
+  Future<TodoPlanBlock?> _findIslandPlanBlock(String id) async {
+    for (final block in _planBlocks) {
+      if (block.id == id && !block.isDeleted) return block;
+    }
+    final blocks = await StorageService.getPlanBlocks(widget.username);
+    for (final block in blocks) {
+      if (block.id == id && !block.isDeleted) return block;
+    }
+    return null;
+  }
+
+  Future<CourseItem?> _findIslandCourse(String id) async {
+    final dashboardCourses =
+        _safeListResult<CourseItem>(_dashboardCourseData['courses']);
+    for (final course in dashboardCourses) {
+      if (course.uuid == id && !course.isDeleted) return course;
+    }
+    final courses = await CourseService.getAllCourses(widget.username);
+    for (final course in courses) {
+      if (course.uuid == id && !course.isDeleted) return course;
+    }
+    return null;
+  }
+
   /// 处理 App Shortcut 导航
   Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
@@ -955,25 +1127,35 @@ class _HomeDashboardState extends State<HomeDashboard>
           if (remaining > 0) {
             // debugPrint("🔗 [首页] WS已连上，主动向云端同步本地运行中的专注状态");
 
-            final allTags = await PomodoroService.getTags();
-            List<String> realTagNames = [];
-            for (String uuid in saved.tagUuids) {
-              final tag = allTags.where((t) => t.uuid == uuid).firstOrNull;
-              if (tag != null) {
-                realTagNames.add(tag.name);
+            final realTagNames = List<String>.from(saved.tagNames);
+            if (realTagNames.isEmpty && saved.tagUuids.isNotEmpty) {
+              final allTags = await PomodoroService.getTags();
+              for (String uuid in saved.tagUuids) {
+                final tag = allTags.where((t) => t.uuid == uuid).firstOrNull;
+                if (tag != null) {
+                  realTagNames.add(tag.name);
+                }
               }
             }
+            final sourceDeviceName =
+                await StorageService.getDeviceFriendlyName();
 
             _syncService.sendReconnectSyncSignal(
               sessionUuid: saved.sessionUuid,
               todoUuid: saved.todoUuid,
               todoTitle: saved.todoTitle,
+              planBlockId: saved.planBlockId,
               durationSeconds: saved.phase == PomodoroPhase.focusing
                   ? saved.plannedFocusSeconds
                   : saved.breakSeconds,
               targetEndMs: saved.targetEndMs,
               tagNames: realTagNames,
+              sourceDeviceName: sourceDeviceName,
               mode: saved.mode.index,
+              currentCycle: saved.currentCycle,
+              totalCycles: saved.totalCycles,
+              plannedFocusSeconds: saved.plannedFocusSeconds,
+              note: saved.note,
               customTimestamp: saved.sessionStartMs, // 🚀 关键：使用真实的起点时间
             );
           }
@@ -2231,7 +2413,39 @@ class _HomeDashboardState extends State<HomeDashboard>
   }
 
   Future<void> _checkUpcomingEvents() async {
+    if (_isCheckingUpcomingEvents) return;
+    _isCheckingUpcomingEvents = true;
+    try {
+      await _performUpcomingEventsCheck();
+    } finally {
+      _isCheckingUpcomingEvents = false;
+    }
+  }
+
+  Future<void> _performUpcomingEventsCheck() async {
     DateTime now = DateTime.now();
+    final persistDesktopShownState =
+        AppPlatform.isWindows || AppPlatform.isMacOS;
+    final desktopShownStateKey =
+        'desktop_live_notification_shown_${widget.username}';
+    final desktopPrefs = persistDesktopShownState
+        ? await SharedPreferences.getInstance()
+        : null;
+    final desktopShownKeys = desktopPrefs
+            ?.getStringList(desktopShownStateKey)
+            ?.toSet() ??
+        <String>{};
+
+    Future<void> markDesktopNotificationShown(String key) async {
+      if (desktopPrefs == null || !desktopShownKeys.add(key)) return;
+      while (desktopShownKeys.length > 200) {
+        desktopShownKeys.remove(desktopShownKeys.first);
+      }
+      await desktopPrefs.setStringList(
+        desktopShownStateKey,
+        desktopShownKeys.toList(),
+      );
+    }
 
     // 🚀 核心优化：取消一开始就将上一轮通知全量物理注销的逻辑
     // 改为记录上一轮的活跃 ID，本轮计算结束后做差集物理注销
@@ -2241,9 +2455,15 @@ class _HomeDashboardState extends State<HomeDashboard>
     // ── 获取已注册闹钟，构建课程去重集合 ──
     try {
       final scheduled = await NotificationService.getScheduledReminders();
+      _coursesWithScheduledAlarms.clear();
+      _todosWithScheduledAlarms.clear();
       for (final r in scheduled) {
         if (r['type'] == 'course' && r['courseName'] != null) {
           _coursesWithScheduledAlarms.add(r['courseName'] as String);
+        }
+        if ((r['type'] == 'upcoming_todo' || r['type'] == 'special_todo') &&
+            r['todoId'] != null) {
+          _todosWithScheduledAlarms.add(r['todoId'].toString());
         }
       }
     } catch (_) {}
@@ -2257,6 +2477,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         (dashboardData['courses'] as List?)?.cast<CourseItem>() ?? [];
 
     bool hasUpcomingCourse = false;
+    String? activeCourseKey;
     for (var course in courses) {
       try {
         final courseTime = _resolveCourseStartTime(course, now);
@@ -2273,13 +2494,20 @@ class _HomeDashboardState extends State<HomeDashboard>
             hasUpcomingCourse = true;
             break;
           }
-          NotificationService.showCourseLiveActivity(
-            courseName: course.courseName,
-            room: course.roomName,
-            timeStr:
-                '${course.formattedStartTime} - ${course.formattedEndTime}',
-            teacher: course.teacherName,
-          );
+          activeCourseKey =
+              '${courseTime.millisecondsSinceEpoch}:${course.courseName}';
+          final desktopEventKey = 'course:$activeCourseKey';
+          if (_activeCourseNotificationKey != activeCourseKey &&
+              !desktopShownKeys.contains(desktopEventKey)) {
+            await NotificationService.showCourseLiveActivity(
+              courseName: course.courseName,
+              room: course.roomName,
+              timeStr:
+                  '${course.formattedStartTime} - ${course.formattedEndTime}',
+              teacher: course.teacherName,
+            );
+            await markDesktopNotificationShown(desktopEventKey);
+          }
           hasUpcomingCourse = true;
           break;
         }
@@ -2290,9 +2518,12 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     // 没有课程在窗口内，仅取消课程通知（不影响待办等其他通知）
-    if (!hasUpcomingCourse) {
-      NotificationService.cancelSpecialTodoNotification(courseNotificationId);
+    if (!hasUpcomingCourse || activeCourseKey == null) {
+      await NotificationService.cancelSpecialTodoNotification(
+        courseNotificationId,
+      );
     }
+    _activeCourseNotificationKey = activeCourseKey;
 
     // ── 待办提醒 ────────────────────────────────────────────────
     String detectTodoType(String title) {
@@ -2347,8 +2578,16 @@ class _HomeDashboardState extends State<HomeDashboard>
 
     for (final todo in specialTodosToday) {
       final int notifId = todo.id.hashCode;
-      newTodoNotifIds.add(notifId);
-      await NotificationService.showUpcomingTodoNotification(todo);
+      final desktopEventKey =
+          'todo:${todo.id}:${todo.dueDate!.millisecondsSinceEpoch}';
+      if (!_todosWithScheduledAlarms.contains(todo.id)) {
+        newTodoNotifIds.add(notifId);
+        if (!previousTodoIds.contains(notifId) &&
+            !desktopShownKeys.contains(desktopEventKey)) {
+          await NotificationService.showUpcomingTodoNotification(todo);
+          await markDesktopNotificationShown(desktopEventKey);
+        }
+      }
     }
 
     // 2. 普通待办 (非全天): 在时间段内（提前 30 分钟直到截止时间）均显示为活动状态
@@ -2358,26 +2597,23 @@ class _HomeDashboardState extends State<HomeDashboard>
       final todoType = detectTodoType(t.title);
       if (todoType != 'default') return false;
 
-      DateTime localDueDate = t.dueDate!.toLocal();
-      DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-              t.createdDate ?? t.createdAt,
-              isUtc: true)
-          .toLocal();
-      bool isAllDay = startDate.hour == 0 &&
-          startDate.minute == 0 &&
-          localDueDate.hour == 23 &&
-          localDueDate.minute == 59;
-      if (isAllDay) return false;
-
-      // 🚀 核心改动：在待办执行的时间段内（提前 30 分钟直到截止时间）皆视为正在活动并在通知栏展示
-      return now.isAfter(startDate.subtract(const Duration(minutes: 30))) &&
-          now.isBefore(localDueDate);
+      return TodoNotificationPolicy.isInsideLiveWindow(t, now);
     }).toList();
 
     for (final todo in upcomingRegularTodos) {
       final int notifId = todo.id.hashCode;
-      newTodoNotifIds.add(notifId);
-      await NotificationService.showUpcomingTodoNotification(todo);
+      final desktopEventKey =
+          'todo:${todo.id}:${todo.dueDate!.millisecondsSinceEpoch}';
+      if (!_todosWithScheduledAlarms.contains(todo.id)) {
+        newTodoNotifIds.add(notifId);
+        // A desktop `show` call raises a new banner. Only raise it when the item
+        // enters the active set; the minute poll should not repeatedly pop it.
+        if (!previousTodoIds.contains(notifId) &&
+            !desktopShownKeys.contains(desktopEventKey)) {
+          await NotificationService.showUpcomingTodoNotification(todo);
+          await markDesktopNotificationShown(desktopEventKey);
+        }
+      }
     }
 
     // 3. 全天待办汇总
@@ -2414,6 +2650,37 @@ class _HomeDashboardState extends State<HomeDashboard>
   Future<void> _checkUpdatesSilently() async {
     if (!mounted) return;
     await UpdateService.checkUpdateAndPrompt(context, isManual: false);
+  }
+
+  Future<void> _runStartupPrompts() {
+    return _startupPromptsFuture ??= _runStartupPromptsInOrder();
+  }
+
+  Future<void> _runStartupPromptsInOrder() async {
+    try {
+      // checkUpdateAndPrompt 会等到公告（以及紧随其后的更新提示）关闭。
+      try {
+        await _checkUpdatesSilently();
+      } catch (_) {
+        // 公告检查失败不应阻断本地引导和权限流程。
+      }
+      if (!mounted) return;
+
+      try {
+        await _checkCoachMarks();
+      } catch (_) {
+        // 引导状态读取失败时仍继续进行必要的权限初始化。
+      }
+      if (!mounted) return;
+
+      await _initNotifications();
+      if (!mounted) return;
+
+      // 精确闹钟的授权提示也放到队列末尾，不覆盖前面的引导。
+      await _checkExactAlarmPermission();
+    } finally {
+      _startupPromptsCompleted = true;
+    }
   }
 
   Future<void> _loadSemesterSettings() async {
@@ -2478,7 +2745,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkAutoSync(force: true);
       _loadSectionPreferences();
       _loadSemesterSettings();
-      _checkUpdatesSilently();
+      // 冷启动的公告/引导/权限队列结束前，恢复事件不重复发起公告。
+      if (_startupPromptsCompleted) {
+        _checkUpdatesSilently();
+      }
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新所有卡片
@@ -2890,9 +3160,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     await NotificationService.init();
     // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
-      if (await Permission.notification.isDenied) {
-        await Permission.notification.request();
-      }
+      await _permissionCoordinator.request(AppPermissionKind.notification);
     }
   }
 
@@ -3025,6 +3293,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     _isGlobalLoadingNotifier.value = true;
+    var hadTaskFailure = false;
     try {
       //debugPrint("⏳ [DashboardLoader] 开始并发加载 5 项核心任务...");
 
@@ -3042,16 +3311,22 @@ class _HomeDashboardState extends State<HomeDashboard>
             "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
       ]);
 
+      hadTaskFailure = results.any((result) => result == null);
+
       final List<TodoItem> allTodos = _mergePendingTodoSnapshots(
-        _safeListResult<TodoItem>(results[0])
+        (results[0] == null
+                ? List<TodoItem>.from(_todos)
+                : _safeListResult<TodoItem>(results[0]))
             .where((t) => !t.isDeleted)
             .toList(),
       );
-      final List<TodoGroup> allGroups = _safeListResult<TodoGroup>(results[1])
+      final List<TodoGroup> allGroups = (results[1] == null
+              ? List<TodoGroup>.from(_todoGroups)
+              : _safeListResult<TodoGroup>(results[1]))
           .where((g) => !g.isDeleted)
           .toList();
       final List<CountdownItem> allCountdowns = _safeListResult<CountdownItem>(
-        results[2],
+        results[2] ?? _countdowns,
       ).where((c) => !c.isDeleted).toList();
       final conflictDetectionEnabled =
           await StorageService.getConflictDetectionEnabled();
@@ -3082,12 +3357,17 @@ class _HomeDashboardState extends State<HomeDashboard>
               allCountdowns.any(
                   (c) => c.hasConflict && (c.teamUuid?.isNotEmpty ?? false)));
 
-      final Map<String, dynamic> mathStats =
-          (results[3] ?? {}) as Map<String, dynamic>;
-      final Map<String, dynamic> courseData = (results[4] ??
-          {'title': '课程提醒', 'courses': []}) as Map<String, dynamic>;
-      final List<TodoPlanBlock> allPlanBlocks =
-          _safeListResult<TodoPlanBlock>(results[5]);
+      final Map<String, dynamic> mathStats = results[3] == null
+          ? Map<String, dynamic>.from(_mathStats)
+          : Map<String, dynamic>.from(results[3] as Map);
+      final Map<String, dynamic> courseData = results[4] == null
+          ? Map<String, dynamic>.from(_dashboardCourseData)
+          : Map<String, dynamic>.from(results[4] as Map);
+      final List<TodoPlanBlock> allPlanBlocks = results[5] == null
+          ? List<TodoPlanBlock>.from(_planBlocks)
+          : _safeListResult<TodoPlanBlock>(results[5]);
+      final activityInputsReady =
+          results[0] != null && results[4] != null && results[5] != null;
 
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
@@ -3130,20 +3410,46 @@ class _HomeDashboardState extends State<HomeDashboard>
           _scheduleRevision.value++;
         }
 
+        if (activityInputsReady) {
+          unawaited(MacPomodoroStatusBarService.syncOngoingActivityFromData(
+            todos: allTodos,
+            todoGroups: allGroups,
+            planBlocks: allPlanBlocks,
+            courses: _safeListResult<CourseItem>(courseData['courses']),
+          ));
+        }
+
         _debouncedSyncTodoNotification(todosChanged);
         _debouncedFetchTeamPending();
         _debouncedFetchAnnouncements();
         _debouncedUpdateTodoWidget(allTodos, todosChanged);
         _debouncedScheduleAllReminders(todosChanged || coursesChanged);
       }
+      if (!hadTaskFailure) {
+        _dashboardLoadRetryAttempt = 0;
+        _dashboardLoadRetryTimer?.cancel();
+        _dashboardLoadRetryTimer = null;
+      }
     } catch (e) {
+      hadTaskFailure = true;
       // debugPrint('❌ [DashboardLoader] 加载失败: $e');
     } finally {
       if (mounted) {
         _isGlobalLoadingNotifier.value = false;
         if (_pendingReloadRequested) {
           _pendingReloadRequested = false;
+          _dashboardLoadRetryTimer?.cancel();
+          _dashboardLoadRetryTimer = null;
           unawaited(_loadAllData());
+        } else if (hadTaskFailure && _dashboardLoadRetryAttempt < 3) {
+          final retryDelay = Duration(
+            milliseconds: 400 * (1 << _dashboardLoadRetryAttempt),
+          );
+          _dashboardLoadRetryAttempt++;
+          _dashboardLoadRetryTimer?.cancel();
+          _dashboardLoadRetryTimer = Timer(retryDelay, () {
+            if (mounted) unawaited(_loadAllData());
+          });
         }
       }
     }
@@ -3159,7 +3465,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
           MediaQuery.of(context).size.width > 800;
 
-      CoachMarkOverlay.show(
+      final finished = await CoachMarkOverlay.show(
         context: context,
         steps: [
           CoachMarkStep(
@@ -3212,18 +3518,17 @@ class _HomeDashboardState extends State<HomeDashboard>
         ],
         onFinish: () {
           _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_home_intro');
-          // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
-          if (isTablet) {
-            Future.delayed(
-                const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
-          }
         },
         onSkip: () {
           _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_home_intro');
         },
       );
+
+      // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
+      if (finished && isTablet && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _checkFocusTabCoachMarks();
+      }
     }
   }
 
@@ -3235,7 +3540,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
-      CoachMarkOverlay.show(
+      await CoachMarkOverlay.show(
         context: context,
         steps: [
           CoachMarkStep(
@@ -3255,21 +3560,19 @@ class _HomeDashboardState extends State<HomeDashboard>
           ),
         ],
         onFinish: () {
-          _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_focus_tab');
+          _dismissCoachMarks(tipId: 'coach_focus_tab');
         },
         onSkip: () {
-          _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_focus_tab');
+          _dismissCoachMarks(tipId: 'coach_focus_tab');
         },
       );
     }
   }
 
-  Future<void> _dismissCoachMarks() async {
+  Future<void> _dismissCoachMarks({String tipId = 'coach_home_intro'}) async {
     if (!mounted) return;
-    await FeatureTipService.markTipShown('coach_home_intro');
     _showCoachMarks = false;
+    await FeatureTipService.markTipShown(tipId);
   }
 
   Future<void> _checkOfficialHolidayPreset() async {
@@ -4528,10 +4831,16 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               onOpenSettings: () async {
                                                 if (AppPlatform.isAndroid ||
                                                     AppPlatform.isIOS) {
-                                                  await ScreenTimeService
-                                                      .openSettings();
+                                                  await _permissionCoordinator
+                                                      .request(
+                                                    AppPermissionKind
+                                                        .usageStats,
+                                                    onResult: (_) =>
+                                                        _initScreenTime(),
+                                                  );
+                                                } else {
+                                                  _initScreenTime();
                                                 }
-                                                _initScreenTime();
                                               },
                                               onViewDetail: () {
                                                 PageTransitions.pushFromRect(

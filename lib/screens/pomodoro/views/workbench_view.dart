@@ -21,6 +21,7 @@ import '../../../update_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/time_utils.dart';
+import '../../../utils/todo_recurrence_picker.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
 import '../widgets/workbench_actions.dart';
@@ -129,6 +130,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     super.initState();
     FloatWindowService.isWorkbenchMounted = true;
     WidgetsBinding.instance.addObserver(this);
+    MacPomodoroStatusBarService.init();
     _init();
     _listenToRunState();
     _listenToIslandActions();
@@ -2006,6 +2008,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showBindTodoDialog({bool isSwitching = false}) {
+    final pickerTodos = collapseRecurrenceSeriesForTodoPicker(_todos);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2065,7 +2068,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                   const Divider(height: 1),
                   ...(() {
                     final Map<String?, List<TodoItem>> grouped = {};
-                    for (var t in _todos) {
+                    for (var t in pickerTodos) {
                       grouped.putIfAbsent(t.groupId, () => []).add(t);
                     }
 
@@ -2102,7 +2105,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
                     return sections;
                   })(),
-                  if (_todos.isEmpty)
+                  if (pickerTodos.isEmpty)
                     const Padding(
                         padding: EdgeInsets.all(40),
                         child: Center(
@@ -2145,10 +2148,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           child: Icon(Icons.check,
               size: 20, color: Theme.of(context).colorScheme.primary)),
       title: Text(t.title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: t.remark != null && t.remark!.isNotEmpty
-          ? Text(t.remark!, maxLines: 1, overflow: TextOverflow.ellipsis)
-          : null,
-      selected: t.id == _boundTodo?.id,
+      subtitle: _buildTodoPickerSubtitle(t),
+      selected: areSameTodoOrRecurrenceSeries(t, _boundTodo),
       selectedTileColor:
           Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
       onTap: () async {
@@ -2172,6 +2173,19 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     );
   }
 
+  Widget? _buildTodoPickerSubtitle(TodoItem todo) {
+    final labels = <String>[
+      if (todo.recurrenceSeriesId?.isNotEmpty == true) '循环任务',
+      if (todo.remark?.isNotEmpty == true) todo.remark!,
+    ];
+    if (labels.isEmpty) return null;
+    return Text(
+      labels.join(' · '),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   /// 从当前 widget 状态构建 PomodoroRunState，统一各调用点
   PomodoroRunState _buildCurrentRunState() => PomodoroRunState(
         phase: _phase,
@@ -2186,6 +2200,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         todoUuid: _boundTodo?.id,
         todoTitle: _boundTodo?.title,
         tagUuids: _selectedTagUuids,
+        tagNames: _tags
+            .where((tag) => _selectedTagUuids.contains(tag.uuid))
+            .map((tag) => tag.name)
+            .toList(),
         sessionStartMs: _sessionStartMs,
         plannedFocusSeconds: _settings.mode == TimerMode.countUp
             ? 0

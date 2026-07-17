@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../services/browser_file_service.dart';
 import '../../services/calendar_sync_service.dart';
+import '../../services/permission_request_coordinator.dart';
 import '../../storage_service.dart';
 import '../../utils/app_platform.dart';
 
@@ -24,11 +25,19 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
   bool _loading = true;
   bool _working = false;
   String? _error;
+  late final PermissionRequestCoordinator _permissionCoordinator;
 
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(context: context);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _permissionCoordinator.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -83,7 +92,11 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
 
     try {
       var granted = await CalendarSyncService.checkPermission();
-      if (!granted) granted = await CalendarSyncService.requestPermission();
+      if (!granted) {
+        final result =
+            await _permissionCoordinator.request(AppPermissionKind.calendar);
+        granted = result.granted;
+      }
       if (!granted) {
         setState(() {
           _loading = false;

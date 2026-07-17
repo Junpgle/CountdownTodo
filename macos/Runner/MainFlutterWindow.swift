@@ -97,15 +97,60 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    // Native macOS app status bar icon.
+    let appStatusBarChannel = FlutterMethodChannel(
+      name: "countdown_todo/macos_app_status_bar",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    MacPomodoroStatusBarController.shared.setAppFlutterChannel(appStatusBarChannel)
+    appStatusBarChannel.setMethodCallHandler { (call, result) in
+      switch call.method {
+      case "configureIsland":
+        let args = call.arguments as? [String: Any]
+        let enabled = args?["enabled"] as? Bool ?? true
+        let showOnNotchlessDisplay = args?["showOnNotchlessDisplay"] as? Bool ?? true
+        let remindersEnabled = args?["remindersEnabled"] as? Bool ?? true
+        let clipboardLinksEnabled = args?["clipboardLinksEnabled"] as? Bool ?? true
+        MacPomodoroStatusBarController.shared.configureIsland(
+          enabled: enabled,
+          showOnNotchlessDisplay: showOnNotchlessDisplay,
+          remindersEnabled: remindersEnabled,
+          clipboardLinksEnabled: clipboardLinksEnabled
+        )
+        result(true)
+      case "setVisible":
+        let args = call.arguments as? [String: Any]
+        let visible = args?["visible"] as? Bool ?? true
+        let iconSize = args?["iconSize"] as? Int ?? 18
+        MacPomodoroStatusBarController.shared.setAppStatusVisible(visible, iconSize: iconSize)
+        result(true)
+      case "setIslandVisibilityShortcut":
+        let args = call.arguments as? [String: Any]
+        let success = MacPomodoroStatusBarController.shared.configureVisibilityShortcut(
+          key: args?["key"] as? String ?? "",
+          command: args?["command"] as? Bool ?? false,
+          option: args?["option"] as? Bool ?? false,
+          control: args?["control"] as? Bool ?? false,
+          shift: args?["shift"] as? Bool ?? false
+        )
+        result(success)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     // Setup status bar controller
     MacPomodoroStatusBarController.shared.setup()
+    NSLog("[MainFlutterWindow] MacPomodoroStatusBarController setup done")
 
     // Status bar MethodChannel
     let statusBarChannel = FlutterMethodChannel(
       name: "countdown_todo/macos_status_bar",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
+    MacPomodoroStatusBarController.shared.setFlutterChannel(statusBarChannel)
     statusBarChannel.setMethodCallHandler { (call, result) in
+      NSLog("[MainFlutterWindow] statusBarChannel received: %@", call.method)
       switch call.method {
       case "updatePomodoroStatus":
         guard let args = call.arguments as? [String: Any] else {
@@ -116,6 +161,33 @@ class MainFlutterWindow: NSWindow {
         result(true)
       case "clearPomodoroStatus":
         MacPomodoroStatusBarController.shared.clearPomodoroStatus()
+        result(true)
+      case "updateOngoingActivity":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing activity", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.updateOngoingActivity(args: args)
+        result(true)
+      case "clearOngoingActivity":
+        MacPomodoroStatusBarController.shared.clearOngoingActivity()
+        result(true)
+      case "updateIslandOverview":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing overview", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.updateIslandOverview(args: args)
+        result(true)
+      case "showIslandReminder":
+        guard let args = call.arguments as? [String: Any] else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing reminder", details: nil))
+          return
+        }
+        MacPomodoroStatusBarController.shared.showIslandReminder(args: args)
+        result(true)
+      case "clearIslandReminders":
+        MacPomodoroStatusBarController.shared.clearIslandReminders()
         result(true)
       default:
         result(FlutterMethodNotImplemented)

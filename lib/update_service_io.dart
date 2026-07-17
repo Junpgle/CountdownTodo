@@ -8,11 +8,11 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/permission_request_coordinator.dart';
 
 // 数据模型类
 class ChangelogEntry {
@@ -803,25 +803,21 @@ class UpdateService {
     return null;
   }
 
-  static Future<bool> prepareForDownload(String targetVersionName) async {
+  static Future<bool> prepareForDownload(
+      BuildContext context, String targetVersionName) async {
     // Windows 直接放行，跳过移动端权限申请
     if (!Platform.isAndroid) return true;
 
-    final deviceInfo = DeviceInfoPlugin();
-    final androidInfo = await deviceInfo.androidInfo;
+    final coordinator = PermissionRequestCoordinator(context: context);
+    try {
+      final storage = await coordinator.request(AppPermissionKind.storage);
+      if (!storage.granted) return false;
 
-    if (androidInfo.version.sdkInt >= 30) {
-      if (!await Permission.manageExternalStorage.isGranted) {
-        await Permission.manageExternalStorage.request();
-      }
-    } else {
-      if (!await Permission.storage.isGranted) {
-        await Permission.storage.request();
-      }
-    }
-
-    if (!await Permission.requestInstallPackages.isGranted) {
-      await Permission.requestInstallPackages.request();
+      final install =
+          await coordinator.request(AppPermissionKind.requestInstall);
+      if (!install.granted) return false;
+    } finally {
+      coordinator.dispose();
     }
 
     try {
@@ -941,8 +937,12 @@ class UpdateService {
     }
 
     await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      onError('页面已关闭，已取消权限申请');
+      return;
+    }
 
-    bool ready = await prepareForDownload(manifest.versionName);
+    bool ready = await prepareForDownload(context, manifest.versionName);
     if (!ready) {
       onError('准备下载环境失败，请检查存储权限');
       return;
@@ -1102,16 +1102,13 @@ class UpdateService {
 
     if (context.mounted) {
       if (hasNotice) {
-        showAnnouncementDialog(context, announcementsToShow, () {
-          if (hasUpdate && context.mounted) {
-            showUpdateDialog(context, manifest, localVersion,
-                hasUpdate: true,
-                hasNotice: false,
-                respectTodaySnooze: !isManual);
-          }
-        });
+        await showAnnouncementDialog(context, announcementsToShow, null);
+        if (hasUpdate && context.mounted) {
+          await showUpdateDialog(context, manifest, localVersion,
+              hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
+        }
       } else if (hasUpdate) {
-        showUpdateDialog(context, manifest, localVersion,
+        await showUpdateDialog(context, manifest, localVersion,
             hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
       }
     }
@@ -1246,7 +1243,7 @@ class UpdateService {
       return;
     }
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
@@ -1351,7 +1348,8 @@ class UpdateService {
                                       onPressed: () {
                                         if (_isDownloading) return;
                                         setState(() {});
-                                        _startForegroundDownload(manifest);
+                                        _startForegroundDownload(
+                                            context, manifest);
                                       },
                                       child: const Text("安装失败？点击强制重新下载",
                                           style: TextStyle(
@@ -1410,7 +1408,8 @@ class UpdateService {
                                       onPressed: () {
                                         if (_isDownloading) return;
                                         setState(() {});
-                                        _startForegroundDownload(manifest);
+                                        _startForegroundDownload(
+                                            context, manifest);
                                       }),
                                 ),
                             if (hasNotice) const Divider(height: 30),
@@ -1442,12 +1441,11 @@ class UpdateService {
           }),
         );
       },
-    ).then((_) {
-      _isDialogShowing = false;
-      _uiProgressCallback = null;
-      _uiCompleteCallback = null;
-      _uiErrorCallback = null;
-    });
+    );
+    _isDialogShowing = false;
+    _uiProgressCallback = null;
+    _uiCompleteCallback = null;
+    _uiErrorCallback = null;
   }
 
   static String _todayKey([DateTime? now]) {
@@ -1472,15 +1470,21 @@ class UpdateService {
         _updateDialogSnoozeTodayKey, _snoozeValue(versionName));
   }
 
-  static Future<void> _startForegroundDownload(AppManifest manifest) async {
+  static Future<void> _startForegroundDownload(
+      BuildContext context, AppManifest manifest) async {
     await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("页面已关闭，已取消权限申请");
+      return;
+    }
 
     _isDownloading = true;
     _isDownloaded = false;
     _downloadProgress = 0.0;
     _uiProgressCallback?.call(0.0);
 
-    bool ready = await prepareForDownload(manifest.versionName);
+    bool ready = await prepareForDownload(context, manifest.versionName);
     if (!ready) {
       _isDownloading = false;
       _uiErrorCallback?.call("准备下载环境失败，请检查存储权限");

@@ -70,6 +70,43 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
   }
 
   @override
+  void dispose() {
+    _permissionHandler.dispose();
+    super.dispose();
+  }
+
+  void _revokeAllPermissions() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('撤回所有授权记录'),
+        content: const Text(
+          '这将会清除应用内所有弹窗授权记录。\n\n如果某些权限已在系统设置中开启，功能可能仍可正常使用。但下次再触发对应功能时，应用会再次向您展示授权说明弹窗。\n\n确定要继续吗？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认撤回'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _permissionHandler.revokeAllAgreements();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已撤回所有本地授权记录')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (AppPlatform.isWeb) {
       return Scaffold(
@@ -91,6 +128,13 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
           ? null
           : AppBar(
               title: const Text('权限管理'),
+              actions: [
+                IconButton(
+                  tooltip: '一键撤回授权',
+                  icon: const Icon(Icons.remove_moderator_outlined),
+                  onPressed: _revokeAllPermissions,
+                ),
+              ],
             ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -103,6 +147,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
             onCheckAllPermissions: _permissionHandler.checkAllPermissions,
             onRequestOrOpenPermission:
                 _permissionHandler.requestOrOpenPermission,
+            onRevokeAll: _revokeAllPermissions,
           ),
         ),
       ),

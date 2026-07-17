@@ -21,10 +21,13 @@ class WindowService extends WindowListener with TrayListener {
 
   static const MethodChannel _nativeChannel =
       MethodChannel('com.math_quiz_app/window_native');
+  static const MethodChannel _macAppStatusBarChannel =
+      MethodChannel('countdown_todo/macos_app_status_bar');
 
   static Timer? _debounce;
   static Rect? _startupBounds;
   static bool _suppressBoundsSave = false;
+  static bool _macIslandInitialized = false;
 
   static final WindowService _instance = WindowService._internal();
 
@@ -55,9 +58,14 @@ class WindowService extends WindowListener with TrayListener {
 
       windowManager.addListener(_instance);
       debugPrint('[WindowService] windowManager.addListener(_instance) done');
+      if (Platform.isMacOS) {
+        _macAppStatusBarChannel.setMethodCallHandler(_handleMacStatusBarCall);
+      }
 
-      if (Platform.isWindows || Platform.isMacOS) {
+      if (Platform.isWindows) {
         await _initTray();
+      }
+      if (Platform.isWindows || Platform.isMacOS) {
         await _initLaunchAtStartup();
       }
       debugPrint('[WindowService] Initialization complete!');
@@ -66,19 +74,100 @@ class WindowService extends WindowListener with TrayListener {
     }
   }
 
+  static Future<void> initMacIslandAfterWindowReady() async {
+    if (!Platform.isMacOS || _macIslandInitialized) return;
+    _macIslandInitialized = true;
+    debugPrint('[WindowService] macOS island initialization starting');
+    await configureMacIsland();
+  }
+
+  static Future<void> configureMacIsland() async {
+    if (!Platform.isMacOS) return;
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('macos_island_enabled') ??
+        prefs.getBool('macos_status_bar_enabled') ??
+        true;
+    final showOnNotchlessDisplay =
+        prefs.getBool('macos_island_show_without_notch') ?? true;
+    final remindersEnabled =
+        prefs.getBool('macos_island_reminders_enabled') ?? true;
+    final clipboardLinksEnabled =
+        prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
+    await _macAppStatusBarChannel.invokeMethod('configureIsland', {
+      'enabled': enabled,
+      'showOnNotchlessDisplay': showOnNotchlessDisplay,
+      'remindersEnabled': remindersEnabled,
+      'clipboardLinksEnabled': clipboardLinksEnabled,
+    });
+    final shortcutRegistered = await setMacIslandVisibilityShortcut(
+      key: enabled ? (prefs.getString('macos_island_shortcut_key') ?? '') : '',
+      command: prefs.getBool('macos_island_shortcut_command') ?? false,
+      option: prefs.getBool('macos_island_shortcut_option') ?? false,
+      control: prefs.getBool('macos_island_shortcut_control') ?? false,
+      shift: prefs.getBool('macos_island_shortcut_shift') ?? false,
+    );
+    if (!shortcutRegistered) {
+      debugPrint('[WindowService] macOS island shortcut registration failed');
+    }
+  }
+
+  static Future<bool> setMacIslandVisibilityShortcut({
+    required String key,
+    required bool command,
+    required bool option,
+    required bool control,
+    required bool shift,
+  }) async {
+    if (!Platform.isMacOS) return false;
+    try {
+      return await _macAppStatusBarChannel.invokeMethod<bool>(
+            'setIslandVisibilityShortcut',
+            {
+              'key': key,
+              'command': command,
+              'option': option,
+              'control': control,
+              'shift': shift,
+            },
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      debugPrint('[WindowService] set macOS island shortcut failed: $error');
+      return false;
+    }
+  }
+
   static Future<void> _initTray() async {
     try {
+      debugPrint(
+          '[WindowService] _initTray: starting, iconPath=${Platform.isWindows ? 'assets/icon/app_icon.ico' : 'assets/icon/app_icon.png'}');
       trayManager.addListener(_instance);
-      await trayManager.setIcon(
-        Platform.isWindows
-            ? 'assets/icon/app_icon.ico'
-            : 'assets/icon/app_icon.webp',
-      );
+      await _setTrayIcon();
+      debugPrint('[WindowService] _initTray: setIcon done');
       await trayManager.setToolTip('CountDownTodo');
       await _updateTrayMenu();
+      if (Platform.isMacOS) {
+        Future<void>.delayed(const Duration(milliseconds: 800), () async {
+          await _setTrayIcon();
+          await trayManager.setToolTip('CountDownTodo');
+          await _updateTrayMenu();
+          debugPrint('[WindowService] _initTray: macOS delayed refresh done');
+        });
+      }
+      debugPrint('[WindowService] _initTray: complete');
     } catch (e) {
       debugPrint('[WindowService] initTray error: $e');
     }
+  }
+
+  static Future<void> _setTrayIcon() {
+    if (Platform.isMacOS) {
+      return trayManager.setIcon('assets/icon/app_icon.png');
+    }
+    return trayManager.setIcon(
+      'assets/icon/app_icon.ico',
+      iconSize: 18,
+    );
   }
 
   static Future<void> _updateTrayMenu() async {
@@ -113,6 +202,20 @@ class WindowService extends WindowListener with TrayListener {
       await trayManager.setContextMenu(menu);
     } catch (e) {
       debugPrint('[WindowService] updateTrayMenu error: $e');
+    }
+  }
+
+  static Future<dynamic> _handleMacStatusBarCall(MethodCall call) async {
+    switch (call.method) {
+      case 'openSettings':
+        await windowManager.show();
+        await windowManager.focus();
+        appNavigatorKey.currentState?.push(
+          PageTransitions.slideHorizontal(const SettingsPage()),
+        );
+        return true;
+      default:
+        return null;
     }
   }
 

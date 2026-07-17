@@ -7,6 +7,7 @@ import '../../../services/pomodoro_service.dart';
 import '../../../screens/course_screens.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../utils/todo_recurrence_picker.dart';
 
 class PomodoroStats extends StatefulWidget {
   final String username;
@@ -823,7 +824,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
   }
 
   List<Widget> _buildTodoPickerItems(BuildContext dialogContext) {
-    final sortedTodos = _sortTodosForPicker(_todos, _todoGroups);
+    final sortedTodos = _sortTodosForPicker(
+      collapseRecurrenceSeriesForTodoPicker(_todos),
+      _todoGroups,
+    );
     final items = <Widget>[
       ListTile(
         title: const Text('自由专注（无绑定）'),
@@ -852,7 +856,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
       }
       items.add(ListTile(
         title: Text(todo.title),
-        subtitle: todo.remark != null ? Text(todo.remark!) : null,
+        subtitle: _todoPickerSubtitle(todo),
         leading: Icon(todo.isDone
             ? Icons.check_circle_outline
             : Icons.radio_button_unchecked),
@@ -860,6 +864,14 @@ class PomodoroStatsState extends State<PomodoroStats> {
       ));
     }
     return items;
+  }
+
+  Widget? _todoPickerSubtitle(TodoItem todo) {
+    final labels = <String>[
+      if (todo.recurrenceSeriesId?.isNotEmpty == true) '循环任务',
+      if (todo.remark?.isNotEmpty == true) todo.remark!,
+    ];
+    return labels.isEmpty ? null : Text(labels.join(' · '));
   }
 
   List<TodoItem> _sortTodosForPicker(

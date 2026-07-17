@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../../services/screen_time_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../services/permission_request_coordinator.dart';
 import '../../../utils/app_platform.dart';
 
 class PermissionHandler {
@@ -9,13 +10,22 @@ class PermissionHandler {
   final MethodChannel platform;
   final Function(Map<String, PermissionStatus?>) onUpdateStatuses;
   final Function(bool) onUpdateChecking;
+  final PermissionResultCallback? onPermissionResult;
+  late final PermissionRequestCoordinator _coordinator;
 
   PermissionHandler({
     required this.context,
     required this.platform,
     required this.onUpdateStatuses,
     required this.onUpdateChecking,
-  });
+    this.onPermissionResult,
+  }) {
+    _coordinator = PermissionRequestCoordinator(
+      context: context,
+      platformChannel: platform,
+      onResult: onPermissionResult,
+    );
+  }
 
   static const List<Map<String, dynamic>> permissionDefs = [
     {
@@ -56,85 +66,59 @@ class PermissionHandler {
   ];
 
   Future<void> checkAllPermissions() async {
-    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
     onUpdateChecking(true);
-
-    final Map<String, PermissionStatus> results = {};
-
-    results['notification'] = await Permission.notification.status;
-
-    if (AppPlatform.isAndroid) {
-      final storageStatus = await Permission.storage.status;
-      final manageStatus = await Permission.manageExternalStorage.status;
-      results['storage'] = (storageStatus.isGranted || manageStatus.isGranted)
-          ? PermissionStatus.granted
-          : storageStatus;
-
-      final bool hasUsage = await ScreenTimeService.checkPermission();
-      results['usage_stats'] =
-          hasUsage ? PermissionStatus.granted : PermissionStatus.denied;
-
-      results['request_install'] =
-          await Permission.requestInstallPackages.status;
-
-      try {
-        final bool granted =
-            await platform.invokeMethod<bool>('checkExactAlarmPermission') ??
-                true;
-        results['exact_alarm'] =
-            granted ? PermissionStatus.granted : PermissionStatus.denied;
-      } catch (_) {
-        results['exact_alarm'] = PermissionStatus.granted;
-      }
-    } else {
-      results['storage'] = await Permission.storage.status;
-      results['usage_stats'] = PermissionStatus.granted;
-      results['request_install'] = PermissionStatus.granted;
-      results['exact_alarm'] = PermissionStatus.granted;
+    try {
+      final results = <String, PermissionStatus>{
+        'notification':
+            await _coordinator.status(AppPermissionKind.notification),
+        'storage': await _coordinator.status(AppPermissionKind.storage),
+        'usage_stats': await _coordinator.status(AppPermissionKind.usageStats),
+        'request_install':
+            await _coordinator.status(AppPermissionKind.requestInstall),
+        'exact_alarm': await _coordinator.status(AppPermissionKind.exactAlarm),
+      };
+      onUpdateStatuses(results);
+    } finally {
+      onUpdateChecking(false);
     }
-
-    onUpdateStatuses(results);
-    onUpdateChecking(false);
   }
 
-  Future<void> requestOrOpenPermission(String key) async {
-    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
+  Future<PermissionRequestResult?> requestOrOpenPermission(
+    String key, {
+    PermissionResultCallback? onResult,
+  }) async {
+    final permission = _permissionForKey(key);
+    if (permission == null) return null;
 
-    switch (key) {
-      case 'notification':
-        final status = await Permission.notification.request();
-        if (status.isPermanentlyDenied) await openAppSettings();
-        break;
-      case 'storage':
-        if (AppPlatform.isAndroid) {
-          final status = await Permission.manageExternalStorage.request();
-          if (status.isPermanentlyDenied || status.isDenied) {
-            await openAppSettings();
-          }
-        } else {
-          final status = await Permission.storage.request();
-          if (status.isPermanentlyDenied) await openAppSettings();
-        }
-        break;
-      case 'usage_stats':
-        await ScreenTimeService.openSettings();
-        break;
-      case 'request_install':
-        final status = await Permission.requestInstallPackages.request();
-        if (status.isPermanentlyDenied || status.isDenied) {
-          await openAppSettings();
-        }
-        break;
-      case 'exact_alarm':
-        try {
-          await platform.invokeMethod('openExactAlarmSettings');
-        } catch (_) {
-          await openAppSettings();
-        }
-        break;
+    onUpdateChecking(true);
+    try {
+      final result = await _coordinator.request(
+        permission,
+        onResult: onResult,
+      );
+      await checkAllPermissions();
+      return result;
+    } finally {
+      onUpdateChecking(false);
     }
+  }
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    await checkAllPermissions();
+  AppPermissionKind? _permissionForKey(String key) => switch (key) {
+        'notification' => AppPermissionKind.notification,
+        'storage' => AppPermissionKind.storage,
+        'usage_stats' => AppPermissionKind.usageStats,
+        'request_install' => AppPermissionKind.requestInstall,
+        'exact_alarm' => AppPermissionKind.exactAlarm,
+        _ => null,
+      };
+
+  void dispose() => _coordinator.dispose();
+
+  Future<void> revokeAllAgreements() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final permission in AppPermissionKind.values) {
+      final agreedKey = 'permission_agreed_${permission.name}';
+      await prefs.remove(agreedKey);
+    }
   }
 }

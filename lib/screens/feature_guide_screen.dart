@@ -20,6 +20,7 @@ import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import 'home_settings_screen.dart';
 import '../services/course_service.dart';
+import '../services/permission_request_coordinator.dart';
 import '../models.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
@@ -63,6 +64,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       MethodChannel('com.math_quiz.junpgle.com.math_quiz_app/notifications');
   static const screenTimeChannel =
       MethodChannel('com.math_quiz_app/screen_time');
+  late final PermissionRequestCoordinator _permissionCoordinator;
 
   // 从远端加载的数据
   String _currentVersion = '';
@@ -159,6 +161,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(
+      context: context,
+      platformChannel: platform,
+      onResult: (_) => _checkPermissions(),
+    );
 
     if (widget.isManualReview) {
       // 从设置页面手动查看：直接同步设置所有页面，跳过异步逻辑
@@ -637,6 +644,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
   @override
   void dispose() {
+    _permissionCoordinator.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -1261,9 +1269,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           subtitle: '用于记录你使用了哪些应用以进行时间分配分析',
           isGranted: _hasUsageStats,
           onRequest: () async {
-            await screenTimeChannel.invokeMethod('openUsageSettings');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _checkPermissions();
+            await _permissionCoordinator.request(
+              AppPermissionKind.usageStats,
+            );
           },
         ),
       ],
@@ -1289,8 +1297,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           subtitle: '核心功能：用于提醒代办与专属通知栏状态',
           isGranted: _notificationStatus?.isGranted == true,
           onRequest: () async {
-            await Permission.notification.request();
-            _checkPermissions();
+            await _permissionCoordinator.request(
+              AppPermissionKind.notification,
+            );
           },
         ),
         const SizedBox(height: 12),
@@ -1299,9 +1308,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           subtitle: '用于应用在指定秒数准时唤醒推送（如倒数结束）',
           isGranted: _hasExactAlarm,
           onRequest: () async {
-            await platform.invokeMethod('openExactAlarmSettings');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _checkPermissions();
+            await _permissionCoordinator.request(
+              AppPermissionKind.exactAlarm,
+            );
           },
         ),
       ],
@@ -1326,9 +1335,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           subtitle: '提升进程优先级，避免长时间锁屏专注时被误杀',
           isGranted: _ignoringBatteryOptimizations,
           onRequest: () async {
-            await platform.invokeMethod('openBatteryOptimizationSettings');
-            await Future.delayed(const Duration(milliseconds: 500));
-            _checkPermissions();
+            await _permissionCoordinator.request(
+              AppPermissionKind.batteryOptimization,
+            );
           },
           optional: true,
         ),

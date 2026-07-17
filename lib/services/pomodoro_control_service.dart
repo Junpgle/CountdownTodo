@@ -83,6 +83,7 @@ class PomodoroControlService {
       todoUuid: boundTodo?.id,
       todoTitle: boundTodo?.title,
       tagUuids: tagUuids,
+      tagNames: tagNames,
       sessionStartMs: now,
       plannedFocusSeconds: focusSeconds,
       mode: settings.mode,
@@ -137,14 +138,20 @@ class PomodoroControlService {
       if (ensureSyncConnection) {
         await _ensureSyncConnected(deviceId);
       }
+      final deviceName = await StorageService.getDeviceFriendlyName();
       PomodoroSyncService.instance.sendStartSignal(
         sessionUuid: sessionUuid,
         todoUuid: boundTodo?.id.isNotEmpty == true ? boundTodo!.id : null,
         todoTitle: boundTodo?.title,
+        planBlockId: activePlanBlockId,
         durationSeconds: focusSeconds,
         targetEndMs: end,
         tagNames: tagNames,
+        sourceDeviceName: deviceName,
         mode: settings.mode.index,
+        currentCycle: currentCycle,
+        totalCycles: settings.cycles,
+        plannedFocusSeconds: focusSeconds,
         note: note,
         customTimestamp: now,
       );

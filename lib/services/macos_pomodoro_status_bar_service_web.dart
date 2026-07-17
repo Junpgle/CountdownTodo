@@ -1,9 +1,65 @@
+import '../models.dart';
+
 enum MacPomodoroAction { togglePause, stopFocus }
+
+enum MacIslandReminderActionType { acknowledged, snoozed }
+
+enum MacIslandCommandType { openEntity, startFocus, completeTodo }
+
+class MacIslandCommand {
+  const MacIslandCommand({
+    required this.type,
+    required this.entityKind,
+    required this.entityId,
+  });
+
+  final MacIslandCommandType type;
+  final String entityKind;
+  final String entityId;
+}
+
+class MacIslandReminderAction {
+  const MacIslandReminderAction({
+    required this.type,
+    required this.reminder,
+    this.snoozeMinutes = 10,
+  });
+
+  final MacIslandReminderActionType type;
+  final Map<String, dynamic> reminder;
+  final int snoozeMinutes;
+}
 
 class MacPomodoroStatusBarService {
   static Stream<MacPomodoroAction> get onAction => const Stream.empty();
+  static Stream<MacIslandReminderAction> get onReminderAction =>
+      const Stream.empty();
+  static Stream<MacIslandCommand> get onCommand => const Stream.empty();
 
-  static Future<void> init() async {}
+  static Future<void> init({bool deferOngoingActivityRestore = false}) async {}
+
+  static void clearNative() {}
+
+  static Future<void> syncCurrentStatus() async {}
+
+  static Future<void> syncOngoingActivity() async {}
+
+  static Future<void> syncOngoingActivityFromData({
+    required List<TodoItem> todos,
+    required List<TodoGroup> todoGroups,
+    required List<TodoPlanBlock> planBlocks,
+    required List<CourseItem> courses,
+  }) async {}
+
+  static Future<void> scheduleIslandReminders(
+    List<Map<String, dynamic>> reminders, {
+    bool clearFirst = true,
+    bool restoring = false,
+  }) async {}
+
+  static void clearIslandReminders() {}
+
+  static Future<void> showTestReminder() async {}
 
   static void dispose() {}
 }

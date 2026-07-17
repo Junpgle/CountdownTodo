@@ -28,6 +28,7 @@ class BandSyncService {
   static DateTime? _lastSyncTime;
   static final List<String> _logs = [];
   static final List<Map<String, dynamic>> _receivedMessages = [];
+  static Completer<bool>? _permissionRequestCompleter;
 
   static final _pomodoroActionCtrl =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -156,6 +157,10 @@ class BandSyncService {
         final code = args['code'] ?? 0;
         final message = args['message'] ?? '未知错误';
         _addLog('错误: [$code] $message');
+        final permissionCompleter = _permissionRequestCompleter;
+        if (permissionCompleter != null && !permissionCompleter.isCompleted) {
+          permissionCompleter.complete(false);
+        }
         _onError?.call(args);
         break;
 
@@ -179,6 +184,10 @@ class BandSyncService {
         final args = Map<String, dynamic>.from(call.arguments as Map);
         final permissions = List<String>.from(args['permissions'] as List);
         _addLog('权限已授予: ${permissions.join(", ")}');
+        final permissionCompleter = _permissionRequestCompleter;
+        if (permissionCompleter != null && !permissionCompleter.isCompleted) {
+          permissionCompleter.complete(true);
+        }
         _onPermissionGranted?.call(permissions);
         break;
 
@@ -466,18 +475,32 @@ class BandSyncService {
   }
 
   /// 申请设备管理权限
-  static Future<void> requestPermission() async {
+  static Future<bool> requestPermission() async {
+    final pending = _permissionRequestCompleter;
+    if (pending != null && !pending.isCompleted) return pending.future;
+
+    final completer = Completer<bool>();
+    _permissionRequestCompleter = completer;
     try {
       _addLog('发起权限申请请求...');
       final result = await _channel.invokeMethod('requestPermission');
       _addLog('invokeMethod 返回: $result');
-      // 等待权限处理完成后重新获取状态
-      await Future.delayed(const Duration(seconds: 3));
-      final status = await getConnectionStatus();
-      _addLog('权限申请后状态: hasPermission=${status['hasPermission']}');
-    } catch (e, stack) {
+      return await completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () async {
+          final status = await getConnectionStatus();
+          final granted = status['hasPermission'] == true;
+          _addLog('权限申请超时后状态: hasPermission=$granted');
+          return granted;
+        },
+      );
+    } catch (e) {
       _addLog('申请权限异常: $e');
-//       debugPrint('requestPermission error: $stack');
+      return false;
+    } finally {
+      if (identical(_permissionRequestCompleter, completer)) {
+        _permissionRequestCompleter = null;
+      }
     }
   }
 

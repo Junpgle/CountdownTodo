@@ -753,20 +753,19 @@ class UpdateService {
 
     if (!context.mounted) return;
     if (hasNotice) {
-      showAnnouncementDialog(context, announcementsToShow, () {
-        if (hasUpdate && context.mounted) {
-          showUpdateDialog(
-            context,
-            manifest,
-            localVersion,
-            hasUpdate: true,
-            hasNotice: false,
-            respectTodaySnooze: !isManual,
-          );
-        }
-      });
+      await showAnnouncementDialog(context, announcementsToShow, null);
+      if (hasUpdate && context.mounted) {
+        await showUpdateDialog(
+          context,
+          manifest,
+          localVersion,
+          hasUpdate: true,
+          hasNotice: false,
+          respectTodaySnooze: !isManual,
+        );
+      }
     } else if (hasUpdate) {
-      showUpdateDialog(
+      await showUpdateDialog(
         context,
         manifest,
         localVersion,
@@ -881,7 +880,7 @@ class UpdateService {
       return;
     }
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: !manifest.forceUpdate,
       builder: (ctx) {
@@ -937,9 +936,8 @@ class UpdateService {
           ),
         );
       },
-    ).then((_) {
-      _isDialogShowing = false;
-    });
+    );
+    _isDialogShowing = false;
   }
 
   static Widget _buildUpdateDialogContent(

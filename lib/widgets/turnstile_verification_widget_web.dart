@@ -36,9 +36,11 @@ class _TurnstileVerificationWidgetState
     extends State<TurnstileVerificationWidget> {
   late final String _containerId;
   late final web.HTMLDivElement _container;
+  final GlobalKey _anchorKey = GlobalKey();
   String? _widgetId;
   Timer? _scriptPollTimer;
   Timer? _loadTimeoutTimer;
+  Timer? _positionTimer;
   bool _isLoading = true;
   bool _isVerified = false;
   bool _hasError = false;
@@ -51,6 +53,8 @@ class _TurnstileVerificationWidgetState
     _containerId = 'turnstile-cnt-${DateTime.now().microsecondsSinceEpoch}';
     _container = web.HTMLDivElement()
       ..id = _containerId
+      ..style.position = 'absolute'
+      ..style.zIndex = '9999'
       ..style.width = '100%'
       ..style.height = '${widget.height.round()}px';
 
@@ -74,6 +78,7 @@ class _TurnstileVerificationWidgetState
     _disposed = true;
     _scriptPollTimer?.cancel();
     _loadTimeoutTimer?.cancel();
+    _positionTimer?.cancel();
     _removeWidget();
     _container.remove();
     super.dispose();
@@ -87,6 +92,30 @@ class _TurnstileVerificationWidgetState
       } catch (_) {}
     }
     _widgetId = null;
+  }
+
+  void _updateContainerPosition() {
+    final RenderBox? box =
+        _anchorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final offset = box.localToGlobal(Offset.zero);
+    _container.style
+      ..left = '${offset.dx}px'
+      ..top = '${offset.dy}px'
+      ..width = '${box.size.width}px'
+      ..height = '${box.size.height}px';
+  }
+
+  void _startPositionTracking() {
+    _positionTimer?.cancel();
+    _positionTimer =
+        Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (_disposed) {
+        timer.cancel();
+        return;
+      }
+      _updateContainerPosition();
+    });
   }
 
   void reset() {
@@ -177,23 +206,15 @@ class _TurnstileVerificationWidgetState
     if (!_hasTurnstile) return;
 
     if (_widgetId != null) {
-      if (!_container.isConnected) {
-        _removeWidget();
-      } else {
-        return;
-      }
+      return;
     }
 
     if (!_container.isConnected) {
+      _updateContainerPosition();
       web.document.body?.appendChild(_container);
     }
 
-    if (!_container.isConnected) {
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (!_disposed && _widgetId == null) _renderWidget();
-      });
-      return;
-    }
+    _startPositionTracking();
 
     try {
       final options = JSObject()
@@ -267,6 +288,7 @@ class _TurnstileVerificationWidgetState
   @override
   Widget build(BuildContext context) {
     return SizedBox(
+      key: _anchorKey,
       width: double.infinity,
       height: widget.height,
       child: DecoratedBox(

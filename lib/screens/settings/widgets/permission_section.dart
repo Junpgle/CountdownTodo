@@ -11,6 +11,7 @@ class PermissionSection extends StatelessWidget {
   final bool isCheckingPermissions;
   final VoidCallback onCheckAllPermissions;
   final Function(String) onRequestOrOpenPermission;
+  final VoidCallback? onRevokeAll;
 
   const PermissionSection({
     super.key,
@@ -19,18 +20,12 @@ class PermissionSection extends StatelessWidget {
     required this.isCheckingPermissions,
     required this.onCheckAllPermissions,
     required this.onRequestOrOpenPermission,
+    this.onRevokeAll,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
-      return const AppEmptyState(
-        icon: Icons.shield_outlined,
-        title: '桌面端无需管理权限',
-        message: '当前平台 (macOS / Windows / Linux) 的系统权限由底层自动分配和托管，您无需在此手动授权。',
-      );
-    }
 
     final allGranted = permissionDefs.every((def) {
       final status = permissionStatuses[def['key'] as String];
@@ -69,6 +64,16 @@ class PermissionSection extends StatelessWidget {
               ),
             ),
           const SizedBox(width: 8),
+          if (onRevokeAll != null) ...[
+            IconButton(
+              tooltip: '一键撤回授权',
+              onPressed: isCheckingPermissions ? null : onRevokeAll,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.remove_moderator_outlined,
+                  size: 18, color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 4),
+          ],
           IconButton(
             onPressed: isCheckingPermissions ? null : onCheckAllPermissions,
             visualDensity: VisualDensity.compact,
@@ -178,7 +183,9 @@ class PermissionSection extends StatelessWidget {
           if (denied) ...[
             const SizedBox(width: 8),
             FilledButton.tonal(
-              onPressed: () => onRequestOrOpenPermission(key),
+              onPressed: isCheckingPermissions
+                  ? null
+                  : () => onRequestOrOpenPermission(key),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(60, 32),
                 padding: const EdgeInsets.symmetric(horizontal: 12),

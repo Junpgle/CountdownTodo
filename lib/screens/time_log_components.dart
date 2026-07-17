@@ -949,7 +949,13 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
     _start = widget.initialStart;
     _end = widget.initialEnd;
     _remarkCtrl = TextEditingController();
-    _sortedTodos = _sortTodos(widget.todos, widget.todoGroups);
+    _sortedTodos = _sortTodos(
+      collapseRecurrenceSeriesForTodoPicker(
+        widget.todos,
+        now: _start,
+      ),
+      widget.todoGroups,
+    );
     if (_sortedTodos.isNotEmpty) _todoId = _sortedTodos.first.id;
   }
 

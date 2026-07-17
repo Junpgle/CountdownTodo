@@ -22,13 +22,18 @@ class CrossDevicePomodoroState {
   final String? sessionUuid;
   final String? todoUuid;
   final String? todoTitle;
+  final String? planBlockId;
   final int? duration;
   final int? targetEndMs;
   final String? sourceDevice;
+  final String? sourceDeviceName;
   final int? timestamp;
   final List<String> tags;
   final String? note; // 专注备注
   final int? mode; // 🚀 新增：0=countdown, 1=countUp
+  final int? currentCycle;
+  final int? totalCycles;
+  final int? plannedFocusSeconds;
 
   // 🚀 新增：版本更新专属字段
   final String? latestVersion;
@@ -54,13 +59,18 @@ class CrossDevicePomodoroState {
     this.todoUuid,
     this.sessionUuid,
     this.todoTitle,
+    this.planBlockId,
     this.duration,
     this.targetEndMs,
     this.sourceDevice,
+    this.sourceDeviceName,
     this.timestamp,
     this.tags = const [],
     this.note,
     this.mode,
+    this.currentCycle,
+    this.totalCycles,
+    this.plannedFocusSeconds,
     this.latestVersion,
     this.downloadUrl,
     this.releaseNotes,
@@ -82,13 +92,22 @@ class CrossDevicePomodoroState {
             j['session_uuid']?.toString() ?? j['sessionUuid']?.toString(),
         todoUuid: j['todo_uuid']?.toString(),
         todoTitle: j['todo_title']?.toString(),
+        planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
         duration: _parseInt(j['duration']),
         targetEndMs: _parseInt(j['target_end_ms'] ?? j['targetEndMs']),
         sourceDevice: (j['sourceDevice'] ?? j['source_device'])?.toString(),
+        sourceDeviceName: (j['sourceDeviceName'] ??
+                j['source_device_name'] ??
+                j['device_name'])
+            ?.toString(),
         timestamp: _parseInt(j['timestamp']),
         tags: _parseStringList(j['tags']),
         note: (j['note'] ?? j['focus_note'] ?? j['focusNote'])?.toString(),
         mode: _parseInt(j['mode']),
+        currentCycle: _parseInt(j['current_cycle'] ?? j['currentCycle']),
+        totalCycles: _parseInt(j['total_cycles'] ?? j['totalCycles']),
+        plannedFocusSeconds:
+            _parseInt(j['planned_focus_seconds'] ?? j['plannedFocusSeconds']),
         latestVersion: j['latest_version']?.toString(),
         downloadUrl: j['download_url']?.toString(),
         releaseNotes: j['release_notes']?.toString(),
@@ -127,11 +146,17 @@ class CrossDevicePomodoroState {
         if (todoUuid != null) 'todo_uuid': todoUuid,
         if (sessionUuid != null) 'session_uuid': sessionUuid,
         if (todoTitle != null) 'todo_title': todoTitle,
+        if (planBlockId != null) 'plan_block_id': planBlockId,
         if (duration != null) 'duration': duration,
         if (targetEndMs != null) 'target_end_ms': targetEndMs,
+        if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
         if (tags.isNotEmpty) 'tags': tags,
         if (note != null) 'note': note,
         if (mode != null) 'mode': mode,
+        if (currentCycle != null) 'current_cycle': currentCycle,
+        if (totalCycles != null) 'total_cycles': totalCycles,
+        if (plannedFocusSeconds != null)
+          'planned_focus_seconds': plannedFocusSeconds,
         if (latestVersion != null) 'latest_version': latestVersion,
         if (downloadUrl != null) 'download_url': downloadUrl,
         if (releaseNotes != null) 'release_notes': releaseNotes,
@@ -145,7 +170,6 @@ class CrossDevicePomodoroState {
 enum SyncConnectionState { disconnected, connecting, connected, error }
 
 class PomodoroSyncService {
-  static const Duration _reconnectDelay = Duration(seconds: 5);
   static const Duration _heartbeatInterval = Duration(seconds: 30);
 
   // ── 单例 ─────────────────────────────────────────────────
@@ -192,7 +216,25 @@ class PomodoroSyncService {
   SyncConnectionState get connectionState => _connState;
 
   String? get focusSourceDevice => _focusSourceDevice;
-  bool get isFocusSource => _focusSourceDevice == _deviceId;
+  bool get isFocusSource => isFromCurrentDevice(_focusSourceDevice);
+
+  bool isFromCurrentDevice(String? sourceDevice) =>
+      deviceIdsMatch(_deviceId, sourceDevice);
+
+  @visibleForTesting
+  static bool deviceIdsMatch(String? currentDevice, String? sourceDevice) {
+    if (currentDevice == null || sourceDevice == null) return false;
+    String normalize(String value) {
+      final trimmed = value.trim();
+      return trimmed.startsWith('flutter_')
+          ? trimmed.substring('flutter_'.length)
+          : trimmed;
+    }
+
+    final current = normalize(currentDevice);
+    final source = normalize(sourceDevice);
+    return current.isNotEmpty && source.isNotEmpty && current == source;
+  }
 
   Future<void> ensureConnected(String userId, String deviceId,
       {String? authToken, String? appVersion}) async {
@@ -403,17 +445,22 @@ class PomodoroSyncService {
         );
       }
 
-      if (signal.action == 'START' || signal.action == 'RECONNECT_SYNC') {
-        _focusSourceDevice = signal.sourceDevice;
+      if (signal.action == 'START' ||
+          signal.action == 'SYNC_FOCUS' ||
+          signal.action == 'RECONNECT_SYNC') {
+        if (signal.sourceDevice?.isNotEmpty == true) {
+          _focusSourceDevice = signal.sourceDevice;
+        }
       } else if (signal.action == 'STOP' ||
           signal.action == 'INTERRUPT' ||
           signal.action == 'FINISH' ||
-          signal.action == 'FOCUS_DISCONNECTED') {
+          signal.action == 'FOCUS_DISCONNECTED' ||
+          signal.action == 'CLEAR_FOCUS') {
         _focusSourceDevice = null;
       }
 
       if (signal.action == 'SYNC_FOCUS' &&
-          signal.sourceDevice == _deviceId &&
+          isFromCurrentDevice(signal.sourceDevice) &&
           onStaleSyncFocus != null) {
         // debugPrint('[PomodoroSync] 🍅 检测ato服务端残留状态回推，触发本地状态校验');
         onStaleSyncFocus!(signal);
@@ -478,10 +525,15 @@ class PomodoroSyncService {
     required String sessionUuid,
     required String? todoUuid,
     required String? todoTitle,
+    String? planBlockId,
     required int durationSeconds,
     required int targetEndMs,
     required int? mode,
+    int? currentCycle,
+    int? totalCycles,
+    int? plannedFocusSeconds,
     List<String> tagNames = const [],
+    String? sourceDeviceName,
     String? note,
     int? customTimestamp,
   }) {
@@ -490,11 +542,17 @@ class PomodoroSyncService {
       'session_uuid': sessionUuid,
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
+      if (planBlockId != null) 'plan_block_id': planBlockId,
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
+      if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
       if (mode != null) 'mode': mode,
+      if (currentCycle != null) 'current_cycle': currentCycle,
+      if (totalCycles != null) 'total_cycles': totalCycles,
+      if (plannedFocusSeconds != null)
+        'planned_focus_seconds': plannedFocusSeconds,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
   }
@@ -503,10 +561,15 @@ class PomodoroSyncService {
     required String sessionUuid,
     required String? todoUuid,
     required String? todoTitle,
+    String? planBlockId,
     required int durationSeconds,
     required int targetEndMs,
     required int? mode,
+    int? currentCycle,
+    int? totalCycles,
+    int? plannedFocusSeconds,
     List<String> tagNames = const [],
+    String? sourceDeviceName,
     String? note,
     int? customTimestamp,
   }) {
@@ -515,11 +578,17 @@ class PomodoroSyncService {
       'session_uuid': sessionUuid,
       if (todoUuid != null) 'todo_uuid': todoUuid,
       if (todoTitle != null) 'todo_title': todoTitle,
+      if (planBlockId != null) 'plan_block_id': planBlockId,
       'duration': durationSeconds,
       'target_end_ms': targetEndMs,
       'tags': tagNames,
+      if (sourceDeviceName != null) 'source_device_name': sourceDeviceName,
       if (note != null) 'note': note,
       if (mode != null) 'mode': mode,
+      if (currentCycle != null) 'current_cycle': currentCycle,
+      if (totalCycles != null) 'total_cycles': totalCycles,
+      if (plannedFocusSeconds != null)
+        'planned_focus_seconds': plannedFocusSeconds,
       'timestamp': customTimestamp ?? DateTime.now().millisecondsSinceEpoch,
     });
   }

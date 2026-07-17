@@ -105,6 +105,7 @@ class CourseService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("${_keyCourseData}_$username");
     await prefs.remove(_keyCourseData);
+    StorageService.triggerRefresh();
   }
 
   // ================= 冲突检测与合并逻辑 =================

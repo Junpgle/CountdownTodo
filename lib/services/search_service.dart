@@ -1194,13 +1194,20 @@ class SearchNavigationHandler {
 
       final allTodos = await StorageService.getTodos(username);
       final allGroups = await StorageService.getTodoGroups(username);
+      final canonicalTodo = allTodos.cast<TodoItem?>().firstWhere(
+                (candidate) => candidate?.id == todo.id,
+                orElse: () => null,
+              ) ??
+          todo;
 
       if (context.mounted) {
         Navigator.push(
           context,
           PageTransitions.material(
             builder: (_) => TodoEditScreen(
-              todo: todo,
+              // 使用完整存储模型，保留循环规则和 recurrenceSeriesId，
+              // 这样从全局搜索进入编辑页也能访问同系列的其他期次。
+              todo: canonicalTodo,
               todos: allTodos,
               onTodosChanged: (newList) async {
                 await StorageService.saveTodos(username, newList);

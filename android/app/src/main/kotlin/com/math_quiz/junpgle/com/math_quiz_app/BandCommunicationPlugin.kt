@@ -85,7 +85,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 )
                 // Log.d(TAG, "获取到已连接设备: $deviceInfo")
                 invokeMethod("onDeviceConnected", deviceInfo)
-                checkAndRequestPermission()
+                checkPermission()
             } else {
                 Log.d(TAG, "没有已连接的设备")
                 currentNode = null
@@ -100,8 +100,8 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
         }
     }
 
-    // 检查并申请 DEVICE_MANAGER 权限
-    private fun checkAndRequestPermission() {
+    // 仅检查权限；申请由 Flutter 的说明确认流程在用户同意后触发。
+    private fun checkPermission() {
         val node = currentNode ?: return
 
         // Log.d(TAG, "checkAndRequestPermission: 检查权限状态...")
@@ -116,10 +116,7 @@ class BandCommunicationPlugin(private val context: Context, private val channel:
                 "permissions" to if (granted) listOf("DEVICE_MANAGER", "NOTIFY") else emptyList<String>()
             ))
             
-            if (!granted) {
-                Log.d(TAG, "未授权，自动申请...")
-                requestPermission()
-            } else {
+            if (granted) {
                 // 已授权，注册消息监听
                 doRegisterListener()
             }

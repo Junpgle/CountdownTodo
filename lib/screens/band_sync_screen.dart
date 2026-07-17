@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/band_sync_service.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
+import '../services/permission_request_coordinator.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 
@@ -25,10 +26,12 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
   bool _isSyncing = false;
   final List<String> _logs = [];
   bool _isAutoUpdateEnabled = true; // 🚀 自动检查更新开关
+  late final PermissionRequestCoordinator _permissionCoordinator;
 
   @override
   void initState() {
     super.initState();
+    _permissionCoordinator = PermissionRequestCoordinator(context: context);
     _loadUpdateSettings();
     _initBandService();
   }
@@ -67,7 +70,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
         }
         if (!_hasPermission) {
           _logs.add('缺少权限，自动申请...');
-          await BandSyncService.requestPermission();
+          await _requestBandPermission();
         } else {
           await BandSyncService.registerListener();
         }
@@ -153,12 +156,30 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
       await BandSyncService.registerListener();
     } else {
       _logs.add('缺少权限，自动申请...');
-      await BandSyncService.requestPermission();
+      await _requestBandPermission();
+    }
+  }
+
+  Future<void> _requestBandPermission() async {
+    final result = await _permissionCoordinator.request(
+      AppPermissionKind.bandDeviceManagement,
+    );
+    if (!mounted) return;
+
+    setState(() => _hasPermission = result.granted);
+    if (result.granted) {
+      _logs.add('权限申请成功！');
+      await BandSyncService.registerListener();
+    } else if (result.cancelledByUser) {
+      _logs.add('用户暂未允许手环设备管理权限');
+    } else {
+      _logs.add('权限申请未成功，请检查小米穿戴 App 授权状态');
     }
   }
 
   @override
   void dispose() {
+    _permissionCoordinator.dispose();
     BandSyncService.unregisterListener();
     super.dispose();
   }
@@ -418,22 +439,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                   onPressed: _isConnected && !_hasPermission
                       ? () async {
                           _logs.add('手动申请权限...');
-                          await BandSyncService.requestPermission();
-                          // 等待更长时间让权限对话框出现
-                          await Future.delayed(const Duration(seconds: 3));
-                          // 刷新状态
-                          final status =
-                              await BandSyncService.getConnectionStatus();
-                          final granted = status['hasPermission'] == true;
-                          setState(() {
-                            _hasPermission = granted;
-                          });
-                          if (granted) {
-                            _logs.add('权限申请成功！');
-                            await BandSyncService.registerListener();
-                          } else {
-                            _logs.add('权限申请无响应，请检查小米穿戴App授权状态');
-                          }
+                          await _requestBandPermission();
                         }
                       : null,
                 ),
