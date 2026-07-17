@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "CountDownTodo Pro"
-#define MyAppVersion "4.15.11"
+#define MyAppVersion "5.4.21"
 #define MyAppPublisher "Junpgle"
 #define MyAppURL "https://countdowntodo.junpgle.me/"
 #define MyAppExeName "math_quiz_app.exe"
