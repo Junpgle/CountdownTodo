@@ -1102,16 +1102,13 @@ class UpdateService {
 
     if (context.mounted) {
       if (hasNotice) {
-        showAnnouncementDialog(context, announcementsToShow, () {
-          if (hasUpdate && context.mounted) {
-            showUpdateDialog(context, manifest, localVersion,
-                hasUpdate: true,
-                hasNotice: false,
-                respectTodaySnooze: !isManual);
-          }
-        });
+        await showAnnouncementDialog(context, announcementsToShow, null);
+        if (hasUpdate && context.mounted) {
+          await showUpdateDialog(context, manifest, localVersion,
+              hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
+        }
       } else if (hasUpdate) {
-        showUpdateDialog(context, manifest, localVersion,
+        await showUpdateDialog(context, manifest, localVersion,
             hasUpdate: true, hasNotice: false, respectTodaySnooze: !isManual);
       }
     }
@@ -1246,7 +1243,7 @@ class UpdateService {
       return;
     }
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
@@ -1444,12 +1441,11 @@ class UpdateService {
           }),
         );
       },
-    ).then((_) {
-      _isDialogShowing = false;
-      _uiProgressCallback = null;
-      _uiCompleteCallback = null;
-      _uiErrorCallback = null;
-    });
+    );
+    _isDialogShowing = false;
+    _uiProgressCallback = null;
+    _uiCompleteCallback = null;
+    _uiErrorCallback = null;
   }
 
   static String _todayKey([DateTime? now]) {

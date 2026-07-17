@@ -100,6 +100,7 @@ todo.md
 /test/
 !/test/
 /test/*
+!/test/coach_mark_overlay_test.dart
 !/test/services/
 /test/services/*
 !/test/services/permission_request_coordinator_test.dart

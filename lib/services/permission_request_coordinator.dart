@@ -438,12 +438,12 @@ class PermissionRationaleBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Positioned(
-      top: 16,
+      bottom: 16,
       left: 0,
       right: 0,
       child: SafeArea(
         child: Align(
-          alignment: Alignment.topCenter,
+          alignment: Alignment.bottomCenter,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500),
             child: Padding(
@@ -454,7 +454,7 @@ class PermissionRationaleBanner extends StatelessWidget {
                 curve: Curves.easeOutBack,
                 builder: (context, value, child) {
                   return Transform.translate(
-                    offset: Offset(0, -40 * (1 - value)),
+                    offset: Offset(0, 40 * (1 - value)),
                     child: Opacity(
                       opacity: value.clamp(0.0, 1.0),
                       child: child,

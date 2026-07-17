@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 class CoachMarkStep {
@@ -17,12 +19,13 @@ class CoachMarkStep {
 }
 
 class CoachMarkOverlay {
-  static void show({
+  static Future<bool> show({
     required BuildContext context,
     required List<CoachMarkStep> steps,
     required VoidCallback onFinish,
     required VoidCallback onSkip,
   }) {
+    final completed = Completer<bool>();
     late OverlayEntry overlayEntry;
 
     overlayEntry = OverlayEntry(
@@ -32,16 +35,19 @@ class CoachMarkOverlay {
           onFinish: () {
             overlayEntry.remove();
             onFinish();
+            if (!completed.isCompleted) completed.complete(true);
           },
           onSkip: () {
             overlayEntry.remove();
             onSkip();
+            if (!completed.isCompleted) completed.complete(false);
           },
         );
       },
     );
 
     Overlay.of(context, rootOverlay: true).insert(overlayEntry);
+    return completed.future;
   }
 }
 

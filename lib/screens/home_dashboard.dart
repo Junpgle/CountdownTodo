@@ -225,6 +225,8 @@ class _HomeDashboardState extends State<HomeDashboard>
   bool _hasShownUpdate = false;
   bool _hasCheckedHolidayPreset = false;
   bool _showCoachMarks = false;
+  Future<void>? _startupPromptsFuture;
+  bool _startupPromptsCompleted = false;
   TeamAnnouncement? _activeAnnouncement; // 🚀 新增：当前置顶公告
 
   // ── 本地专注状态 ──
@@ -391,8 +393,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     _configureBackgroundNotificationPoll();
     _initCrossDevicePomodoro(); // 首页也连接 WS
     _initLocalPomodoroMonitoring(); // 🚀 修改：使用 Stream 监测本地专注状态
-    _checkCoachMarks();
-
     // 🚀 Granular Refresh Initialization
     _todosNotifier = ValueNotifier<List<TodoItem>>(_todos);
     _groupsNotifier = ValueNotifier<List<TodoGroup>>(_todoGroups);
@@ -468,9 +468,9 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) _initNotifications();
-      });
+      // 首次进入首页的交互按固定顺序串行，避免公告、操作指引和
+      // 系统权限弹窗同时出现。
+      unawaited(_runStartupPrompts());
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
@@ -481,11 +481,6 @@ class _HomeDashboardState extends State<HomeDashboard>
           _initIslandOnStartup();
           _checkOfficialHolidayPreset();
         }
-      });
-
-      // 保活：检查精确闹钟权限（Android 12+），仅首次提示一次
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        if (mounted) _checkExactAlarmPermission();
       });
 
       ExternalShareHandler.init(
@@ -508,7 +503,6 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkPendingTodoConfirm();
 
       _checkAutoSync();
-      _checkUpdatesSilently();
 
       _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
         _checkUpcomingEvents();
@@ -2658,6 +2652,37 @@ class _HomeDashboardState extends State<HomeDashboard>
     await UpdateService.checkUpdateAndPrompt(context, isManual: false);
   }
 
+  Future<void> _runStartupPrompts() {
+    return _startupPromptsFuture ??= _runStartupPromptsInOrder();
+  }
+
+  Future<void> _runStartupPromptsInOrder() async {
+    try {
+      // checkUpdateAndPrompt 会等到公告（以及紧随其后的更新提示）关闭。
+      try {
+        await _checkUpdatesSilently();
+      } catch (_) {
+        // 公告检查失败不应阻断本地引导和权限流程。
+      }
+      if (!mounted) return;
+
+      try {
+        await _checkCoachMarks();
+      } catch (_) {
+        // 引导状态读取失败时仍继续进行必要的权限初始化。
+      }
+      if (!mounted) return;
+
+      await _initNotifications();
+      if (!mounted) return;
+
+      // 精确闹钟的授权提示也放到队列末尾，不覆盖前面的引导。
+      await _checkExactAlarmPermission();
+    } finally {
+      _startupPromptsCompleted = true;
+    }
+  }
+
   Future<void> _loadSemesterSettings() async {
     bool enabled = await StorageService.getSemesterEnabled();
     DateTime? start = await StorageService.getSemesterStart();
@@ -2720,7 +2745,10 @@ class _HomeDashboardState extends State<HomeDashboard>
       _checkAutoSync(force: true);
       _loadSectionPreferences();
       _loadSemesterSettings();
-      _checkUpdatesSilently();
+      // 冷启动的公告/引导/权限队列结束前，恢复事件不重复发起公告。
+      if (_startupPromptsCompleted) {
+        _checkUpdatesSilently();
+      }
       // 🚀 唤醒时重置壁纸重试计数，防止因最小化导致的短暂断网触发兜底
       _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新所有卡片
@@ -3437,7 +3465,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       final isTablet = MediaQuery.of(context).size.shortestSide >= 600 ||
           MediaQuery.of(context).size.width > 800;
 
-      CoachMarkOverlay.show(
+      final finished = await CoachMarkOverlay.show(
         context: context,
         steps: [
           CoachMarkStep(
@@ -3490,18 +3518,17 @@ class _HomeDashboardState extends State<HomeDashboard>
         ],
         onFinish: () {
           _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_home_intro');
-          // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
-          if (isTablet) {
-            Future.delayed(
-                const Duration(milliseconds: 500), _checkFocusTabCoachMarks);
-          }
         },
         onSkip: () {
           _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_home_intro');
         },
       );
+
+      // 如果是平板/宽屏模式（左右两栏同时显示），播完首页引导后延迟接着播专注Tab引导
+      if (finished && isTablet && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _checkFocusTabCoachMarks();
+      }
     }
   }
 
@@ -3513,7 +3540,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (hasSeenCoachMarks) return;
     if (mounted) {
       _showCoachMarks = true;
-      CoachMarkOverlay.show(
+      await CoachMarkOverlay.show(
         context: context,
         steps: [
           CoachMarkStep(
@@ -3533,21 +3560,19 @@ class _HomeDashboardState extends State<HomeDashboard>
           ),
         ],
         onFinish: () {
-          _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_focus_tab');
+          _dismissCoachMarks(tipId: 'coach_focus_tab');
         },
         onSkip: () {
-          _dismissCoachMarks();
-          FeatureTipService.markTipShown('coach_focus_tab');
+          _dismissCoachMarks(tipId: 'coach_focus_tab');
         },
       );
     }
   }
 
-  Future<void> _dismissCoachMarks() async {
+  Future<void> _dismissCoachMarks({String tipId = 'coach_home_intro'}) async {
     if (!mounted) return;
-    await FeatureTipService.markTipShown('coach_home_intro');
     _showCoachMarks = false;
+    await FeatureTipService.markTipShown(tipId);
   }
 
   Future<void> _checkOfficialHolidayPreset() async {
