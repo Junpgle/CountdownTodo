@@ -22,7 +22,17 @@ private let islandCollapseAnimation = Animation.timingCurve(
 private let islandExpansionDuration: TimeInterval = 0.50
 private let islandCollapseDuration: TimeInterval = 0.36
 
+private struct MacLyricLine: Identifiable, Equatable {
+    let timestamp: Double
+    let text: String
+
+    var id: String {
+        "\(Int(timestamp * 1000)):\(text)"
+    }
+}
+
 private struct MacNowPlayingSnapshot {
+    var trackIdentifier = ""
     var title = ""
     var artist = ""
     var album = ""
@@ -32,6 +42,8 @@ private struct MacNowPlayingSnapshot {
     var playbackRate: Double = 0
     var updatedAt = Date()
     var isPlaying = false
+    var sourceStartedAt: Date?
+    var lyrics: [MacLyricLine] = []
 
     var isAvailable: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -65,10 +77,20 @@ private final class MacNowPlayingMonitor {
     }
 
     private struct NeteaseTrack: Decodable {
+        let id: String
         let name: String
         let duration: Double?
         let artists: [NeteaseArtist]
         let album: NeteaseAlbum?
+    }
+
+    private struct NeteaseLyricSection: Decodable {
+        let lyric: String
+    }
+
+    private struct NeteaseLyricResponse: Decodable {
+        let lrc: NeteaseLyricSection?
+        let tlyric: NeteaseLyricSection?
     }
 
     private struct NeteaseTrackRecord {
@@ -83,6 +105,12 @@ private final class MacNowPlayingMonitor {
     private var sendCommandFunction: SendCommandFunction?
     private var observers: [NSObjectProtocol] = []
     private var onChange: ((MacNowPlayingSnapshot) -> Void)?
+    private var currentSnapshot = MacNowPlayingSnapshot()
+    private var optimisticPlaybackState: (
+        trackIdentifier: String,
+        isPlaying: Bool,
+        expiresAt: Date
+    )?
     private var started = false
     private var refreshSequence = 0
     private var lastRefreshStartedAt: TimeInterval = 0
@@ -95,6 +123,9 @@ private final class MacNowPlayingMonitor {
         qos: .utility
     )
     private let artworkCache = NSCache<NSURL, NSImage>()
+    private var lyricCache: [String: [MacLyricLine]] = [:]
+    private var lyricRequestsInFlight: Set<String> = []
+    private var lyricRetryAfter: [String: Date] = [:]
 
     func start(onChange: @escaping (MacNowPlayingSnapshot) -> Void) {
         self.onChange = onChange
@@ -147,13 +178,13 @@ private final class MacNowPlayingMonitor {
         refresh()
     }
 
-    func refresh() {
+    func refresh(force: Bool = false) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in self?.refresh() }
             return
         }
         let now = Date().timeIntervalSinceReferenceDate
-        guard now - lastRefreshStartedAt >= 0.5 else { return }
+        guard force || now - lastRefreshStartedAt >= 0.5 else { return }
         lastRefreshStartedAt = now
         refreshSequence += 1
         let sequence = refreshSequence
@@ -181,6 +212,7 @@ private final class MacNowPlayingMonitor {
 
             let deliver: (Bool) -> Void = { [weak self] isPlaying in
                 self?.publish(MacNowPlayingSnapshot(
+                    trackIdentifier: "\(title)\u{001F}\(artist)",
                     title: title,
                     artist: artist,
                     album: album,
@@ -216,6 +248,8 @@ private final class MacNowPlayingMonitor {
             return
         }
         let processIdentifier = app.processIdentifier
+        let previousSnapshot = currentSnapshot
+        let optimisticState = optimisticPlaybackState
 
         fallbackQueue.async { [weak self] in
             guard let self = self,
@@ -228,7 +262,15 @@ private final class MacNowPlayingMonitor {
 
             let audioState = self.isProducingAudio(processIdentifier: processIdentifier)
             let recordAge = Date().timeIntervalSince(record.playedAt)
-            let isPlaying = audioState ?? (recordAge >= 0 && recordAge < 10 * 60)
+            let detectedPlaying = audioState ?? (recordAge >= 0 && recordAge < 10 * 60)
+            let isPlaying: Bool
+            if let optimisticState = optimisticState,
+               optimisticState.trackIdentifier == record.track.id,
+               optimisticState.expiresAt > Date() {
+                isPlaying = optimisticState.isPlaying
+            } else {
+                isPlaying = detectedPlaying
+            }
             // 暂停后的曲目继续保留半小时，之后不再把历史记录伪装成
             // 当前媒体；真正仍在输出声音的曲目不受这个时间限制。
             guard isPlaying || (recordAge >= 0 && recordAge < 30 * 60) else {
@@ -242,17 +284,36 @@ private final class MacNowPlayingMonitor {
                 .map(\.name)
                 .filter { !$0.isEmpty }
                 .joined(separator: "、")
+            let duration = max(0, (record.track.duration ?? 0) / 1000)
+            let samePlayback = previousSnapshot.trackIdentifier == record.track.id
+                && previousSnapshot.sourceStartedAt.map {
+                    abs($0.timeIntervalSince(record.playedAt)) < 1
+                } == true
+            let now = Date()
+            let elapsedTime: Double
+            if samePlayback {
+                elapsedTime = self.elapsedTime(for: previousSnapshot, at: now)
+            } else {
+                let rawElapsed = max(0, now.timeIntervalSince(record.playedAt))
+                if duration > 0, rawElapsed > duration {
+                    elapsedTime = isPlaying
+                        ? rawElapsed.truncatingRemainder(dividingBy: duration)
+                        : duration
+                } else {
+                    elapsedTime = duration > 0 ? min(duration, rawElapsed) : 0
+                }
+            }
             var snapshot = MacNowPlayingSnapshot(
+                trackIdentifier: record.track.id,
                 title: record.track.name,
                 artist: artist,
                 album: record.track.album?.name ?? "网易云音乐",
-                // 网易云没有可靠保存暂停/循环后的播放进度；这里不显示
-                // 猜测进度，避免进度条满格但音乐仍在播放。
-                duration: 0,
-                elapsedTime: 0,
+                duration: duration,
+                elapsedTime: elapsedTime,
                 playbackRate: isPlaying ? 1 : 0,
-                updatedAt: Date(),
-                isPlaying: isPlaying
+                updatedAt: now,
+                isPlaying: isPlaying,
+                sourceStartedAt: record.playedAt
             )
             let artworkURL = self.neteaseArtworkURL(for: record.track)
 
@@ -262,6 +323,7 @@ private final class MacNowPlayingMonitor {
                    let cached = self.artworkCache.object(forKey: artworkURL as NSURL) {
                     snapshot.artwork = cached
                 }
+                snapshot.lyrics = self.lyricCache[record.track.id] ?? []
                 #if DEBUG
                 if snapshot.title != self.lastLoggedFallbackTitle {
                     self.lastLoggedFallbackTitle = snapshot.title
@@ -272,6 +334,14 @@ private final class MacNowPlayingMonitor {
                 if snapshot.artwork == nil, let artworkURL = artworkURL {
                     self.loadArtwork(
                         from: artworkURL,
+                        for: snapshot,
+                        sequence: sequence
+                    )
+                }
+                if self.lyricCache[record.track.id] == nil,
+                   self.lyricRetryAfter[record.track.id, default: .distantPast] <= Date() {
+                    self.loadLyrics(
+                        trackIdentifier: record.track.id,
                         for: snapshot,
                         sequence: sequence
                     )
@@ -404,9 +474,154 @@ private final class MacNowPlayingMonitor {
         }.resume()
     }
 
+    private func loadLyrics(
+        trackIdentifier: String,
+        for snapshot: MacNowPlayingSnapshot,
+        sequence: Int
+    ) {
+        guard !trackIdentifier.isEmpty,
+              !lyricRequestsInFlight.contains(trackIdentifier) else { return }
+        lyricRequestsInFlight.insert(trackIdentifier)
+        lyricRetryAfter[trackIdentifier] = Date().addingTimeInterval(60)
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "music.163.com"
+        components.path = "/api/song/lyric"
+        components.queryItems = [
+            URLQueryItem(name: "id", value: trackIdentifier),
+            URLQueryItem(name: "lv", value: "1"),
+            URLQueryItem(name: "kv", value: "1"),
+            URLQueryItem(name: "tv", value: "-1"),
+        ]
+        guard let url = components.url else {
+            lyricRequestsInFlight.remove(trackIdentifier)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self = self else { return }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let decodedResponse = data.flatMap {
+                try? JSONDecoder().decode(NeteaseLyricResponse.self, from: $0)
+            }
+            let lines = decodedResponse.map {
+                self.parseLyrics(
+                    $0.lrc?.lyric ?? "",
+                    translation: $0.tlyric?.lyric ?? ""
+                )
+            } ?? []
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.lyricRequestsInFlight.remove(trackIdentifier)
+                guard statusCode == 200, decodedResponse != nil else { return }
+                self.lyricCache[trackIdentifier] = lines
+                #if DEBUG
+                NSLog("[MacIsland] 网易云歌词已加载：%d 行", lines.count)
+                #endif
+                if self.lyricCache.count > 24,
+                   let oldestKey = self.lyricCache.keys.first(where: {
+                       $0 != trackIdentifier
+                   }) {
+                    self.lyricCache.removeValue(forKey: oldestKey)
+                }
+                guard sequence == self.refreshSequence,
+                      self.currentSnapshot.trackIdentifier == trackIdentifier else {
+                    return
+                }
+                var snapshotWithLyrics = snapshot
+                snapshotWithLyrics.lyrics = lines
+                // 封面或播放状态可能在歌词请求期间已更新，publish 会合并
+                // 同一首歌的这些较新字段。
+                self.publish(snapshotWithLyrics, sequence: sequence)
+            }
+        }.resume()
+    }
+
+    private func parseLyrics(
+        _ rawLyrics: String,
+        translation rawTranslation: String
+    ) -> [MacLyricLine] {
+        var translations: [Int: String] = [:]
+        for line in parseLRC(rawTranslation) {
+            translations[Int(line.timestamp * 1000)] = line.text
+        }
+        return parseLRC(rawLyrics).map { line in
+            let translated = translations[Int(line.timestamp * 1000)] ?? ""
+            guard !translated.isEmpty, translated != line.text else { return line }
+            return MacLyricLine(
+                timestamp: line.timestamp,
+                text: "\(line.text) · \(translated)"
+            )
+        }
+    }
+
+    private func parseLRC(_ rawValue: String) -> [MacLyricLine] {
+        var result: [MacLyricLine] = []
+        for rawLine in rawValue.components(separatedBy: .newlines) {
+            var remainder = rawLine[...]
+            var timestamps: [Double] = []
+            while remainder.first == "[",
+                  let closingIndex = remainder.firstIndex(of: "]") {
+                let tagStart = remainder.index(after: remainder.startIndex)
+                let tag = String(remainder[tagStart..<closingIndex])
+                if let timestamp = lyricTimestamp(tag) {
+                    timestamps.append(timestamp)
+                }
+                remainder = remainder[remainder.index(after: closingIndex)...]
+            }
+            let text = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            result.append(contentsOf: timestamps.map {
+                MacLyricLine(timestamp: $0, text: text)
+            })
+        }
+        return result.sorted { lhs, rhs in
+            if lhs.timestamp == rhs.timestamp { return lhs.text < rhs.text }
+            return lhs.timestamp < rhs.timestamp
+        }
+    }
+
+    private func lyricTimestamp(_ rawValue: String) -> Double? {
+        let components = rawValue.split(separator: ":", maxSplits: 1)
+        guard components.count == 2,
+              let minutes = Double(components[0]),
+              let seconds = Double(components[1]) else {
+            return nil
+        }
+        return max(0, minutes * 60 + seconds)
+    }
+
+    private func elapsedTime(
+        for snapshot: MacNowPlayingSnapshot,
+        at date: Date
+    ) -> Double {
+        var elapsed = snapshot.elapsedTime
+        if snapshot.isPlaying {
+            let rate = snapshot.playbackRate > 0 ? snapshot.playbackRate : 1
+            elapsed += max(0, date.timeIntervalSince(snapshot.updatedAt)) * rate
+        }
+        guard snapshot.duration > 0 else { return max(0, elapsed) }
+        return min(snapshot.duration, max(0, elapsed))
+    }
+
     private func publish(_ snapshot: MacNowPlayingSnapshot, sequence: Int) {
         guard sequence == refreshSequence else { return }
-        onChange?(snapshot)
+        var mergedSnapshot = snapshot
+        if snapshot.trackIdentifier == currentSnapshot.trackIdentifier {
+            if mergedSnapshot.artwork == nil {
+                mergedSnapshot.artwork = currentSnapshot.artwork
+            }
+            if mergedSnapshot.lyrics.isEmpty, !currentSnapshot.lyrics.isEmpty {
+                mergedSnapshot.lyrics = currentSnapshot.lyrics
+            }
+        }
+        currentSnapshot = mergedSnapshot
+        onChange?(mergedSnapshot)
     }
 
     func previous() {
@@ -414,7 +629,31 @@ private final class MacNowPlayingMonitor {
     }
 
     func togglePlayPause() {
-        send(command: 2)
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.togglePlayPause() }
+            return
+        }
+        refreshSequence += 1
+        if currentSnapshot.isAvailable {
+            let now = Date()
+            var optimisticSnapshot = currentSnapshot
+            optimisticSnapshot.elapsedTime = elapsedTime(
+                for: currentSnapshot,
+                at: now
+            )
+            optimisticSnapshot.updatedAt = now
+            optimisticSnapshot.isPlaying.toggle()
+            optimisticSnapshot.playbackRate = optimisticSnapshot.isPlaying ? 1 : 0
+            currentSnapshot = optimisticSnapshot
+            optimisticPlaybackState = (
+                trackIdentifier: optimisticSnapshot.trackIdentifier,
+                isPlaying: optimisticSnapshot.isPlaying,
+                expiresAt: now.addingTimeInterval(3)
+            )
+            onChange?(optimisticSnapshot)
+        }
+        sendCommandFunction?(2, nil)
+        scheduleCommandRefreshes()
     }
 
     func next() {
@@ -423,8 +662,14 @@ private final class MacNowPlayingMonitor {
 
     private func send(command: UInt32) {
         sendCommandFunction?(command, nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-            self?.refresh()
+        scheduleCommandRefreshes()
+    }
+
+    private func scheduleCommandRefreshes() {
+        for delay in [0.65, 1.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refresh(force: true)
+            }
         }
     }
 
@@ -613,6 +858,7 @@ class IslandStateModel: ObservableObject {
     @Published var nowPlayingPlaybackRate: Double = 0
     @Published var nowPlayingUpdatedAt = Date()
     @Published var nowPlayingIsPlaying = false
+    @Published fileprivate var nowPlayingLyrics: [MacLyricLine] = []
     @Published var revealHeight: CGFloat = 0
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
@@ -1014,60 +1260,124 @@ struct MacIslandSwiftUIView: View {
     }
 
     var nowPlayingCard: some View {
-        HStack(spacing: 10) {
-            Group {
-                if let artwork = model.nowPlayingArtwork {
-                    Image(nsImage: artwork)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(Color.white.opacity(0.08))
-                        Image(systemName: "music.note")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.65))
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Group {
+                    if let artwork = model.nowPlayingArtwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(Color.white.opacity(0.08))
+                            Image(systemName: "music.note")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.65))
+                        }
                     }
                 }
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 9))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.nowPlayingTitle)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Text(nowPlayingSubtitle)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.48))
+                        .lineLimit(1)
+
+                    nowPlayingProgressView
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 4) {
+                    mediaControlButton(
+                        systemName: "backward.fill",
+                        action: { model.onPreviousTrack?() }
+                    )
+                    mediaControlButton(
+                        systemName: model.nowPlayingIsPlaying ? "pause.fill" : "play.fill",
+                        emphasized: true,
+                        action: { model.onToggleMediaPlayback?() }
+                    )
+                    mediaControlButton(
+                        systemName: "forward.fill",
+                        action: { model.onNextTrack?() }
+                    )
+                }
             }
-            .frame(width: 42, height: 42)
-            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .padding(.horizontal, 10)
+            .frame(height: 64)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.nowPlayingTitle)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+            if !model.nowPlayingLyrics.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.07))
+                    .frame(height: 1)
+                    .padding(.horizontal, 10)
 
-                Text(nowPlayingSubtitle)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundColor(.white.opacity(0.48))
-                    .lineLimit(1)
-
-                nowPlayingProgressView
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 4) {
-                mediaControlButton(
-                    systemName: "backward.fill",
-                    action: { model.onPreviousTrack?() }
-                )
-                mediaControlButton(
-                    systemName: model.nowPlayingIsPlaying ? "pause.fill" : "play.fill",
-                    emphasized: true,
-                    action: { model.onToggleMediaPlayback?() }
-                )
-                mediaControlButton(
-                    systemName: "forward.fill",
-                    action: { model.onNextTrack?() }
-                )
+                nowPlayingLyricsView
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 64)
+        .frame(height: model.nowPlayingLyrics.isEmpty ? 64 : 104)
         .background(Color.white.opacity(0.07))
         .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private var nowPlayingLyricsView: some View {
+        if #available(macOS 12.0, *) {
+            TimelineView(.periodic(from: .now, by: 0.5)) { timeline in
+                lyricRows(at: timeline.date)
+            }
+        } else {
+            lyricRows(at: Date())
+        }
+    }
+
+    private func lyricRows(at date: Date) -> some View {
+        let elapsed = nowPlayingElapsed(at: date)
+        let lines = model.nowPlayingLyrics
+        let currentIndex = lines.lastIndex { $0.timestamp <= elapsed }
+        let currentLine = currentIndex.map { lines[$0] }
+        let nextIndex = currentIndex.map { $0 + 1 } ?? 0
+        let nextLine = nextIndex < lines.count ? lines[nextIndex] : nil
+        let transitionIdentifier = currentLine?.id ?? "lyrics-waiting"
+
+        return HStack(spacing: 8) {
+            Image(systemName: "quote.bubble.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.5))
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(currentLine?.text ?? "即将播放歌词")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(.white.opacity(currentLine == nil ? 0.55 : 0.92))
+                    .lineLimit(1)
+                    .id(transitionIdentifier)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    ))
+
+                if let nextLine = nextLine {
+                    Text(nextLine.text)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.36))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 39)
+        .clipped()
+        .animation(.easeInOut(duration: 0.28), value: transitionIdentifier)
     }
 
     @ViewBuilder
@@ -1100,6 +1410,13 @@ struct MacIslandSwiftUIView: View {
 
     private func nowPlayingProgress(at date: Date) -> CGFloat {
         guard model.nowPlayingDuration > 0 else { return 0 }
+        return CGFloat(min(
+            1,
+            max(0, nowPlayingElapsed(at: date) / model.nowPlayingDuration)
+        ))
+    }
+
+    private func nowPlayingElapsed(at date: Date) -> Double {
         var elapsed = model.nowPlayingElapsedTime
         if model.nowPlayingIsPlaying {
             let rate = model.nowPlayingPlaybackRate > 0
@@ -1107,7 +1424,8 @@ struct MacIslandSwiftUIView: View {
                 : 1
             elapsed += max(0, date.timeIntervalSince(model.nowPlayingUpdatedAt)) * rate
         }
-        return CGFloat(min(1, max(0, elapsed / model.nowPlayingDuration)))
+        guard model.nowPlayingDuration > 0 else { return max(0, elapsed) }
+        return min(model.nowPlayingDuration, max(0, elapsed))
     }
 
     private var nowPlayingSubtitle: String {
@@ -2420,6 +2738,7 @@ class MacPomodoroStatusBarController {
         view.nowPlayingPlaybackRate = nowPlayingSnapshot.playbackRate
         view.nowPlayingUpdatedAt = nowPlayingSnapshot.updatedAt
         view.nowPlayingIsPlaying = nowPlayingSnapshot.isPlaying
+        view.nowPlayingLyrics = nowPlayingSnapshot.lyrics
         updateExpansionState(view, expanded: expanded, detailed: detailed)
         // SwiftUI handles accessibility
         // SwiftUI handles accessibility
@@ -2515,7 +2834,7 @@ class MacPomodoroStatusBarController {
             }
 
             if hasNowPlaying {
-                contentHeight += 12 + 64
+                contentHeight += 12 + (view.nowPlayingLyrics.isEmpty ? 64 : 104)
             }
             if detailed && !view.isIdle {
                 contentHeight += 20 + 68
