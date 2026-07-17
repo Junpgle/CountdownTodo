@@ -289,6 +289,7 @@ class StorageService {
   static Set<String> _pendingSyncOplogUuids = {}; // 🚀 同步前有待同步 oplog 的 UUID
   static Set<String> _forceFlushProtectedUuids =
       {}; // 🚀 force-flush 保护的 UUID，merge 时跳过
+  static final Set<String> _attemptedRecurrenceSeriesRepairUploads = {};
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
   static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
@@ -2524,7 +2525,9 @@ class StorageService {
         final canonicalActive = canonical.recurrence != RecurrenceType.none;
         if ((candidateActive && !canonicalActive) ||
             (candidateActive == canonicalActive &&
-                candidate.updatedAt > canonical.updatedAt)) {
+                (candidate.version > canonical.version ||
+                    (candidate.version == canonical.version &&
+                        candidate.updatedAt > canonical.updatedAt)))) {
           canonical = candidate;
         }
       }
@@ -3231,6 +3234,19 @@ class StorageService {
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
       List<TodoPlanBlock> allLocalPlanBlocks =
           await getPlanBlocks(username, includeDeleted: true);
+      final autoResolvedMigrationConflicts =
+          _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
+      if (autoResolvedMigrationConflicts.isNotEmpty) {
+        await saveTodos(
+          username,
+          autoResolvedMigrationConflicts,
+          sync: true,
+          recomputeScheduleConflicts: false,
+        );
+        hasChanges = true;
+        debugPrint(
+            '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
+      }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
         for (final item in allLocalGroups) item.id: item
@@ -3815,8 +3831,23 @@ class StorageService {
       final Set<String> ignoredUuids =
           ignoredRows.map((e) => e['uuid'].toString()).toSet();
 
-      // 合并 Todos
+      // 合并 Todos。旧版服务端没有持久化 recurrence_series_id；先利用本地
+      // 已知关系或唯一、可验证的循环轨迹修复，再进入常规 LWW 合并。
       List<dynamic> serverTodos = response['server_todos'] ?? [];
+      final remoteTodoEntries = <({Map<String, dynamic> raw, TodoItem item})>[];
+      for (final raw in serverTodos) {
+        final serverRaw =
+            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+        final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
+        remoteTodoEntries.add((
+          raw: serverRaw,
+          item: TodoItem.fromJson(sanitizedServerRaw),
+        ));
+      }
+      final repairedRemoteTodoIds = _repairMissingRemoteRecurrenceSeriesIds(
+        remoteTodoEntries.map((entry) => entry.item).toList(),
+        allLocalTodos,
+      );
 
       // Snapshot items with conflicts before merge, to detect resolutions after merge
       final Set<String> preMergeConflictIds =
@@ -3825,11 +3856,9 @@ class StorageService {
       final Map<String, int> todosIndexMap = {
         for (var i = 0; i < allLocalTodos.length; i++) allLocalTodos[i].id: i
       };
-      for (var raw in serverTodos) {
-        final serverRaw =
-            raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
-        final sanitizedServerRaw = _stripClientOnlyConflictForSync(serverRaw);
-        TodoItem sItem = TodoItem.fromJson(sanitizedServerRaw);
+      for (final entry in remoteTodoEntries) {
+        final serverRaw = entry.raw;
+        final sItem = entry.item;
         if (ignoredUuids.contains(sItem.id)) {
           debugPrint('🚫 [合并跳过] UUID: ${sItem.id} 已在本地忽略列表中');
           continue;
@@ -4290,6 +4319,19 @@ class StorageService {
         if (idx == null) return false;
         return !allLocalTodos[idx].hasConflict;
       }).toSet();
+      if (repairedRemoteTodoIds.isNotEmpty) {
+        final deletedBeforeDedupe = {
+          for (final todo in allLocalTodos)
+            if (todo.isDeleted) todo.id,
+        };
+        if (_deduplicatePersistedRecurrenceOccurrences(allLocalTodos)) {
+          repairedRemoteTodoIds.addAll(allLocalTodos
+              .where((todo) =>
+                  todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
+              .map((todo) => todo.id));
+          hasChanges = true;
+        }
+      }
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
           allLocalTodos,
@@ -4318,6 +4360,32 @@ class StorageService {
         _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
       }
 
+      // 将从旧云端响应中恢复出的系列关系作为一次真实本地修复重新上传。
+      // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
+      if (repairedRemoteTodoIds.isNotEmpty) {
+        final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
+            !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
+        final repairedItems = allLocalTodos
+            .where((todo) => repairIdsToUpload.contains(todo.id))
+            .toList();
+        for (final todo in repairedItems) {
+          todo.markAsChanged();
+        }
+        if (repairedItems.isNotEmpty) {
+          await saveTodos(
+            username,
+            repairedItems,
+            sync: true,
+            recomputeScheduleConflicts: false,
+          );
+          _attemptedRecurrenceSeriesRepairUploads.addAll(
+            repairedItems.map((todo) => '$username|${todo.id}'),
+          );
+          hasChanges = true;
+          debugPrint('🧩 [同步修复] 已恢复并排队回传 ${repairedItems.length} 个循环实例的系列关系');
+        }
+      }
+
       // 8. 更新同步水位线
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
@@ -4332,6 +4400,20 @@ class StorageService {
       if (hasChanges) {
         triggerRefresh();
       }
+
+      conflicts.removeWhere((conflict) {
+        final itemId =
+            (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+        if (itemId == null || itemId.isEmpty) return false;
+        TodoItem? local;
+        for (final todo in allLocalTodos) {
+          if (todo.id == itemId) {
+            local = todo;
+            break;
+          }
+        }
+        return local != null && (local.isDeleted || !local.hasConflict);
+      });
 
       // 10. 🛡️ 内存守卫：同步成功后，自动从锁定集合中清理掉在最新 conflicts 中不再包含的 ID
       final serverConflictIds = conflicts
@@ -4610,6 +4692,70 @@ class StorageService {
         (type != 'local_schedule_conflict' && source != 'local_detector');
   }
 
+  @visibleForTesting
+  static List<TodoItem> clearResolvedRecurrenceMigrationConflictsForTest(
+    List<TodoItem> todos,
+  ) =>
+      _clearResolvedRecurrenceMigrationConflicts(todos);
+
+  /// 清理由 recurrence_series_id 迁移触发、但业务内容已经一致的版本冲突。
+  /// 真正存在完成状态、时间或内容差异的冲突仍保留给用户处理。
+  static List<TodoItem> _clearResolvedRecurrenceMigrationConflicts(
+    List<TodoItem> todos,
+  ) {
+    final resolved = <TodoItem>[];
+    for (final todo in todos) {
+      if (!todo.hasConflict ||
+          todo.recurrenceSeriesId?.isNotEmpty != true ||
+          !_hasVersionConflict(todo.serverVersionData) ||
+          _isLocalScheduleConflict(todo.serverVersionData)) {
+        continue;
+      }
+      final server = todo.serverVersionData!;
+      final serverUuid = (server['uuid'] ?? server['id'])?.toString();
+      if (serverUuid != null &&
+          serverUuid.isNotEmpty &&
+          serverUuid != todo.id) {
+        continue;
+      }
+      final serverSeriesId =
+          (server['recurrence_series_id'] ?? server['recurrenceSeriesId'])
+              ?.toString()
+              .trim();
+      if (serverSeriesId != null &&
+          serverSeriesId.isNotEmpty &&
+          serverSeriesId != todo.recurrenceSeriesId) {
+        continue;
+      }
+
+      final local = todo.toJson();
+      final fields = <String>[
+        'content',
+        if (todo.collabType == 0) 'is_completed',
+        'is_deleted',
+        'due_date',
+        'created_date',
+        'recurrence',
+        'custom_interval_days',
+        'recurrence_end_date',
+        'remark',
+        'group_id',
+        'team_uuid',
+        'category_id',
+        'collab_type',
+        'reminder_minutes',
+        'is_all_day',
+      ];
+      if (_hasSubstantialChange(server, local, fields)) continue;
+
+      todo.hasConflict = false;
+      todo.serverVersionData = null;
+      todo.markAsChanged();
+      resolved.add(todo);
+    }
+    return resolved;
+  }
+
   static bool _payloadHasConflict(Map<String, dynamic> data) {
     final raw = data['has_conflict'] ?? data['hasConflict'];
     return raw == 1 || raw == true || raw == '1' || raw == 'true';
@@ -4671,7 +4817,10 @@ class StorageService {
 
   static void _preserveLocalTodoSourceFields(
       TodoItem local, TodoItem incoming) {
-    incoming.recurrenceSeriesId ??= local.recurrenceSeriesId;
+    if (incoming.recurrenceSeriesId == null ||
+        incoming.recurrenceSeriesId!.trim().isEmpty) {
+      incoming.recurrenceSeriesId = local.recurrenceSeriesId;
+    }
     if ((incoming.imagePath == null || incoming.imagePath!.isEmpty) &&
         local.imagePath != null &&
         local.imagePath!.isNotEmpty) {
@@ -4682,6 +4831,206 @@ class StorageService {
         local.originalText!.isNotEmpty) {
       incoming.originalText = local.originalText;
     }
+  }
+
+  @visibleForTesting
+  static Set<String> repairMissingRemoteRecurrenceSeriesIdsForTest(
+    List<TodoItem> incoming,
+    List<TodoItem> local,
+  ) =>
+      _repairMissingRemoteRecurrenceSeriesIds(incoming, local);
+
+  /// 修复旧服务端丢失的循环系列 ID。
+  ///
+  /// 优先使用相同 UUID 的本地真值。新设备没有本地真值时，仅在同一计划签名
+  /// 下恰好存在一个循环锚点，且实例日期确实符合该锚点的循环规则时才重建，
+  /// 避免把同名但无关的待办误合并。
+  static Set<String> _repairMissingRemoteRecurrenceSeriesIds(
+    List<TodoItem> incoming,
+    List<TodoItem> local,
+  ) {
+    final repairedIds = <String>{};
+    final localById = {for (final todo in local) todo.id: todo};
+
+    for (final todo in incoming) {
+      if (!_isMissingRecurrenceSeriesId(todo)) continue;
+      final localSeriesId = localById[todo.id]?.recurrenceSeriesId;
+      if (localSeriesId != null && localSeriesId.trim().isNotEmpty) {
+        todo.recurrenceSeriesId = localSeriesId;
+        repairedIds.add(todo.id);
+      }
+    }
+
+    // 增量响应可能只带当前锚点；把本机已经被旧同步拆散的实例也纳入候选，
+    // 同 UUID 仍以本轮云端对象为准，避免产生两个活动锚点。
+    final candidatesById = <String, TodoItem>{
+      for (final todo in local) todo.id: todo,
+      for (final todo in incoming) todo.id: todo,
+    };
+    final candidates = candidatesById.values.toList();
+
+    final activeBySignature = <String, List<TodoItem>>{};
+    for (final todo in candidates) {
+      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
+      final signature = _remoteRecurrencePlanSignature(todo);
+      if (signature == null) continue;
+      activeBySignature.putIfAbsent(signature, () => []).add(todo);
+    }
+
+    for (final entry in activeBySignature.entries) {
+      // 两个配置完全相同的活动循环无法从旧云端数据可靠区分。
+      if (entry.value.length != 1) {
+        for (final anchor in entry.value) {
+          if (_isMissingRecurrenceSeriesId(anchor)) {
+            anchor.recurrenceSeriesId = anchor.id;
+            repairedIds.add(anchor.id);
+          }
+        }
+        continue;
+      }
+
+      final anchor = entry.value.single;
+      final matching = candidates.where((candidate) {
+        if (candidate.isDeleted ||
+            _remoteRecurrencePlanSignature(candidate) != entry.key) {
+          return false;
+        }
+        final candidateSeriesId = candidate.recurrenceSeriesId;
+        final anchorSeriesId = anchor.recurrenceSeriesId;
+        if (candidateSeriesId != null &&
+            candidateSeriesId.trim().isNotEmpty &&
+            anchorSeriesId != null &&
+            anchorSeriesId.trim().isNotEmpty &&
+            candidateSeriesId != anchorSeriesId) {
+          return false;
+        }
+        return _isRemoteOccurrenceOnRecurrence(anchor, candidate);
+      }).toList()
+        ..sort((a, b) => (a.createdDate ?? a.createdAt)
+            .compareTo(b.createdDate ?? b.createdAt));
+
+      final knownSeriesIds = matching
+          .map((todo) => todo.recurrenceSeriesId?.trim())
+          .whereType<String>()
+          .where((seriesId) => seriesId.isNotEmpty)
+          .toSet();
+      if (knownSeriesIds.length > 1) continue;
+
+      final seriesId = knownSeriesIds.isNotEmpty
+          ? knownSeriesIds.first
+          : (matching.isNotEmpty ? matching.first.id : anchor.id);
+      for (final todo in matching.followedBy([anchor])) {
+        if (!_isMissingRecurrenceSeriesId(todo)) continue;
+        todo.recurrenceSeriesId = seriesId;
+        repairedIds.add(todo.id);
+      }
+    }
+
+    // 旧设备可能已经用“当时的活动实例 ID”建立了第二个系列。若该 ID
+    // 本身如今明确属于另一个系列，则它只是旧链路留下的别名，统一指向
+    // 当前的规范系列。这样编辑过时长的同日实例也能归队并由去重逻辑清理。
+    for (var pass = 0; pass < 10; pass++) {
+      var changed = false;
+      for (final todo in candidates) {
+        if (todo.isDeleted) continue;
+        final seriesId = todo.recurrenceSeriesId;
+        if (seriesId == null || seriesId.isEmpty) continue;
+        final seriesAnchor = candidatesById[seriesId];
+        final canonicalSeriesId = seriesAnchor?.recurrenceSeriesId;
+        if (canonicalSeriesId == null ||
+            canonicalSeriesId.isEmpty ||
+            canonicalSeriesId == seriesId) {
+          continue;
+        }
+        todo.recurrenceSeriesId = canonicalSeriesId;
+        repairedIds.add(todo.id);
+        changed = true;
+      }
+      if (!changed) break;
+    }
+
+    return repairedIds;
+  }
+
+  static bool _isMissingRecurrenceSeriesId(TodoItem todo) =>
+      todo.recurrenceSeriesId == null ||
+      todo.recurrenceSeriesId!.trim().isEmpty;
+
+  static String? _remoteRecurrencePlanSignature(TodoItem todo) {
+    final startMs = todo.createdDate;
+    if (startMs == null || startMs <= 0) return null;
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
+    final dueMs = todo.dueDate?.millisecondsSinceEpoch;
+    final durationMs = dueMs == null ? null : dueMs - startMs;
+    if (durationMs != null && durationMs < 0) return null;
+    final recurrenceEnd = todo.recurrenceEndDate;
+    final recurrenceEndKey = recurrenceEnd == null
+        ? null
+        : '${recurrenceEnd.year}-${recurrenceEnd.month}-${recurrenceEnd.day}';
+    return jsonEncode([
+      todo.title.trim(),
+      todo.remark?.trim(),
+      todo.groupId,
+      todo.teamUuid,
+      todo.categoryId,
+      todo.collabType,
+      todo.isAllDay,
+      todo.reminderMinutes,
+      todo.customIntervalDays,
+      recurrenceEndKey,
+      start.hour,
+      start.minute,
+      start.second,
+      start.millisecond,
+      durationMs,
+    ]);
+  }
+
+  static bool _isRemoteOccurrenceOnRecurrence(
+    TodoItem ruleSource,
+    TodoItem candidate,
+  ) {
+    final ruleStartMs = ruleSource.createdDate;
+    final candidateStartMs = candidate.createdDate;
+    if (ruleStartMs == null || candidateStartMs == null) return false;
+
+    final ruleStart =
+        DateTime.fromMillisecondsSinceEpoch(ruleStartMs, isUtc: true).toLocal();
+    final candidateStart = DateTime.fromMillisecondsSinceEpoch(
+      candidateStartMs,
+      isUtc: true,
+    ).toLocal();
+    final ruleDay = DateTime(ruleStart.year, ruleStart.month, ruleStart.day);
+    final candidateDay =
+        DateTime(candidateStart.year, candidateStart.month, candidateStart.day);
+    if (ruleSource.recurrence == RecurrenceType.weekdays &&
+        (candidateDay.weekday == DateTime.saturday ||
+            candidateDay.weekday == DateTime.sunday)) {
+      return false;
+    }
+    final recurrenceEnd = ruleSource.recurrenceEndDate;
+    if (recurrenceEnd != null) {
+      final endDay = DateTime(
+        recurrenceEnd.year,
+        recurrenceEnd.month,
+        recurrenceEnd.day,
+      );
+      if (candidateDay.isAfter(endDay)) return false;
+    }
+    if (candidateDay == ruleDay) return true;
+
+    var cursor = candidateDay.isBefore(ruleDay) ? candidateStart : ruleStart;
+    final target = candidateDay.isBefore(ruleDay) ? ruleDay : candidateDay;
+    for (var i = 0; i < 500; i++) {
+      final next = _nextRecurrenceDate(cursor, ruleSource);
+      if (next == null || !next.isAfter(cursor)) return false;
+      final nextDay = DateTime(next.year, next.month, next.day);
+      if (nextDay == target) return true;
+      if (nextDay.isAfter(target)) return false;
+      cursor = next;
+    }
+    return false;
   }
 
   static Map<String, dynamic> _conflictPeerSummary(_TodoInterval interval) {
@@ -5273,6 +5622,7 @@ class StorageService {
 
   static void dispose() {
     _recurrenceCheckCache.clear();
+    _attemptedRecurrenceSeriesRepairUploads.clear();
     _lastRecurrenceCheckDate = null;
   }
 

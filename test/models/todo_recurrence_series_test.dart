@@ -27,6 +27,273 @@ void main() {
     expect(restored.recurrenceSeriesId, 'series-camel-case');
   });
 
+  test('TodoItem treats an empty recurrence series id as missing', () {
+    final restored = TodoItem.fromJson({
+      'uuid': '550e8400-e29b-41d4-a716-446655440001',
+      'content': '每日复习',
+      'recurrence': RecurrenceType.daily.index,
+      'recurrence_series_id': '',
+    });
+
+    expect(restored.recurrenceSeriesId, isNull);
+  });
+
+  test('old cloud instances recover one recurrence series from its timeline',
+      () {
+    TodoItem occurrence(
+      int day, {
+      RecurrenceType recurrence = RecurrenceType.none,
+      bool isDone = false,
+    }) {
+      return TodoItem(
+        id: 'occurrence-$day',
+        title: '公考七日班',
+        remark: '固定晚间课程',
+        isDone: isDone,
+        recurrence: recurrence,
+        customIntervalDays: 0,
+        recurrenceEndDate: DateTime(2026, 7, 19),
+        createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, day, 22),
+      );
+    }
+
+    final incoming = [
+      occurrence(13, isDone: true),
+      occurrence(14, isDone: true),
+      occurrence(15),
+      occurrence(16),
+      occurrence(17, recurrence: RecurrenceType.daily),
+      occurrence(18),
+      occurrence(19),
+    ];
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      incoming,
+      const [],
+    );
+
+    expect(repaired, hasLength(7));
+    expect(
+      incoming.map((todo) => todo.recurrenceSeriesId).toSet(),
+      {'occurrence-13'},
+    );
+    expect(incoming.where((todo) => todo.isDone), hasLength(2));
+  });
+
+  test('old cloud repair does not merge a same-title task at another time', () {
+    final historical = TodoItem(
+      id: 'historical',
+      title: '每日复习',
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 16, 22),
+    );
+    final active = TodoItem(
+      id: 'active',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+    final unrelated = TodoItem(
+      id: 'unrelated',
+      title: '每日复习',
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 16, 8).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 16, 9),
+    );
+
+    StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [historical, active, unrelated],
+      const [],
+    );
+
+    expect(historical.recurrenceSeriesId, 'historical');
+    expect(active.recurrenceSeriesId, 'historical');
+    expect(unrelated.recurrenceSeriesId, isNull);
+  });
+
+  test('ambiguous identical active series are not guessed from old cloud data',
+      () {
+    TodoItem todo(String id, int day, {bool active = false}) => TodoItem(
+          id: id,
+          title: '同配置循环',
+          recurrence: active ? RecurrenceType.daily : RecurrenceType.none,
+          customIntervalDays: 0,
+          createdDate: DateTime(2026, 7, day, 19).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 7, day, 22),
+        );
+    final firstActive = todo('active-a', 17, active: true);
+    final secondActive = todo('active-b', 17, active: true);
+    final historical = todo('history', 16);
+
+    StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [historical, firstActive, secondActive],
+      const [],
+    );
+
+    expect(firstActive.recurrenceSeriesId, 'active-a');
+    expect(secondActive.recurrenceSeriesId, 'active-b');
+    expect(historical.recurrenceSeriesId, isNull);
+  });
+
+  test('local series id is authoritative when old cloud response omits it', () {
+    final incoming = TodoItem(
+      id: 'same-uuid',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+    final local = TodoItem(
+      id: 'same-uuid',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [incoming],
+      [local],
+    );
+
+    expect(repaired, {'same-uuid'});
+    expect(incoming.recurrenceSeriesId, 'original-series');
+  });
+
+  test('incremental cloud anchor repairs instances already split locally', () {
+    final localHistory = TodoItem(
+      id: 'history-13',
+      title: '每日复习',
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 13, 22),
+    );
+    final localActive = TodoItem(
+      id: 'active-17',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'active-17',
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+    final incomingActive = TodoItem(
+      id: 'active-17',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      customIntervalDays: 0,
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [incomingActive],
+      [localHistory, localActive],
+    );
+
+    expect(repaired, containsAll({'history-13', 'active-17'}));
+    expect(incomingActive.recurrenceSeriesId, 'active-17');
+    expect(localHistory.recurrenceSeriesId, 'active-17');
+  });
+
+  test('stale child series id follows its anchor into the canonical series',
+      () {
+    final original = TodoItem(
+      id: 'original-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 13, 22),
+    );
+    final active = TodoItem(
+      id: 'active-17',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+    final orphan = TodoItem(
+      id: 'orphan-16',
+      title: '每日复习',
+      recurrenceSeriesId: 'active-17',
+      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 16, 22, 30),
+    );
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      const [],
+      [original, orphan, active],
+    );
+
+    expect(repaired, contains('orphan-16'));
+    expect(orphan.recurrenceSeriesId, 'original-series');
+  });
+
+  test('identical migration snapshot is cleared as a stale version conflict',
+      () {
+    final todo = TodoItem(
+      id: 'migration-conflict',
+      title: '每日复习',
+      isDone: true,
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 13, 22),
+      reminderMinutes: 5,
+    );
+    final serverSnapshot = Map<String, dynamic>.from(todo.toJson())
+      ..remove('recurrence_series_id')
+      ..remove('recurrenceSeriesId');
+    todo.hasConflict = true;
+    todo.serverVersionData = serverSnapshot;
+    final previousVersion = todo.version;
+
+    final resolved =
+        StorageService.clearResolvedRecurrenceMigrationConflictsForTest(
+      [todo],
+    );
+
+    expect(resolved, [todo]);
+    expect(todo.hasConflict, isFalse);
+    expect(todo.serverVersionData, isNull);
+    expect(todo.version, previousVersion + 1);
+  });
+
+  test('migration conflict with a real completion difference is preserved', () {
+    final todo = TodoItem(
+      id: 'real-completion-conflict',
+      title: '每日复习',
+      isDone: true,
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 15, 22),
+    );
+    final serverSnapshot = Map<String, dynamic>.from(todo.toJson())
+      ..['is_completed'] = 0
+      ..remove('recurrence_series_id')
+      ..remove('recurrenceSeriesId');
+    todo.hasConflict = true;
+    todo.serverVersionData = serverSnapshot;
+
+    final resolved =
+        StorageService.clearResolvedRecurrenceMigrationConflictsForTest(
+      [todo],
+    );
+
+    expect(resolved, isEmpty);
+    expect(todo.hasConflict, isTrue);
+    expect(todo.serverVersionData, isNotNull);
+  });
+
   test('daily recurrence backfills every missing day', () {
     final todo = TodoItem(
       title: '每日循环',
@@ -252,6 +519,38 @@ void main() {
     expect(completedDuplicate.isDeleted, isTrue);
     expect(extraDuplicate.isDeleted, isTrue);
     expect(nextDay.isDeleted, isFalse);
+  });
+
+  test('dedupe keeps the more edited occurrence over a newer migrated copy',
+      () {
+    final edited = TodoItem(
+      id: 'edited',
+      title: '每日循环',
+      version: 8,
+      updatedAt: DateTime(2026, 7, 17, 13, 18).millisecondsSinceEpoch,
+      recurrenceSeriesId: 'canonical-series',
+      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 16, 22, 30),
+    );
+    final migratedCopy = TodoItem(
+      id: 'migrated-copy',
+      title: '每日循环',
+      version: 2,
+      updatedAt: DateTime(2026, 7, 17, 13, 21).millisecondsSinceEpoch,
+      recurrenceSeriesId: 'canonical-series',
+      createdDate: DateTime(2026, 7, 16, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 16, 22),
+    );
+
+    final changed =
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      [edited, migratedCopy],
+    );
+
+    expect(changed, isTrue);
+    expect(edited.isDeleted, isFalse);
+    expect(edited.dueDate, DateTime(2026, 7, 16, 22, 30));
+    expect(migratedCopy.isDeleted, isTrue);
   });
 
   test('same recurrence series does not report schedule conflict', () {

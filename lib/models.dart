@@ -336,9 +336,10 @@ class TodoItem {
 
       recurrence: RecurrenceType
           .values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
-      recurrenceSeriesId:
-          (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
-              ?.toString(),
+      recurrenceSeriesId: _emptyStringToNull(
+        (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
+            ?.toString(),
+      ),
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
       customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ??
           json['custom_interval_days']?.toString() ??

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../services/permission_request_coordinator.dart';
 import '../../../utils/app_platform.dart';
 
@@ -65,7 +66,6 @@ class PermissionHandler {
   ];
 
   Future<void> checkAllPermissions() async {
-    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return;
     onUpdateChecking(true);
     try {
       final results = <String, PermissionStatus>{
@@ -87,7 +87,6 @@ class PermissionHandler {
     String key, {
     PermissionResultCallback? onResult,
   }) async {
-    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) return null;
     final permission = _permissionForKey(key);
     if (permission == null) return null;
 
@@ -114,4 +113,12 @@ class PermissionHandler {
       };
 
   void dispose() => _coordinator.dispose();
+
+  Future<void> revokeAllAgreements() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final permission in AppPermissionKind.values) {
+      final agreedKey = 'permission_agreed_${permission.name}';
+      await prefs.remove(agreedKey);
+    }
+  }
 }
