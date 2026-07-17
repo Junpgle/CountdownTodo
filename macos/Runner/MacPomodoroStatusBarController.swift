@@ -4,6 +4,9 @@ import SwiftUI
 import FlutterMacOS
 import QuartzCore
 import Carbon
+import CoreAudio
+import Darwin
+import SQLite3
 
 
 private let islandVisibilityHotKeySignature: OSType = 0x43445449 // "CDTI"
@@ -18,6 +21,437 @@ private let islandCollapseAnimation = Animation.timingCurve(
 )
 private let islandExpansionDuration: TimeInterval = 0.50
 private let islandCollapseDuration: TimeInterval = 0.36
+
+private struct MacNowPlayingSnapshot {
+    var title = ""
+    var artist = ""
+    var album = ""
+    var artwork: NSImage?
+    var duration: Double = 0
+    var elapsedTime: Double = 0
+    var playbackRate: Double = 0
+    var updatedAt = Date()
+    var isPlaying = false
+
+    var isAvailable: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+/// 读取系统当前媒体会话。MediaRemote 没有公开 SDK，因此全部符号都在
+/// 运行时按需解析；系统删除或拒绝这些能力时，灵动岛只是不显示媒体卡片。
+private final class MacNowPlayingMonitor {
+    private typealias InfoCallback = @convention(block) (CFDictionary?) -> Void
+    private typealias PlayingCallback = @convention(block) (Bool) -> Void
+    private typealias GetInfoFunction = @convention(c) (
+        DispatchQueue,
+        @escaping InfoCallback
+    ) -> Void
+    private typealias GetPlayingFunction = @convention(c) (
+        DispatchQueue,
+        @escaping PlayingCallback
+    ) -> Void
+    private typealias RegisterFunction = @convention(c) (DispatchQueue) -> Void
+    private typealias SendCommandFunction = @convention(c) (UInt32, CFDictionary?) -> Void
+
+    private struct NeteaseArtist: Decodable {
+        let name: String
+    }
+
+    private struct NeteaseAlbum: Decodable {
+        let name: String
+        let picUrl: String?
+        let cover: String?
+    }
+
+    private struct NeteaseTrack: Decodable {
+        let name: String
+        let duration: Double?
+        let artists: [NeteaseArtist]
+        let album: NeteaseAlbum?
+    }
+
+    private struct NeteaseTrackRecord {
+        let track: NeteaseTrack
+        let playedAt: Date
+    }
+
+    private var frameworkHandle: UnsafeMutableRawPointer?
+    private var getInfo: GetInfoFunction?
+    private var getPlaying: GetPlayingFunction?
+    private var registerNotifications: RegisterFunction?
+    private var sendCommandFunction: SendCommandFunction?
+    private var observers: [NSObjectProtocol] = []
+    private var onChange: ((MacNowPlayingSnapshot) -> Void)?
+    private var started = false
+    private var refreshSequence = 0
+    private var lastRefreshStartedAt: TimeInterval = 0
+    private var pollingTimer: Timer?
+    #if DEBUG
+    private var lastLoggedFallbackTitle = ""
+    #endif
+    private let fallbackQueue = DispatchQueue(
+        label: "com.junpgle.countdowntodo.now-playing-fallback",
+        qos: .utility
+    )
+    private let artworkCache = NSCache<NSURL, NSImage>()
+
+    func start(onChange: @escaping (MacNowPlayingSnapshot) -> Void) {
+        self.onChange = onChange
+        guard !started else {
+            refresh()
+            return
+        }
+        started = true
+
+        let path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
+        if let handle = dlopen(path, RTLD_NOW) {
+            frameworkHandle = handle
+            getInfo = loadSymbol("MRMediaRemoteGetNowPlayingInfo", from: handle)
+            getPlaying = loadSymbol(
+                "MRMediaRemoteGetNowPlayingApplicationIsPlaying",
+                from: handle
+            )
+            registerNotifications = loadSymbol(
+                "MRMediaRemoteRegisterForNowPlayingNotifications",
+                from: handle
+            )
+            sendCommandFunction = loadSymbol("MRMediaRemoteSendCommand", from: handle)
+        }
+
+        if getInfo != nil {
+            registerNotifications?(.main)
+            let names = [
+                "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
+                "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
+                "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
+            ]
+            observers = names.map { rawName in
+                NotificationCenter.default.addObserver(
+                    forName: Notification.Name(rawName),
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    self?.refresh()
+                }
+            }
+        }
+
+        // MediaRemote 会主动通知 Apple Music 等播放器；网易云 3.x 在部分
+        // macOS 版本不会注册系统媒体会话，因此用低频轮询刷新兼容数据。
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+        pollingTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        refresh()
+    }
+
+    func refresh() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
+            return
+        }
+        let now = Date().timeIntervalSinceReferenceDate
+        guard now - lastRefreshStartedAt >= 0.5 else { return }
+        lastRefreshStartedAt = now
+        refreshSequence += 1
+        let sequence = refreshSequence
+        guard let getInfo = getInfo else {
+            refreshNeteaseFallback(sequence: sequence)
+            return
+        }
+        let callback: InfoCallback = { [weak self] rawInfo in
+            guard let self = self else { return }
+            let info = (rawInfo as NSDictionary?) as? [String: Any] ?? [:]
+            let title = self.stringValue(info["kMRMediaRemoteNowPlayingInfoTitle"])
+            guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                self.refreshNeteaseFallback(sequence: sequence)
+                return
+            }
+
+            let artist = self.stringValue(info["kMRMediaRemoteNowPlayingInfoArtist"])
+            let album = self.stringValue(info["kMRMediaRemoteNowPlayingInfoAlbum"])
+            let duration = self.doubleValue(info["kMRMediaRemoteNowPlayingInfoDuration"])
+            let elapsed = self.doubleValue(info["kMRMediaRemoteNowPlayingInfoElapsedTime"])
+            let rate = self.doubleValue(info["kMRMediaRemoteNowPlayingInfoPlaybackRate"])
+            let timestamp = info["kMRMediaRemoteNowPlayingInfoTimestamp"] as? Date ?? Date()
+            let artworkData = info["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data
+            let artwork = artworkData.flatMap(NSImage.init(data:))
+
+            let deliver: (Bool) -> Void = { [weak self] isPlaying in
+                self?.publish(MacNowPlayingSnapshot(
+                    title: title,
+                    artist: artist,
+                    album: album,
+                    artwork: artwork,
+                    duration: max(0, duration),
+                    elapsedTime: max(0, elapsed),
+                    playbackRate: rate,
+                    updatedAt: timestamp,
+                    isPlaying: isPlaying
+                ), sequence: sequence)
+            }
+
+            if let getPlaying = self.getPlaying {
+                let playingCallback: PlayingCallback = { isPlaying in
+                    deliver(isPlaying)
+                }
+                getPlaying(.main, playingCallback)
+            } else {
+                deliver(rate > 0)
+            }
+        }
+        getInfo(.main, callback)
+    }
+
+    /// 网易云音乐 3.x 有时会正常更新自己的 MPNowPlayingInfoCenter，却不
+    /// 出现在系统 MediaRemote 客户端列表中。仅在系统结果为空时读取其
+    /// 本地最近播放记录，并用 CoreAudio 判断该进程是否仍在输出声音。
+    private func refreshNeteaseFallback(sequence: Int) {
+        guard let app = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.netease.163music"
+        ).first(where: { !$0.isTerminated }) else {
+            publish(MacNowPlayingSnapshot(), sequence: sequence)
+            return
+        }
+        let processIdentifier = app.processIdentifier
+
+        fallbackQueue.async { [weak self] in
+            guard let self = self,
+                  let record = self.readLatestNeteaseTrack() else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.publish(MacNowPlayingSnapshot(), sequence: sequence)
+                }
+                return
+            }
+
+            let audioState = self.isProducingAudio(processIdentifier: processIdentifier)
+            let recordAge = Date().timeIntervalSince(record.playedAt)
+            let isPlaying = audioState ?? (recordAge >= 0 && recordAge < 10 * 60)
+            // 暂停后的曲目继续保留半小时，之后不再把历史记录伪装成
+            // 当前媒体；真正仍在输出声音的曲目不受这个时间限制。
+            guard isPlaying || (recordAge >= 0 && recordAge < 30 * 60) else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.publish(MacNowPlayingSnapshot(), sequence: sequence)
+                }
+                return
+            }
+
+            let artist = record.track.artists
+                .map(\.name)
+                .filter { !$0.isEmpty }
+                .joined(separator: "、")
+            var snapshot = MacNowPlayingSnapshot(
+                title: record.track.name,
+                artist: artist,
+                album: record.track.album?.name ?? "网易云音乐",
+                // 网易云没有可靠保存暂停/循环后的播放进度；这里不显示
+                // 猜测进度，避免进度条满格但音乐仍在播放。
+                duration: 0,
+                elapsedTime: 0,
+                playbackRate: isPlaying ? 1 : 0,
+                updatedAt: Date(),
+                isPlaying: isPlaying
+            )
+            let artworkURL = self.neteaseArtworkURL(for: record.track)
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                if let artworkURL = artworkURL,
+                   let cached = self.artworkCache.object(forKey: artworkURL as NSURL) {
+                    snapshot.artwork = cached
+                }
+                #if DEBUG
+                if snapshot.title != self.lastLoggedFallbackTitle {
+                    self.lastLoggedFallbackTitle = snapshot.title
+                    NSLog("[MacIsland] 网易云媒体兼容层已读取：%@", snapshot.title)
+                }
+                #endif
+                self.publish(snapshot, sequence: sequence)
+                if snapshot.artwork == nil, let artworkURL = artworkURL {
+                    self.loadArtwork(
+                        from: artworkURL,
+                        for: snapshot,
+                        sequence: sequence
+                    )
+                }
+            }
+        }
+    }
+
+    private func readLatestNeteaseTrack() -> NeteaseTrackRecord? {
+        // 沙盒中的 homeDirectoryForCurrentUser 会被重定向到本 App 容器；
+        // 临时只读例外对应的却是真实用户主目录，必须从 passwd 取得。
+        guard let passwordEntry = getpwuid(getuid()),
+              let homePath = passwordEntry.pointee.pw_dir else {
+            return nil
+        }
+        let databaseURL = URL(fileURLWithPath: String(cString: homePath), isDirectory: true)
+            .appendingPathComponent(
+                "Library/Containers/com.netease.163music/Data/Documents/storage/"
+                    + "sqlite_storage.sqlite3"
+            )
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
+            nil
+        ) == SQLITE_OK, let database = database else {
+            if database != nil { sqlite3_close(database) }
+            return nil
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 150)
+
+        let sql = """
+            SELECT playtime, jsonStr
+            FROM historyTracks
+            ORDER BY playtime DESC
+            LIMIT 1
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement = statement else {
+            if statement != nil { sqlite3_finalize(statement) }
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let jsonBytes = sqlite3_column_text(statement, 1) else {
+            return nil
+        }
+
+        let playedAtMilliseconds = sqlite3_column_int64(statement, 0)
+        let json = Data(String(cString: jsonBytes).utf8)
+        guard let track = try? JSONDecoder().decode(NeteaseTrack.self, from: json),
+              !track.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return NeteaseTrackRecord(
+            track: track,
+            playedAt: Date(
+                timeIntervalSince1970: Double(playedAtMilliseconds) / 1000
+            )
+        )
+    }
+
+    private func isProducingAudio(processIdentifier: pid_t) -> Bool? {
+        var pid = processIdentifier
+        var processObject = AudioObjectID(kAudioObjectUnknown)
+        var processObjectSize = UInt32(MemoryLayout.size(ofValue: processObject))
+        var processAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: 0
+        )
+        let translateStatus = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &processAddress,
+            UInt32(MemoryLayout.size(ofValue: pid)),
+            &pid,
+            &processObjectSize,
+            &processObject
+        )
+        guard translateStatus == noErr, processObject != kAudioObjectUnknown else {
+            return nil
+        }
+
+        var isRunning: UInt32 = 0
+        var isRunningSize = UInt32(MemoryLayout.size(ofValue: isRunning))
+        var runningAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyIsRunningOutput,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: 0
+        )
+        let runningStatus = AudioObjectGetPropertyData(
+            processObject,
+            &runningAddress,
+            0,
+            nil,
+            &isRunningSize,
+            &isRunning
+        )
+        guard runningStatus == noErr else { return nil }
+        return isRunning != 0
+    }
+
+    private func neteaseArtworkURL(for track: NeteaseTrack) -> URL? {
+        let rawValue = track.album?.picUrl ?? track.album?.cover ?? ""
+        guard var components = URLComponents(string: rawValue) else { return nil }
+        if components.scheme?.lowercased() == "http" {
+            components.scheme = "https"
+        }
+        return components.url
+    }
+
+    private func loadArtwork(
+        from url: URL,
+        for snapshot: MacNowPlayingSnapshot,
+        sequence: Int
+    ) {
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self,
+                  let data = data,
+                  let artwork = NSImage(data: data) else { return }
+            self.artworkCache.setObject(artwork, forKey: url as NSURL)
+            var snapshotWithArtwork = snapshot
+            snapshotWithArtwork.artwork = artwork
+            DispatchQueue.main.async { [weak self] in
+                self?.publish(snapshotWithArtwork, sequence: sequence)
+            }
+        }.resume()
+    }
+
+    private func publish(_ snapshot: MacNowPlayingSnapshot, sequence: Int) {
+        guard sequence == refreshSequence else { return }
+        onChange?(snapshot)
+    }
+
+    func previous() {
+        send(command: 5)
+    }
+
+    func togglePlayPause() {
+        send(command: 2)
+    }
+
+    func next() {
+        send(command: 4)
+    }
+
+    private func send(command: UInt32) {
+        sendCommandFunction?(command, nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            self?.refresh()
+        }
+    }
+
+    private func loadSymbol<T>(_ name: String, from handle: UnsafeMutableRawPointer) -> T? {
+        guard let symbol = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(symbol, to: T.self)
+    }
+
+    private func stringValue(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        return value.map { String(describing: $0) } ?? ""
+    }
+
+    private func doubleValue(_ value: Any?) -> Double {
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let value = value as? Double { return value }
+        return 0
+    }
+
+    deinit {
+        pollingTimer?.invalidate()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        if let frameworkHandle = frameworkHandle {
+            dlclose(frameworkHandle)
+        }
+    }
+}
 
 private func islandVisibilityHotKeyHandler(
     _ nextHandler: EventHandlerCallRef?,
@@ -169,6 +603,16 @@ class IslandStateModel: ObservableObject {
     @Published var countdownDays = -1
     @Published var clipboardLinkActive = false
     @Published var clipboardLinkDisplay = ""
+    @Published var nowPlayingActive = false
+    @Published var nowPlayingTitle = ""
+    @Published var nowPlayingArtist = ""
+    @Published var nowPlayingAlbum = ""
+    @Published var nowPlayingArtwork: NSImage?
+    @Published var nowPlayingDuration: Double = 0
+    @Published var nowPlayingElapsedTime: Double = 0
+    @Published var nowPlayingPlaybackRate: Double = 0
+    @Published var nowPlayingUpdatedAt = Date()
+    @Published var nowPlayingIsPlaying = false
     @Published var revealHeight: CGFloat = 0
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
@@ -182,6 +626,9 @@ class IslandStateModel: ObservableObject {
     var onSnoozeReminder: (() -> Void)?
     var onOpenClipboardLink: (() -> Void)?
     var onDismissClipboardLink: (() -> Void)?
+    var onPreviousTrack: (() -> Void)?
+    var onToggleMediaPlayback: (() -> Void)?
+    var onNextTrack: (() -> Void)?
 
     var isFocusActive: Bool {
         phase == "focusing" || phase == "breaking"
@@ -340,6 +787,10 @@ struct MacIslandSwiftUIView: View {
                                     expandedClipboardLinkView
                                 } else {
                                     expandedActivityView
+                                }
+
+                                if model.nowPlayingActive && !model.isIdle {
+                                    nowPlayingCard.padding(.top, 12)
                                 }
 
                                 if model.detailed && !model.isIdle {
@@ -560,6 +1011,130 @@ struct MacIslandSwiftUIView: View {
             .cornerRadius(12)
         }
         .frame(height: 68)
+    }
+
+    var nowPlayingCard: some View {
+        HStack(spacing: 10) {
+            Group {
+                if let artwork = model.nowPlayingArtwork {
+                    Image(nsImage: artwork)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(Color.white.opacity(0.08))
+                        Image(systemName: "music.note")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.65))
+                    }
+                }
+            }
+            .frame(width: 42, height: 42)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.nowPlayingTitle)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text(nowPlayingSubtitle)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundColor(.white.opacity(0.48))
+                    .lineLimit(1)
+
+                nowPlayingProgressView
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 4) {
+                mediaControlButton(
+                    systemName: "backward.fill",
+                    action: { model.onPreviousTrack?() }
+                )
+                mediaControlButton(
+                    systemName: model.nowPlayingIsPlaying ? "pause.fill" : "play.fill",
+                    emphasized: true,
+                    action: { model.onToggleMediaPlayback?() }
+                )
+                mediaControlButton(
+                    systemName: "forward.fill",
+                    action: { model.onNextTrack?() }
+                )
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 64)
+        .background(Color.white.opacity(0.07))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private var nowPlayingProgressView: some View {
+        if model.nowPlayingDuration > 0 {
+            if #available(macOS 12.0, *) {
+                TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                    mediaProgressBar(at: timeline.date)
+                }
+            } else {
+                mediaProgressBar(at: Date())
+            }
+        } else {
+            Color.clear.frame(height: 3)
+        }
+    }
+
+    private func mediaProgressBar(at date: Date) -> some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+                Capsule()
+                    .fill(Color.white.opacity(0.58))
+                    .frame(width: geometry.size.width * nowPlayingProgress(at: date))
+            }
+        }
+        .frame(height: 3)
+    }
+
+    private func nowPlayingProgress(at date: Date) -> CGFloat {
+        guard model.nowPlayingDuration > 0 else { return 0 }
+        var elapsed = model.nowPlayingElapsedTime
+        if model.nowPlayingIsPlaying {
+            let rate = model.nowPlayingPlaybackRate > 0
+                ? model.nowPlayingPlaybackRate
+                : 1
+            elapsed += max(0, date.timeIntervalSince(model.nowPlayingUpdatedAt)) * rate
+        }
+        return CGFloat(min(1, max(0, elapsed / model.nowPlayingDuration)))
+    }
+
+    private var nowPlayingSubtitle: String {
+        let artist = model.nowPlayingArtist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let album = model.nowPlayingAlbum.trimmingCharacters(in: .whitespacesAndNewlines)
+        let metadata = [artist, album]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        if !metadata.isEmpty { return metadata }
+        return model.nowPlayingIsPlaying ? "正在播放" : "已暂停"
+    }
+
+    private func mediaControlButton(
+        systemName: String,
+        emphasized: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 27, height: 27)
+                .background(Color.white.opacity(emphasized ? 0.16 : 0.06))
+                .clipShape(Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 
     var compactFocusView: some View {
@@ -848,6 +1423,12 @@ struct MacIslandSwiftUIView: View {
                                 .foregroundColor(.white.opacity(0.5))
                         }
                         Spacer()
+                    }
+
+                    // 空闲态没有第二级详情；鼠标移入展开后直接展示媒体，
+                    // 不要求用户再点击“当前暂无进行中的事项”。
+                    if model.nowPlayingActive {
+                        nowPlayingCard
                     }
 
                     if !model.nextActivityTitle.isEmpty {
@@ -1293,6 +1874,8 @@ struct MacIslandSwiftUIView: View {
 class MacPomodoroStatusBarController {
     static let shared = MacPomodoroStatusBarController()
 
+    private let nowPlayingMonitor = MacNowPlayingMonitor()
+    private var nowPlayingSnapshot = MacNowPlayingSnapshot()
     private var islandWindow: MacIslandPanel?
     private var islandModel: IslandStateModel?
     private var timer: Timer?
@@ -1396,6 +1979,13 @@ class MacPomodoroStatusBarController {
                     self?.refreshDisplay()
                 }
             })
+        }
+
+        // 避开冷启动关键路径，应用稳定后再预热当前媒体。这样空闲态首次
+        // 移入就能直接拿到缓存，不必在已经展开后等待卡片突然出现。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self, self.islandEnabled, !self.isShortcutHidden else { return }
+            self.ensureNowPlayingMonitoring()
         }
     }
 
@@ -1724,6 +2314,7 @@ class MacPomodoroStatusBarController {
         let hasReminder = remindersEnabled && currentReminder != nil
         let hasActivity = isOngoingActivityActive
         let hasClipboardLink = clipboardLinksEnabled && clipboardURL != nil
+        let hasNowPlaying = nowPlayingSnapshot.isAvailable
         let hasLiveContent = isPomodoroActive || hasReminder || hasActivity || hasClipboardLink
         guard islandEnabled, !isShortcutHidden else {
             hideIsland()
@@ -1754,6 +2345,9 @@ class MacPomodoroStatusBarController {
         }
         let expanded = hasReminder || hasClipboardLink || isExpanded
         let detailed = hasReminder || isPinnedExpanded
+        if expanded {
+            ensureNowPlayingMonitoring()
+        }
 
         let view = ensureIslandModel()
         view.phase = phase
@@ -1816,6 +2410,16 @@ class MacPomodoroStatusBarController {
         view.countdownDays = countdownDays
         view.clipboardLinkActive = hasClipboardLink
         view.clipboardLinkDisplay = clipboardURL.map(clipboardDisplayText) ?? ""
+        view.nowPlayingActive = hasNowPlaying
+        view.nowPlayingTitle = nowPlayingSnapshot.title
+        view.nowPlayingArtist = nowPlayingSnapshot.artist
+        view.nowPlayingAlbum = nowPlayingSnapshot.album
+        view.nowPlayingArtwork = nowPlayingSnapshot.artwork
+        view.nowPlayingDuration = nowPlayingSnapshot.duration
+        view.nowPlayingElapsedTime = nowPlayingSnapshot.elapsedTime
+        view.nowPlayingPlaybackRate = nowPlayingSnapshot.playbackRate
+        view.nowPlayingUpdatedAt = nowPlayingSnapshot.updatedAt
+        view.nowPlayingIsPlaying = nowPlayingSnapshot.isPlaying
         updateExpansionState(view, expanded: expanded, detailed: detailed)
         // SwiftUI handles accessibility
         // SwiftUI handles accessibility
@@ -1847,7 +2451,7 @@ class MacPomodoroStatusBarController {
             : 320
         let width = expanded
             ? max(
-                detailed ? 360 : ((focusWithReminder || hasClipboardLink || hasActivity) ? 360 : 320),
+                detailed ? 360 : ((focusWithReminder || hasClipboardLink || hasActivity || hasNowPlaying) ? 360 : 320),
                 expandedWidthFloor
             )
             : compactWidth
@@ -1910,6 +2514,9 @@ class MacPomodoroStatusBarController {
                 }
             }
 
+            if hasNowPlaying {
+                contentHeight += 12 + 64
+            }
             if detailed && !view.isIdle {
                 contentHeight += 20 + 68
             }
@@ -2122,8 +2729,31 @@ class MacPomodoroStatusBarController {
         view.onDismissClipboardLink = { [weak self] in
             self?.dismissClipboardLink()
         }
+        view.onPreviousTrack = { [weak self] in
+            self?.nowPlayingMonitor.previous()
+        }
+        view.onToggleMediaPlayback = { [weak self] in
+            self?.nowPlayingMonitor.togglePlayPause()
+        }
+        view.onNextTrack = { [weak self] in
+            self?.nowPlayingMonitor.next()
+        }
         islandModel = view
         return view
+    }
+
+    private func ensureNowPlayingMonitoring() {
+        nowPlayingMonitor.start { [weak self] snapshot in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.nowPlayingSnapshot = snapshot
+                // 收起时只缓存状态；展开后再参与布局，避免后台媒体切歌
+                // 导致不可见的岛反复调整窗口尺寸。
+                if self.isExpanded || self.isPointerInsideIsland {
+                    self.refreshDisplay()
+                }
+            }
+        }
     }
 
     private func handleCurrentReminder(snoozeMinutes: Int?) {
