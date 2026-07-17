@@ -98,6 +98,16 @@ private final class MacNowPlayingMonitor {
         let playedAt: Date
     }
 
+    private struct SystemPlaybackState: Decodable {
+        let bundleIdentifier: String
+        let title: String
+        let artist: String
+        let album: String
+        let duration: Double
+        let elapsedTime: Double
+        let playbackRate: Double
+    }
+
     private var frameworkHandle: UnsafeMutableRawPointer?
     private var getInfo: GetInfoFunction?
     private var getPlaying: GetPlayingFunction?
@@ -117,6 +127,8 @@ private final class MacNowPlayingMonitor {
     private var pollingTimer: Timer?
     #if DEBUG
     private var lastLoggedFallbackTitle = ""
+    private var didLogSystemPlaybackPosition = false
+    private var didLogSystemPlaybackFailure = false
     #endif
     private let fallbackQueue = DispatchQueue(
         label: "com.junpgle.countdowntodo.now-playing-fallback",
@@ -170,7 +182,7 @@ private final class MacNowPlayingMonitor {
 
         // MediaRemote 会主动通知 Apple Music 等播放器；网易云 3.x 在部分
         // macOS 版本不会注册系统媒体会话，因此用低频轮询刷新兼容数据。
-        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
             self?.refresh()
         }
         pollingTimer = timer
@@ -252,17 +264,40 @@ private final class MacNowPlayingMonitor {
         let optimisticState = optimisticPlaybackState
 
         fallbackQueue.async { [weak self] in
-            guard let self = self,
-                  let record = self.readLatestNeteaseTrack() else {
+            guard let self = self else { return }
+            let systemPlayback = self.readSystemPlaybackState()
+            if let systemPlayback = systemPlayback,
+               systemPlayback.bundleIdentifier != "com.netease.163music" {
+                self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
+                return
+            }
+
+            let record = systemPlayback.flatMap {
+                self.readNeteaseTrack(matching: $0)
+            } ?? self.readLatestNeteaseTrack()
+            guard let record = record else {
+                if let systemPlayback = systemPlayback {
+                    self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
+                    return
+                }
                 DispatchQueue.main.async { [weak self] in
                     self?.publish(MacNowPlayingSnapshot(), sequence: sequence)
                 }
                 return
             }
 
+            let matchingSystemPlayback = systemPlayback.flatMap { state -> SystemPlaybackState? in
+                guard state.bundleIdentifier == "com.netease.163music",
+                      self.mediaTitlesMatch(state.title, record.track.name) else {
+                    return nil
+                }
+                return state
+            }
             let audioState = self.isProducingAudio(processIdentifier: processIdentifier)
             let recordAge = Date().timeIntervalSince(record.playedAt)
-            let detectedPlaying = audioState ?? (recordAge >= 0 && recordAge < 10 * 60)
+            let detectedPlaying = matchingSystemPlayback.map { $0.playbackRate > 0 }
+                ?? audioState
+                ?? (recordAge >= 0 && recordAge < 10 * 60)
             let isPlaying: Bool
             if let optimisticState = optimisticState,
                optimisticState.trackIdentifier == record.track.id,
@@ -273,7 +308,9 @@ private final class MacNowPlayingMonitor {
             }
             // 暂停后的曲目继续保留半小时，之后不再把历史记录伪装成
             // 当前媒体；真正仍在输出声音的曲目不受这个时间限制。
-            guard isPlaying || (recordAge >= 0 && recordAge < 30 * 60) else {
+            guard matchingSystemPlayback != nil
+                    || isPlaying
+                    || (recordAge >= 0 && recordAge < 30 * 60) else {
                 DispatchQueue.main.async { [weak self] in
                     self?.publish(MacNowPlayingSnapshot(), sequence: sequence)
                 }
@@ -284,14 +321,28 @@ private final class MacNowPlayingMonitor {
                 .map(\.name)
                 .filter { !$0.isEmpty }
                 .joined(separator: "、")
-            let duration = max(0, (record.track.duration ?? 0) / 1000)
+            let storedDuration = max(0, (record.track.duration ?? 0) / 1000)
+            let duration = matchingSystemPlayback.map { max(0, $0.duration) }
+                .flatMap { $0 > 0 ? $0 : nil }
+                ?? storedDuration
             let samePlayback = previousSnapshot.trackIdentifier == record.track.id
                 && previousSnapshot.sourceStartedAt.map {
                     abs($0.timeIntervalSince(record.playedAt)) < 1
                 } == true
             let now = Date()
             let elapsedTime: Double
-            if samePlayback {
+            if let matchingSystemPlayback = matchingSystemPlayback {
+                elapsedTime = min(
+                    duration > 0 ? duration : .greatestFiniteMagnitude,
+                    max(0, matchingSystemPlayback.elapsedTime)
+                )
+                #if DEBUG
+                if !self.didLogSystemPlaybackPosition {
+                    self.didLogSystemPlaybackPosition = true
+                    NSLog("[MacIsland] 已启用系统媒体实时进度锚点")
+                }
+                #endif
+            } else if samePlayback {
                 elapsedTime = self.elapsedTime(for: previousSnapshot, at: now)
             } else {
                 let rawElapsed = max(0, now.timeIntervalSince(record.playedAt))
@@ -305,9 +356,11 @@ private final class MacNowPlayingMonitor {
             }
             var snapshot = MacNowPlayingSnapshot(
                 trackIdentifier: record.track.id,
-                title: record.track.name,
-                artist: artist,
-                album: record.track.album?.name ?? "网易云音乐",
+                title: matchingSystemPlayback?.title ?? record.track.name,
+                artist: matchingSystemPlayback?.artist ?? artist,
+                album: matchingSystemPlayback?.album
+                    ?? record.track.album?.name
+                    ?? "网易云音乐",
                 duration: duration,
                 elapsedTime: elapsedTime,
                 playbackRate: isPlaying ? 1 : 0,
@@ -405,6 +458,193 @@ private final class MacNowPlayingMonitor {
                 timeIntervalSince1970: Double(playedAtMilliseconds) / 1000
             )
         )
+    }
+
+    private func readNeteaseTrack(
+        matching systemPlayback: SystemPlaybackState
+    ) -> NeteaseTrackRecord? {
+        guard let passwordEntry = getpwuid(getuid()),
+              let homePath = passwordEntry.pointee.pw_dir else {
+            return nil
+        }
+        let databaseURL = URL(fileURLWithPath: String(cString: homePath), isDirectory: true)
+            .appendingPathComponent(
+                "Library/Containers/com.netease.163music/Data/Documents/storage/"
+                    + "sqlite_storage.sqlite3"
+            )
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(
+            databaseURL.path,
+            &database,
+            SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
+            nil
+        ) == SQLITE_OK, let database = database else {
+            if database != nil { sqlite3_close(database) }
+            return nil
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 150)
+
+        let sql = """
+            SELECT d.jsonStr, COALESCE(h.playtime, 0)
+            FROM dbTrack d
+            LEFT JOIN historyTracks h ON h.id = d.id
+            WHERE json_extract(d.jsonStr, '$.name') = ? COLLATE NOCASE
+            ORDER BY CASE
+                WHEN json_extract(d.jsonStr, '$.artists[0].name') = ? COLLATE NOCASE
+                THEN 0 ELSE 1
+            END
+            LIMIT 1
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement = statement else {
+            if statement != nil { sqlite3_finalize(statement) }
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        _ = systemPlayback.title.withCString {
+            sqlite3_bind_text(statement, 1, $0, -1, transient)
+        }
+        _ = systemPlayback.artist.withCString {
+            sqlite3_bind_text(statement, 2, $0, -1, transient)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let jsonBytes = sqlite3_column_text(statement, 0) else {
+            return nil
+        }
+
+        let json = Data(String(cString: jsonBytes).utf8)
+        guard let track = try? JSONDecoder().decode(NeteaseTrack.self, from: json) else {
+            return nil
+        }
+        let playedAtMilliseconds = sqlite3_column_int64(statement, 1)
+        return NeteaseTrackRecord(
+            track: track,
+            playedAt: Date(
+                timeIntervalSince1970: Double(playedAtMilliseconds) / 1000
+            )
+        )
+    }
+
+    private func publishSystemPlaybackState(
+        _ state: SystemPlaybackState,
+        sequence: Int
+    ) {
+        let snapshot = MacNowPlayingSnapshot(
+            trackIdentifier: "\(state.title)\u{001F}\(state.artist)",
+            title: state.title,
+            artist: state.artist,
+            album: state.album,
+            duration: max(0, state.duration),
+            elapsedTime: min(
+                state.duration > 0 ? state.duration : .greatestFiniteMagnitude,
+                max(0, state.elapsedTime)
+            ),
+            playbackRate: max(0, state.playbackRate),
+            updatedAt: Date(),
+            isPlaying: state.playbackRate > 0
+        )
+        DispatchQueue.main.async { [weak self] in
+            self?.publish(snapshot, sequence: sequence)
+        }
+    }
+
+    /// macOS 15.4 起 mediaremoted 会拒绝未持有 Apple 私有 entitlement 的
+    /// 第三方进程直接读取 Now Playing。由系统签名的 osascript 读取同一份
+    /// 本机媒体状态，可以得到播放器拖动后的 calculatedPlaybackPosition。
+    /// 这里只取一帧 JSON，界面仍用 snapshot.updatedAt 在采样间平滑补间。
+    private func readSystemPlaybackState() -> SystemPlaybackState? {
+        let script = #"""
+        ObjC.import('Foundation');
+        (() => {
+          const framework = $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/');
+          if (!framework || !framework.load) return '{}';
+          const request = $.NSClassFromString('MRNowPlayingRequest');
+          const item = request ? request.localNowPlayingItem : null;
+          const path = request ? request.localNowPlayingPlayerPath : null;
+          const client = path ? path.client : null;
+          const info = item ? item.nowPlayingInfo : null;
+          if (!item || !client || !info) return '{}';
+
+          const value = key => {
+            const raw = info.valueForKey(key);
+            return raw ? ObjC.unwrap(raw) : null;
+          };
+          const text = key => {
+            const raw = value(key);
+            return raw == null ? '' : String(raw);
+          };
+          const number = raw => {
+            const parsed = Number(raw);
+            return Number.isFinite(parsed) ? parsed : 0;
+          };
+
+          return JSON.stringify({
+            bundleIdentifier: client.bundleIdentifier ? String(ObjC.unwrap(client.bundleIdentifier)) : '',
+            title: text('kMRMediaRemoteNowPlayingInfoTitle'),
+            artist: text('kMRMediaRemoteNowPlayingInfoArtist'),
+            album: text('kMRMediaRemoteNowPlayingInfoAlbum'),
+            duration: number(value('kMRMediaRemoteNowPlayingInfoDuration')),
+            elapsedTime: number(item.metadata.calculatedPlaybackPosition),
+            playbackRate: number(value('kMRMediaRemoteNowPlayingInfoPlaybackRate'))
+          });
+        })();
+        """#
+
+        let process = Process()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-l", "JavaScript", "-e", script]
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+
+        do {
+            try process.run()
+        } catch {
+            logSystemPlaybackFailureOnce(error.localizedDescription)
+            return nil
+        }
+        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
+            process.terminate()
+            logSystemPlaybackFailureOnce("读取超时")
+            return nil
+        }
+        guard process.terminationStatus == 0 else {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorText = String(decoding: errorData, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            logSystemPlaybackFailureOnce(errorText.isEmpty ? "退出码 \(process.terminationStatus)" : errorText)
+            return nil
+        }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let state = try? JSONDecoder().decode(SystemPlaybackState.self, from: data),
+              !state.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logSystemPlaybackFailureOnce("系统未返回有效媒体状态")
+            return nil
+        }
+        return state
+    }
+
+    private func mediaTitlesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        let normalize: (String) -> String = {
+            $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return normalize(lhs) == normalize(rhs)
+    }
+
+    private func logSystemPlaybackFailureOnce(_ reason: String) {
+        #if DEBUG
+        guard !didLogSystemPlaybackFailure else { return }
+        didLogSystemPlaybackFailure = true
+        NSLog("[MacIsland] 系统媒体实时进度暂不可用：%@", reason)
+        #endif
     }
 
     private func isProducingAudio(processIdentifier: pid_t) -> Bool? {
