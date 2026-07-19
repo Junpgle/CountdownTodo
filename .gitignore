@@ -112,6 +112,7 @@ todo.md
 /test/widgets/*
 !/test/widgets/todo_recurrence_progress_test.dart
 !/test/widgets/todo_section_series_visibility_test.dart
+!/test/widgets/interconnect_settings_page_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart

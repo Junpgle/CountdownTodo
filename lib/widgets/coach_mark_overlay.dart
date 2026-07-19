@@ -57,7 +57,6 @@ class _CoachMarkOverlayWidget extends StatefulWidget {
   final VoidCallback onSkip;
 
   const _CoachMarkOverlayWidget({
-    super.key,
     required this.steps,
     required this.onFinish,
     required this.onSkip,

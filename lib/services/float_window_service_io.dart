@@ -152,7 +152,7 @@ class FloatWindowService {
           await IslandManager().sendStructuredPayload('island-1', payload);
       // debugPrint(
       //     '[FloatWindow] Sent copied_link payload: $displayUrl, success: $sent');
-    } catch (e, stackTrace) {
+    } catch (e) {
       // debugPrint(
       //     '[FloatWindow] Failed to show copied link island: $e\n$stackTrace');
     }
@@ -632,7 +632,7 @@ class FloatWindowService {
         // debugPrint(
         //     '[FloatWindow] Cannot deliver: winId is null after all attempts');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       // debugPrint('[FloatWindow] Island delivery failed: $e\n$stackTrace');
     }
   }

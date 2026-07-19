@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5006,7 +5004,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       bool hasActiveTodos = _todos.any((t) {
                                         if (t.isDeleted ||
                                             t.dueDate == null ||
-                                            t.isAllDayTask) return false;
+                                            t.isAllDayTask) {
+                                          return false;
+                                        }
                                         final startMs =
                                             t.createdDate ?? t.createdAt;
                                         return startMs > 0 &&

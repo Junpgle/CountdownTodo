@@ -376,8 +376,9 @@ class TodoParserService {
         startTime =
             DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
         endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, eH, eM);
-        if (endTime.isBefore(startTime))
+        if (endTime.isBefore(startTime)) {
           endTime = endTime.add(const Duration(days: 1));
+        }
       } else if (singleTimeMatch != null) {
         String? p1 = singleTimeMatch.namedGroup('p1') ?? timePrefixHint;
         int sH = int.parse(singleTimeMatch.namedGroup('sh')!);
@@ -472,10 +473,12 @@ class TodoParserService {
   static DateTime _parseRelativeDay(String prefix) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (['明天', '明日', '明早', '明晚'].contains(prefix))
+    if (['明天', '明日', '明早', '明晚'].contains(prefix)) {
       return today.add(const Duration(days: 1));
-    if (['后天', '后日', '后早', '后晚'].contains(prefix))
+    }
+    if (['后天', '后日', '后早', '后晚'].contains(prefix)) {
       return today.add(const Duration(days: 2));
+    }
     return today; // 今天
   }
 

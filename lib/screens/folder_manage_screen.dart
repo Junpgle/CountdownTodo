@@ -207,8 +207,9 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       if (progressA != progressB) return progressB.compareTo(progressA);
 
       // 3. 截止日期比较
-      if (a.dueDate != null && b.dueDate != null)
+      if (a.dueDate != null && b.dueDate != null) {
         return a.dueDate!.compareTo(b.dueDate!);
+      }
       if (a.dueDate != null) return -1;
       if (b.dueDate != null) return 1;
       return 0;

@@ -1642,6 +1642,7 @@ class DatabaseHelper {
     bool includeDeleted = false,
     String? where,
     List<String>? uuids,
+    Set<String>? recurrenceSeriesIds,
     int? limit,
     bool inlineTextColumns = false,
     bool includeConflictData = false,
@@ -1663,6 +1664,13 @@ class DatabaseHelper {
         't.uuid IN (${List.filled(uuids.length, '?').join(', ')})',
       );
       whereArgs.addAll(uuids);
+    }
+    if (recurrenceSeriesIds != null && recurrenceSeriesIds.isNotEmpty) {
+      whereParts.add(
+        't.recurrence_series_id IN '
+        '(${List.filled(recurrenceSeriesIds.length, '?').join(', ')})',
+      );
+      whereArgs.addAll(recurrenceSeriesIds);
     }
 
     final List<String> projectedColumns = _todoBaseColumns.map((col) {

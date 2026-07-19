@@ -550,8 +550,9 @@ class WidgetService {
       final dueDateMs = todo['dueDate'] as int?;
       String title = todo['title'] as String? ?? '';
       DateTime? dueDate;
-      if (dueDateMs != null)
+      if (dueDateMs != null) {
         dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
+      }
       final isDueToday = dueDate == null ||
           !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
       if (isDueToday) title = '<b>$title</b>';

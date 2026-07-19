@@ -7,12 +7,6 @@ import 'database_helper.dart';
 import 'pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../screens/home_settings_screen.dart';
-import '../screens/animation_settings_page.dart';
-import '../screens/settings/wallpaper_settings_page.dart';
-import '../screens/settings/llm_config_page.dart';
-import '../screens/band_sync_screen.dart';
-import '../screens/settings/lan_sync_screen.dart';
-import '../screens/settings/notification_settings_page.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
@@ -1230,7 +1224,7 @@ class SearchNavigationHandler {
       } else {
         // debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
       }
-    } catch (e, stack) {
+    } catch (e) {
       // debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
     }
   }

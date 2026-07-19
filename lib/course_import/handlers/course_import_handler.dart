@@ -40,9 +40,7 @@ class CourseImportHandler {
 
   Future<bool> _ensureSemesterStartSet() async {
     // 先尝试从存储读取最新值（处理构造时未传入的情况）
-    if (semesterStart == null) {
-      semesterStart = await StorageService.getSemesterStart();
-    }
+    semesterStart ??= await StorageService.getSemesterStart();
     if (semesterStart != null) return true;
 
     final DateTime? picked = await showDialog<DateTime>(
@@ -203,7 +201,7 @@ class CourseImportHandler {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
               ],
             ),
           ),

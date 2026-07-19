@@ -999,7 +999,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ),
 
           // Classification suggestion
-          if (hasClassification && clsSug != null) ...[
+          if (hasClassification) ...[
             _buildSuggestionItem(
               icon: Icons.auto_graph_rounded,
               label: '分类与标签建议',

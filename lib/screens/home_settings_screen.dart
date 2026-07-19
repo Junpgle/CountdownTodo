@@ -114,7 +114,15 @@ class _SettingsPageState extends State<SettingsPage> {
       'semester_end',
       'semester_sync'
     ];
-    final interconnectTargets = ['lan_sync', 'band_sync', 'calendar_sync'];
+    final interconnectTargets = [
+      'lan_sync',
+      'band_sync',
+      'calendar_sync',
+      'batch_tag',
+      'recurrence_merge',
+      'data_export',
+      'data_import',
+    ];
     final advancedTargets = [
       'llm_config',
       'llm_retry',

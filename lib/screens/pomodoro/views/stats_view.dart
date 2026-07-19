@@ -1008,9 +1008,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             pickedTime.minute);
                         if (newEnd.millisecondsSinceEpoch <=
                             editSession.startTime) {
-                          if (ctx.mounted)
+                          if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                                 const SnackBar(content: Text('结束时间必须晚于开始时间')));
+                          }
                           return;
                         }
                         sd(() {

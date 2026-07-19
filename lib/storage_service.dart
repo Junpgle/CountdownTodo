@@ -1689,11 +1689,33 @@ class StorageService {
         await prefs.setBool(migrationKey, true);
       }
 
-      final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
+      List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
         includeDeleted: includeDeleted,
         limit: limit,
         includeConflictData: true,
       );
+      if (limit != null && maps.isNotEmpty) {
+        final activeSeriesIds = maps
+            .where((map) => (_parseNullableInt(map['recurrence']) ?? 0) != 0)
+            .map((map) => map['recurrence_series_id']?.toString().trim())
+            .whereType<String>()
+            .where((seriesId) => seriesId.isNotEmpty)
+            .toSet();
+        if (activeSeriesIds.isNotEmpty) {
+          final seriesMaps = await dbHelper.getTodoMaps(
+            includeDeleted: includeDeleted,
+            recurrenceSeriesIds: activeSeriesIds,
+            includeConflictData: true,
+          );
+          final mapsById = <String, Map<String, dynamic>>{
+            for (final map in maps) map['uuid'].toString(): map,
+          };
+          for (final map in seriesMaps) {
+            mapsById[map['uuid'].toString()] = map;
+          }
+          maps = mapsById.values.toList();
+        }
+      }
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
         // 🚀 性能优化：当待办数量较多时，使用 Isolate 解析，减少主线程解析耗时导致的 UI 卡顿
@@ -2324,6 +2346,144 @@ class StorageService {
     List<TodoItem> todos,
   ) =>
       _deduplicatePersistedRecurrenceOccurrences(todos);
+
+  /// 手动将多个循环系列归并到用户指定的主系列。
+  ///
+  /// 所有实例保留原 UUID，因此规划、番茄钟和时间日志的绑定
+  /// 不会丢失。同日重复实例会使用现有规则去重。
+  static Future<int> mergeRecurrenceSeries(
+    String username, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) async {
+    final todos = await getTodos(username, includeDeleted: true);
+    final changedIds = _mergeRecurrenceSeries(
+      todos,
+      targetSeriesId: targetSeriesId,
+      seriesIds: seriesIds,
+    );
+    if (changedIds.isEmpty) return 0;
+
+    final changedItems =
+        todos.where((todo) => changedIds.contains(todo.id)).toList();
+    await saveTodos(
+      username,
+      changedItems,
+      sync: true,
+      recomputeScheduleConflicts: false,
+    );
+    await _refreshTodoScheduleConflicts(username);
+    triggerRefresh();
+    return changedItems.length;
+  }
+
+  @visibleForTesting
+  static Set<String> mergeRecurrenceSeriesForTest(
+    List<TodoItem> todos, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) =>
+      _mergeRecurrenceSeries(
+        todos,
+        targetSeriesId: targetSeriesId,
+        seriesIds: seriesIds,
+      );
+
+  static Set<String> _mergeRecurrenceSeries(
+    List<TodoItem> todos, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) {
+    final selectedSeriesIds = <String>{...seriesIds, targetSeriesId}
+      ..removeWhere((seriesId) => seriesId.trim().isEmpty);
+    final participating = todos
+        .where((todo) =>
+            todo.recurrenceSeriesId != null &&
+            selectedSeriesIds.contains(todo.recurrenceSeriesId))
+        .toList();
+    final activeSeriesIds = participating
+        .where((todo) => !todo.isDeleted)
+        .map((todo) => todo.recurrenceSeriesId)
+        .whereType<String>()
+        .toSet();
+    if (activeSeriesIds.length < 2 ||
+        !activeSeriesIds.contains(targetSeriesId)) {
+      return <String>{};
+    }
+
+    TodoItem? canonicalActive;
+    final activeRules = participating
+        .where(
+            (todo) => !todo.isDeleted && todo.recurrence != RecurrenceType.none)
+        .toList()
+      ..sort((a, b) {
+        final startCompare = (b.createdDate ?? b.createdAt)
+            .compareTo(a.createdDate ?? a.createdAt);
+        if (startCompare != 0) return startCompare;
+        return b.version.compareTo(a.version);
+      });
+    for (final todo in activeRules) {
+      if (todo.recurrenceSeriesId == targetSeriesId) {
+        canonicalActive = todo;
+        break;
+      }
+    }
+    canonicalActive ??= activeRules.isEmpty ? null : activeRules.first;
+
+    final versionsBefore = {
+      for (final todo in participating) todo.id: todo.version,
+    };
+    final fieldChangedIds = <String>{};
+
+    // 系列被拆分并多次去重后，完成状态可能只保留在源系列中已经删除的
+    // 重复实例上。合并时按发生日期取完成状态并集，再写回该日仍可见的
+    // 实例；目标系列中早已删除的旧状态不参与，避免覆盖用户后续的取消完成。
+    final completedDays = participating
+        .where((todo) =>
+            todo.isDone &&
+            (!todo.isDeleted || todo.recurrenceSeriesId != targetSeriesId))
+        .map((todo) => _recurrenceLocalDayKey(
+              todo.createdDate ?? todo.createdAt,
+            ))
+        .toSet();
+    for (final todo in participating) {
+      if (todo.isDeleted || todo.isDone) continue;
+      final dayKey = _recurrenceLocalDayKey(
+        todo.createdDate ?? todo.createdAt,
+      );
+      if (!completedDays.contains(dayKey)) continue;
+      todo.isDone = true;
+      fieldChangedIds.add(todo.id);
+    }
+
+    for (final todo in participating) {
+      if (todo.recurrenceSeriesId != targetSeriesId) {
+        todo.recurrenceSeriesId = targetSeriesId;
+        fieldChangedIds.add(todo.id);
+      }
+      if (todo.recurrence != RecurrenceType.none &&
+          todo.id != canonicalActive?.id) {
+        todo.recurrence = RecurrenceType.none;
+        fieldChangedIds.add(todo.id);
+      }
+    }
+
+    _deduplicatePersistedRecurrenceOccurrences(participating);
+    final changedIds = <String>{};
+    for (final todo in participating) {
+      if (todo.version != versionsBefore[todo.id]) {
+        changedIds.add(todo.id);
+      }
+    }
+    for (final todo in participating) {
+      if (!fieldChangedIds.contains(todo.id)) continue;
+      if (todo.version == versionsBefore[todo.id]) {
+        todo.markAsChanged();
+      }
+      changedIds.add(todo.id);
+    }
+    return changedIds;
+  }
 
   static List<int> _futureRecurrenceRollOffsets(
     TodoItem todo,
@@ -3246,6 +3406,44 @@ class StorageService {
         hasChanges = true;
         debugPrint(
             '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
+      }
+      final repairedLocalSeriesIds =
+          await _repairLocalRecurrenceSeriesAliasesFromHistory(
+        db,
+        allLocalTodos,
+      );
+      if (repairedLocalSeriesIds.isNotEmpty) {
+        final versionsBeforeDedupe = {
+          for (final todo in allLocalTodos) todo.id: todo.version,
+        };
+        final deletedBeforeDedupe = {
+          for (final todo in allLocalTodos)
+            if (todo.isDeleted) todo.id,
+        };
+        _deduplicatePersistedRecurrenceOccurrences(allLocalTodos);
+        repairedLocalSeriesIds.addAll(allLocalTodos
+            .where((todo) =>
+                todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
+            .map((todo) => todo.id));
+
+        final repairedItems = allLocalTodos
+            .where((todo) => repairedLocalSeriesIds.contains(todo.id))
+            .toList();
+        for (final todo in repairedItems) {
+          // 去重分支已经提升过版本，只为单纯归并系列的实例补一次变更。
+          if (todo.version == versionsBeforeDedupe[todo.id]) {
+            todo.markAsChanged();
+          }
+        }
+        await saveTodos(
+          username,
+          repairedItems,
+          sync: true,
+          recomputeScheduleConflicts: false,
+        );
+        hasChanges = true;
+        debugPrint(
+            '🧷 [同步修复] 根据本机同步历史将 ${repairedItems.length} 个被拆分的循环实例归回原系列');
       }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
@@ -4852,6 +5050,27 @@ class StorageService {
     final repairedIds = <String>{};
     final localById = {for (final todo in local) todo.id: todo};
 
+    // 云端可能已被旧设备拆成非空的“子实例自建系列”。
+    // 若该云端系列 ID 在本地明确是另一系列的成员，则本地
+    // 稳定 UUID 关系比云端的错误非空值更可信。
+    for (final todo in incoming) {
+      final remoteSeriesId = todo.recurrenceSeriesId?.trim();
+      final localSeriesId = localById[todo.id]?.recurrenceSeriesId?.trim();
+      if (remoteSeriesId == null ||
+          remoteSeriesId.isEmpty ||
+          localSeriesId == null ||
+          localSeriesId.isEmpty ||
+          remoteSeriesId == localSeriesId) {
+        continue;
+      }
+      final resolvedRemoteSeriesId =
+          _resolveRecurrenceSeriesAlias(remoteSeriesId, localById);
+      if (resolvedRemoteSeriesId == localSeriesId) {
+        todo.recurrenceSeriesId = localSeriesId;
+        repairedIds.add(todo.id);
+      }
+    }
+
     for (final todo in incoming) {
       if (!_isMissingRecurrenceSeriesId(todo)) continue;
       final localSeriesId = localById[todo.id]?.recurrenceSeriesId;
@@ -4949,6 +5168,144 @@ class StorageService {
       if (!changed) break;
     }
 
+    return repairedIds;
+  }
+
+  static String _resolveRecurrenceSeriesAlias(
+    String seriesId,
+    Map<String, TodoItem> todosById,
+  ) {
+    var current = seriesId;
+    final visited = <String>{};
+    while (visited.add(current)) {
+      final next = todosById[current]?.recurrenceSeriesId?.trim();
+      if (next == null || next.isEmpty || next == current) break;
+      current = next;
+    }
+    return current;
+  }
+
+  @visibleForTesting
+  static Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+    List<TodoItem> todos,
+    Map<String, List<String>> historicalSeriesByTodoId,
+  ) =>
+      _repairLocalRecurrenceSeriesAliases(
+        todos,
+        historicalSeriesByTodoId,
+      );
+
+  /// 从本机 oplog 中恢复“某个子实例曾经属于哪个系列”。
+  ///
+  /// 只有当实例当前以自己 UUID 作为系列 ID，历史中只存在
+  /// 一个不同的系列 ID，且旧归属记录不少于当前自立记录时才
+  /// 建立别名。不依赖标题或时间猜测。
+  static Future<Set<String>> _repairLocalRecurrenceSeriesAliasesFromHistory(
+    Database db,
+    List<TodoItem> todos,
+  ) async {
+    final relevantIds = todos
+        .where((todo) => todo.recurrenceSeriesId?.isNotEmpty == true)
+        .map((todo) => todo.id)
+        .toList();
+    if (relevantIds.isEmpty) return <String>{};
+
+    final historicalSeriesByTodoId = <String, List<String>>{};
+    const chunkSize = 300;
+    for (var offset = 0; offset < relevantIds.length; offset += chunkSize) {
+      final end = (offset + chunkSize < relevantIds.length)
+          ? offset + chunkSize
+          : relevantIds.length;
+      final chunk = relevantIds.sublist(offset, end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await db.query(
+        'op_logs',
+        columns: const ['target_uuid', 'data_json', 'timestamp'],
+        where: 'target_table = ? AND target_uuid IN ($placeholders)',
+        whereArgs: ['todos', ...chunk],
+        orderBy: 'timestamp ASC',
+      );
+      for (final row in rows) {
+        final targetUuid = row['target_uuid']?.toString();
+        final rawData = row['data_json'];
+        if (targetUuid == null || targetUuid.isEmpty || rawData == null) {
+          continue;
+        }
+        try {
+          final decoded = jsonDecode(rawData.toString());
+          if (decoded is! Map) continue;
+          final seriesId =
+              (decoded['recurrence_series_id'] ?? decoded['recurrenceSeriesId'])
+                  ?.toString()
+                  .trim();
+          if (seriesId == null || seriesId.isEmpty) continue;
+          final history = historicalSeriesByTodoId.putIfAbsent(
+            targetUuid,
+            () => <String>[],
+          );
+          history.add(seriesId);
+        } catch (_) {
+          // 单条旧 oplog 损坏不应阻断整体同步。
+        }
+      }
+    }
+    return _repairLocalRecurrenceSeriesAliases(
+      todos,
+      historicalSeriesByTodoId,
+    );
+  }
+
+  static Set<String> _repairLocalRecurrenceSeriesAliases(
+    List<TodoItem> todos,
+    Map<String, List<String>> historicalSeriesByTodoId,
+  ) {
+    final aliases = <String, String>{};
+    for (final todo in todos) {
+      final currentSeriesId = todo.recurrenceSeriesId?.trim();
+      if (currentSeriesId == null ||
+          currentSeriesId.isEmpty ||
+          currentSeriesId != todo.id) {
+        continue;
+      }
+      final history = (historicalSeriesByTodoId[todo.id] ?? const [])
+          .map((seriesId) => seriesId.trim())
+          .where((seriesId) => seriesId.isNotEmpty)
+          .toList();
+      final currentSeriesCount =
+          history.where((seriesId) => seriesId == currentSeriesId).length;
+      final previousSeriesCounts = <String, int>{};
+      for (final seriesId in history) {
+        if (seriesId == currentSeriesId) continue;
+        previousSeriesCounts[seriesId] =
+            (previousSeriesCounts[seriesId] ?? 0) + 1;
+      }
+      if (previousSeriesCounts.length == 1 &&
+          previousSeriesCounts.values.single >= currentSeriesCount) {
+        aliases[currentSeriesId] = previousSeriesCounts.keys.single;
+      }
+    }
+    if (aliases.isEmpty) return <String>{};
+
+    String resolve(String seriesId) {
+      var current = seriesId;
+      final visited = <String>{};
+      while (visited.add(current)) {
+        final next = aliases[current];
+        if (next == null || next.isEmpty || next == current) break;
+        current = next;
+      }
+      return current;
+    }
+
+    final repairedIds = <String>{};
+    for (final todo in todos) {
+      final currentSeriesId = todo.recurrenceSeriesId?.trim();
+      if (currentSeriesId == null || currentSeriesId.isEmpty) continue;
+      final canonicalSeriesId = resolve(currentSeriesId);
+      if (canonicalSeriesId == currentSeriesId) continue;
+      todo.recurrenceSeriesId = canonicalSeriesId;
+      repairedIds.add(todo.id);
+    }
     return repairedIds;
   }
 

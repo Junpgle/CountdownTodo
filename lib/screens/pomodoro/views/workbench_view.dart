@@ -20,7 +20,6 @@ import '../../../services/window_focus_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/time_utils.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
@@ -2904,6 +2903,7 @@ class _SimpleTag extends StatelessWidget {
   final String name;
   final Color color;
   const _SimpleTag({required this.name, required this.color});
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),

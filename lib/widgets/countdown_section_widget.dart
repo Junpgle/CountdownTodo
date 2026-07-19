@@ -177,7 +177,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   List<CountdownItem> updatedList =
                       List.from(widget.countdowns);
                   if (isEditing) {
-                    final idx = updatedList.indexWhere((c) => c.id == item!.id);
+                    final idx = updatedList.indexWhere((c) => c.id == item.id);
                     if (idx != -1) {
                       updatedList[idx] = CountdownItem(
                         id: item.id,
@@ -209,7 +209,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
                   final syncUuid =
-                      isEditing ? item!.teamUuid : selectedTeamUuid;
+                      isEditing ? item.teamUuid : selectedTeamUuid;
                   if (syncUuid != null) {
                     PomodoroSyncService.instance.sendTeamUpdateSignal(syncUuid);
                   }

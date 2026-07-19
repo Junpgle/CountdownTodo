@@ -917,7 +917,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           return '${semester.name} 第$relativeWeek周';
         }
       }
-      return '${DateFormat('M/d').format(date)}';
+      return DateFormat('M/d').format(date);
     }
 
     String label1 = getSemesterWeekLabel(w1Monday);

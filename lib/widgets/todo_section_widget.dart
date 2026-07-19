@@ -3415,8 +3415,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final groupById = <String, TodoGroup>{};
     for (final g in widget.todoGroups) {
       if (g.isDeleted) continue;
-      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid)
+      if (_selectedSubTeamUuid != null && g.teamUuid != _selectedSubTeamUuid) {
         continue;
+      }
       groupById[g.id] = g;
     }
 
@@ -3425,8 +3426,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final orphanedTodos = <TodoItem>[];
     for (final t in widget.todos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
-      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid)
+      if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
         continue;
+      }
       if (!_shouldDisplayRecurrenceTodo(t, seriesRepresentativeIds)) {
         continue;
       }

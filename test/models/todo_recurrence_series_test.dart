@@ -239,6 +239,119 @@ void main() {
     expect(orphan.recurrenceSeriesId, 'original-series');
   });
 
+  test('non-empty cloud split aliases are restored from local UUID lineage',
+      () {
+    final original = TodoItem(
+      id: 'original-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+    );
+    final localAliasAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final localOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+    final remoteAliasAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final remoteOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [remoteAliasAnchor, remoteOccurrence],
+      [original, localAliasAnchor, localOccurrence],
+    );
+
+    expect(repaired, containsAll({'child-anchor', 'occurrence-15'}));
+    expect(remoteAliasAnchor.recurrenceSeriesId, 'original-series');
+    expect(remoteOccurrence.recurrenceSeriesId, 'original-series');
+  });
+
+  test('local oplog history rejoins a child that became its own series', () {
+    final original = TodoItem(
+      id: 'original-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+    );
+    final splitAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final splitOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+    final unrelated = TodoItem(
+      id: 'unrelated-series',
+      title: '同名但独立',
+      recurrenceSeriesId: 'unrelated-series',
+      createdDate: DateTime(2026, 7, 14, 8).millisecondsSinceEpoch,
+    );
+
+    final repaired =
+        StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+      [original, splitAnchor, splitOccurrence, unrelated],
+      {
+        'child-anchor': [
+          'original-series',
+          'original-series',
+          'child-anchor',
+        ],
+        'unrelated-series': ['unrelated-series'],
+      },
+    );
+
+    expect(repaired, {'child-anchor', 'occurrence-15'});
+    expect(splitAnchor.recurrenceSeriesId, 'original-series');
+    expect(splitOccurrence.recurrenceSeriesId, 'original-series');
+    expect(unrelated.recurrenceSeriesId, 'unrelated-series');
+  });
+
+  test('a long-established self series is not reverted by one old alias', () {
+    final established = TodoItem(
+      id: 'established-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'established-series',
+    );
+
+    final repaired =
+        StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+      [established],
+      {
+        'established-series': [
+          'ancient-alias',
+          'established-series',
+          'established-series',
+          'established-series',
+        ],
+      },
+    );
+
+    expect(repaired, isEmpty);
+    expect(established.recurrenceSeriesId, 'established-series');
+  });
+
   test('identical migration snapshot is cleared as a stale version conflict',
       () {
     final todo = TodoItem(
@@ -551,6 +664,74 @@ void main() {
     expect(edited.isDeleted, isFalse);
     expect(edited.dueDate, DateTime(2026, 7, 16, 22, 30));
     expect(migratedCopy.isDeleted, isTrue);
+  });
+
+  test('manual merge keeps the chosen series and deduplicates occurrences', () {
+    final mainHistory = TodoItem(
+      id: 'main-history',
+      title: '每日复习',
+      isDone: true,
+      recurrenceSeriesId: 'main-series',
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+    );
+    final mainActive = TodoItem(
+      id: 'main-active',
+      title: '每日复习',
+      version: 5,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'main-series',
+      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+    );
+    final splitDuplicate = TodoItem(
+      id: 'split-duplicate',
+      title: '每日复习',
+      isDone: true,
+      isDeleted: true,
+      version: 3,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'split-series',
+      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+    );
+    final splitFuture = TodoItem(
+      id: 'split-future',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'split-series',
+      createdDate: DateTime(2026, 7, 19, 19).millisecondsSinceEpoch,
+    );
+    final unrelated = TodoItem(
+      id: 'unrelated',
+      title: '其他循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'unrelated-series',
+    );
+
+    final changedIds = StorageService.mergeRecurrenceSeriesForTest(
+      [
+        mainHistory,
+        mainActive,
+        splitDuplicate,
+        splitFuture,
+        unrelated,
+      ],
+      targetSeriesId: 'main-series',
+      seriesIds: {'main-series', 'split-series'},
+    );
+
+    expect(splitDuplicate.recurrenceSeriesId, 'main-series');
+    expect(splitFuture.recurrenceSeriesId, 'main-series');
+    expect(splitDuplicate.isDeleted, isTrue);
+    // 即使完成状态只留在源系列已删除的重复实例上，
+    // 也应归并到同一日仍可见的主系列实例。
+    expect(mainActive.isDone, isTrue);
+    expect(mainActive.recurrence, RecurrenceType.daily);
+    expect(splitFuture.recurrence, RecurrenceType.none);
+    expect(unrelated.recurrenceSeriesId, 'unrelated-series');
+    expect(unrelated.recurrence, RecurrenceType.daily);
+    expect(
+      changedIds,
+      containsAll({'main-active', 'split-duplicate', 'split-future'}),
+    );
   });
 
   test('same recurrence series does not report schedule conflict', () {

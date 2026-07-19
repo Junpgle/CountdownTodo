@@ -127,8 +127,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   }
 
   Future<void> _rescheduleReminders() async {
-    if (_username.isEmpty || _username == "未登录" || _username == "加载中...")
+    if (_username.isEmpty || _username == "未登录" || _username == "加载中...") {
       return;
+    }
     try {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
@@ -1419,17 +1420,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     // 9月-11月：秋季
     // 12月-次年2月：冬季
     if (month >= 3 && month <= 5) {
-      return '${year}年春季';
+      return '$year年春季';
     } else if (month >= 6 && month <= 8) {
-      return '${year}年夏季';
+      return '$year年夏季';
     } else if (month >= 9 && month <= 11) {
-      return '${year}年秋季';
+      return '$year年秋季';
     } else {
       // 12月、1月、2月
       if (month == 12) {
-        return '${year}年冬季';
+        return '$year年冬季';
       } else {
-        return '${year}年冬季';
+        return '$year年冬季';
       }
     }
   }

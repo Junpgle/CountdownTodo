@@ -425,7 +425,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     child: Switch(
                       value: value,
                       onChanged: onChanged,
-                      activeColor: colorScheme.primary,
+                      activeThumbColor: colorScheme.primary,
                     ),
                   ),
                 ),
