@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../services/course_service.dart';
 import '../services/pomodoro_service.dart';
-import '../services/ai_todo_chat_launcher.dart';
-import '../services/ai_todo_action_executor.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/app_color_utils.dart';
@@ -2107,8 +2105,7 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
     };
 
     if (_activeDataViews.contains('todos')) {
-      Map<String, int> collisionMap = {};
-
+      final collisionMap = <String, int>{};
       for (int weekday = 1; weekday <= 7; weekday++) {
         final dayTodos = _intraDayTodosPerDay[weekday] ?? [];
         for (var todo in dayTodos) {
@@ -2124,18 +2121,9 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
           if (height < 20.0) height = 20.0;
 
-          String collisionKey = "${weekday}_${(top / 15).floor()}";
-          int stackIndex = collisionMap[collisionKey] ?? 0;
+          final collisionKey = '${weekday}_${(top / 15).floor()}';
+          final stackIndex = collisionMap[collisionKey] ?? 0;
           collisionMap[collisionKey] = stackIndex + 1;
-
-          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
-          double finalWidth = cellWidth - 2;
-          double finalLeft = leftOffset + 1;
-
-          if (stackIndex > 0) {
-            finalLeft += 4.0 * stackIndex;
-            finalWidth -= 4.0 * stackIndex;
-          }
 
           final colorScheme = Theme.of(context).colorScheme;
           Color todoColor =
@@ -2334,10 +2322,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
           if (height < 18.0) height = 18.0;
 
-          double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
-          double finalWidth = cellWidth - 2;
-          double finalLeft = leftOffset + 1;
-
           Color logColor =
               Theme.of(context).colorScheme.cdtInfo.withValues(alpha: 0.7);
           String logTitle = log.title.isNotEmpty ? log.title : '时间日志';
@@ -2490,7 +2474,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
           double height = bottom - top;
           if (height < 18.0) height = 18.0;
 
-          final leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
           final colorScheme = Theme.of(context).colorScheme;
           final planColor = plan.status == TodoPlanStatus.finished
               ? colorScheme.cdtSuccess.withValues(alpha: 0.58)
@@ -2749,10 +2732,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
             if (height < 5.0) continue;
             if (height < 18.0) height = 18.0;
 
-            double leftOffset = timeColumnWidth + (weekday - 1) * cellWidth;
-            double finalWidth = cellWidth - 2;
-            double finalLeft = leftOffset + 1;
-
           Color pomColor =
               Theme.of(context).colorScheme.cdtFocus.withValues(alpha: 0.6);
           String pomTitle = '专注';
@@ -2911,8 +2890,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
 
         double top = _timeToY(sh, sm, minuteHeight);
         double height = _timeToY(eh, em, minuteHeight) - top;
-        double left = timeColumnWidth + (course.weekday - 1) * cellWidth;
-        double courseWidth = cellWidth - 2;
 
         Color bgColor = _getCourseColor(course.courseName);
         final cardKey = _getCourseCardKey(
@@ -3748,36 +3725,6 @@ class _WeeklyCourseScreenState extends State<WeeklyCourseScreen>
               },
             ),
     );
-  }
-
-  Future<void> _openAiAssistant() async {
-    try {
-      final groups = await StorageService.getTodoGroups(widget.username);
-      if (!mounted) return;
-      await AiTodoChatLauncher.open(
-        context,
-        username: widget.username,
-        todos: _allTodos,
-        todoGroups: groups.where((g) => !g.isDeleted).toList(),
-        courses: _allCourses,
-        timeLogs: _allTimeLogs,
-        pomodoroRecords: _allPomodoroRecords,
-        pomodoroTags: _pomodoroTags,
-        onTodosBatchAction: (inserted, updated) async {
-          final allTodos = await StorageService.getTodos(widget.username);
-          final merged = AiTodoActionExecutor.mergeTodoUpdates(
-              allTodos, inserted, updated);
-          await StorageService.saveTodos(widget.username, merged);
-          await _loadData();
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('打开AI助手失败: $e')),
-        );
-      }
-    }
   }
 
   Widget _buildSkeleton() {

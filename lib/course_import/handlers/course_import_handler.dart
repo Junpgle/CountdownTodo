@@ -240,7 +240,6 @@ class CourseImportHandler {
     final result = await showDialog<SemesterInfo>(
       context: context,
       builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(

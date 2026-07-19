@@ -631,20 +631,14 @@ class _MyAppState extends State<MyApp> {
     // debugPrint('[Band] 处理手环操作: $action');
     if (action == 'finish') {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final actualSeconds = PomodoroRunState.computeActualSeconds(
-          runState.sessionStartMs, runState.accumulatedMs,
-          endMs: now);
-      final plannedSeconds = runState.plannedFocusSeconds;
       final record = PomodoroRecord.fromRunState(
         state: runState,
         status: PomodoroRecordStatus.completed,
         endMs: now,
       );
-      // debugPrint('[Band] Adding record: ${actualSeconds}s');
       await PomodoroService.addRecord(record);
       // debugPrint('[Band] Clearing run state');
       await PomodoroService.clearRunState();
-      // debugPrint('[Band] 番茄钟已完成，已记录 ${actualSeconds}s');
     } else if (action == 'abandon') {
       final now = DateTime.now().millisecondsSinceEpoch;
       final actualSeconds = PomodoroRunState.computeActualSeconds(

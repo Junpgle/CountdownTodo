@@ -21,6 +21,8 @@ enum TimelineEventType {
   courseStart,
   courseEnd,
   searchQuery,
+  timeLog,
+  planBlock,
 }
 
 class TimelineEvent {

@@ -219,11 +219,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return _isLocalScheduleConflict(item) ? '时间冲突' : '其他冲突';
   }
 
-  bool _hasServerSnapshot(dynamic item) {
-    final data = _findServerVersion(item);
-    return data != null && data.isNotEmpty;
-  }
-
   String? _relationType(dynamic item) {
     final data = _conflictData(item);
     if (data == null || data.isEmpty) return null;
@@ -280,12 +275,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     return _isLocalScheduleConflict(item) ? Colors.orangeAccent : Colors.amber;
   }
 
-  IconData _conflictIcon(dynamic item) {
-    return _isLocalScheduleConflict(item)
-        ? Icons.schedule_rounded
-        : Icons.warning_amber_rounded;
-  }
-
   String _itemTitle(Map<String, dynamic> data) {
     return data['content'] ??
         data['title'] ??
@@ -323,16 +312,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (key.isNotEmpty) deduped[key] = peer;
     }
     return deduped.values.toList();
-  }
-
-  String _conflictSummary(dynamic item) {
-    final peers = _conflictPeers(item);
-    if (peers.isEmpty) return '';
-    final titles = peers.map(_itemTitle).where((t) => t.isNotEmpty).toList();
-    if (titles.isEmpty) return '';
-    final head = titles.take(3).join('、');
-    final extra = titles.length > 3 ? ' 等 ${titles.length} 项' : '';
-    return '${_conflictLabel(item)}：$head$extra';
   }
 
   List<dynamic> get _timeConflictItems =>
@@ -923,7 +902,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     }
 
     final conflictColor = _conflictColor(item);
-    final isTodo = item is TodoItem;
     final itemId = _getConflictId(item);
     final isBatchSelected = _selectedConflictIds.contains(itemId);
 
@@ -1651,42 +1629,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     );
   }
 
-  Widget _buildStatChip({
-    required String label,
-    required int count,
-    required Color color,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? color.withValues(alpha: 0.18)
-              : color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: isSelected
-                ? color.withValues(alpha: 0.45)
-                : color.withValues(alpha: 0.18),
-          ),
-        ),
-        child: Text(
-          '$label $count',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showConflictHelp() {
     showModalBottomSheet(
       context: context,
@@ -1772,196 +1714,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
           Text(subtitle,
               style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildConflictCard(dynamic item) {
-    String title = "";
-    String subtitle = "";
-    int timestamp = 0;
-    IconData icon = Icons.help_outline;
-
-    if (item is TodoItem) {
-      title = item.title;
-      subtitle = item.remark ?? "待办任务";
-      timestamp = item.updatedAt;
-      icon = Icons.check_circle_outline;
-    } else if (item is TodoGroup) {
-      title = item.name;
-      subtitle = "分组/文件夹";
-      timestamp = item.updatedAt;
-      icon = Icons.folder_open;
-    } else if (item is CountdownItem) {
-      title = item.title;
-      subtitle = "倒计时项";
-      timestamp = item.updatedAt;
-      icon = Icons.event;
-    }
-    final conflictColor = _conflictColor(item);
-    final conflictIcon = _conflictIcon(item);
-    final conflictLabel = _conflictLabel(item);
-    final relationLabel = _relationLabel(item);
-    final conflictSummary = _conflictSummary(item);
-    final conflictPeers = _conflictPeers(item);
-    final hasServerSnapshot = _hasServerSnapshot(item);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: () => _resolveConflict(item),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                        color: conflictColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6)),
-                    child: Row(
-                      children: [
-                        Icon(conflictIcon, size: 12, color: conflictColor),
-                        const SizedBox(width: 4),
-                        Text(conflictLabel,
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: conflictColor,
-                                fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6)),
-                    child: Text(relationLabel,
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: Theme.of(context).colorScheme.primary,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                  const Spacer(),
-                  Text(
-                    DateFormat('MM-dd HH:mm')
-                        .format(DateTime.fromMillisecondsSinceEpoch(timestamp)),
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.1),
-                    child: Icon(icon,
-                        size: 18, color: Theme.of(context).colorScheme.primary),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.bold)),
-                        Text(subtitle,
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (conflictSummary.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(
-                  conflictSummary,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade700,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-              if (conflictPeers.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: conflictPeers.take(4).map((peer) {
-                    final peerData = Map<String, dynamic>.from(peer);
-                    final scope = _scheduleScopeLabel(peerData);
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.orangeAccent.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: Colors.orangeAccent.withValues(alpha: 0.18)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_itemTitle(peerData),
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          Text(scope,
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.grey.shade600)),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-              const Divider(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => _resolveConflict(item),
-                    icon: Icon(
-                        _isLocalScheduleConflict(item)
-                            ? Icons.visibility_rounded
-                            : (hasServerSnapshot
-                                ? Icons.compare_arrows_rounded
-                                : Icons.info_outline_rounded),
-                        size: 16),
-                    label: Text(
-                        _isLocalScheduleConflict(item)
-                            ? "查看冲突"
-                            : (hasServerSnapshot ? "对比并解决" : "查看说明"),
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              )
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -2230,7 +1982,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showBatchResolutionDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,

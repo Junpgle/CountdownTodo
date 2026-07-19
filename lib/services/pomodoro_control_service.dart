@@ -240,9 +240,6 @@ class PomodoroControlService {
     await NotificationService.cancelReminder(40002);
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds = PomodoroRunState.computeActualSeconds(
-        state.sessionStartMs, state.accumulatedMs,
-        endMs: now);
 
     await PomodoroService.addRecord(PomodoroRecord.fromRunState(
       state: state,

@@ -15,7 +15,6 @@ class TeamMessageCenterScreen extends StatefulWidget {
 class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   bool _isLoading = true;
   List<dynamic> _messages = [];
-  final Set<String> _handledJoinRequestKeys = <String>{};
   final Set<String> _processingJoinRequestKeys = <String>{};
   int _loadGeneration = 0;
 

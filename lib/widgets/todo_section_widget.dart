@@ -339,10 +339,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     DateTime? recurrenceEndDate;
     bool isAllDay = false;
     int reminderMinutes = 5; // 🚀 新增提醒设置
-    Map<String, int> categoryReminderDefaults = {};
-    String? currentUsername;
 
-    int currentTab = 0;
     TextEditingController aiInputCtrl = TextEditingController();
     List<ParsedTodoResult> parsedResults = [];
     int currentParseIndex = 0;
@@ -1994,7 +1991,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isLight = widget.isLight;
-    final bool isDark = !isLight;
 
     // ── 颜色层 ──
     final Color cardBg = todo.isDone
@@ -2922,24 +2918,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         ),
       ),
     );
-  }
-
-  List<TodoItem> _sortTodayTodos(List<TodoItem> list, DateTime now) {
-    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
-    final undone = list.where((t) => !t.isDone).toList()
-      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
-    final done = list.where((t) => t.isDone).toList()
-      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
-    return [...undone, ...done];
-  }
-
-  List<TodoItem> _sortFutureTodos(List<TodoItem> list, DateTime now) {
-    int startMs(TodoItem t) => t.createdDate ?? t.createdAt;
-    final undone = list.where((t) => !t.isDone).toList()
-      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
-    final done = list.where((t) => t.isDone).toList()
-      ..sort((a, b) => startMs(a).compareTo(startMs(b)));
-    return [...undone, ...done];
   }
 
   Widget _buildTodoList() {
@@ -3915,10 +3893,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final bool useDarkUI = isDarkTheme || widget.isLight;
 
-    final int undoneCount = widget.todos
-        .where((t) => !t.isDeleted && !_isHistoricalTodo(t) && !t.isDone)
-        .length;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4021,38 +3995,6 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       debugPrint('加载 AI 助手上下文失败: $e');
       return _AiAssistantContext(teams: _teams);
     }
-  }
-
-  void _showCreateGroupDialog(BuildContext context) {
-    final titleCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("新建待办文件夹"),
-        content: TextField(
-          controller: titleCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: "文件夹名称"),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text("取消")),
-          FilledButton(
-            onPressed: () async {
-              if (titleCtrl.text.trim().isEmpty) return;
-              final newGroup = TodoGroup(name: titleCtrl.text.trim());
-              final currentGroups = List<TodoGroup>.from(widget.todoGroups)
-                ..add(newGroup);
-              await StorageService.saveTodoGroups(
-                  widget.username, currentGroups);
-              widget.onRefreshRequested();
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text("创建"),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showIndependentTodoStatus(TodoItem todo) async {
@@ -4246,7 +4188,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   String? _selectedGroupId;
   late int _reminderMinutes;
   Map<String, int> _categoryReminderDefaults = {};
-  String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
   int _collabType = 0;
@@ -4349,8 +4290,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (username != null) {
       final defaults =
           await StorageService.getCategoryReminderMinutes(username);
+      if (!mounted) return;
       setState(() {
-        _username = username;
         _categoryReminderDefaults = defaults;
       });
     }
@@ -5591,8 +5532,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         .length;
     final missed =
         blocks.where((b) => b.status == TodoPlanStatus.missed).length;
-    final skipped =
-        blocks.where((b) => b.status == TodoPlanStatus.skipped).length;
     final rate = planned <= 0 ? 0.0 : (actual / planned).clamp(0.0, 999.0);
 
     Widget chip(String label, String value, Color color) {

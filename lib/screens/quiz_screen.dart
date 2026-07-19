@@ -372,13 +372,6 @@ class _QuizScreenState extends State<QuizScreen>
     );
   }
 
-  // 手动放弃考试（如果需要的话，可以在 AppBar 加个按钮调用这个）
-  void _quitTest() {
-    _currentSession = null;
-    NotificationService.cancelQuizNotification();
-    Navigator.pop(context);
-  }
-
   Widget _buildQuestionCard(Question q, int index) {
     String displayOp = q.operatorSymbol;
     if (displayOp == '*') displayOp = '×';

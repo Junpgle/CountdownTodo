@@ -92,32 +92,6 @@ class ClipboardService {
     return isValidHost;
   }
 
-  /// Truncate URL for display purposes
-  String _truncateForDisplay(String url) {
-    final trimmed = url.trim();
-    if (trimmed.isEmpty) return trimmed;
-
-    try {
-      final hasScheme =
-          RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*://').hasMatch(trimmed);
-      final uri = Uri.parse(hasScheme ? trimmed : 'https://$trimmed');
-
-      final host = uri.host;
-      final path = uri.path.isEmpty || uri.path == '/' ? '' : uri.path;
-
-      final display = path.isNotEmpty ? '$host$path' : host;
-
-      if (display.length > ClipboardConfig.maxDisplayLength) {
-        return '${display.substring(0, ClipboardConfig.maxDisplayLength)}...';
-      }
-      return display.isNotEmpty ? display : trimmed;
-    } catch (_) {
-      return trimmed.length > ClipboardConfig.maxDisplayLength
-          ? '${trimmed.substring(0, ClipboardConfig.maxDisplayLength)}...'
-          : trimmed;
-    }
-  }
-
   /// Get text from Windows clipboard using Win32 API
   String? _getClipboardText() {
     if (IsClipboardFormatAvailable(CF_UNICODETEXT) == 0) {
@@ -178,8 +152,6 @@ class ClipboardService {
 //             '[ClipboardService] New content detected: ${content.length > 50 ? "${content.substring(0, 50)}..." : content}');
 
         if (_isValidUrl(content)) {
-          final displayUrl = _truncateForDisplay(content);
-//           debugPrint('[ClipboardService] URL detected: $displayUrl');
           _urlController.add(content);
         } else {
 //           debugPrint('[ClipboardService] Content is not a valid URL');

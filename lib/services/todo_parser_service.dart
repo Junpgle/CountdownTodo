@@ -172,9 +172,6 @@ class TodoParserService {
     DateTime? endTime;
     bool isAllDay = false;
 
-    // 保存原始文本（如果外部没传）
-    String? currentOriginalText = original;
-
     // 1. 提取地点 / 备注 (Location)
     final atMatch = RegExp(r'@(\S+)').firstMatch(masked);
     if (atMatch != null) {

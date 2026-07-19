@@ -25,7 +25,6 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   String _version = '加载中...';
-  String _buildNumber = '';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
   bool _versionExpanded = false;
@@ -156,7 +155,6 @@ class _AboutScreenState extends State<AboutScreen> {
     if (mounted) {
       setState(() {
         _version = info.version;
-        _buildNumber = info.buildNumber;
       });
     }
   }

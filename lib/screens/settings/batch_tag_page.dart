@@ -719,10 +719,3 @@ class _BatchTagPageState extends State<BatchTagPage>
     );
   }
 }
-
-extension on PomodoroRecord {
-  void markAsChanged() {
-    version++;
-    updatedAt = DateTime.now().millisecondsSinceEpoch;
-  }
-}

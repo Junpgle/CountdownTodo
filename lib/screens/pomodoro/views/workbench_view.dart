@@ -77,10 +77,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
   List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<String> _selectedTagUuids = [];
-  // Backwards-compatibility: older code referred to `_selectedUuids`.
-  // Keep a getter/setter so any remaining call sites still work.
-  List<String> get _selectedUuids => _selectedTagUuids;
-  set _selectedUuids(List<String> v) => _selectedTagUuids = v;
 
   // ── Timer ──
   Timer? _ticker;
@@ -114,7 +110,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
-  bool _wsConnected = false;
   SyncConnectionState _syncConnState =
       SyncConnectionState.disconnected; // 🚀 新增：跟踪连接状态
   bool _hasShownUpdate = false;
@@ -244,7 +239,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _islandSub?.cancel();
     _bandSub?.cancel();
     _macStatusBarSub?.cancel();
-    _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -429,7 +423,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (!mounted) return;
       setState(() {
         _syncConnState = state;
-        _wsConnected = state == SyncConnectionState.connected;
       });
       // debugPrint('[工作台] 同步通道连接状态变更: $state');
     });
@@ -455,7 +448,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     await _syncService.forceReconnect(_userId, 'flutter_$_deviceId',
         authToken: authToken, appVersion: _appVersion);
 
-    if (mounted) setState(() => _wsConnected = true);
   }
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
@@ -1993,7 +1985,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showTagsDialog() async {
-    final updated = await Navigator.push<List<PomodoroTag>>(
+    await Navigator.push<List<PomodoroTag>>(
         context,
         MaterialPageRoute(
           builder: (_) => UnifiedTagManagerScreen(

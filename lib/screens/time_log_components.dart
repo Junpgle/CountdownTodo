@@ -2267,30 +2267,3 @@ class _MinuteDropdown extends StatelessWidget {
     );
   }
 }
-
-class _TinyButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  final bool primary;
-  const _TinyButton(
-      {required this.label, required this.onTap, required this.primary});
-  @override
-  Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return GestureDetector(
-        onTap: onTap,
-        child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-                color: primary ? accent : _TC.btnBg(context),
-                border: Border.all(
-                    color:
-                        primary ? Colors.transparent : _TC.btnBorder(context)),
-                borderRadius: BorderRadius.circular(8)),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: primary ? FontWeight.w700 : FontWeight.w400,
-                    color: primary ? Colors.white : _TC.textSub(context)))));
-  }
-}

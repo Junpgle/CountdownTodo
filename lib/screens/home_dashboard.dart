@@ -3252,9 +3252,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 🚀 辅助：带超时和错误捕获的任务加载器
   Future<T?> _loadDataTask<T>(String name, Future<T> task) async {
     try {
-      final start = DateTime.now();
       final result = await task.timeout(const Duration(seconds: 5));
-      final duration = DateTime.now().difference(start).inMilliseconds;
       return result;
     } catch (e) {
       // debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
@@ -3824,11 +3822,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (pendingSnapshotBeforeSync != null) {
       _pendingTodosToPersist = null;
       _todoPersistDebounce?.cancel();
-      final changedDesc = pendingSnapshotBeforeSync
-          .where((t) => !t.isDeleted)
-          .map((t) => '${t.id.substring(0, 8)} isDone=${t.isDone}')
-          .join(', ');
-      //debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
       await StorageService.saveTodos(
           widget.username, pendingSnapshotBeforeSync);
       // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改

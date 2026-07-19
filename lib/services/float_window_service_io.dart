@@ -148,10 +148,7 @@ class FloatWindowService {
         }
       }
 
-      final sent =
-          await IslandManager().sendStructuredPayload('island-1', payload);
-      // debugPrint(
-      //     '[FloatWindow] Sent copied_link payload: $displayUrl, success: $sent');
+      await IslandManager().sendStructuredPayload('island-1', payload);
     } catch (e) {
       // debugPrint(
       //     '[FloatWindow] Failed to show copied link island: $e\n$stackTrace');
@@ -182,7 +179,9 @@ class FloatWindowService {
       _islandActionSub ??= IslandChannel.actionStream.listen((event) {
         _handleIslandAction(event);
       });
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[FloatWindow] 初始化灵动岛消息监听失败: $e');
+    }
   }
 
   static Future<void> dispose() async {
@@ -201,7 +200,6 @@ class FloatWindowService {
 
   static void _handleIslandAction(Map<String, dynamic> event) {
     try {
-      final winId = event['windowId']?.toString();
       final action = event['action']?.toString();
       final payload = event['payload'] as Map<String, dynamic>?;
       // debugPrint('[FloatWindow] Island action from $winId: $action');

@@ -121,30 +121,6 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     }
   }
 
-  Future<void> _handleSyncRequest(String type) async {
-    _logs.add('开始处理同步请求: $type');
-    try {
-      switch (type) {
-        case 'todo':
-          await _syncTodos();
-          break;
-        case 'course':
-          await _syncCourses();
-          break;
-        case 'countdown':
-          await _syncCountdowns();
-          break;
-        case 'pomodoro':
-          await _syncPomodoro();
-          break;
-        default:
-          _logs.add('未知同步请求: $type');
-      }
-    } catch (e) {
-      _logs.add('同步异常: $e');
-    }
-  }
-
   Future<void> _autoRequestPermission() async {
     // 等待一下让设备连接完成
     await Future.delayed(const Duration(milliseconds: 500));

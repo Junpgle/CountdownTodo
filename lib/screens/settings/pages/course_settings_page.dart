@@ -555,93 +555,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
   }
 
-  Future<void> _pickSemesterDate(bool isStart) async {
-    DateTime initialDate =
-        (isStart ? _semesterStart : _semesterEnd) ?? DateTime.now();
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      helpText: isStart ? "选择开学日期" : "选择放假日期",
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _semesterStart = picked;
-          StorageService.saveAppSetting(
-              StorageService.KEY_SEMESTER_START, picked.toIso8601String());
-        } else {
-          _semesterEnd = picked;
-          StorageService.saveAppSetting(
-              StorageService.KEY_SEMESTER_END, picked.toIso8601String());
-        }
-      });
-
-      // 同步更新学期管理中的对应学期
-      if (!isStart && _semesterStart != null) {
-        // 找到当前学期（开学日期匹配的学期）
-        final currentSemesterIndex = _semesters.indexWhere((s) =>
-            s.startDate.year == _semesterStart!.year &&
-            s.startDate.month == _semesterStart!.month &&
-            s.startDate.day == _semesterStart!.day);
-        
-        if (currentSemesterIndex != -1) {
-          // 更新该学期的结束日期
-          final updatedSemester = SemesterInfo(
-            id: _semesters[currentSemesterIndex].id,
-            name: _semesters[currentSemesterIndex].name,
-            startDate: _semesters[currentSemesterIndex].startDate,
-            endDate: picked,
-            isCurrent: _semesters[currentSemesterIndex].isCurrent,
-          );
-          
-          final updatedSemesters = List<SemesterInfo>.from(_semesters);
-          updatedSemesters[currentSemesterIndex] = updatedSemester;
-          
-          await StorageService.saveSemesters(updatedSemesters);
-          if (!mounted) return;
-          setState(() {
-            _semesters = updatedSemesters;
-          });
-          
-        }
-      }
-
-      if (!mounted) return;
-      _courseImportHandler = CourseImportHandler(
-        context: context,
-        username: _username,
-        semesterStart: _semesterStart,
-        onRescheduleReminders: _rescheduleReminders,
-        showMessage: (msg) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(msg)));
-        },
-        onSemesterStartChanged: (date) {
-          if (mounted) setState(() => _semesterStart = date);
-        },
-      );
-
-      if (_userId != null) {
-        final startMs = _semesterStart != null
-            ? DateTime(_semesterStart!.year, _semesterStart!.month,
-                    _semesterStart!.day)
-                .millisecondsSinceEpoch
-            : null;
-        final endMs = _semesterEnd != null
-            ? DateTime(
-                    _semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
-                .millisecondsSinceEpoch
-            : null;
-        ApiService.uploadUserSettings(
-            semesterStartMs: startMs, semesterEndMs: endMs);
-      }
-    }
-  }
-
   Widget _buildTile({required String targetId, required Widget child}) {
     final bool isHighlighted = _highlightTarget == targetId;
     return Container(
@@ -895,43 +808,6 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           ),
           const SizedBox(height: 40),
         ],
-      ),
-    );
-  }
-
-  Widget _buildDateCard(
-      {required String title,
-      required DateTime? date,
-      required IconData icon,
-      required Color color,
-      required VoidCallback onTap}) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(title,
-                style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 4),
-            Text(
-              date == null ? "未设置" : DateFormat('yyyy/MM/dd').format(date),
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: date == null ? Colors.grey : null),
-            ),
-          ],
-        ),
       ),
     );
   }

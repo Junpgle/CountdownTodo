@@ -104,7 +104,9 @@ class TimelineService {
       );
       for (var row in poms) {
         final startTime = row['start_time'] as int;
-        final actualDur = row['actual_duration'] as int? ?? 0;
+        final actualDur = (row['actual_duration'] as num?)?.toInt() ??
+            (row['planned_duration'] as num?)?.toInt() ??
+            0;
         final status = row['status'] as String?;
         final title = row['todo_title'] as String? ?? '无题专注';
 
@@ -121,12 +123,65 @@ class TimelineService {
           events.add(TimelineEvent(
             id: 'pomo_end_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(
-                startTime + actualDur * 1000),
+              (row['end_time'] as num?)?.toInt() ??
+                  startTime + actualDur * 1000,
+            ),
             type: TimelineEventType.pomodoroEnd,
             title: status == 'completed' ? '收获专注果实' : '专注中断',
             subtitle: '$title (${actualDur ~/ 60}分钟)',
           ));
         }
+      }
+
+      // 5. 时间日志
+      final timeLogs = await db.query(
+        'time_logs',
+        where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
+      );
+      for (final row in timeLogs) {
+        final startTime = (row['start_time'] as num?)?.toInt() ?? 0;
+        final endTime = (row['end_time'] as num?)?.toInt() ?? startTime;
+        final durationMinutes =
+            ((endTime - startTime).clamp(0, 1 << 62) ~/ 60000);
+        final title = row['title']?.toString().trim();
+        events.add(TimelineEvent(
+          id: 'time_log_${row['id']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+          type: TimelineEventType.timeLog,
+          title: '记录实际投入',
+          subtitle:
+              '${title == null || title.isEmpty ? '未命名日志' : title} ($durationMinutes分钟)',
+        ));
+      }
+
+      // 6. 任务规划块
+      final planBlocks = await db.rawQuery(
+        'SELECT p.*, t.content AS todo_title FROM todo_plan_blocks p '
+        'LEFT JOIN todos t ON t.uuid = p.todo_uuid '
+        'WHERE p.is_deleted = 0 AND p.start_time >= ? AND p.start_time < ?',
+        [startOfDayMs, endOfDayMs],
+      );
+      for (final row in planBlocks) {
+        final startTime = (row['start_time'] as num?)?.toInt() ?? 0;
+        final plannedMinutes =
+            (row['planned_minutes'] as num?)?.toInt() ?? 0;
+        final statusIndex = (row['status'] as num?)?.toInt() ?? 0;
+        final status = TodoPlanStatus
+            .values[statusIndex.clamp(0, TodoPlanStatus.values.length - 1)];
+        final title = row['title_snapshot']?.toString().trim();
+        final todoTitle = row['todo_title']?.toString().trim();
+        final displayTitle = title?.isNotEmpty == true
+            ? title!
+            : (todoTitle?.isNotEmpty == true ? todoTitle! : '未命名规划');
+        events.add(TimelineEvent(
+          id: 'plan_block_${row['uuid']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+          type: TimelineEventType.planBlock,
+          title: '进入规划时段',
+          subtitle:
+              '$displayTitle ($plannedMinutes分钟 · ${_planStatusLabel(status)})',
+        ));
       }
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
@@ -134,6 +189,26 @@ class TimelineService {
 
     events.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return events;
+  }
+
+  String _planStatusLabel(TodoPlanStatus status) {
+    switch (status) {
+      case TodoPlanStatus.finished:
+        return '已达成';
+      case TodoPlanStatus.delayed:
+        return '已顺延';
+      case TodoPlanStatus.cancelled:
+        return '已取消';
+      case TodoPlanStatus.focusing:
+        return '专注中';
+      case TodoPlanStatus.missed:
+        return '漏做';
+      case TodoPlanStatus.skipped:
+        return '已跳过';
+      case TodoPlanStatus.planned:
+      case TodoPlanStatus.reminded:
+        return '已规划';
+    }
   }
 
   Future<TimelineSummary> getTodaySummary(String username) async {

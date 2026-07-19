@@ -600,10 +600,6 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
 
     final now = DateTime.now();
     final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
-    final isFuture = todo.dueDate != null &&
-        !isPast &&
-        !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day)
-            .isAtSameMomentAs(DateTime(now.year, now.month, now.day));
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";

@@ -509,7 +509,6 @@ class PieChartPainter extends CustomPainter {
 
   // 缓存 TextPainter，避免每帧重复创建
   late final List<TextPainter> _labelPainters;
-  late final List<String> _labels;
 
   PieChartPainter({
     required this.data,
@@ -532,7 +531,6 @@ class PieChartPainter extends CustomPainter {
             Colors.redAccent.shade200,
           ];
     final labelsList = data.keys.toList();
-    _labels = labelsList;
     _labelPainters = List.generate(labelsList.length, (i) {
       String displayLabel = labelsList[i];
       if (displayLabel.length > 6) {

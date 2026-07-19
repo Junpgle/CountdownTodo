@@ -66,10 +66,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _isParsing = false;
   List<ParsedTodoResult> _parsedResults = [];
   int _currentParseIndex = 0;
-  String? _llmRawResponse;
   String? _currentOriginalText;
   String? _selectedImagePath;
-  bool _isLoading = true; // 🚀 首页加载锁
   Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别待办
 
   final GlobalKey _aiTabSwitchKey = GlobalKey();
@@ -125,7 +123,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   String? _username;
   List<Team> _teams = [];
   String? _selectedTeamUuid;
-  String? _selectedTeamName;
   int _collabType = 0;
 
   late AnimationController _dotsController;
@@ -169,7 +166,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
     _selectedGroupId = widget.initialGroupId;
     _selectedTeamUuid = widget.initialTeamUuid;
-    _selectedTeamName = widget.initialTeamName;
     _dotsController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -216,7 +212,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (mounted) {
       setState(() {
         _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
-        _isLoading = false; // 🚀 加载完成
       });
     }
   }
@@ -541,7 +536,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _parsedResults = parsedResultsList;
         _currentParseIndex = 0;
         _isParsing = false;
-        _llmRawResponse = const JsonEncoder.withIndent('  ').convert(results);
         _currentOriginalText = _aiInputCtrl.text;
       });
 
@@ -1685,10 +1679,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                     ],
                     onSelected: (v) => setState(() {
                       _selectedTeamUuid = v == "__none__" ? null : v;
-                      _selectedTeamName = _teams
-                          .where((t) => t.uuid == _selectedTeamUuid)
-                          .firstOrNull
-                          ?.name;
                     }),
                   )),
               ],

@@ -534,61 +534,48 @@ class LanSyncService {
             )
           : LanSyncConfig();
 
-      int todosSynced = 0,
-          countdownsSynced = 0,
-          timeLogsSynced = 0,
-          pomodoroTagsSynced = 0,
-          pomodoroRecordsSynced = 0,
-          coursesSynced = 0;
-
       final username = _currentUserId!;
       final step =
           syncConfig.totalCount > 0 ? 0.4 / syncConfig.totalCount : 0.1;
       double progress = 0.5;
 
       if (syncConfig.syncTodos) {
-        await _mergeTodos(
-            username, remoteTodos, (count) => todosSynced = count);
+        await _mergeTodos(username, remoteTodos, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并待办完成...');
       }
 
       if (syncConfig.syncCountdowns) {
-        await _mergeCountdowns(
-            username, remoteCountdowns, (count) => countdownsSynced = count);
+        await _mergeCountdowns(username, remoteCountdowns, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并倒数日完成...');
       }
 
       if (syncConfig.syncTimeLogs) {
-        await _mergeTimeLogs(
-            username, remoteTimeLogs, (count) => timeLogsSynced = count);
+        await _mergeTimeLogs(username, remoteTimeLogs, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并时间日志完成...');
       }
 
       if (syncConfig.syncPomodoroTags) {
-        await _mergePomodoroTags(
-            remotePomodoroTags, (count) => pomodoroTagsSynced = count);
+        await _mergePomodoroTags(remotePomodoroTags, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并番茄标签完成...');
       }
 
       if (syncConfig.syncPomodoroRecords) {
-        await _mergePomodoroRecords(
-            remotePomodoroRecords, (count) => pomodoroRecordsSynced = count);
+        await _mergePomodoroRecords(remotePomodoroRecords, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并番茄记录完成...');
       }
 
       if (syncConfig.syncCourses) {
-        await _mergeCourses(
-            username, remoteCourses, (count) => coursesSynced = count);
+        await _mergeCourses(username, remoteCourses, (_) {});
         progress += step;
         _emitProgressValue(progress);
         _emitProgress('合并课程完成...');
@@ -617,9 +604,6 @@ class LanSyncService {
 
       _emitProgressValue(1.0);
       _emitProgress('同步完成');
-
-      // debugPrint(
-      //     '[LanSync] Sync from $remoteDeviceId: todos=$todosSynced, countdowns=$countdownsSynced, timeLogs=$timeLogsSynced, pomTags=$pomodoroTagsSynced, pomRecords=$pomodoroRecordsSynced, courses=$coursesSynced');
     }
   }
 

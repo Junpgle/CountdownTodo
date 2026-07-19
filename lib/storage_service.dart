@@ -77,7 +77,6 @@ class StorageService {
     }
 
     final batch = db.batch();
-    int queuedPlanOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final itemData = item.toDbJson();
@@ -114,7 +113,6 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
-        queuedPlanOps++;
       }
 
       if (hasChanged || oldData == null) {
@@ -125,8 +123,6 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
-      //debugPrint(
-      //    '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (sync) requestSync(username);
@@ -291,7 +287,6 @@ class StorageService {
       {}; // 🚀 force-flush 保护的 UUID，merge 时跳过
   static final Set<String> _attemptedRecurrenceSeriesRepairUploads = {};
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
-  static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
   static ValueNotifier<String> themeColorModeNotifier =
       ValueNotifier('default');
@@ -790,7 +785,6 @@ class StorageService {
 
     // 🚀 Batch 极速批量写入
     final batch = db.batch();
-    int queuedTodoOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final oldData = existingItemsMap[item.id];
@@ -833,7 +827,6 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
-        queuedTodoOps++;
         //if (!isSyncSource) {
         //debugPrint(
         //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
@@ -924,10 +917,6 @@ class StorageService {
           debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
         }
       }
-
-      /*debugPrint(
-          '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
-    */
     }
 
     if (recomputeScheduleConflicts) {
@@ -938,10 +927,6 @@ class StorageService {
     Future.microtask(() => _syncTodosToBand(dedupeList));
     triggerRefresh();
   }
-
-  // --- 辅助方法 ---
-  static List<String> _serializeTodos(List<TodoItem> items) =>
-      items.map((e) => jsonEncode(e.toJson())).toList();
 
   static bool _hasSubstantialChange(Map<String, dynamic> before,
       Map<String, dynamic> after, List<String> fields) {
@@ -3669,22 +3654,6 @@ class StorageService {
       }
 
       // 5. 发起网络同步请求
-      final uploadedTodoUuids =
-          dirtyTodos.map((e) => (e['uuid'] ?? e['id']).toString()).toList();
-      final uploadedDeletedTodoUuids = dirtyTodos
-          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final uploadedPlanUuids = dirtyPlanBlocks
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final uploadedDeletedPlanUuids = dirtyPlanBlocks
-          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      /*debugPrint(
-          '🧪 [SyncDiag][Client->Server] deviceId=$deviceId lastSync=$lastSyncTime todos=${dirtyTodos.length} deletedTodos=${uploadedDeletedTodoUuids.length} todoUuids=$uploadedTodoUuids deletedTodoUuids=$uploadedDeletedTodoUuids planBlocks=${dirtyPlanBlocks.length} deletedPlanBlocks=${uploadedDeletedPlanUuids.length} planUuids=$uploadedPlanUuids deletedPlanUuids=$uploadedDeletedPlanUuids');
-*/
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -3701,31 +3670,6 @@ class StorageService {
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
-      final serverTodosPreview =
-          (response['server_todos'] as List?) ?? const [];
-      final serverTodoUuids = serverTodosPreview
-          .whereType<Map>()
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverDeletedTodoUuids = serverTodosPreview
-          .whereType<Map>()
-          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverPlanPreview =
-          (response['server_plan_blocks'] as List?) ?? const [];
-      final serverPlanUuids = serverPlanPreview
-          .whereType<Map>()
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverDeletedPlanUuids = serverPlanPreview
-          .whereType<Map>()
-          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      /*debugPrint(
-          '🧪 [SyncDiag][Server->Client] success=${response['success']} todos=${serverTodosPreview.length} deletedTodos=${serverDeletedTodoUuids.length} todoUuids=$serverTodoUuids deletedTodoUuids=$serverDeletedTodoUuids planBlocks=${serverPlanPreview.length} deletedPlanBlocks=${serverDeletedPlanUuids.length} planUuids=$serverPlanUuids deletedPlanUuids=$serverDeletedPlanUuids');
-*/
       bool hasPendingUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
