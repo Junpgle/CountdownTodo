@@ -80,11 +80,8 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
             Flexible(
               child: ReorderableListView(
                 shrinkWrap: true,
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (oldIndex < newIndex) {
-                      newIndex -= 1;
-                    }
                     final item = _items.removeAt(oldIndex);
                     _items.insert(newIndex, item);
                   });

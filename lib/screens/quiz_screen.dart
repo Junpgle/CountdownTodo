@@ -72,7 +72,7 @@ class _QuizScreenState extends State<QuizScreen>
     // 如果有存档，且存档的用户是当前用户，则恢复
     if (_currentSession != null &&
         _currentSession!.username == widget.username) {
-      print("恢复上次的答题进度");
+      debugPrint("恢复上次的答题进度");
       setState(() {
         questions = _currentSession!.questions;
         currentIndex = _currentSession!.currentIndex;

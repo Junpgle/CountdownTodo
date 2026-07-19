@@ -1476,7 +1476,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                           transitionBuilder: (child, animation) =>
                               SizeTransition(
                             sizeFactor: animation,
-                            axisAlignment: 1,
+                            alignment: AlignmentDirectional.bottomStart,
                             child: FadeTransition(
                               opacity: animation,
                               child: child,
@@ -1750,7 +1750,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) => SizeTransition(
             sizeFactor: animation,
-            axisAlignment: 1,
+            alignment: AlignmentDirectional.bottomStart,
             child: FadeTransition(
               opacity: animation,
               child: child,

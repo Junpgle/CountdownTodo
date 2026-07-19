@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../../models.dart';
 
@@ -115,7 +116,7 @@ class XidianScheduleParser {
         }
       }
     } catch (e) {
-      print("ICS 日期解析错误: $e");
+      debugPrint("ICS 日期解析错误: $e");
     }
     return null;
   }

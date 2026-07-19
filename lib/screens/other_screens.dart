@@ -118,9 +118,11 @@ class _LeaderboardListState extends State<_LeaderboardList> {
               Color? rankColor;
               if (i == 0) {
                 rankColor = Colors.amber; // 金
-              } else if (i == 1)
+              } else if (i == 1) {
                 rankColor = Colors.grey; // 银
-              else if (i == 2) rankColor = Colors.orange; // 铜
+              } else if (i == 2) {
+                rankColor = Colors.orange; // 铜
+              }
 
               // 兼容云端字段 (duration) 和 本地字段 (time)
               // API: {username, score, duration}

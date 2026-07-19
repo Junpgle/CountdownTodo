@@ -223,7 +223,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
       transitionBuilder: (Widget child, Animation<double> animation) {
         return SizeTransition(
           sizeFactor: animation,
-          axisAlignment: -1.0,
+          alignment: AlignmentDirectional.topStart,
           child: FadeTransition(opacity: animation, child: child),
         );
       },

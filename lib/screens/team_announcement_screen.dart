@@ -8,7 +8,8 @@ class TeamAnnouncementScreen extends StatefulWidget {
   const TeamAnnouncementScreen({super.key, required this.team});
 
   @override
-  _TeamAnnouncementScreenState createState() => _TeamAnnouncementScreenState();
+  State<TeamAnnouncementScreen> createState() =>
+      _TeamAnnouncementScreenState();
 }
 
 class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import '../../models.dart';
 
 class HfutScheduleParser {
@@ -273,7 +274,9 @@ class HfutScheduleParser {
         while (j < text.length && depth > 0) {
           if (text[j] == '(' || text[j] == '（') {
             depth++;
-          } else if (text[j] == ')' || text[j] == '）') depth--;
+          } else if (text[j] == ')' || text[j] == '）') {
+            depth--;
+          }
           j++;
         }
         final content = text.substring(i + 1, j - 1);
@@ -298,7 +301,9 @@ class HfutScheduleParser {
         while (j < text.length && depth > 0) {
           if (text[j] == '(' || text[j] == '（') {
             depth++;
-          } else if (text[j] == ')' || text[j] == '）') depth--;
+          } else if (text[j] == ')' || text[j] == '）') {
+            depth--;
+          }
           j++;
         }
         final content = text.substring(i + 1, j - 1);
@@ -573,7 +578,7 @@ class HfutScheduleParser {
     final lessonList = data['lessonList'] as List? ?? [];
     final scheduleList = data['scheduleList'] as List? ?? [];
 
-    print(
+    debugPrint(
         '[HfutParser] Parsing JSON: ${lessonList.length} lessons, ${scheduleList.length} schedules');
 
     // 【修改点】使用 String 作为 Key，防止 `int` 和 `String` 的隐式类型崩溃异常
@@ -597,15 +602,15 @@ class HfutScheduleParser {
         }
         if (teachers.isNotEmpty) {
           teacherMap[lessonId] = teachers.join(', ');
-          print(
+          debugPrint(
               '[HfutParser] Lesson $lessonId teachers found: ${teacherMap[lessonId]}');
         } else {
-          print(
+          debugPrint(
               '[HfutParser] Lesson $lessonId NO teachers in teacherAssignmentList');
           // Try another fallback for teacher name inside lesson item
           if (item['teacherNames'] != null) {
             teacherMap[lessonId] = item['teacherNames'].toString();
-            print(
+            debugPrint(
                 '[HfutParser] Using fallback teacherNames: ${teacherMap[lessonId]}');
           } else if (item['teachers'] != null && item['teachers'] is List) {
             String names = (item['teachers'] as List)
@@ -614,7 +619,7 @@ class HfutScheduleParser {
                 .join(', ');
             if (names.isNotEmpty) {
               teacherMap[lessonId] = names;
-              print('[HfutParser] Using fallback teachers list: $names');
+              debugPrint('[HfutParser] Using fallback teachers list: $names');
             }
           }
         }
@@ -646,7 +651,7 @@ class HfutScheduleParser {
               teacherMap[lessonId] ??
               '未知教师';
           if (teacherName == '未知教师' || teacherName.isEmpty) {
-            print(
+            debugPrint(
                 '[HfutParser] Warning: Missing teacher for schedule of lesson $lessonId');
           }
           if (teacherName.isEmpty || teacherName == 'null') {

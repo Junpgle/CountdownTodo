@@ -373,9 +373,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       itemCount: _tags.length,
-      onReorder: (oldIndex, newIndex) {
+      onReorderItem: (oldIndex, newIndex) {
         setState(() {
-          if (oldIndex < newIndex) newIndex -= 1;
           final tag = _tags.removeAt(oldIndex);
           _tags.insert(newIndex, tag);
         });

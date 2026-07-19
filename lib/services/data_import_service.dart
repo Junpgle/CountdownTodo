@@ -42,8 +42,8 @@ class DataImportService {
     if (_uuidRemap.containsKey(oldUuid)) {
       return _uuidRemap[oldUuid]!;
     }
-    final newUuid =
-        const Uuid().v5(Uuid.NAMESPACE_URL, '$_uuidNamespaceSalt|$oldUuid');
+    final newUuid = const Uuid()
+        .v5(Namespace.url.value, '$_uuidNamespaceSalt|$oldUuid');
     _uuidRemap[oldUuid] = newUuid;
     return newUuid;
   }

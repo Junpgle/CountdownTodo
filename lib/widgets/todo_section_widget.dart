@@ -2863,7 +2863,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           opacity: animation,
           child: SizeTransition(
             sizeFactor: animation,
-            axisAlignment: -1,
+            alignment: AlignmentDirectional.topStart,
             child: child,
           ),
         );
@@ -3011,7 +3011,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           return FadeTransition(
               opacity: animation,
               child: SizeTransition(
-                  sizeFactor: animation, axisAlignment: -1, child: child));
+                  sizeFactor: animation,
+                  alignment: AlignmentDirectional.topStart,
+                  child: child));
         },
         child: (!showTodayItems && todayItems.isNotEmpty)
             ? GestureDetector(
@@ -3162,8 +3164,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           buildDefaultDragHandles: false,
-                          onReorder: (oldIndex, newIndex) {
-                            if (newIndex > oldIndex) newIndex -= 1;
+                          onReorderItem: (oldIndex, newIndex) {
                             final List<int> todayIndices = [];
                             for (int i = 0; i < widget.todos.length; i++) {
                               final t = widget.todos[i];
@@ -3251,7 +3252,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         return FadeTransition(
             opacity: animation,
             child: SizeTransition(
-                sizeFactor: animation, axisAlignment: -1, child: child));
+                sizeFactor: animation,
+                alignment: AlignmentDirectional.topStart,
+                child: child));
       },
       child: !_isWholeListExpanded
           ? GestureDetector(
@@ -4818,7 +4821,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                               .containsKey(_selectedGroupId)) {
                         _reminderMinutes =
                             _categoryReminderDefaults[_selectedGroupId]!;
-                      } else if (_selectedGroupId == null) _reminderMinutes = 5;
+                      } else if (_selectedGroupId == null) {
+                        _reminderMinutes = 5;
+                      }
                     }),
                   )),
                 if (availableGroups.isNotEmpty && _teams.isNotEmpty)

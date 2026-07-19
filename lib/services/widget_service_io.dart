@@ -113,12 +113,13 @@ class WidgetService {
     final diffDays = dueDay.difference(today).inDays;
     if (diffDays < 0) {
       return '已逾期';
-    } else if (diffDays == 0)
+    } else if (diffDays == 0) {
       return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
-    else if (diffDays == 1)
+    } else if (diffDays == 1) {
       return '明天';
-    else
+    } else {
       return '$diffDays天后';
+    }
   }
 
   static Future<void> updateAllWidgetData(

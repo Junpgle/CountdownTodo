@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:intl/intl.dart';
@@ -122,7 +123,7 @@ class XmuScheduleParser {
 
       return utf8.decode(bytes, allowMalformed: true);
     } catch (e) {
-      print("MHTML底层解码失败: $e");
+      debugPrint("MHTML底层解码失败: $e");
       return rawString;
     }
   }

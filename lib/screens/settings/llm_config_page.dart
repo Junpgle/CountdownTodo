@@ -1519,14 +1519,30 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         // 自定义模型 or 预设模型下拉
         if (selectedProvider == 'custom') ...[
           if (customModels.isNotEmpty)
-            ...(customModels.map((m) => _buildCustomModelChip(
-                  name: m.name,
-                  modelId: m.modelId,
-                  isSelected: selectedModelId == m.id,
-                  onTap: () => onCustomTap(m),
-                  onEdit: () => onCustomEdit(m),
-                  onDelete: () => onCustomDelete(m),
-                ))),
+            RadioGroup<String>(
+              groupValue: selectedModelId,
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+                final selected =
+                    customModels.firstWhere((model) => model.id == value);
+                onCustomTap(selected);
+              },
+              child: Column(
+                children: customModels
+                    .map<Widget>((m) => _buildCustomModelChip(
+                          value: m.id,
+                          name: m.name,
+                          modelId: m.modelId,
+                          isSelected: selectedModelId == m.id,
+                          onTap: () => onCustomTap(m),
+                          onEdit: () => onCustomEdit(m),
+                          onDelete: () => onCustomDelete(m),
+                        ))
+                    .toList(),
+              ),
+            ),
           TextButton.icon(
             onPressed: onAddCustom,
             icon: const Icon(Icons.add, size: 16),
@@ -1626,6 +1642,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Widget _buildCustomModelChip({
+    required String value,
     required String name,
     required String modelId,
     required bool isSelected,
@@ -1650,9 +1667,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         child: Row(
           children: [
             Radio<String>(
-              value: name,
-              groupValue: isSelected ? name : null,
-              onChanged: (_) => onTap(),
+              value: value,
               activeColor: Colors.purple,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),

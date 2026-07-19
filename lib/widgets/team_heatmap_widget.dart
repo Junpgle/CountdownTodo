@@ -59,11 +59,13 @@ class TeamHeatmapWidget extends StatelessWidget {
                     int intensity = 0;
                     if (count > 0 && count <= 2) {
                       intensity = 1;
-                    } else if (count > 2 && count <= 5)
+                    } else if (count > 2 && count <= 5) {
                       intensity = 2;
-                    else if (count > 5 && count <= 9)
+                    } else if (count > 5 && count <= 9) {
                       intensity = 3;
-                    else if (count > 9) intensity = 4;
+                    } else if (count > 9) {
+                      intensity = 4;
+                    }
 
                     return Container(
                       width: 10,

@@ -8,7 +8,7 @@ class TeamMessageCenterScreen extends StatefulWidget {
   const TeamMessageCenterScreen({super.key, required this.managedTeams});
 
   @override
-  _TeamMessageCenterScreenState createState() =>
+  State<TeamMessageCenterScreen> createState() =>
       _TeamMessageCenterScreenState();
 }
 

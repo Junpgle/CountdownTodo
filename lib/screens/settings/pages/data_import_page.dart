@@ -558,23 +558,31 @@ class _DataImportPageState extends State<DataImportPage> {
                 style: TextStyle(fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
-              RadioListTile<TeamDataStrategy>(
-                title: const Text('跳过'),
-                subtitle: const Text('不导入团队数据'),
-                value: TeamDataStrategy.skip,
+              RadioGroup<TeamDataStrategy>(
                 groupValue: _teamStrategy,
-                onChanged: (v) => setState(() => _teamStrategy = v!),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-              ),
-              RadioListTile<TeamDataStrategy>(
-                title: const Text('转为个人数据'),
-                subtitle: const Text('去除团队绑定，作为个人数据导入'),
-                value: TeamDataStrategy.convertToPersonal,
-                groupValue: _teamStrategy,
-                onChanged: (v) => setState(() => _teamStrategy = v!),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _teamStrategy = value);
+                  }
+                },
+                child: const Column(
+                  children: [
+                    RadioListTile<TeamDataStrategy>(
+                      title: Text('跳过'),
+                      subtitle: Text('不导入团队数据'),
+                      value: TeamDataStrategy.skip,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                    RadioListTile<TeamDataStrategy>(
+                      title: Text('转为个人数据'),
+                      subtitle: Text('去除团队绑定，作为个人数据导入'),
+                      value: TeamDataStrategy.convertToPersonal,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
+                  ],
+                ),
               ),
             ],
           ],

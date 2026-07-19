@@ -334,11 +334,13 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         String d = item['device_name'] ?? "未知设备";
         if (d.contains("Phone")) {
           d = "手机";
-        } else if (d.contains("Tablet"))
+        } else if (d.contains("Tablet")) {
           d = "平板";
-        else if (d.contains("Windows") ||
+        } else if (d.contains("Windows") ||
             d.contains("PC") ||
-            d.contains("LAPT")) d = "电脑";
+            d.contains("LAPT")) {
+          d = "电脑";
+        }
         deviceMap[d] = (deviceMap[d] ?? 0) + (item['duration'] as int);
       }
 
