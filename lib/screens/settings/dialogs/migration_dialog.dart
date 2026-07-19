@@ -91,23 +91,24 @@ class _MigrationDialogState extends State<MigrationDialog> {
                           email: emailCtrl.text,
                           password: passCtrl.text,
                           onProgress: (msg) {
+                            if (!mounted) return;
                             setState(() => statusText = msg);
                           });
 
-                      if (!mounted) return;
+                      if (!context.mounted) return;
+                      final messenger = ScaffoldMessenger.of(context);
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      messenger.showSnackBar(const SnackBar(
                           content: Text('✅ 迁移大成功！您的所有数据和账户已落户阿里云。')));
                       widget.onSuccess();
                     } catch (e) {
+                      if (!context.mounted) return;
                       setState(() {
                         isMigrating = false;
                         statusText = "";
                       });
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('❌ 迁移失败: $e')));
-                      }
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text('❌ 迁移失败: $e')));
                     }
                   },
                   child: const Text("验证并开始迁移")),

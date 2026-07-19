@@ -68,7 +68,9 @@ class StorageManagementHandler {
         await for (final child in file.list()) {
           total += await _getTotalSizeOfFilesInDir(child);
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('读取目录大小失败 (${file.path}): $e');
+      }
       return total;
     }
     return 0;
@@ -86,7 +88,9 @@ class StorageManagementHandler {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('扫描安装包文件失败 (${dir.path}): $e');
+      }
     }
     return total;
   }
@@ -120,7 +124,9 @@ class StorageManagementHandler {
                 taskId: task.taskId, shouldDeleteContent: true);
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('清理下载任务失败: $e');
+      }
     } catch (e) {
       debugPrint("深度清理缓存失败: $e");
     } finally {
@@ -136,9 +142,13 @@ class StorageManagementHandler {
         await for (var child in dir.list()) {
           try {
             await child.delete(recursive: true);
-          } catch (e) {}
+          } catch (e) {
+            debugPrint('删除缓存项失败 (${child.path}): $e');
+          }
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('遍历缓存目录失败 (${dir.path}): $e');
+      }
     }
   }
 
@@ -151,11 +161,15 @@ class StorageManagementHandler {
             if (name.endsWith('.apk') || name.endsWith('.exe')) {
               try {
                 await child.delete();
-              } catch (e) {}
+              } catch (e) {
+                debugPrint('删除安装包失败 (${child.path}): $e');
+              }
             }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('遍历安装包目录失败 (${dir.path}): $e');
+      }
     }
   }
 
@@ -185,11 +199,15 @@ class StorageManagementHandler {
                   'file': entity,
                 });
               }
-            } catch (e) {}
+            } catch (e) {
+              debugPrint('读取文件大小失败 (${entity.path}): $e');
+            }
           }
         }
         dirSizes[dirName] = totalSize;
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('扫描目录失败 ($dirName, ${dir.path}): $e');
+      }
     }
 
     try {

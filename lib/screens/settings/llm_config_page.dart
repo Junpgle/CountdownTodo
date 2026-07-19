@@ -838,11 +838,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
         try {
           await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
         } catch (e) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('无法打开链接: $e')),
-            );
-          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('无法打开链接: $e')),
+          );
         }
       },
       borderRadius: BorderRadius.circular(8),
@@ -999,11 +998,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                         await launchUrl(Uri.parse(url),
                             mode: LaunchMode.platformDefault);
                       } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('无法打开链接: $e')),
-                          );
-                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('无法打开链接: $e')),
+                        );
                       }
                     },
                     child: Text(
@@ -1080,11 +1078,10 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                         await launchUrl(Uri.parse('https://build.nvidia.com'),
                             mode: LaunchMode.platformDefault);
                       } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('无法打开链接: $e')),
-                          );
-                        }
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('无法打开链接: $e')),
+                        );
                       }
                     },
                     child: Text(
@@ -1946,6 +1943,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   apiKey: apiKeyCtrl.text.trim(),
                 );
                 await LLMService.saveCustomTextModel(model);
+                if (!mounted || !ctx.mounted) return;
                 setState(() {
                   if (existing != null) {
                     final idx = _customTextModels
@@ -2085,6 +2083,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
                   apiKey: apiKeyCtrl.text.trim(),
                 );
                 await LLMService.saveCustomVisionModel(model);
+                if (!mounted || !ctx.mounted) return;
                 setState(() {
                   if (existing != null) {
                     final idx = _customVisionModels

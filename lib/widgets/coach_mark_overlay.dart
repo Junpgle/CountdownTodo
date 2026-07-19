@@ -94,7 +94,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
 

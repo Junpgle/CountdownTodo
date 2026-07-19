@@ -326,11 +326,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                             onPressed: () async {
                               _logs.add('手动检查手环更新...');
                               await UpdateService.syncBandVersionInfo();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('已向手环推送最新版本信息')),
-                                );
-                              }
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已向手环推送最新版本信息')),
+                              );
                             },
                             icon: const Icon(Icons.system_update_alt_rounded,
                                 size: 18),

@@ -1627,7 +1627,7 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
             endTime: end,
             durationMin: (end - p.startTime) ~/ 60000,
             id: p.uuid,
-            isCompleted: p.isCompleted ?? false);
+            isCompleted: p.isCompleted);
       }),
     ]..sort((a, b) => a.startTime.compareTo(b.startTime)); // 改为升序，方便聚合处理
 

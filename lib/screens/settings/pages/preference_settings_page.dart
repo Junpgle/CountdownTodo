@@ -188,14 +188,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
     if (confirmed != true || !mounted) return;
 
-    final downloadContext = context;
     setState(() {
       _isForceDownloading = true;
       _forceDownloadProgress = 0.0;
     });
 
     await UpdateService.forceDownloadLatest(
-      downloadContext,
+      context,
       onProgress: (progress) {
         if (mounted) setState(() => _forceDownloadProgress = progress);
       },

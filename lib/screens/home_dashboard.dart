@@ -5344,12 +5344,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         timeSalutation: _timeSalutation,
         onSettings: () {
           Future.delayed(const Duration(milliseconds: 350), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: const SettingsPage(),
               sourceKey: _settingsButtonKey,
             );
+            if (!mounted) return;
             _loadSectionPreferences();
             _loadSemesterSettings();
             await _loadHomeTextConfig();
@@ -5364,12 +5365,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onTeams: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TeamManagementScreen(username: widget.username),
               sourceKey: _teamsButtonKey,
             );
+            if (!mounted) return;
             final unreadBackgroundNotifications =
                 await BackgroundNotificationService
                     .getUnreadBackgroundNotifications();
@@ -5389,7 +5391,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         hasTeamConflictDot: _hasTeamConflictDot,
         onTimeline: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: PersonalTimelineScreen(username: widget.username),
@@ -5399,7 +5401,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onScreenTime: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TimeLogScreen(username: widget.username),
@@ -5409,7 +5411,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onPlanCenter: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TodoPlanScreen(username: widget.username),
@@ -5421,7 +5423,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onGuide: () {
           Future.delayed(const Duration(milliseconds: 350), () {
-            if (!mounted) return;
+            if (!context.mounted) return;
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.material(
                 builder: (context) => FeatureGuideScreen(
@@ -5434,7 +5436,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onUpdate: () {
           Future.delayed(const Duration(milliseconds: 300), () {
-            if (!mounted) return;
+            if (!context.mounted) return;
             UpdateService.checkUpdateAndPrompt(context, isManual: true);
           });
         },

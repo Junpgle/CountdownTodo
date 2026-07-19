@@ -42,6 +42,7 @@ class CourseImportHandler {
     // 先尝试从存储读取最新值（处理构造时未传入的情况）
     semesterStart ??= await StorageService.getSemesterStart();
     if (semesterStart != null) return true;
+    if (!context.mounted) return false;
 
     final DateTime? picked = await showDialog<DateTime>(
       context: context,
@@ -118,6 +119,7 @@ class CourseImportHandler {
   Future<String?> _askTargetSemester() async {
     final semesters = await StorageService.getSemesters();
     final activeSemesterId = await StorageService.getActiveSemesterId();
+    if (!context.mounted) return null;
 
     // 始终显示选择界面，让用户可以选择或创建新学期
     final selected = await showDialog<SemesterInfo>(
@@ -361,6 +363,7 @@ class CourseImportHandler {
     // 检测是否有时间冲突
     final conflicts =
         await CourseService.detectTimeConflicts(username, newCourses);
+    if (!context.mounted) return null;
 
     if (conflicts.isNotEmpty) {
       // 有冲突：提示用户将覆盖冲突课程
@@ -674,6 +677,7 @@ class CourseImportHandler {
         case 'zf':
           sourceName = "正方教务系统";
           _closeLoadingDialog();
+          if (!context.mounted) return;
           Map<int, Map<String, int>>? userAdjustedTimes =
               await showDialog<Map<int, Map<String, int>>>(
             context: context,
@@ -783,6 +787,7 @@ class CourseImportHandler {
   Future<void> importFromWebView() async {
     // 🚀 1. 弹出高校选择器，预设地址
     final String? lastUrl = await StorageService.getLastCourseImportUrl();
+    if (!context.mounted) return;
 
     final Map<String, String> schoolUrls = {
       '合肥工业大学': 'https://one.hfut.edu.cn/',
@@ -864,6 +869,7 @@ class CourseImportHandler {
     if (selectedUrl == null) return;
 
     if (!await _ensureSemesterStartSet()) return;
+    if (!context.mounted) return;
 
     // 修复电脑端返回时因为复杂动画导致的 WebView 进程卡死问题
     final bool isDesktop =
@@ -886,12 +892,13 @@ class CourseImportHandler {
       route,
     );
 
-    if (htmlContent == null || htmlContent.isEmpty) return;
+    if (htmlContent == null || htmlContent.isEmpty || !context.mounted) return;
 
     _showLoadingDialog("解析网页内容中...");
 
     try {
       await Future.delayed(const Duration(milliseconds: 400));
+      if (!context.mounted) return;
 
       String sourceName = "网页导入";
       List<CourseItem> parsedCourses = [];
@@ -924,6 +931,7 @@ class CourseImportHandler {
           htmlContent.contains('kbgrid_table')) {
         sourceName = "正方教务系统";
         _closeLoadingDialog();
+        if (!context.mounted) return;
 
         Map<int, Map<String, int>>? userAdjustedTimes =
             await showDialog<Map<int, Map<String, int>>>(
@@ -1040,6 +1048,7 @@ class CourseImportHandler {
         await CourseService.saveCourses(username, parsedCourses);
       }
 
+      if (!context.mounted) return;
       _closeLoadingDialog();
       showMessage('✅ $sourceName 导入成功！');
       onRescheduleReminders();
@@ -1050,6 +1059,7 @@ class CourseImportHandler {
   }
 
   void _showLoadingDialog(String message) {
+    if (!context.mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1067,6 +1077,7 @@ class CourseImportHandler {
   }
 
   void _closeLoadingDialog() {
+    if (!context.mounted) return;
     if (Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
     }

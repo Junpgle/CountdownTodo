@@ -311,14 +311,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('[PomodoroWorkbench] 读取应用版本失败: $e');
+      }
 
       if (saved != null && saved.phase != PomodoroPhase.idle) {
         try {
           try {
             await _recoverState(saved).timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (_) {}
-        } catch (e) {}
+          } on TimeoutException catch (e) {
+            debugPrint('[PomodoroWorkbench] 恢复计时状态超时: $e');
+          }
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 恢复计时状态失败: $e');
+        }
       } else {
         try {
           SharedPreferences? prefs;
@@ -326,6 +332,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             prefs = await SharedPreferences.getInstance()
                 .timeout(const Duration(seconds: 5));
           } catch (e) {
+            debugPrint('[PomodoroWorkbench] 读取本地绑定状态失败: $e');
             prefs = null;
           }
           if (prefs != null) {
@@ -365,7 +372,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               _syncService.setLocalFocusing(false);
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 恢复本地绑定信息失败: $e');
+        }
       }
 
       if (mounted) {
@@ -377,8 +386,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
-        } on TimeoutException catch (_) {}
-      } catch (e) {}
+        } on TimeoutException catch (e) {
+          debugPrint('[PomodoroWorkbench] 连接跨设备服务超时: $e');
+        }
+      } catch (e) {
+        debugPrint('[PomodoroWorkbench] 连接跨设备服务失败: $e');
+      }
 
       if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
         try {
@@ -386,13 +399,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             await _syncService
                 .forceReconnect(_userId, 'flutter_$_deviceId')
                 .timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (_) {}
-        } catch (e) {}
+          } on TimeoutException catch (e) {
+            debugPrint('[PomodoroWorkbench] 强制重连同步服务超时: $e');
+          }
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 强制重连同步服务失败: $e');
+        }
       }
     } finally {
       _isInitProcessing = false;
       initWatchdog.cancel();
       final elapsed = DateTime.now().difference(initStart).inMilliseconds;
+      debugPrint('[PomodoroWorkbench] 初始化耗时 ${elapsed}ms');
     }
   }
 
@@ -892,7 +910,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (mounted) {
         setState(() {
           _phase = saved.phase;
-          _currentSessionUuid = saved.sessionUuid ?? const Uuid().v4();
+          _currentSessionUuid = saved.sessionUuid;
           _targetEndMs = saved.targetEndMs;
           _remainingSeconds = remaining;
           _currentCycle = saved.currentCycle;
@@ -903,9 +921,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
           _sessionStartMs = saved.sessionStartMs;
-          _isPaused = saved.isPaused ?? false;
-          _pausedAtMs = saved.pausedAtMs ?? 0;
-          _accumulatedMs = saved.accumulatedMs ?? 0;
+          _isPaused = saved.isPaused;
+          _pausedAtMs = saved.pausedAtMs;
+          _accumulatedMs = saved.accumulatedMs;
           _pauseStartMs = saved.pauseStartMs;
           _currentNote = saved.note ?? '';
           _pauseIntervals
@@ -1017,7 +1035,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       });
       await _clearRunStateSilently();
       await _askCompletionAndRecord(
-        sessionUuid: saved.sessionUuid ?? const Uuid().v4(),
+        sessionUuid: saved.sessionUuid,
         durationSeconds: saved.focusSeconds,
         startMs: saved.sessionStartMs,
         endMs: saved.targetEndMs,
@@ -2491,7 +2509,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const Spacer(),
                 _buildIdleMiddle(),
                 const SizedBox(height: 32),
-                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+                _buildActions(
+                    isIdle, isFocusing, isRemoteWatching, contentColor),
                 const Spacer(),
               ] else ...[
                 const Spacer(),
@@ -2510,7 +2529,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const SizedBox(height: 12),
                 _buildNoteButton(contentColor),
                 const SizedBox(height: 32),
-                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+                _buildActions(
+                    isIdle, isFocusing, isRemoteWatching, contentColor),
                 const Spacer(),
               ],
             ],

@@ -317,6 +317,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
 
     final res = await ApiService.processJoinRequest(
         msg['team_uuid'], msg['user_id'], action);
+    if (!mounted) return;
 
     if (res['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

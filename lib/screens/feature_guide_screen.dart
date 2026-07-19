@@ -627,6 +627,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ApiService.setServerChoice('aliyun');
       }
     }
+    if (!mounted) return;
 
     if (widget.isManualReview) {
       Navigator.pop(context);
@@ -668,7 +669,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     .withValues(alpha: 0.3)),
           ),
           clipBehavior: Clip.antiAlias,
-          child: assetPath.toLowerCase().endsWith('.mp4') || assetPath.toLowerCase().endsWith('.webm')
+          child: assetPath.toLowerCase().endsWith('.mp4') ||
+                  assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
               : Image.asset(assetPath, fit: fit),
         ),

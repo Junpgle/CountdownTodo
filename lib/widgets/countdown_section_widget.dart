@@ -208,13 +208,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   }
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
-                  final syncUuid =
-                      isEditing ? item.teamUuid : selectedTeamUuid;
+                  if (!mounted || !ctx.mounted) return;
+                  final syncUuid = isEditing ? item.teamUuid : selectedTeamUuid;
                   if (syncUuid != null) {
                     PomodoroSyncService.instance.sendTeamUpdateSignal(syncUuid);
                   }
                   widget.onDataChanged();
-                  if (mounted) Navigator.pop(ctx);
+                  Navigator.pop(ctx);
                 }
               },
               child: Text(isEditing ? "保存" : "添加"),
@@ -247,8 +247,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             onPressed: () async {
               await StorageService.deleteCountdownGlobally(
                   widget.username, itemToDelete.id);
+              if (!mounted || !ctx.mounted) return;
               widget.onDataChanged();
-              if (mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text("删除"),
           ),

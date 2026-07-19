@@ -102,14 +102,18 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       noCourseBehaviorPref = prefs.getString('no_course_behavior_$_username');
     }
     noCourseBehaviorPref ??= prefs.getString('no_course_behavior') ?? 'keep';
+    if (!mounted) return;
 
     _courseImportHandler = CourseImportHandler(
       context: context,
       username: _username,
       semesterStart: sStart,
       onRescheduleReminders: _rescheduleReminders,
-      showMessage: (msg) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg))),
+      showMessage: (msg) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
+      },
       onSemesterStartChanged: (date) {
         if (mounted) setState(() => _semesterStart = date);
       },
@@ -134,7 +138,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       final todos = await StorageService.getTodos(_username);
       final courses = await CourseService.getAllCourses(_username);
       await ReminderScheduleService.scheduleAll(todos: todos, courses: courses);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('[CourseSettings] 重新调度课程提醒失败: $e');
+    }
   }
 
   void _showLoadingDialog(BuildContext context, String message) {
@@ -168,6 +174,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     }
 
     final allCourses = await CourseService.getAllCourses(_username);
+    if (!mounted) return;
     if (allCourses.isEmpty) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('当前没有课表数据可上传')));
@@ -191,11 +198,12 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         ) ??
         false;
 
-    if (!confirm) return;
+    if (!confirm || !mounted) return;
 
     _showLoadingDialog(context, "正在同步到云端...");
 
     final result = await CourseService.syncCoursesToCloud(_username, _userId!);
+    if (!mounted) return;
 
     if (result['success'] == true) {
       final startMs = _semesterStart != null
@@ -274,15 +282,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           
           if (cloudSemesters.isNotEmpty) {
             await StorageService.saveSemesters(cloudSemesters);
+            if (!mounted) return;
             setState(() {
               _semesters = cloudSemesters;
             });
           }
         }
-        
+        if (!mounted) return;
         setState(() {});
       }
 
+      if (!mounted) return;
       _closeLoadingDialog(context);
 
       if (data.isNotEmpty) {
@@ -335,6 +345,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         // 检测冲突并让用户选择导入模式
         final conflicts =
             await CourseService.detectTimeConflicts(_username, courses);
+        if (!mounted) return;
         final ImportMode? mode =
             await _askCloudImportMode(courses, conflicts);
         if (mode == null) return;
@@ -345,12 +356,11 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           await CourseService.saveCourses(_username, courses);
         }
 
-        if (mounted) {
-          _rescheduleReminders();
-          final modeText = mode == ImportMode.merge ? '合并' : '同步';
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('✅ 成功从云端$modeText ${courses.length} 条课程与学期设置')));
-        }
+        if (!mounted) return;
+        _rescheduleReminders();
+        final modeText = mode == ImportMode.merge ? '合并' : '同步';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('✅ 成功从云端$modeText ${courses.length} 条课程与学期设置')));
       } else {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('❌ 获取失败，云端暂无课表数据')));
@@ -591,6 +601,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           updatedSemesters[currentSemesterIndex] = updatedSemester;
           
           await StorageService.saveSemesters(updatedSemesters);
+          if (!mounted) return;
           setState(() {
             _semesters = updatedSemesters;
           });
@@ -598,13 +609,17 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         }
       }
 
+      if (!mounted) return;
       _courseImportHandler = CourseImportHandler(
         context: context,
         username: _username,
         semesterStart: _semesterStart,
         onRescheduleReminders: _rescheduleReminders,
-        showMessage: (msg) => ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(msg))),
+        showMessage: (msg) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        },
         onSemesterStartChanged: (date) {
           if (mounted) setState(() => _semesterStart = date);
         },
@@ -1407,6 +1422,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         semesters: semestersData,
       );
     } catch (e) {
+      debugPrint('[CourseSettings] 同步学期设置失败: $e');
     }
   }
 
@@ -1651,7 +1667,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       },
     );
 
-    if (selectedSemester == null) return;
+    if (selectedSemester == null || !mounted) return;
 
     // 确认删除
     final confirmed = await showDialog<bool>(

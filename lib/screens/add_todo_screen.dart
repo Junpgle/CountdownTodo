@@ -377,8 +377,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         return "工作日";
       case RecurrenceType.customDays:
         return "间隔 ${_customDays ?? '?'} 天";
-      default:
-        return "不循环";
     }
   }
 

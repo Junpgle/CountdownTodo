@@ -838,7 +838,9 @@ class UpdateService {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('[UpdateService] 清理旧安装包失败: $e');
+    }
 
     return true;
   }

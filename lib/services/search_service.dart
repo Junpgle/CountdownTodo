@@ -1269,6 +1269,7 @@ class SearchNavigationHandler {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
+    if (!context.mounted) return;
 
     if (route == '/time_log/tag') {
       final tagUuid = data['tag_uuid'];
@@ -1286,7 +1287,6 @@ class SearchNavigationHandler {
     if (route == '/screen_time/app') {
       final appName = data['app_name'];
       if (appName != null) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
         final history = await StorageService.getScreenTimeHistory();
         final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
         if (history[todayKey] == null || history[todayKey]!.isEmpty) {
@@ -1295,6 +1295,8 @@ class SearchNavigationHandler {
             history[todayKey] = cachedToday;
           }
         }
+        if (!context.mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
         Navigator.push(
             context,
             PageTransitions.material(

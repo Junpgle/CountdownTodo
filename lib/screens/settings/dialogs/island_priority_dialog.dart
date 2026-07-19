@@ -120,6 +120,7 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
         FilledButton(
           onPressed: () async {
             await _savePriority();
+            if (!context.mounted) return;
             Navigator.of(context).pop(true);
           },
           child: const Text('保存'),

@@ -61,13 +61,13 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
       ),
     );
 
-    if (confirmed == true) {
-      final res = await ApiService.deleteTeamAnnouncement(uuid);
-      if (res['success'] == true) {
-        _loadAnnouncements();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('公告已撤回')));
-      }
+    if (confirmed != true || !mounted) return;
+    final res = await ApiService.deleteTeamAnnouncement(uuid);
+    if (!mounted) return;
+    if (res['success'] == true) {
+      _loadAnnouncements();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('公告已撤回')));
     }
   }
 
@@ -228,13 +228,14 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
                             isPriority: isPriority,
                             expiresAt: expiresAt,
                           );
+                          if (!mounted || !context.mounted) return;
                           if (res['success'] == true) {
+                            final messenger = ScaffoldMessenger.of(context);
                             Navigator.pop(context);
                             _loadAnnouncements();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('公告已发布 🚀'),
-                                    backgroundColor: Colors.green));
+                            messenger.showSnackBar(const SnackBar(
+                                content: Text('公告已发布 🚀'),
+                                backgroundColor: Colors.green));
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                 content: Text(res['error'] ?? '发布失败')));
@@ -262,6 +263,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     );
 
     final res = await ApiService.fetchAnnouncementStats(announcement.uuid);
+    if (!mounted) return;
     Navigator.pop(context); // close loading
 
     if (res['success'] == true) {

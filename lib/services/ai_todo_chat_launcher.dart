@@ -35,6 +35,7 @@ class AiTodoChatLauncher {
       groups: todoGroups,
       categoryReminderDefaults: categoryReminderDefaults,
     );
+    if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
       todos: toChatTodoMaps(todos),

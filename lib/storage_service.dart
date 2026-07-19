@@ -1211,7 +1211,7 @@ class StorageService {
     try {
       if (existingData == null) {
         await DatabaseHelper.instance.insertLocalAuditLog(
-          userId: ApiService.currentUserId ?? 0,
+          userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
           opType: 'INSERT',
@@ -1225,7 +1225,7 @@ class StorageService {
 
       // 已经在外部做过实质性变更检测了，此处直接记录
       await DatabaseHelper.instance.insertLocalAuditLog(
-        userId: ApiService.currentUserId ?? 0,
+        userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
         opType: 'UPDATE',
@@ -1250,7 +1250,7 @@ class StorageService {
       if (existing.isEmpty) {
         // 新增操作，直接记录
         await DatabaseHelper.instance.insertLocalAuditLog(
-          userId: ApiService.currentUserId ?? 0,
+          userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
           opType: 'INSERT',
@@ -1356,7 +1356,7 @@ class StorageService {
 
       // 2. 存入本地审计表
       await DatabaseHelper.instance.insertLocalAuditLog(
-        userId: ApiService.currentUserId ?? 0,
+        userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
         opType: 'UPDATE',

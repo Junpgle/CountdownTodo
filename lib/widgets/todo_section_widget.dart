@@ -881,6 +881,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         await LLMService.parseTodoWithLLM(
                                       aiInputCtrl.text,
                                     );
+                                    if (!context.mounted || !ctx.mounted) {
+                                      return;
+                                    }
 
                                     final parsedResultsList = results.map((
                                       result,
@@ -972,6 +975,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       }
                                     }
                                   } catch (e) {
+                                    if (!context.mounted) return;
                                     setDialogState(() {
                                       isParsing = false;
                                     });
@@ -1052,6 +1056,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         await LLMService.parseTodoWithLLM(
                                       aiInputCtrl.text,
                                     );
+                                    if (!context.mounted || !ctx.mounted) {
+                                      return;
+                                    }
 
                                     final parsedResultsList = results.map((
                                       result,
@@ -1174,6 +1181,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       }
                                     }
                                   } catch (e) {
+                                    if (!context.mounted) return;
                                     setDialogState(() {
                                       isParsing = false;
                                     });
@@ -4515,7 +4523,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 widget.todo.serverVersionData = null;
                 widget.todo.markAsChanged();
                 await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-                if (mounted) Navigator.pop(context, true);
+                if (!context.mounted) return;
+                Navigator.pop(context, true);
               }
             },
             icon: const Icon(Icons.delete_outline_rounded,
@@ -4668,23 +4677,21 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),
                       initialDate: _createdDate);
-                  if (pickedDate != null) {
-                    if (_isAllDay) {
-                      setState(() => _createdDate = DateTime(pickedDate.year,
-                          pickedDate.month, pickedDate.day, 0, 0));
-                    } else {
-                      final pickedTime = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(_createdDate));
-                      if (pickedTime != null) {
-                        setState(() => _createdDate = DateTime(
-                            pickedDate.year,
-                            pickedDate.month,
-                            pickedDate.day,
-                            pickedTime.hour,
-                            pickedTime.minute));
-                      }
-                    }
+                  if (!context.mounted || pickedDate == null) return;
+                  if (_isAllDay) {
+                    setState(() => _createdDate = DateTime(pickedDate.year,
+                        pickedDate.month, pickedDate.day, 0, 0));
+                  } else {
+                    final pickedTime = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(_createdDate));
+                    if (!mounted || pickedTime == null) return;
+                    setState(() => _createdDate = DateTime(
+                        pickedDate.year,
+                        pickedDate.month,
+                        pickedDate.day,
+                        pickedTime.hour,
+                        pickedTime.minute));
                   }
                 },
               )),
@@ -4704,24 +4711,22 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),
                       initialDate: _dueDate ?? _createdDate);
-                  if (pickedDate != null) {
-                    if (_isAllDay) {
-                      setState(() => _dueDate = DateTime(pickedDate.year,
-                          pickedDate.month, pickedDate.day, 23, 59));
-                    } else {
-                      final pickedTime = await showTimePicker(
-                          context: context,
-                          initialTime: TimeOfDay.fromDateTime(
-                              _dueDate ?? DateTime.now()));
-                      if (pickedTime != null) {
-                        setState(() => _dueDate = DateTime(
-                            pickedDate.year,
-                            pickedDate.month,
-                            pickedDate.day,
-                            pickedTime.hour,
-                            pickedTime.minute));
-                      }
-                    }
+                  if (!context.mounted || pickedDate == null) return;
+                  if (_isAllDay) {
+                    setState(() => _dueDate = DateTime(pickedDate.year,
+                        pickedDate.month, pickedDate.day, 23, 59));
+                  } else {
+                    final pickedTime = await showTimePicker(
+                        context: context,
+                        initialTime:
+                            TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
+                    if (!mounted || pickedTime == null) return;
+                    setState(() => _dueDate = DateTime(
+                        pickedDate.year,
+                        pickedDate.month,
+                        pickedDate.day,
+                        pickedTime.hour,
+                        pickedTime.minute));
                   }
                 },
               )),

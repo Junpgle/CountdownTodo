@@ -28,10 +28,15 @@ class ExternalShareHandler {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    final previousSubscription = _intentDataStreamSubscription;
+    if (previousSubscription != null) {
+      unawaited(previousSubscription.cancel());
+    }
 
     _intentDataStreamSubscription =
         ReceiveSharingIntent.instance.getMediaStream().listen(
       (List<SharedMediaFile> value) {
+        if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
             onTodoRecognized: onTodoRecognized, fromInitial: false);
       },
@@ -42,6 +47,7 @@ class ExternalShareHandler {
 
     ReceiveSharingIntent.instance.getInitialMedia().then(
       (List<SharedMediaFile> value) {
+        if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
             onTodoRecognized: onTodoRecognized, fromInitial: true);
       },
@@ -78,14 +84,23 @@ class ExternalShareHandler {
     }
 
     ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
-    BuildContext? dialogContext;
+    NavigatorState? dialogNavigator;
+    var isDialogOpen = false;
+
+    void closeDialogSafely() {
+      final navigator = dialogNavigator;
+      if (!isDialogOpen || navigator == null || !navigator.mounted) return;
+      isDialogOpen = false;
+      navigator.pop();
+    }
 
     showDialog(
       context: context,
       barrierDismissible: false,
       useRootNavigator: true,
       builder: (ctx) {
-        dialogContext = ctx;
+        dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+        isDialogOpen = true;
         return AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -121,7 +136,7 @@ class ExternalShareHandler {
       final fileKey = await _generateFileKey(filePath);
       if (fromInitial && await _isFileProcessed(fileKey)) {
         // debugPrint("文件已处理过，跳过: $filePath");
-        _closeDialogSafely(dialogContext);
+        closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
         return;
@@ -139,7 +154,7 @@ class ExternalShareHandler {
         if (config == null || !config.isConfigured) {
           statusNotifier.value = "⚠️ 需要配置大模型API\n请在设置中配置后重试";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -149,7 +164,7 @@ class ExternalShareHandler {
           statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
           await NotificationService.cancelTodoRecognizeNotification();
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -185,7 +200,7 @@ class ExternalShareHandler {
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
 
           // 保存成功状态
           await StorageService.savePendingTodoConfirm(
@@ -201,7 +216,9 @@ class ExternalShareHandler {
           );
 
           // 通知首页刷新（dialog 已关闭）
-          if (onTodoRecognized != null && results.isNotEmpty) {
+          if (context.mounted &&
+              onTodoRecognized != null &&
+              results.isNotEmpty) {
             onTodoRecognized(results, filePath);
           }
         } catch (e) {
@@ -215,7 +232,7 @@ class ExternalShareHandler {
             // 有重试次数，启动后台重试
             statusNotifier.value = "首次识别失败\n正在后台重试...";
             await Future.delayed(const Duration(milliseconds: 500));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
 
             // 保存失败状态（首次尝试）
             await StorageService.updatePendingTodoConfirmStatus(
@@ -255,7 +272,7 @@ class ExternalShareHandler {
             );
 
             await Future.delayed(const Duration(seconds: 3));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
           }
         }
       } else {
@@ -267,7 +284,7 @@ class ExternalShareHandler {
         if (username == null || username.isEmpty) {
           statusNotifier.value = "❌ 未登录\n请先登录后再导入课表";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -278,8 +295,9 @@ class ExternalShareHandler {
         String targetSemesterId = 'default';
         
         if (semesters.length > 1) {
-          _closeDialogSafely(dialogContext);
-          
+          closeDialogSafely();
+          if (!context.mounted) return;
+
           final selectedSemester = await showDialog<SemesterInfo>(
             context: context,
             builder: (ctx) {
@@ -348,14 +366,16 @@ class ExternalShareHandler {
             return;
           }
           targetSemesterId = selectedSemester.id;
-          
+          if (!context.mounted) return;
+
           // 重新显示进度对话框
           showDialog(
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
             builder: (ctx) {
-              dialogContext = ctx;
+              dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+              isDialogOpen = true;
               return AlertDialog(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 content: Row(
@@ -391,7 +411,7 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importXidianScheduleFromIcs(
@@ -405,7 +425,7 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importZfSoftScheduleFromHtml(
@@ -420,7 +440,7 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importXmuScheduleFromHtml(
@@ -435,7 +455,7 @@ class ExternalShareHandler {
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -444,22 +464,23 @@ class ExternalShareHandler {
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
-          _closeDialogSafely(dialogContext);
-          onSuccess();
+          closeDialogSafely();
+          if (context.mounted) onSuccess();
         } else {
           statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
         }
       }
     } catch (e) {
       // debugPrint("处理外部共享文件崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
       await Future.delayed(const Duration(seconds: 2));
-      _closeDialogSafely(dialogContext);
+      closeDialogSafely();
     } finally {
       ReceiveSharingIntent.instance.reset();
       _isProcessing = false;
+      statusNotifier.dispose();
     }
   }
 
@@ -484,12 +505,6 @@ class ExternalShareHandler {
     }
 
     return result.path;
-  }
-
-  static void _closeDialogSafely(BuildContext? dialogContext) {
-    if (dialogContext != null && dialogContext.mounted) {
-      Navigator.pop(dialogContext);
-    }
   }
 
   static Future<String> _safeReadFile(File file) async {
