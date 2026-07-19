@@ -175,7 +175,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
                     final username =
-                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                        prefs.getString(StorageService.keyCurrentUser) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
@@ -205,7 +205,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
                     final username =
-                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                        prefs.getString(StorageService.keyCurrentUser) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,

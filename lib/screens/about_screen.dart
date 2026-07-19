@@ -50,7 +50,7 @@ class _AboutScreenState extends State<AboutScreen> {
   StreamSubscription? _migrationSub;
   List<Map<String, dynamic>> _syncFailures = [];
 
-  static const String PRIVACY_RAW_URL =
+  static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
   @override
@@ -201,7 +201,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _fetchPrivacyPolicy() async {
     try {
-      final response = await http.get(Uri.parse(PRIVACY_RAW_URL));
+      final response = await http.get(Uri.parse(privacyRawUrl));
       if (response.statusCode == 200) {
         final content = response.body;
         String? date;

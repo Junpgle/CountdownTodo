@@ -531,7 +531,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('current_user_id');
     final token =
-        ApiService.getToken() ?? prefs.getString(StorageService.KEY_AUTH_TOKEN);
+        ApiService.getToken() ?? prefs.getString(StorageService.keyAuthToken);
     if (userId == null || token == null || token.isEmpty) return;
     await BackgroundNotificationService.configureNotificationPoll(
       userId: userId,
@@ -1171,7 +1171,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     String? authToken = ApiService.getToken();
     if (authToken == null || authToken.isEmpty) {
-      authToken = prefs.getString(StorageService.KEY_AUTH_TOKEN);
+      authToken = prefs.getString(StorageService.keyAuthToken);
       // 同步回 ApiService 以防万一
       if (authToken != null) ApiService.setToken(authToken);
     }

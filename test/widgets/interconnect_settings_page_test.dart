@@ -1,4 +1,4 @@
-import 'package:CountDownTodo/screens/settings/pages/interconnect_settings_page.dart';
+import 'package:countdown_todo/screens/settings/pages/interconnect_settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

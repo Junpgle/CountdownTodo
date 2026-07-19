@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:CountDownTodo/services/medal_recommendation_service.dart';
-import 'package:CountDownTodo/services/timeline_service.dart';
+import 'package:countdown_todo/services/medal_recommendation_service.dart';
+import 'package:countdown_todo/services/timeline_service.dart';
 
 void main() {
   group('MedalRecommendationService', () {

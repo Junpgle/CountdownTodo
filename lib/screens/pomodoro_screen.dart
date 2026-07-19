@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:CountDownTodo/screens/pomodoro/widgets/fading_indexed_stack.dart';
+import 'package:countdown_todo/screens/pomodoro/widgets/fading_indexed_stack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/notification_service.dart';

@@ -37,8 +37,8 @@
 ### 1. 在 personal_timeline_screen.dart 中集成
 
 ```dart
-import 'package:CountDownTodo/services/medal_recommendation_service.dart';
-import 'package:CountDownTodo/widgets/medal_recommendation_card.dart';
+import 'package:countdown_todo/services/medal_recommendation_service.dart';
+import 'package:countdown_todo/widgets/medal_recommendation_card.dart';
 
 class PersonalTimelineScreen extends StatefulWidget {
   // ...

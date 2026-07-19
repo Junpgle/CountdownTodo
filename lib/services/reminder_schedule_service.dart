@@ -104,7 +104,7 @@ class ReminderScheduleService {
     // ── 获取当前用户 ────────────────────────────────────────────────
     final prefs = await SharedPreferences.getInstance();
     final username =
-        prefs.getString(StorageService.KEY_CURRENT_USER) ?? 'default';
+        prefs.getString(StorageService.keyCurrentUser) ?? 'default';
 
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {

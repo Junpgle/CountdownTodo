@@ -60,7 +60,7 @@ class PomodoroControlService {
     String? activePlanBlockId = planBlockId;
     if (activePlanBlockId == null && boundTodo != null) {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      final username = prefs.getString(StorageService.keyCurrentUser);
       if (username != null) {
         final nowDt = DateTime.fromMillisecondsSinceEpoch(now);
         final blocks = await StorageService.getPlanBlocksByDay(username, nowDt);

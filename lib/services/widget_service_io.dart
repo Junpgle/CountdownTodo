@@ -19,7 +19,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
     final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (id != null) {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.isNotEmpty) {
         List<TodoItem> todos = await StorageService.getTodos(username);
         bool changed = false;
@@ -83,7 +83,7 @@ class WidgetService {
     _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+        final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
         if (username.isEmpty) return;
         final todos = await StorageService.getTodos(username);
         await WidgetService.updateAllWidgetData(username, todos);
@@ -95,7 +95,7 @@ class WidgetService {
     // 立即触发一次更新
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.isNotEmpty) {
         final todos = await StorageService.getTodos(username);
         await updateAllWidgetData(username, todos);
@@ -718,7 +718,7 @@ class WidgetService {
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
     await updateAllWidgetData(username, todos);
   }
 }

@@ -844,16 +844,16 @@ class DataImportService {
 
   static Future<void> _importSettings(Map<String, dynamic> settings) async {
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
 
     for (final entry in settings.entries) {
       final key = entry.key;
       final value = entry.value;
 
       // 跳过敏感信息
-      if (key == StorageService.KEY_AUTH_TOKEN ||
-          key == StorageService.KEY_DEVICE_ID ||
-          key == StorageService.KEY_CURRENT_USER) {
+      if (key == StorageService.keyAuthToken ||
+          key == StorageService.keyDeviceId ||
+          key == StorageService.keyCurrentUser) {
         continue;
       }
 
@@ -909,16 +909,16 @@ class DataImportService {
 
     // 这些键名本身就是用户特定的（在 StorageService 中会自动加后缀）
     final keysNeedingSuffix = {
-      StorageService.KEY_TODOS,
-      StorageService.KEY_TODO_GROUPS,
-      StorageService.KEY_COUNTDOWNS,
-      StorageService.KEY_TIME_LOGS,
-      StorageService.KEY_SETTINGS,
-      StorageService.KEY_SCREEN_TIME_HISTORY,
-      StorageService.KEY_APP_MAPPINGS,
-      StorageService.KEY_IGNORED_SCHEDULE_CONFLICTS,
-      StorageService.KEY_CONFLICT_DETECTION_ENABLED,
-      StorageService.KEY_SYNC_INTERVAL,
+      StorageService.keyTodos,
+      StorageService.keyTodoGroups,
+      StorageService.keyCountdowns,
+      StorageService.keyTimeLogs,
+      StorageService.keySettings,
+      StorageService.keyScreenTimeHistory,
+      StorageService.keyAppMappings,
+      StorageService.keyIgnoredScheduleConflicts,
+      StorageService.keyConflictDetectionEnabled,
+      StorageService.keySyncInterval,
     };
 
     return keysNeedingSuffix.contains(key);

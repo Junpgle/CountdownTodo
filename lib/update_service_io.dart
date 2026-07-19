@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:CountDownTodo/services/band_sync_service.dart';
-import 'package:CountDownTodo/services/notification_service.dart';
+import 'package:countdown_todo/services/band_sync_service.dart';
+import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
@@ -252,11 +252,11 @@ class _AnnouncementCarouselDialogState
 }
 
 class UpdateService {
-  static const String MANIFEST_URL =
+  static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
-  static const String FALLBACK_MANIFEST_URL =
+  static const String fallbackManifestUrl =
       "http://101.200.13.100:8082/api/manifest";
-  static const String CHANGELOG_ARCHIVE_URL =
+  static const String changelogArchiveUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
   static const String _manifestCacheTimeKey = 'update_manifest_cache_time';
@@ -269,13 +269,13 @@ class UpdateService {
 
   // 更新源偏好设置
   static const String _updateSourceKey = 'update_source_preference';
-  static const String UPDATE_SOURCE_GITHUB = 'github';
-  static const String UPDATE_SOURCE_SERVER = 'server';
+  static const String updateSourceGithub = 'github';
+  static const String updateSourceServer = 'server';
 
   /// 获取用户选择的更新源
   static Future<String> getUpdateSource() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_updateSourceKey) ?? UPDATE_SOURCE_GITHUB;
+    return prefs.getString(_updateSourceKey) ?? updateSourceGithub;
   }
 
   /// 保存用户选择的更新源
@@ -572,7 +572,7 @@ class UpdateService {
     final updateSource = await getUpdateSource();
 
     // 根据用户偏好选择数据源
-    if (updateSource == UPDATE_SOURCE_SERVER) {
+    if (updateSource == updateSourceServer) {
       // 用户选择服务器优先
       return await _fetchFromServerFirst();
     } else {
@@ -586,7 +586,7 @@ class UpdateService {
     // 优先从 GitHub 获取
     try {
       final response = await http
-          .get(Uri.parse(MANIFEST_URL))
+          .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
@@ -604,7 +604,7 @@ class UpdateService {
     try {
       debugPrint('[UpdateService] 降级到服务器获取 manifest...');
       final response = await http
-          .get(Uri.parse(FALLBACK_MANIFEST_URL))
+          .get(Uri.parse(fallbackManifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
@@ -626,7 +626,7 @@ class UpdateService {
     // 优先从服务器获取
     try {
       final response = await http
-          .get(Uri.parse(FALLBACK_MANIFEST_URL))
+          .get(Uri.parse(fallbackManifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
@@ -644,7 +644,7 @@ class UpdateService {
     try {
       debugPrint('[UpdateService] 降级到 GitHub 获取 manifest...');
       final response = await http
-          .get(Uri.parse(MANIFEST_URL))
+          .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
@@ -710,7 +710,7 @@ class UpdateService {
   }) async {
     final archiveUrl = manifest?.changelogArchive.url.isNotEmpty == true
         ? manifest!.changelogArchive.url
-        : CHANGELOG_ARCHIVE_URL;
+        : changelogArchiveUrl;
 
     if (preferCache) {
       final cached = await _readChangelogArchiveCache();

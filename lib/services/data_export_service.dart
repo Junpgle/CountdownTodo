@@ -300,20 +300,20 @@ class DataExportService {
 
     // 排除不需要导出的键（临时数据、缓存、敏感信息）
     final excludedKeys = {
-      StorageService.KEY_CURRENT_USER,
-      StorageService.KEY_AUTH_TOKEN,
-      StorageService.KEY_DEVICE_ID,
-      StorageService.KEY_LAST_AUTO_SYNC,
-      StorageService.KEY_LAST_SCREEN_TIME_SYNC,
-      StorageService.KEY_LAST_MAPPINGS_SYNC,
-      StorageService.KEY_PRIVACY_AGREED,
-      StorageService.KEY_PRIVACY_DATE,
-      StorageService.KEY_PRIVACY_CACHED_VERSION,
-      StorageService.KEY_PRIVACY_CACHE_TIME,
-      StorageService.KEY_LOCAL_SCREEN_TIME,
-      StorageService.KEY_SCREEN_TIME_CACHE,
-      StorageService.KEY_USERS,
-      StorageService.KEY_LEADERBOARD,
+      StorageService.keyCurrentUser,
+      StorageService.keyAuthToken,
+      StorageService.keyDeviceId,
+      StorageService.keyLastAutoSync,
+      StorageService.keyLastScreenTimeSync,
+      StorageService.keyLastMappingsSync,
+      StorageService.keyPrivacyAgreed,
+      StorageService.keyPrivacyDate,
+      StorageService.keyPrivacyCachedVersion,
+      StorageService.keyPrivacyCacheTime,
+      StorageService.keyLocalScreenTime,
+      StorageService.keyScreenTimeCache,
+      StorageService.keyUsers,
+      StorageService.keyLeaderboard,
     };
 
     // 用户特定的键后缀

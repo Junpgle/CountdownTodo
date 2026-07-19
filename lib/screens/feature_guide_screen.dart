@@ -345,9 +345,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     setState(() => _importingSemester = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(StorageService.KEY_SEMESTER_START,
+      await prefs.setString(StorageService.keySemesterStart,
           _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(StorageService.KEY_SEMESTER_END,
+      await prefs.setString(StorageService.keySemesterEnd,
           _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
@@ -1653,7 +1653,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 onChanged: (val) {
                   setState(() => _semesterEnabled = val);
                   StorageService.saveAppSetting(
-                      StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+                      StorageService.keySemesterProgressEnabled, val);
                 },
               ),
               const Divider(height: 1, indent: 56),
@@ -1775,10 +1775,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (isStart) {
         await prefs.setString(
-            StorageService.KEY_SEMESTER_START, picked.toIso8601String());
+            StorageService.keySemesterStart, picked.toIso8601String());
       } else {
         await prefs.setString(
-            StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+            StorageService.keySemesterEnd, picked.toIso8601String());
       }
     }
   }
@@ -1822,7 +1822,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 if (val != null) {
                   setState(() => _themeMode = val);
                   StorageService.saveAppSetting(
-                      StorageService.KEY_THEME_MODE, val);
+                      StorageService.keyThemeMode, val);
                   StorageService.themeNotifier.value = val;
                 }
               },

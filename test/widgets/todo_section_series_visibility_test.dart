@@ -1,7 +1,7 @@
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/services/pomodoro_service.dart';
-import 'package:CountDownTodo/widgets/todo_recurrence_progress.dart';
-import 'package:CountDownTodo/widgets/todo_section_widget.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/widgets/todo_recurrence_progress.dart';
+import 'package:countdown_todo/widgets/todo_section_widget.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

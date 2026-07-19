@@ -231,7 +231,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
+      _username = prefs.getString(StorageService.keyCurrentUser) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
     });
   }

@@ -86,7 +86,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+    _username = prefs.getString(StorageService.keyCurrentUser) ?? '';
     _userId = prefs.getInt('current_user_id');
 
     bool sEnabled = await StorageService.getSemesterEnabled();
@@ -263,14 +263,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         if (userSettings['semester_start'] != null) {
           _semesterStart = DateTime.fromMillisecondsSinceEpoch(
               userSettings['semester_start']);
-          await prefs.setString(StorageService.KEY_SEMESTER_START,
+          await prefs.setString(StorageService.keySemesterStart,
               _semesterStart!.toIso8601String());
         }
         if (userSettings['semester_end'] != null) {
           _semesterEnd =
               DateTime.fromMillisecondsSinceEpoch(userSettings['semester_end']);
           await prefs.setString(
-              StorageService.KEY_SEMESTER_END, _semesterEnd!.toIso8601String());
+              StorageService.keySemesterEnd, _semesterEnd!.toIso8601String());
         }
         
         // 处理多学期数据
@@ -654,7 +654,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               onChanged: (val) {
                 setState(() => _semesterEnabled = val);
                 StorageService.saveAppSetting(
-                    StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+                    StorageService.keySemesterProgressEnabled, val);
               },
             ),
           ),

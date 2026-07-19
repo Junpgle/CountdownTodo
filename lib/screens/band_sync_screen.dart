@@ -725,7 +725,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   Future<String?> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(StorageService.KEY_CURRENT_USER);
+    return prefs.getString(StorageService.keyCurrentUser);
   }
 
   /// 处理手环发回的消息（todo状态变更等）

@@ -74,11 +74,11 @@ class SystemControlService {
       void Function(
           int bVk, int bScan, int dwFlags, int dwExtraInfo)>('keybd_event');
 
-  static const _KEYEVENTF_KEYUP = 0x0002;
-  static const _KEYEVENTF_SILENT = 0x0004;
-  static const _VK_VOLUME_UP = 0xAF;
-  static const _VK_VOLUME_DOWN = 0xAE;
-  static const _VK_VOLUME_MUTE = 0xAD;
+  static const _keyEventfKeyup = 0x0002;
+  static const _keyEventfSilent = 0x0004;
+  static const _vkVolumeUp = 0xAF;
+  static const _vkVolumeDown = 0xAE;
+  static const _vkVolumeMute = 0xAD;
 
   static final _winmm = DynamicLibrary.open('winmm.dll');
   static final _waveOutGetVolume = _winmm.lookupFunction<
@@ -90,8 +90,8 @@ class SystemControlService {
   static int _lastSentVolSteps = -1;
 
   static void _sendKey(int vk) {
-    _keybdEvent(vk, 0, _KEYEVENTF_SILENT, 0);
-    _keybdEvent(vk, 0, _KEYEVENTF_SILENT | _KEYEVENTF_KEYUP, 0);
+    _keybdEvent(vk, 0, _keyEventfSilent, 0);
+    _keybdEvent(vk, 0, _keyEventfSilent | _keyEventfKeyup, 0);
   }
 
   static double _readSystemVolume() {
@@ -131,11 +131,11 @@ class SystemControlService {
     _lastSentVolSteps = newSteps;
     if (diff > 0) {
       for (var i = 0; i < diff; i++) {
-        _sendKey(_VK_VOLUME_UP);
+        _sendKey(_vkVolumeUp);
       }
     } else {
       for (var i = 0; i < -diff; i++) {
-        _sendKey(_VK_VOLUME_DOWN);
+        _sendKey(_vkVolumeDown);
       }
     }
   }
@@ -151,11 +151,11 @@ class SystemControlService {
     _lastSentVolSteps = newSteps;
     if (diff > 0) {
       for (var i = 0; i < diff; i++) {
-        _sendKey(_VK_VOLUME_UP);
+        _sendKey(_vkVolumeUp);
       }
     } else {
       for (var i = 0; i < -diff; i++) {
-        _sendKey(_VK_VOLUME_DOWN);
+        _sendKey(_vkVolumeDown);
       }
     }
   }
@@ -166,10 +166,10 @@ class SystemControlService {
     debugPrint('[SCS] toggleMute, current vol=$_cachedVolume');
     if (_cachedVolume > 0) {
       _savedVolume = _cachedVolume;
-      _sendKey(_VK_VOLUME_MUTE);
+      _sendKey(_vkVolumeMute);
       _cachedVolume = 0;
     } else {
-      _sendKey(_VK_VOLUME_MUTE);
+      _sendKey(_vkVolumeMute);
       _cachedVolume = _savedVolume ?? 0.5;
     }
   }

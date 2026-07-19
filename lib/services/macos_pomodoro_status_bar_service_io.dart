@@ -208,7 +208,7 @@ class MacPomodoroStatusBarService {
     var todayRecords = <PomodoroRecord>[];
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.trim().isNotEmpty) {
         countdowns = await StorageService.getCountdowns(username);
       }
@@ -697,7 +697,7 @@ class MacPomodoroStatusBarService {
         return;
       }
 
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.trim().isEmpty) {
         await _channel.invokeMethod('clearOngoingActivity');
         if (_isActivitySyncCurrent(generation)) {

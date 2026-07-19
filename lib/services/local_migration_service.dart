@@ -23,11 +23,11 @@ class MigrationProgress {
 }
 
 class LocalMigrationService {
-  static const String KEY_MIGRATION_COMPLETED_V4 = 'migration_completed_v4';
+  static const String keyMigrationCompletedV4 = 'migration_completed_v4';
 
   static Future<bool> needsMigration() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(KEY_MIGRATION_COMPLETED_V4) ?? false) return false;
+    if (prefs.getBool(keyMigrationCompletedV4) ?? false) return false;
 
     final keys = prefs.getKeys();
     final legacyKeys = [
@@ -130,7 +130,7 @@ class LocalMigrationService {
     await CourseService.getAllCourses(username);
     await PomodoroService.getTags();
 
-    await prefs.setBool(KEY_MIGRATION_COMPLETED_V4, true);
+    await prefs.setBool(keyMigrationCompletedV4, true);
     yield MigrationProgress(
         stage: '本地升级完成！',
         progress: 1.0,

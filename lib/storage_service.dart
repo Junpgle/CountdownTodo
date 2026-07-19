@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
+import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -199,86 +199,86 @@ class StorageService {
   }
 
   // --- 常量定义 ---
-  static const String KEY_USERS = "users_data";
-  static const String KEY_LEADERBOARD = "leaderboard_data";
-  static const String KEY_SETTINGS = "quiz_settings";
-  static const String KEY_CURRENT_USER = "current_login_user";
-  static const String KEY_TODOS = "user_todos";
-  static const String KEY_TODO_GROUPS = "user_todo_groups";
-  static const String KEY_COUNTDOWNS = "user_countdowns";
-  static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
-  static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
-  static const String KEY_SCREEN_TIME_HISTORY = "screen_time_history";
-  static const String KEY_APP_MAPPINGS = "app_category_mappings";
-  static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
-  static const String KEY_AUTH_TOKEN = "auth_session_token";
-  static const String KEY_DEVICE_ID = "app_device_uuid";
-  static const String KEY_SYNC_INTERVAL = "app_sync_interval";
-  static const String KEY_THEME_MODE = "app_theme_mode";
-  static const String KEY_THEME_COLOR_MODE = "app_theme_color_mode";
-  static const String KEY_CUSTOM_THEME_COLOR = "app_custom_theme_color";
-  static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time";
-  static const String KEY_SEMESTER_PROGRESS_ENABLED =
+  static const String keyUsers = "users_data";
+  static const String keyLeaderboard = "leaderboard_data";
+  static const String keySettings = "quiz_settings";
+  static const String keyCurrentUser = "current_login_user";
+  static const String keyTodos = "user_todos";
+  static const String keyTodoGroups = "user_todo_groups";
+  static const String keyCountdowns = "user_countdowns";
+  static const String keyScreenTimeCache = "screen_time_cache";
+  static const String keyLastScreenTimeSync = "last_screen_time_sync";
+  static const String keyScreenTimeHistory = "screen_time_history";
+  static const String keyAppMappings = "app_category_mappings";
+  static const String keyLastMappingsSync = "last_mappings_sync";
+  static const String keyAuthToken = "auth_session_token";
+  static const String keyDeviceId = "app_device_uuid";
+  static const String keySyncInterval = "app_sync_interval";
+  static const String keyThemeMode = "app_theme_mode";
+  static const String keyThemeColorMode = "app_theme_color_mode";
+  static const String keyCustomThemeColor = "app_custom_theme_color";
+  static const String keyLastAutoSync = "last_auto_sync_time";
+  static const String keySemesterProgressEnabled =
       "semester_progress_enabled";
-  static const String KEY_SEMESTER_START = "semester_start_date";
-  static const String KEY_SEMESTER_END = "semester_end_date";
-  static const String KEY_SEMESTERS = "semesters_list"; // 多学期列表
-  static const String KEY_ACTIVE_SEMESTER = "active_semester_id"; // 当前活跃学期
-  static const String KEY_TIME_LOGS = "user_time_logs";
-  static const String KEY_IGNORED_SCHEDULE_CONFLICTS =
+  static const String keySemesterStart = "semester_start_date";
+  static const String keySemesterEnd = "semester_end_date";
+  static const String keySemesters = "semesters_list"; // 多学期列表
+  static const String keyActiveSemester = "active_semester_id"; // 当前活跃学期
+  static const String keyTimeLogs = "user_time_logs";
+  static const String keyIgnoredScheduleConflicts =
       "ignored_schedule_conflicts";
-  static const String KEY_CONFLICT_DETECTION_ENABLED =
+  static const String keyConflictDetectionEnabled =
       "conflict_detection_enabled";
-  static const String KEY_SERVER_CHOICE = "app_server_choice";
-  static const String KEY_SYSTEM_STARTUP_ENABLED = "system_startup_enabled";
-  static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
-  static const String KEY_PRIVACY_DATE = "privacy_policy_date";
-  static const String KEY_PRIVACY_CACHED_VERSION =
+  static const String keyServerChoice = "app_server_choice";
+  static const String keySystemStartupEnabled = "system_startup_enabled";
+  static const String keyPrivacyAgreed = "privacy_policy_agreed";
+  static const String keyPrivacyDate = "privacy_policy_date";
+  static const String keyPrivacyCachedVersion =
       "privacy_policy_cached_version";
-  static const String KEY_PRIVACY_CACHE_TIME = "privacy_policy_cache_time";
-  static const String PRIVACY_RAW_URL =
+  static const String keyPrivacyCacheTime = "privacy_policy_cache_time";
+  static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
-  static const Duration PRIVACY_CACHE_DURATION = Duration(hours: 1);
+  static const Duration privacyCacheDuration = Duration(hours: 1);
 
-  static const String KEY_LOCAL_SCREEN_TIME =
+  static const String keyLocalScreenTime =
       "local_screen_time_pending_upload";
 
-  static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
-  static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
-  static const String KEY_WALLPAPER_PROVIDER = "app_wallpaper_provider";
-  static const String KEY_WALLPAPER_IMAGE_FORMAT = "app_wallpaper_image_format";
-  static const String KEY_WALLPAPER_INDEX = "app_wallpaper_index";
-  static const String KEY_WALLPAPER_MKT = "app_wallpaper_mkt";
-  static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
+  static const String keyLlmRetryCount = "llm_retry_count";
+  static const String keyPendingTodoConfirm = "pending_todo_confirm";
+  static const String keyWallpaperProvider = "app_wallpaper_provider";
+  static const String keyWallpaperImageFormat = "app_wallpaper_image_format";
+  static const String keyWallpaperIndex = "app_wallpaper_index";
+  static const String keyWallpaperMkt = "app_wallpaper_mkt";
+  static const String keyWallpaperResolution = "app_wallpaper_resolution";
   static const String keyWallpaperCacheCleanupTime =
       "app_wallpaper_cache_cleanup_time";
-  static const String KEY_WALLPAPER_CUSTOM_PATH = "app_wallpaper_custom_path";
+  static const String keyWallpaperCustomPath = "app_wallpaper_custom_path";
 
   // Notification settings keys
-  static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
-  static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
-  static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
-  static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
-  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
+  static const String keyNotifyLiveEnabled = "notify_live_activity_enabled";
+  static const String keyNotifyNormalEnabled = "notify_normal_enabled";
+  static const String keyNotifyCourseEnabled = "notify_course_enabled";
+  static const String keyNotifyQuizEnabled = "notify_quiz_enabled";
+  static const String keyNotifyTodoSummaryEnabled =
       "notify_todo_summary_enabled";
-  static const String KEY_NOTIFY_APP_UPDATES_ENABLED =
+  static const String keyNotifyAppUpdatesEnabled =
       "notify_app_updates_enabled";
-  static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
-  static const String KEY_TODO_FOLDER_DISPLAY_MODE = "todo_folder_display_mode";
-  static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
+  static const String keyTodoFoldersInline = "todo_folders_inline";
+  static const String keyTodoFolderDisplayMode = "todo_folder_display_mode";
+  static const String keyNotifySpecialTodoEnabled =
       "notify_special_todo_enabled";
-  static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
-  static const String KEY_NOTIFY_TODO_RECOGNIZE_ENABLED =
+  static const String keyNotifyPomodoroEnabled = "notify_pomodoro_enabled";
+  static const String keyNotifyTodoRecognizeEnabled =
       "notify_todo_recognize_enabled";
-  static const String KEY_NOTIFY_POMODORO_END_ENABLED =
+  static const String keyNotifyPomodoroEndEnabled =
       "notify_pomodoro_end_enabled";
-  static const String KEY_NOTIFY_TODO_LIVE_ENABLED = "notify_todo_live_enabled";
-  static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
-  static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
-  static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
-  static const String KEY_CATEGORY_REMINDER_MINUTES =
+  static const String keyNotifyTodoLiveEnabled = "notify_todo_live_enabled";
+  static const String keyNotifyReminderEnabled = "notify_reminder_enabled";
+  static const String keyCourseReminderMinutes = "course_reminder_minutes";
+  static const String keyLastCourseImportUrl = "last_course_import_url";
+  static const String keyCategoryReminderMinutes =
       "category_reminder_minutes";
-  static const String KEY_WINDOWS_SCHEDULED_REMINDERS =
+  static const String keyWindowsScheduledReminders =
       "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
@@ -428,8 +428,8 @@ class StorageService {
 
   static Future<void> _clearTodoPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${KEY_TODOS}_$username");
-    await prefs.remove(KEY_TODOS);
+    await prefs.remove("${keyTodos}_$username");
+    await prefs.remove(keyTodos);
   }
 
   static String _scopedKey(String baseKey, String? username) {
@@ -486,10 +486,10 @@ class StorageService {
   // ==========================================
   static Future<void> initTheme() async {
     final prefs = await StorageService.prefs;
-    themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
+    themeNotifier.value = prefs.getString(keyThemeMode) ?? 'system';
     themeColorModeNotifier.value =
-        prefs.getString(KEY_THEME_COLOR_MODE) ?? 'default';
-    int? colorVal = prefs.getInt(KEY_CUSTOM_THEME_COLOR);
+        prefs.getString(keyThemeColorMode) ?? 'default';
+    int? colorVal = prefs.getInt(keyCustomThemeColor);
     if (colorVal != null) {
       customThemeColorNotifier.value = Color(colorVal);
     }
@@ -512,12 +512,12 @@ class StorageService {
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_SETTINGS, jsonEncode(settings));
+    await prefs.setString(keySettings, jsonEncode(settings));
   }
 
   static Future<Map<String, dynamic>> getSettings() async {
     final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_SETTINGS);
+    String? jsonStr = prefs.getString(keySettings);
     if (jsonStr != null) return Map<String, dynamic>.from(jsonDecode(jsonStr));
     return {
       'operators': ['+', '-'],
@@ -533,13 +533,13 @@ class StorageService {
       List<Map<String, dynamic>> reminders) async {
     final prefs = await StorageService.prefs;
     await prefs.setString(
-        KEY_WINDOWS_SCHEDULED_REMINDERS, jsonEncode(reminders));
+        keyWindowsScheduledReminders, jsonEncode(reminders));
   }
 
   static Future<List<Map<String, dynamic>>>
       getWindowsScheduledReminders() async {
     final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_WINDOWS_SCHEDULED_REMINDERS);
+    String? jsonStr = prefs.getString(keyWindowsScheduledReminders);
     if (jsonStr == null || jsonStr.isEmpty) return [];
     try {
       final List<dynamic> list = jsonDecode(jsonStr);
@@ -637,7 +637,7 @@ class StorageService {
       String username, int score, int duration) async {
     final prefs = await SharedPreferences.getInstance();
     List<dynamic> list = [];
-    String? jsonStr = prefs.getString(KEY_LEADERBOARD);
+    String? jsonStr = prefs.getString(keyLeaderboard);
     if (jsonStr != null) list = jsonDecode(jsonStr);
     list.add({'username': username, 'score': score, 'time': duration});
     list.sort((a, b) {
@@ -645,13 +645,13 @@ class StorageService {
       return a['time'].compareTo(b['time']);
     });
     if (list.length > 10) list = list.sublist(0, 10);
-    await prefs.setString(KEY_LEADERBOARD, jsonEncode(list));
+    await prefs.setString(keyLeaderboard, jsonEncode(list));
     requestSync(username);
   }
 
   static Future<List<Map<String, dynamic>>> getLeaderboard() async {
     final prefs = await SharedPreferences.getInstance();
-    String? jsonStr = prefs.getString(KEY_LEADERBOARD);
+    String? jsonStr = prefs.getString(keyLeaderboard);
     if (jsonStr == null) return [];
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
   }
@@ -1131,7 +1131,7 @@ class StorageService {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+      _scopedKey(keyIgnoredScheduleConflicts, username),
       ignoredKeys.toList()..sort(),
     );
 
@@ -1181,7 +1181,7 @@ class StorageService {
       String username) async {
     final prefs = await SharedPreferences.getInstance();
     return (prefs.getStringList(
-              _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+              _scopedKey(keyIgnoredScheduleConflicts, username),
             ) ??
             const <String>[])
         .toSet();
@@ -1566,7 +1566,7 @@ class StorageService {
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
     List<String> list =
-        prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+        prefs.getStringList("${keyCountdowns}_$username") ?? [];
     list.removeWhere((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
@@ -1575,7 +1575,7 @@ class StorageService {
         return false;
       }
     });
-    await prefs.setStringList("${KEY_COUNTDOWNS}_$username", list);
+    await prefs.setStringList("${keyCountdowns}_$username", list);
 
     // 记录删除操作到 Oplog
     await db.insert('op_logs', {
@@ -1641,17 +1641,17 @@ class StorageService {
       // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
       final String cleanupKey = "cleanup_done_${username}_v4_repair";
       if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
-        await prefs.remove("${KEY_TODOS}_$username");
-        await prefs.remove(KEY_TODOS);
+        await prefs.remove("${keyTodos}_$username");
+        await prefs.remove(keyTodos);
         await prefs.setBool(cleanupKey, true);
         debugPrint("🗑️ Todos 残留数据修复清理完成。");
       }
 
       if (!alreadyMigrated) {
         List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+            prefs.getStringList("${keyTodos}_$username") ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
+          legacyJsonList = prefs.getStringList(keyTodos) ?? [];
         }
 
         if (legacyJsonList.isNotEmpty) {
@@ -1667,8 +1667,8 @@ class StorageService {
               sync: false, isSyncSource: true);
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
-          await prefs.remove("${KEY_TODOS}_$username");
-          await prefs.remove(KEY_TODOS);
+          await prefs.remove("${keyTodos}_$username");
+          await prefs.remove(keyTodos);
           debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
@@ -1780,7 +1780,7 @@ class StorageService {
     }
 
     // 🚀 逃生通道：兜底读取 Prefs
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    List<String> list = prefs.getStringList("${keyTodos}_$username") ?? [];
     List<TodoItem> legacyTodos;
 
     if (list.length > 50) {
@@ -1992,7 +1992,7 @@ class StorageService {
 
     // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(KEY_CURRENT_USER) ?? "";
+    final username = prefs.getString(keyCurrentUser) ?? "";
     if (username.isNotEmpty) {
       Future<void> cleanCache(String key) async {
         List<String> list = prefs.getStringList("${key}_$username") ?? [];
@@ -2011,10 +2011,10 @@ class StorageService {
         }
       }
 
-      await cleanCache(KEY_TODOS);
-      await cleanCache(KEY_TODO_GROUPS);
-      await cleanCache(KEY_COUNTDOWNS);
-      await cleanCache(KEY_TIME_LOGS);
+      await cleanCache(keyTodos);
+      await cleanCache(keyTodoGroups);
+      await cleanCache(keyCountdowns);
+      await cleanCache(keyTimeLogs);
       // 🚀 补充清理：课程表与番茄记录缓存 (Key 映射已在 Service 中定义)
       await cleanCache('course_schedule_json');
       await cleanCache('pomodoro_records');
@@ -2173,7 +2173,7 @@ class StorageService {
             ..addAll(generatedRecurrenceConflictKeys);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList(
-            _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+            _scopedKey(keyIgnoredScheduleConflicts, username),
             ignoredKeys.toList()..sort(),
           );
         }
@@ -2866,8 +2866,8 @@ class StorageService {
 
   static Future<void> _clearTodoGroupPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${KEY_TODO_GROUPS}_$username");
-    await prefs.remove(KEY_TODO_GROUPS);
+    await prefs.remove("${keyTodoGroups}_$username");
+    await prefs.remove(keyTodoGroups);
   }
 
   static Future<List<TodoGroup>> getTodoGroups(String username,
@@ -2883,13 +2883,13 @@ class StorageService {
           await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+            prefs.getStringList("${keyTodoGroups}_$username") ?? [];
 
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          final String markerKey = "${KEY_TODO_GROUPS}_${username}_migrated";
+          final String markerKey = "${keyTodoGroups}_${username}_migrated";
           if (!(prefs.getBool(markerKey) ?? false)) {
-            legacyJsonList = prefs.getStringList(KEY_TODO_GROUPS) ?? [];
+            legacyJsonList = prefs.getStringList(keyTodoGroups) ?? [];
             if (legacyJsonList.isNotEmpty) {
               await prefs.setBool(markerKey, true);
             }
@@ -2941,7 +2941,7 @@ class StorageService {
     // 逃生通道
     final prefs = await StorageService.prefs;
     List<String> list =
-        prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+        prefs.getStringList("${keyTodoGroups}_$username") ?? [];
     List<TodoGroup> result = [];
 
     for (var e in list) {
@@ -3018,18 +3018,18 @@ class StorageService {
   // ==========================================
   static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final key = _scopedKey(keyLocalScreenTime, username);
     await prefs.setString(key, jsonEncode(stats));
   }
 
   static Future<Map<String, dynamic>?> getLocalScreenTimePackage() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final key = _scopedKey(keyLocalScreenTime, username);
     String? s = prefs.getString(key);
     // 兼容旧版全局 key 的历史数据
-    s ??= prefs.getString(KEY_LOCAL_SCREEN_TIME);
+    s ??= prefs.getString(keyLocalScreenTime);
     return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
   }
 
@@ -3046,16 +3046,16 @@ class StorageService {
     if (stats.isEmpty) return;
 
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
-    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
-    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final historyKey = _scopedKey(keyScreenTimeHistory, username);
+    final cacheKey = _scopedKey(keyScreenTimeCache, username);
+    final syncKey = _scopedKey(keyLastScreenTimeSync, username);
     final now = DateTime.now();
     final String today = DateFormat('yyyy-MM-dd').format(now);
 
     // 1. 获取已有的历史记录
     String? histStr = prefs.getString(historyKey);
-    histStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    histStr ??= prefs.getString(keyScreenTimeHistory);
     Map<String, dynamic> history = {};
     if (histStr != null) {
       try {
@@ -3092,7 +3092,7 @@ class StorageService {
       await prefs.setString(historyKey, jsonEncode(history));
     }
 
-    // 5. 更新“当前视图快照” (KEY_SCREEN_TIME_CACHE)
+    // 5. 更新“当前视图快照” (keyScreenTimeCache)
     // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
     // 这样如果凌晨同步了旧数据，首页不会被错误覆盖
     await prefs.setString(cacheKey, jsonEncode(stats));
@@ -3128,13 +3128,13 @@ class StorageService {
 
   static Future<List<dynamic>> getScreenTimeCache() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
-    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final cacheKey = _scopedKey(keyScreenTimeCache, username);
+    final syncKey = _scopedKey(keyLastScreenTimeSync, username);
 
     // 检查缓存是否是今天的
     int? lastSyncMs = prefs.getInt(syncKey);
-    lastSyncMs ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    lastSyncMs ??= prefs.getInt(keyLastScreenTimeSync);
     if (lastSyncMs != null) {
       DateTime lastSyncDate =
           DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
@@ -3151,7 +3151,7 @@ class StorageService {
     }
 
     String? jsonStr = prefs.getString(cacheKey);
-    jsonStr ??= prefs.getString(KEY_SCREEN_TIME_CACHE);
+    jsonStr ??= prefs.getString(keyScreenTimeCache);
     if (jsonStr != null) {
       try {
         return jsonDecode(jsonStr);
@@ -3164,8 +3164,8 @@ class StorageService {
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final String historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final String historyKey = _scopedKey(keyScreenTimeHistory, username);
     final dbHelper = DatabaseHelper.instance;
 
     try {
@@ -3173,7 +3173,7 @@ class StorageService {
       final String migrationKey = "migrated_screentime_$username";
       if (!(prefs.getBool(migrationKey) ?? false)) {
         String? jsonStr = prefs.getString(historyKey) ??
-            prefs.getString(KEY_SCREEN_TIME_HISTORY);
+            prefs.getString(keyScreenTimeHistory);
         if (jsonStr != null && jsonStr.isNotEmpty) {
           debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
           try {
@@ -3185,7 +3185,7 @@ class StorageService {
               }
             }
             await prefs.remove(historyKey);
-            await prefs.remove(KEY_SCREEN_TIME_HISTORY);
+            await prefs.remove(keyScreenTimeHistory);
             debugPrint("✅ ScreenTime 迁移完成并已清理 Prefs");
           } catch (e) {
             debugPrint("⚠️ ScreenTime 迁移解析失败: $e");
@@ -3240,7 +3240,7 @@ class StorageService {
     } catch (e) {
       debugPrint("⚠️ ScreenTime History SQL 异常: $e");
       String? jsonStr = prefs.getString(historyKey) ??
-          prefs.getString(KEY_SCREEN_TIME_HISTORY);
+          prefs.getString(keyScreenTimeHistory);
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
           Map<String, dynamic> raw = jsonDecode(jsonStr);
@@ -3254,17 +3254,17 @@ class StorageService {
 
   static Future<void> updateLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    await prefs.setInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username),
+    final String? username = prefs.getString(keyCurrentUser);
+    await prefs.setInt(_scopedKey(keyLastScreenTimeSync, username),
         DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     int? timestamp =
-        prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
-    timestamp ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+        prefs.getInt(_scopedKey(keyLastScreenTimeSync, username));
+    timestamp ??= prefs.getInt(keyLastScreenTimeSync);
     if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
@@ -3274,7 +3274,7 @@ class StorageService {
 
   static Future<void> syncAppMappings() async {
     final prefs = await SharedPreferences.getInstance();
-    int? lastSync = prefs.getInt(KEY_LAST_MAPPINGS_SYNC);
+    int? lastSync = prefs.getInt(keyLastMappingsSync);
     DateTime now = DateTime.now();
     if (lastSync != null) {
       DateTime lastDate =
@@ -3291,14 +3291,14 @@ class StorageService {
         if (pkg.isNotEmpty) lookupMap[pkg] = cat;
         if (mapped.isNotEmpty) lookupMap[mapped] = cat;
       }
-      await prefs.setString(KEY_APP_MAPPINGS, jsonEncode(lookupMap));
-      await prefs.setInt(KEY_LAST_MAPPINGS_SYNC, now.millisecondsSinceEpoch);
+      await prefs.setString(keyAppMappings, jsonEncode(lookupMap));
+      await prefs.setInt(keyLastMappingsSync, now.millisecondsSinceEpoch);
     }
   }
 
   static Future<Map<String, String>> getAppMappings() async {
     final prefs = await SharedPreferences.getInstance();
-    String? jsonStr = prefs.getString(KEY_APP_MAPPINGS);
+    String? jsonStr = prefs.getString(keyAppMappings);
     if (jsonStr != null) {
       try {
         return Map<String, String>.from(jsonDecode(jsonStr));
@@ -3962,7 +3962,7 @@ class StorageService {
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {
-        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
+        await prefs.remove(_scopedKey(keyLocalScreenTime, username));
         debugPrint("✅ 本机屏幕时间上传成功，已清理待上传缓存");
       }
 
@@ -5411,7 +5411,7 @@ class StorageService {
       );
 
       if (success) {
-        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
+        await prefs.remove(_scopedKey(keyLocalScreenTime, username));
         return true;
       } else {
         debugPrint("syncScreenTimeAlone failed");
@@ -5432,15 +5432,15 @@ class StorageService {
 
     // 🚀 全局设置例外列表 (不进行账户隔离的设置)
     const List<String> globalSettings = [
-      KEY_THEME_MODE,
-      KEY_SERVER_CHOICE,
-      KEY_SYSTEM_STARTUP_ENABLED,
-      KEY_DEVICE_ID,
+      keyThemeMode,
+      keyServerChoice,
+      keySystemStartupEnabled,
+      keyDeviceId,
       'update_channel',
     ];
 
     if (!globalSettings.contains(key)) {
-      final String? username = prefs.getString(KEY_CURRENT_USER);
+      final String? username = prefs.getString(keyCurrentUser);
       if (username != null && username.isNotEmpty) {
         finalKey = "${key}_$username";
       }
@@ -5449,43 +5449,43 @@ class StorageService {
     if (value is int) await prefs.setInt(finalKey, value);
     if (value is String) await prefs.setString(finalKey, value);
     if (value is bool) await prefs.setBool(finalKey, value);
-    if (key == KEY_THEME_MODE) themeNotifier.value = value;
+    if (key == keyThemeMode) themeNotifier.value = value;
   }
 
   static Future<int> getSyncInterval() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ??
-          (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
+      return prefs.getInt("${keySyncInterval}_$username") ??
+          (prefs.getInt(keySyncInterval) ?? 0);
     }
-    return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
+    return prefs.getInt(keySyncInterval) ?? 0;
   }
 
   static Future<bool> getConflictDetectionEnabled() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getBool("${KEY_CONFLICT_DETECTION_ENABLED}_$username") ??
-          (prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false);
+      return prefs.getBool("${keyConflictDetectionEnabled}_$username") ??
+          (prefs.getBool(keyConflictDetectionEnabled) ?? false);
     }
-    return prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false;
+    return prefs.getBool(keyConflictDetectionEnabled) ?? false;
   }
 
   static Future<String> getThemeMode() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_THEME_MODE) ?? 'system';
+    return prefs.getString(keyThemeMode) ?? 'system';
   }
 
   static Future<void> setThemeColorMode(String mode) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_THEME_COLOR_MODE, mode);
+    await prefs.setString(keyThemeColorMode, mode);
     themeColorModeNotifier.value = mode;
   }
 
   static Future<void> setCustomThemeColor(Color color) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_CUSTOM_THEME_COLOR, color.toARGB32());
+    await prefs.setInt(keyCustomThemeColor, color.toARGB32());
     customThemeColorNotifier.value = color;
   }
 
@@ -5495,35 +5495,35 @@ class StorageService {
 
   static Future<void> saveServerChoice(String choice) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_SERVER_CHOICE, choice);
+    await prefs.setString(keyServerChoice, choice);
     ApiService.setServerChoice(choice);
   }
 
   static Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_SERVER_CHOICE) ?? 'aliyun';
+    return prefs.getString(keyServerChoice) ?? 'aliyun';
   }
 
   // ==========================================
   // 首页文字自定义配置
   // ==========================================
-  static const String _KEY_HOME_TEXT_CONFIG = 'home_text_config';
+  static const String _keyHomeTextConfig = 'home_text_config';
 
   static Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final key = username != null && username.isNotEmpty
-        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
-        : _KEY_HOME_TEXT_CONFIG;
+        ? "${_keyHomeTextConfig}_$username"
+        : _keyHomeTextConfig;
     await prefs.setString(key, jsonEncode(config));
   }
 
   static Future<Map<String, dynamic>> getHomeTextConfig() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final key = username != null && username.isNotEmpty
-        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
-        : _KEY_HOME_TEXT_CONFIG;
+        ? "${_keyHomeTextConfig}_$username"
+        : _keyHomeTextConfig;
     final String? jsonStr = prefs.getString(key);
     if (jsonStr != null) {
       return Map<String, dynamic>.from(jsonDecode(jsonStr));
@@ -5533,16 +5533,16 @@ class StorageService {
 
   static Future<bool> getSemesterEnabled() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+      return prefs.getBool(keySemesterProgressEnabled) ?? false;
     }
 
     final bool? scoped =
-        prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
+        prefs.getBool("${keySemesterProgressEnabled}_$username");
     if (scoped == null) {
-      final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
-      await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
+      final bool global = prefs.getBool(keySemesterProgressEnabled) ?? false;
+      await prefs.setBool("${keySemesterProgressEnabled}_$username", global);
       return global;
     }
     return scoped;
@@ -5550,19 +5550,19 @@ class StorageService {
 
   static Future<DateTime?> getSemesterStart() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      String? s = prefs.getString(KEY_SEMESTER_START);
+      String? s = prefs.getString(keySemesterStart);
       return s != null ? DateTime.tryParse(s) : null;
     }
 
-    String? s = prefs.getString("${KEY_SEMESTER_START}_$username");
+    String? s = prefs.getString("${keySemesterStart}_$username");
 
     // 迁移检查：如果用户没有设置过隔离的日期，回退一次全局数据
     if (s == null) {
-      s = prefs.getString(KEY_SEMESTER_START);
+      s = prefs.getString(keySemesterStart);
       if (s != null) {
-        await prefs.setString("${KEY_SEMESTER_START}_$username", s);
+        await prefs.setString("${keySemesterStart}_$username", s);
       }
     }
 
@@ -5571,17 +5571,17 @@ class StorageService {
 
   static Future<DateTime?> getSemesterEnd() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      String? s = prefs.getString(KEY_SEMESTER_END);
+      String? s = prefs.getString(keySemesterEnd);
       return s != null ? DateTime.tryParse(s) : null;
     }
 
-    String? s = prefs.getString("${KEY_SEMESTER_END}_$username");
+    String? s = prefs.getString("${keySemesterEnd}_$username");
     if (s == null) {
-      s = prefs.getString(KEY_SEMESTER_END);
+      s = prefs.getString(keySemesterEnd);
       if (s != null) {
-        await prefs.setString("${KEY_SEMESTER_END}_$username", s);
+        await prefs.setString("${keySemesterEnd}_$username", s);
       }
     }
     return s != null ? DateTime.tryParse(s) : null;
@@ -5594,10 +5594,10 @@ class StorageService {
   /// 获取所有学期列表
   static Future<List<SemesterInfo>> getSemesters() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_SEMESTERS}_$username"
-        : KEY_SEMESTERS;
+        ? "${keySemesters}_$username"
+        : keySemesters;
 
     final String? jsonStr = prefs.getString(key);
     if (jsonStr == null || jsonStr.isEmpty) {
@@ -5629,10 +5629,10 @@ class StorageService {
   /// 保存学期列表
   static Future<void> saveSemesters(List<SemesterInfo> semesters) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_SEMESTERS}_$username"
-        : KEY_SEMESTERS;
+        ? "${keySemesters}_$username"
+        : keySemesters;
 
     final jsonStr = jsonEncode(semesters.map((s) => s.toJson()).toList());
     await prefs.setString(key, jsonStr);
@@ -5643,14 +5643,14 @@ class StorageService {
     if (current.isNotEmpty) {
       await prefs.setString(
           username != null && username.isNotEmpty
-              ? "${KEY_SEMESTER_START}_$username"
-              : KEY_SEMESTER_START,
+              ? "${keySemesterStart}_$username"
+              : keySemesterStart,
           current.first.startDate.toIso8601String());
       if (current.first.endDate != null) {
         await prefs.setString(
             username != null && username.isNotEmpty
-                ? "${KEY_SEMESTER_END}_$username"
-                : KEY_SEMESTER_END,
+                ? "${keySemesterEnd}_$username"
+                : keySemesterEnd,
             current.first.endDate!.toIso8601String());
       }
     }
@@ -5659,10 +5659,10 @@ class StorageService {
   /// 获取当前活跃学期 ID
   static Future<String> getActiveSemesterId() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_ACTIVE_SEMESTER}_$username"
-        : KEY_ACTIVE_SEMESTER;
+        ? "${keyActiveSemester}_$username"
+        : keyActiveSemester;
 
     return prefs.getString(key) ?? 'default';
   }
@@ -5670,10 +5670,10 @@ class StorageService {
   /// 设置当前活跃学期 ID
   static Future<void> setActiveSemesterId(String semesterId) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_ACTIVE_SEMESTER}_$username"
-        : KEY_ACTIVE_SEMESTER;
+        ? "${keyActiveSemester}_$username"
+        : keyActiveSemester;
 
     await prefs.setString(key, semesterId);
   }
@@ -5709,13 +5709,13 @@ class StorageService {
 
   static Future<void> updateLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt("${KEY_LAST_AUTO_SYNC}_$username",
+    await prefs.setInt("${keyLastAutoSync}_$username",
         DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    int? timestamp = prefs.getInt("${KEY_LAST_AUTO_SYNC}_$username");
+    int? timestamp = prefs.getInt("${keyLastAutoSync}_$username");
     if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
@@ -5749,13 +5749,13 @@ class StorageService {
   /// 获取大模型重试次数，默认3次
   static Future<int> getLLMRetryCount() async {
     final prefs = await StorageService.prefs;
-    return prefs.getInt(KEY_LLM_RETRY_COUNT) ?? 3;
+    return prefs.getInt(keyLlmRetryCount) ?? 3;
   }
 
   /// 设置大模型重试次数
   static Future<void> setLLMRetryCount(int count) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_LLM_RETRY_COUNT, count);
+    await prefs.setInt(keyLlmRetryCount, count);
   }
 
   // ==========================================
@@ -5788,7 +5788,7 @@ class StorageService {
       'errorMsg': errorMsg,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
-    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+    await prefs.setString(keyPendingTodoConfirm, data);
   }
 
   /// 更新待确认待办数据的状态
@@ -5812,13 +5812,13 @@ class StorageService {
       'results': results ?? existing['results'] ?? [],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
-    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+    await prefs.setString(keyPendingTodoConfirm, data);
   }
 
   /// 获取待确认的待办数据
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
-    final data = prefs.getString(KEY_PENDING_TODO_CONFIRM);
+    final data = prefs.getString(keyPendingTodoConfirm);
     if (data == null) return null;
     try {
       return jsonDecode(data) as Map<String, dynamic>;
@@ -5830,7 +5830,7 @@ class StorageService {
   /// 清除待确认的待办数据
   static Future<void> clearPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
-    await prefs.remove(KEY_PENDING_TODO_CONFIRM);
+    await prefs.remove(keyPendingTodoConfirm);
   }
 
   // ==========================================
@@ -6163,10 +6163,10 @@ class StorageService {
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();
     final key = table == 'todos'
-        ? '${KEY_TODOS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
+        ? '${keyTodos}_${prefs.getString(keyCurrentUser) ?? 'default'}'
         : table == 'countdowns'
-            ? '${KEY_COUNTDOWNS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
-            : '${KEY_TODO_GROUPS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}';
+            ? '${keyCountdowns}_${prefs.getString(keyCurrentUser) ?? 'default'}'
+            : '${keyTodoGroups}_${prefs.getString(keyCurrentUser) ?? 'default'}';
     await prefs.remove(key);
 
     triggerRefresh();

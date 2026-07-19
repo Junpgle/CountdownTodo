@@ -107,7 +107,7 @@ class CourseImportHandler {
 
     semesterStart = picked;
     StorageService.saveAppSetting(
-      StorageService.KEY_SEMESTER_START,
+      StorageService.keySemesterStart,
       picked.toIso8601String(),
     );
     onSemesterStartChanged?.call(picked);

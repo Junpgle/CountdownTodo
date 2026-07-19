@@ -1,9 +1,9 @@
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/services/macos_pomodoro_status_bar_service_io.dart';
-import 'package:CountDownTodo/services/ongoing_activity_service.dart';
-import 'package:CountDownTodo/services/pomodoro_service.dart';
-import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
-import 'package:CountDownTodo/services/reminder_schedule_service.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/services/macos_pomodoro_status_bar_service_io.dart';
+import 'package:countdown_todo/services/ongoing_activity_service.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/services/pomodoro_sync_service.dart';
+import 'package:countdown_todo/services/reminder_schedule_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

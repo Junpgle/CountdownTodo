@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/storage_service.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/storage_service.dart';
 
 void main() {
   test('TodoItem preserves recurrence series id through JSON', () {

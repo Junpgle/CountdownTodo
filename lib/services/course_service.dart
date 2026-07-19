@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
-import 'package:CountDownTodo/services/database_helper.dart';
+import 'package:countdown_todo/services/database_helper.dart';
 import '../services/api_service.dart';
 import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
