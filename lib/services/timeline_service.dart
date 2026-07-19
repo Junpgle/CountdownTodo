@@ -44,9 +44,19 @@ class TimelineService {
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       for (var row in createdTodos) {
+        final uuid = row['uuid']?.toString() ?? '';
+        final recurrenceSeriesId =
+            row['recurrence_series_id']?.toString().trim();
+        // A recurrence series is created once. Its generated occurrences are
+        // schedule materialization, rather than user-created new todos.
+        if (recurrenceSeriesId != null &&
+            recurrenceSeriesId.isNotEmpty &&
+            recurrenceSeriesId != uuid) {
+          continue;
+        }
         final title = row['content'] as String? ?? '';
         events.add(TimelineEvent(
-          id: 'todo_create_${row['uuid']}',
+          id: 'todo_create_$uuid',
           timestamp:
               DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
           type: TimelineEventType.todoCreated,
@@ -64,12 +74,17 @@ class TimelineService {
       for (var row in completedTodos) {
         final title = row['content'] as String? ?? '';
         final updatedAt = row['updated_at'] as int;
+        final recurrenceSeriesId =
+            row['recurrence_series_id']?.toString().trim();
         events.add(TimelineEvent(
           id: 'todo_complete_${row['uuid']}',
           timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
           type: TimelineEventType.todoCompleted,
           title: '完成待办',
           subtitle: title,
+          extraData: {
+            'is_recurrence': recurrenceSeriesId?.isNotEmpty == true,
+          },
         ));
       }
 

@@ -15,6 +15,7 @@ import '../storage_service.dart';
 import '../services/course_service.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_ml_service.dart';
+import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import 'medal_wall_page.dart';
@@ -48,6 +49,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
   bool _isExportingPoster = false;
+  bool _isLoadingAllTimeMedals = false;
+  int _loadGeneration = 0;
   late AnimationController _animationController;
 
   // Data points
@@ -65,6 +68,26 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   int _courseCount = 0;
   int _maxDailyCourseCount = 0;
   List<MapEntry<String, int>> _topScreenApps = [];
+  int _pomodoroFocusSeconds = 0;
+  int _timeLogSeconds = 0;
+  int _pomodoroCount = 0;
+  int _timeLogCount = 0;
+  int _pauseSeconds = 0;
+  int _pauseCount = 0;
+  int _plannedMinutes = 0;
+  int _planActualSeconds = 0;
+  int _planBlockCount = 0;
+  int _planCompletedCount = 0;
+  int _planMissedCount = 0;
+  int _planSkippedCount = 0;
+  int _recurringCompletedCount = 0;
+  int _recurringScheduledCount = 0;
+  int _recurringMissedCount = 0;
+  int _recurringPendingCount = 0;
+  List<TimelineRecurrenceSeriesStatistics> _recurrenceSeries = [];
+  TimelineRecurrenceSeriesStatistics? _bestRecurrenceSeries;
+  int _recurringLongestStreak = 0;
+  List<MapEntry<String, int>> _topFocusTags = [];
 
   // ML Medal Recommendation System
   TimelineSummary? _allTimeSummary;
@@ -94,7 +117,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    final loadGeneration = ++_loadGeneration;
+    setState(() {
+      _isLoading = true;
+      _mlInsights = [];
+    });
 
     DateTime start;
     DateTime end;
@@ -136,7 +163,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
       // 3. Get Focus Time
       final records = await PomodoroService.getRecordsInRange(start, end);
-      int totalSecs = records.fold(0, (sum, r) => sum + r.effectiveDuration);
+      final timeLogs = await StorageService.getTimeLogs(widget.username);
+      final planBlocks = await StorageService.getPlanBlocks(widget.username);
+      final tags = await PomodoroService.getAllTagsIncludingDeleted();
 
       // 4. Get Top Category (Simplified)
       final screenStats = await StorageService.getScreenTimeHistory();
@@ -194,19 +223,41 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             todo.updatedAt < end.millisecondsSinceEpoch;
         return createdInRange || dueInRange || completedInRange;
       }).toList();
-      final sprintCount = completedTodos.where((todo) {
+      final regularCompletedTodos =
+          completedTodos.where((todo) => !_isRecurringTodo(todo)).toList();
+      final regularPlannedTodos =
+          plannedTodos.where((todo) => !_isRecurringTodo(todo)).toList();
+      final sprintCount = regularCompletedTodos.where((todo) {
         final due = _effectiveTodoDueEnd(todo);
         if (due == null) return false;
         final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
         final diff = due.difference(doneAt);
         return !diff.isNegative && diff.inHours <= 24;
       }).length;
-      final earlyCount = completedTodos.where((todo) {
+      final earlyCount = regularCompletedTodos.where((todo) {
         final due = _effectiveTodoDueEnd(todo);
         if (due == null) return false;
         final doneAt = DateTime.fromMillisecondsSinceEpoch(todo.updatedAt);
         return due.difference(doneAt).inHours >= 24;
       }).length;
+
+      final rangeStatistics = TimelineStatisticsService.calculate(
+        start: start,
+        end: end,
+        pomodoroRecords: records,
+        timeLogs: timeLogs,
+        planBlocks: planBlocks,
+        todos: todos,
+        tags: tags,
+      );
+      final totalSecs = rangeStatistics.totalFocusSeconds;
+      final regularTotalCount = regularPlannedTodos.isEmpty
+          ? regularCompletedTodos.length
+          : regularPlannedTodos.length;
+      final medalCompletedCount = regularCompletedTodos.length +
+          rangeStatistics.recurringCompletedCount;
+      final medalTotalCount =
+          regularTotalCount + rangeStatistics.recurringScheduledCount;
 
       final courses = await CourseService.getAllCourses(widget.username);
       final Map<String, int> coursesByDay = {};
@@ -231,7 +282,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             catUsage.entries.reduce((a, b) => a.value > b.value ? a : b).key;
       }
 
-      if (mounted) {
+      if (mounted && loadGeneration == _loadGeneration) {
         setState(() {
           _summary = summary;
           _totalFocusMinutes = totalSecs ~/ 60;
@@ -249,10 +300,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             }
           }
           _topAppCategory = displayCat ?? '学习';
-          _completedCount = completedTodos.length;
-          _totalCount = plannedTodos.isEmpty
-              ? completedTodos.length
-              : plannedTodos.length;
+          _completedCount = regularCompletedTodos.length;
+          _totalCount = regularTotalCount;
           _screenTimeSeconds = screenTotal;
           _productiveScreenSeconds = productiveScreen;
           _distractionScreenSeconds = distractionScreen;
@@ -265,13 +314,33 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _topScreenApps = appUsage.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
           _topScreenApps = _topScreenApps.take(5).toList();
+          _pomodoroFocusSeconds = rangeStatistics.pomodoroFocusSeconds;
+          _timeLogSeconds = rangeStatistics.timeLogSeconds;
+          _pomodoroCount = rangeStatistics.pomodoroCount;
+          _timeLogCount = rangeStatistics.timeLogCount;
+          _pauseSeconds = rangeStatistics.pauseSeconds;
+          _pauseCount = rangeStatistics.pauseCount;
+          _plannedMinutes = rangeStatistics.plannedMinutes;
+          _planActualSeconds = rangeStatistics.planActualSeconds;
+          _planBlockCount = rangeStatistics.planBlockCount;
+          _planCompletedCount = rangeStatistics.planCompletedCount;
+          _planMissedCount = rangeStatistics.planMissedCount;
+          _planSkippedCount = rangeStatistics.planSkippedCount;
+          _recurringCompletedCount = rangeStatistics.recurringCompletedCount;
+          _recurringScheduledCount = rangeStatistics.recurringScheduledCount;
+          _recurringMissedCount = rangeStatistics.recurringMissedCount;
+          _recurringPendingCount = rangeStatistics.recurringPendingCount;
+          _recurrenceSeries = rangeStatistics.recurrenceSeries;
+          _bestRecurrenceSeries = rangeStatistics.bestRecurrenceSeries;
+          _recurringLongestStreak = rangeStatistics.recurringLongestStreak;
+          _topFocusTags = rangeStatistics.topFocusTags;
 
           // Calculate ML Medal Recommendations
           _medalRecommendation = MedalRecommendationService.getRecommendations(
             summary,
             totalSecs ~/ 60,
-            completedTodos.length,
-            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            medalCompletedCount,
+            medalTotalCount,
             earlyCount,
             sprintCount,
             coursesByDay.values.fold(0, (sum, v) => sum + v),
@@ -295,10 +364,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           username: widget.username,
           summary: summary,
           totalFocusMinutes: totalSecs ~/ 60,
-          completedCount: completedTodos.length,
-          totalCount: plannedTodos.isEmpty
-              ? completedTodos.length
-              : plannedTodos.length,
+          completedCount: regularCompletedTodos.length,
+          totalCount: regularPlannedTodos.isEmpty
+              ? regularCompletedTodos.length
+              : regularPlannedTodos.length,
           screenTimeSeconds: screenTotal,
           productiveScreenSeconds: productiveScreen,
           distractionScreenSeconds: distractionScreen,
@@ -308,7 +377,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           endDate: end,
         )
             .then((insights) {
-          if (mounted && insights.isNotEmpty) {
+          if (mounted &&
+              loadGeneration == _loadGeneration &&
+              insights.isNotEmpty) {
             setState(() {
               _mlInsights = insights;
             });
@@ -322,15 +393,19 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             allMedals,
             summary,
             totalSecs ~/ 60,
-            completedTodos.length,
-            plannedTodos.isEmpty ? completedTodos.length : plannedTodos.length,
+            regularCompletedTodos.length,
+            regularPlannedTodos.isEmpty
+                ? regularCompletedTodos.length
+                : regularPlannedTodos.length,
             earlyCount,
             sprintCount,
             screenTotal,
             productiveScreen,
             distractionScreen,
           ).then((mlResult) {
-            if (mounted && mlResult.topRecommendations.isNotEmpty) {
+            if (mounted &&
+                loadGeneration == _loadGeneration &&
+                mlResult.topRecommendations.isNotEmpty) {
               setState(() {
                 _medalRecommendation = mlResult;
               });
@@ -347,11 +422,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       }
     } catch (e) {
       // debugPrint('Error loading insight data: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _loadAllTimeMedalData() async {
+    if (_isLoadingAllTimeMedals) return;
+    _isLoadingAllTimeMedals = true;
     try {
       final start = DateTime(2020);
       final end = DateTime.now().add(const Duration(days: 1));
@@ -360,12 +439,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       final summary = await TimelineService.instance
           .getSummaryForRange(widget.username, start, end);
 
-      // 2. Get Global Focus Time
-      final records = await PomodoroService.getRecordsInRange(start, end);
-      int totalSecs = records.fold(0, (sum, r) => sum + r.effectiveDuration);
+      // 2. Get Global Focus Time (Pomodoro + manually recorded time logs)
+      final totalSecs = summary.totalFocusMinutes * 60;
 
       // 3. Screen Time
       final screenStats = await StorageService.getScreenTimeHistory();
+      final appMappings = await StorageService.getAppMappings();
       int screenTotal = 0;
       int productiveScreen = 0;
       int distractionScreen = 0;
@@ -373,8 +452,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       for (var stats in screenStats.values) {
         for (var item in stats) {
           final appName = item['app_name']?.toString() ?? '未知应用';
+          final packageName = item['package_name']?.toString() ?? '';
           final duration = (item['duration'] as num?)?.toInt() ?? 0;
-          final cat = _guessScreenCategory(appName);
+          final cat = _getScreenCategoryForApp(
+            appName: appName,
+            packageName: packageName,
+            backendCategory: item['category']?.toString(),
+            mappings: appMappings,
+          );
           screenTotal += duration;
           if (_isProductiveScreenCategory(cat)) productiveScreen += duration;
           if (_isDistractionScreenCategory(cat)) distractionScreen += duration;
@@ -449,6 +534,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       });
     } catch (e) {
       // debugPrint('Error loading all-time medal data: $e');
+    } finally {
+      _isLoadingAllTimeMedals = false;
     }
   }
 
@@ -570,6 +657,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   bool _isDistractionScreenCategory(String category) {
     return category == '社交通讯' || category == '影音娱乐' || category == '游戏与辅助';
+  }
+
+  bool _isRecurringTodo(TodoItem todo) {
+    final seriesId = todo.recurrenceSeriesId?.trim();
+    return seriesId != null && seriesId.isNotEmpty;
   }
 
   DateTime? _effectiveTodoDueEnd(TodoItem todo) {
@@ -1761,6 +1853,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final focusTimeStr = _formatMinutes(_totalFocusMinutes);
     final completionRate =
         _totalCount > 0 ? _completedCount / _totalCount : 0.0;
+    final focusSessionCount = _pomodoroCount + _timeLogCount;
+    final planAchievementRate =
+        _plannedMinutes > 0 ? _planActualSeconds / (_plannedMinutes * 60) : 0.0;
     final screenConversion = _screenTimeSeconds > 0
         ? (_totalFocusMinutes * 60) / _screenTimeSeconds
         : 0.0;
@@ -1768,11 +1863,16 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final subRatio = _subjectRatio(summary, topSub);
     final subjectName = topSub != '全能型' ? topSub : '多主题任务';
     final keywordText = _buildKeywordText(summary);
-    final qualityLine = summary.pomodoroCount > 0
-        ? '平均每次 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度专注占 ${_formatPercent(summary.deepWorkCount / summary.pomodoroCount)}。'
+    final qualityLine = focusSessionCount > 0
+        ? '平均每段 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度投入占 ${_formatPercent(summary.deepWorkCount / focusSessionCount)}。'
         : '暂时没有可统计的专注质量数据。';
     final consecutiveLabel =
         _buildConsecutiveActiveLabel(summary.consecutiveActiveDays);
+    final achievements = <String>[
+      if (_completedCount > 0 || _recurringCompletedCount == 0)
+        '完成 $_completedCount 个任务',
+      if (_recurringCompletedCount > 0) '坚持 $_recurringCompletedCount 期习惯',
+    ].join('，');
 
     final hero = Container(
       width: double.infinity,
@@ -1794,7 +1894,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${_getPeriodName()}你累计专注 $focusTimeStr，完成 $_completedCount 个任务。',
+            '${_getPeriodName()}你累计投入 $focusTimeStr，$achievements。',
             style: TextStyle(
               fontSize: isWide ? 24 : 20,
               height: 1.25,
@@ -1818,8 +1918,23 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             children: [
               _buildInsightPill('完成率 ${_formatPercent(completionRate)}',
                   Icons.check_circle_outline_rounded, cs.primary, cs),
+              if (_planBlockCount > 0)
+                _buildInsightPill('规划达成 ${_formatPercent(planAchievementRate)}',
+                    Icons.event_available_outlined, cs.tertiary, cs),
               _buildInsightPill(consecutiveLabel,
                   Icons.local_fire_department_outlined, Colors.deepOrange, cs),
+              if (_recurringScheduledCount > 0)
+                _buildInsightPill(
+                    '习惯完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
+                    Icons.repeat_rounded,
+                    cs.secondary,
+                    cs),
+              if (_pauseCount > 0)
+                _buildInsightPill(
+                    '暂停 $_pauseCount 次 · ${_formatSecondsCompact(_pauseSeconds)}',
+                    Icons.pause_circle_outline_rounded,
+                    cs.error,
+                    cs),
               _buildInsightPill('转化率 ${_formatPercent(screenConversion)}',
                   Icons.desktop_windows_outlined, Colors.teal, cs),
               _buildInsightPill('屏幕偏好 ${_topAppCategory ?? '学习办公'}',
@@ -1840,13 +1955,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _buildStatItem(
-                '总专注', focusTimeStr, '', Icons.spa_outlined, cs.primary, cs),
+                '总投入', focusTimeStr, '', Icons.spa_outlined, cs.primary, cs),
             _buildStatItem('任务完成', '$_completedCount/$_totalCount', '',
                 Icons.task_alt_rounded, cs.secondary, cs),
             _buildStatItem('完成率', _formatPercent(completionRate), '',
                 Icons.pie_chart_outline_rounded, Colors.green, cs),
             _buildStatItem(
-                '平均专注',
+                '平均投入',
                 summary.avgPomodoroMinutes.toStringAsFixed(0),
                 'min',
                 Icons.psychology_outlined,
@@ -1867,7 +1982,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('总专注', focusTimeStr, '', Icons.spa_outlined,
+                _buildStatItem('总投入', focusTimeStr, '', Icons.spa_outlined,
                     cs.primary, cs),
                 _buildStatItem('任务完成', '$_completedCount/$_totalCount', '',
                     Icons.task_alt_rounded, cs.secondary, cs),
@@ -1880,7 +1995,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 _buildStatItem(
-                    '平均专注',
+                    '平均投入',
                     summary.avgPomodoroMinutes.toStringAsFixed(0),
                     'min',
                     Icons.psychology_outlined,
@@ -2232,6 +2347,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     return '$mins 分钟';
   }
 
+  int get _recurringResolvedCount =>
+      _recurringCompletedCount + _recurringMissedCount;
+
+  int get _recurringEndingStreak => _recurrenceSeries.fold<int>(
+        0,
+        (longest, series) => math.max(longest, series.endingStreak),
+      );
+
   String _formatSecondsCompact(int seconds) => formatDurationCompact(seconds);
 
   String _formatPercent(double value) {
@@ -2322,7 +2445,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Widget _buildJournalEntry(TimelineEvent event, ColorScheme cs) {
     final timeStr = DateFormat('HH:mm').format(event.timestamp);
     final isImportant = event.type == TimelineEventType.pomodoroEnd ||
-        event.type == TimelineEventType.todoCompleted;
+        event.type == TimelineEventType.todoCompleted ||
+        event.type == TimelineEventType.timeLog ||
+        event.type == TimelineEventType.planBlock;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24.0),
       child: Row(
@@ -2362,36 +2487,28 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
     final List<Widget> cards = [
       _buildTrendCard(
-        '专注产出',
-        '${(_summary!.pomodoroCount)} 次专注',
-        '平均每轮 ${_summary!.avgPomodoroMinutes.toStringAsFixed(0)} 分钟',
+        '有效投入',
+        _formatMinutes(_totalFocusMinutes),
+        '$_pomodoroCount 次番茄 · $_timeLogCount 条时间日志',
         Icons.timer_rounded,
         cs.primary,
         cs,
         trend: _summary!.dailyTrend,
-        extraItems: _summary!.topFocusSessions.length > 1
-            ? _summary!.topFocusSessions
-                .skip(1)
-                .take(4)
-                .toList()
-                .asMap()
-                .entries
-                .map((e) {
-                final session = e.value;
-                final dur = session['actual_duration'] as int;
-                return _buildRankItem(
-                    e.key + 2,
-                    session['todo_title'] as String? ?? '无题',
-                    '${dur ~/ 60}m',
-                    cs);
-              }).toList()
-            : null,
+        extraItems: [
+          const SizedBox(height: 8),
+          _buildRankItem(
+              0, '番茄专注', _formatSecondsCompact(_pomodoroFocusSeconds), cs),
+          _buildRankItem(0, '手动日志', _formatSecondsCompact(_timeLogSeconds), cs),
+          if (_pauseCount > 0)
+            _buildRankItem(0, '暂停损耗',
+                '$_pauseCount次 · ${_formatSecondsCompact(_pauseSeconds)}', cs),
+        ],
       ),
       _buildStatCard(
-        '最长单次专注',
+        '最长单段投入',
         '${_summary!.longestPomodoroMinutes} 分钟',
         _summary!.longestPomodoroTitle != null
-            ? '专注「${_summary!.longestPomodoroTitle}」'
+            ? '投入「${_summary!.longestPomodoroTitle}」'
             : '挑战自我极限',
         Icons.workspace_premium_rounded,
         Colors.amber,
@@ -2405,7 +2522,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 .entries
                 .map((e) {
                 final session = e.value;
-                final dur = session['actual_duration'] as int;
+                final dur = (session['actual_duration'] as num? ?? 0).toInt();
                 return _buildRankItem(
                     e.key + 2,
                     session['todo_title'] as String? ?? '无题',
@@ -2426,6 +2543,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _buildRankItem(0, '深度心流', '${_summary!.deepWorkCount}次', cs),
           _buildRankItem(0, '平均时长',
               '${_summary!.avgPomodoroMinutes.toStringAsFixed(0)}m', cs),
+          _buildRankItem(0, '暂停次数', '$_pauseCount次', cs),
         ],
       ),
       _buildStatCard(
@@ -2441,6 +2559,83 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
           _buildRankItem(0, '截止前24小时完成', '$_deadlineSprintCount项', cs),
         ],
       ),
+      if (_recurringScheduledCount > 0)
+        _buildStatCard(
+          '周期习惯',
+          _recurringResolvedCount > 0
+              ? '完成率 ${_formatPercent(_recurringCompletedCount / _recurringResolvedCount)}'
+              : '习惯进行中',
+          '${_recurrenceSeries.length} 个习惯 · $_recurringScheduledCount 个周期实例',
+          Icons.repeat_rounded,
+          cs.secondary,
+          cs,
+          extraItems: [
+            const SizedBox(height: 8),
+            _buildRankItem(0, '按期完成', '$_recurringCompletedCount期', cs),
+            _buildRankItem(0, '已逾期', '$_recurringMissedCount期', cs),
+            if (_recurringPendingCount > 0)
+              _buildRankItem(0, '进行中', '$_recurringPendingCount期', cs),
+            _buildRankItem(0, '阶段末连续完成', '$_recurringEndingStreak期', cs),
+            _buildRankItem(0, '最长连续完成', '$_recurringLongestStreak期', cs),
+            if (_bestRecurrenceSeries != null) ...[
+              const SizedBox(height: 8),
+              _buildRankItem(
+                1,
+                '最稳定 · ${_bestRecurrenceSeries!.title}',
+                '${_bestRecurrenceSeries!.completedCount}/${_bestRecurrenceSeries!.resolvedCount}期',
+                cs,
+              ),
+            ],
+            ..._recurrenceSeries
+                .where((series) =>
+                    series.seriesId != _bestRecurrenceSeries?.seriesId)
+                .take(2)
+                .toList()
+                .asMap()
+                .entries
+                .map((entry) {
+              final series = entry.value;
+              return _buildRankItem(
+                entry.key + 2,
+                series.title,
+                '${series.completedCount}/${series.resolvedCount}期',
+                cs,
+              );
+            }),
+          ],
+        ),
+      if (_planBlockCount > 0)
+        _buildStatCard(
+          '规划达成',
+          _formatPercent(_plannedMinutes > 0
+              ? _planActualSeconds / (_plannedMinutes * 60)
+              : 0),
+          '计划 ${_formatMinutes(_plannedMinutes)} · 实际 ${_formatSecondsCompact(_planActualSeconds)}',
+          Icons.event_available_outlined,
+          cs.tertiary,
+          cs,
+          extraItems: [
+            const SizedBox(height: 8),
+            _buildRankItem(
+                0, '达成规划块', '$_planCompletedCount/$_planBlockCount', cs),
+            _buildRankItem(0, '漏做', '$_planMissedCount个', cs),
+            _buildRankItem(0, '跳过/取消', '$_planSkippedCount个', cs),
+          ],
+        ),
+      if (_topFocusTags.isNotEmpty)
+        _buildStatCard(
+          '专注标签',
+          _topFocusTags.first.key,
+          '跨番茄与时间日志聚合',
+          Icons.sell_outlined,
+          cs.secondary,
+          cs,
+          extraItems: _topFocusTags.asMap().entries.map((entry) {
+            final tag = entry.value;
+            return _buildRankItem(
+                entry.key + 1, tag.key, _formatSecondsCompact(tag.value), cs);
+          }).toList(),
+        ),
       _buildStatCard(
         '屏幕时间转化',
         _formatPercent(_screenTimeSeconds > 0
@@ -2948,9 +3143,9 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildQualitySnapshot(ColorScheme cs, {bool fillHeight = false}) {
     final summary = _summary!;
-    final deepRatio = summary.pomodoroCount > 0
-        ? summary.deepWorkCount / summary.pomodoroCount
-        : 0.0;
+    final focusSessionCount = _pomodoroCount + _timeLogCount;
+    final deepRatio =
+        focusSessionCount > 0 ? summary.deepWorkCount / focusSessionCount : 0.0;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -2965,13 +3160,21 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildRankItem(0, '平均专注时长',
+          _buildRankItem(0, '平均投入时长',
               '${summary.avgPomodoroMinutes.toStringAsFixed(0)}分钟', cs),
           _buildRankItem(0, '深度专注占比', _formatPercent(deepRatio), cs),
           _buildRankItem(
               0, '中断率', _formatPercent(summary.interruptionRate), cs),
           _buildRankItem(
-              0, '最长连续专注链', '${summary.longestPomodoroMinutes}分钟', cs),
+              0, '最长单段投入', '${summary.longestPomodoroMinutes}分钟', cs),
+          if (_planBlockCount > 0)
+            _buildRankItem(
+                0,
+                '规划达成率',
+                _formatPercent(_plannedMinutes > 0
+                    ? _planActualSeconds / (_plannedMinutes * 60)
+                    : 0),
+                cs),
           const SizedBox(height: 10),
           Text(
             summary.interruptionRate <= 0.15
@@ -3094,14 +3297,14 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '${(_summary!.pomodoroCount)}',
+                        '${_pomodoroCount + _timeLogCount}',
                         style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                             letterSpacing: -1),
                       ),
                       Text(
-                        '总项',
+                        '投入段',
                         style: TextStyle(
                             fontSize: 10,
                             color: cs.onSurfaceVariant,
@@ -3565,6 +3768,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ]);
 
       case TimelineEventType.todoCompleted:
+        if (event.extraData?['is_recurrence'] == true) {
+          return pick([
+            '完成了一次周期打卡',
+            '习惯如约进行',
+            '为坚持再添一格',
+            '今天的习惯已达成',
+            '周期目标顺利完成',
+          ]);
+        }
         if (isHomework) {
           return pick([
             '彻底消灭了这项作业',
@@ -3606,6 +3818,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         ]);
       case TimelineEventType.searchQuery:
         return '探索：${event.subtitle}';
+      case TimelineEventType.timeLog:
+        return pick(['补全了一段真实投入', '为时间留下了记录', '把做过的事写进时间', '记录一段实际行动']);
+      case TimelineEventType.planBlock:
+        return pick(['按计划进入行动时段', '赴一场与目标的约定', '规划开始落地', '进入预定任务时间']);
       default:
         return event.title;
     }
@@ -3617,6 +3833,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         _selectedDate.year +
         _dimension.index;
     String pick(List<String> options) => options[seed % options.length];
+
+    if (_recurringCompletedCount > 0 && _totalFocusMinutes == 0) {
+      return "习惯不靠一时冲刺，\n而是一次次如约完成。\n这 $_recurringCompletedCount 期坚持，正在悄悄塑造新的你。";
+    }
 
     if (_totalFocusMinutes == 0) {
       return pick([
@@ -3666,6 +3886,10 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final int seed =
         _selectedDate.day + _selectedDate.month + _selectedDate.year;
     String pick(List<String> options) => options[seed % options.length];
+
+    if (_recurringEndingStreak >= 3) {
+      return '习惯已经连续完成 $_recurringEndingStreak 期，稳定本身就是一种力量。';
+    }
 
     return pick([
       "专注当下，便是对未来最好的期许。",
