@@ -1,297 +1,96 @@
-# 项目架构文档 - CountDownTodo
+# Project architecture
 
-## 📌 项目概述
+Last reconciled with code: 2026-07-20. Flutter package version: **5.4.22**.
 
-**CountDownTodo** 是一个跨平台效率工具应用，核心功能包括：
-- 待办事项 (Todo) 管理 — 支持 LLM 智能解析、图片识别、自然语言输入
-- 重要日倒计时 (Countdown)
-- 番茄钟 (Pomodoro) 专注计时 — 标签管理、跨端 WebSocket 同步
-- 数学测验 (Math Quiz)
-- 屏幕使用时间统计 (Screen Time)
-- 课表管理 (Course Schedule) — 支持 4 种院校格式
-- 多端数据同步 (Cloud Sync) — Delta Sync 增量同步
-- Windows 桌面灵动岛 (Dynamic Island)
-- 手环同步 (Band Sync)
-- 时间日志 (Time Log)
-- Mac 平台支持 — 菜单栏、桌面小组件、开机自启、检查更新
-- 人机验证 (Turnstile) — 登录/注册 Cloudflare Turnstile 防护
-
-## 2026-06-14 当前实现快照
-
-- 当前应用版本：`4.15.7`。
-- 主 Flutter 代码位于 `lib/`，当前包含 `screens/`、`services/`、`widgets/`、`course_import/`、`windows_island/` 等模块。
-- 高容量业务数据已以 SQLite 为主存储，`SharedPreferences` 主要保留设置、登录态、水位线、兼容迁移和少量轻量缓存。
-- 同步主入口仍是 `StorageService.syncData()`，番茄钟标签/记录由 `PomodoroService` 走独立同步链路。
-- 新后端能力应优先落在后端 Express 服务器（位于 `/Users/junpgle/WebstormProjects/CDT-server`）；`math-quiz-backend/` 的 Cloudflare Worker 已于 2026-06-01 停用。
-- Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
-- Windows island / floating-window 逻辑是 Windows-only，Android 不应导入或初始化相关模块。
-- 登录/注册已集成 Cloudflare Turnstile 人机验证；新增邮箱验证码注册和找回密码流程。
-- Mac 平台支持菜单栏计时显示、桌面小组件、开机自启、自动检查更新。
-- 环境自动探测：`.debug` 后缀包名自动锁定测试服务器和测试数据库。
-
----
-
-## 🛠 技术栈概览
-
-| 类别 | 技术 | 说明 |
-|------|------|------|
-| **框架** | Flutter 3.x | 跨平台 UI 框架 |
-| **语言** | Dart (SDK >=3.1.0 <4.0.0) | 空安全 |
-| **UI 库** | Material Design 3 | `useMaterial3: true` |
-| **状态管理** | ValueListenable + setState + Stream | 无第三方状态管理库 |
-| **本地存储** | SQLite + SharedPreferences | SQLite 承载高容量业务数据；SharedPreferences 保留设置、登录态、水位线和兼容迁移 |
-| **网络请求** | http 包 | 封装在 `ApiService` |
-| **后端** | Alibaba Cloud (Express) | Cloudflare Worker 已停用（2026-06-01）；新功能全部走 Alibaba Cloud |
-| **同步协议** | Delta Sync + Oplog | LWW、版本冲突、客户端本地日程冲突、规划块同步 |
-| **实时通信** | WebSocket | 番茄钟跨端感知和协同同步信号 |
-| **桌面窗口** | desktop_multi_window + window_manager | 灵动岛独立进程 |
-| **人机验证** | Cloudflare Turnstile | 登录/注册必选；通过 WebView/JS 集成 |
-| **环境管理** | EnvironmentService | 自动探测 debug/release，锁定对应后端和数据库 |
-
-### 关键依赖项
-```yaml
-# 核心
-http: ^1.2.0              # HTTP 客户端
-shared_preferences: ^2.5.5 # 设置、登录态、水位线和轻量缓存
-web_socket_channel: ^3.0.1 # WebSocket 通信
-uuid: ^4.2.2               # 全局唯一 ID 生成
-cached_network_image: ^3.3.0 # 图片缓存
-intl: ^0.20.2              # 国际化 & 时间格式化
-
-# 通知 & 权限
-flutter_local_notifications: ^20.0.0 # 本地通知
-permission_handler: ^12.0.1          # 权限管理
-device_info_plus: ^12.4.0            # 设备信息
-
-# 桌面端
-window_manager: ^0.5.0     # 桌面窗口管理
-desktop_multi_window: ^0.3.0 # 多窗口支持
-ffi: ^2.1.2                # FFI 基础库
-win32: ^5.15.0             # Win32 API
-
-# 文件 & 媒体
-file_picker: ^10.3.10      # 文件选择
-receive_sharing_intent: ^1.8.1 # 外部分享接收
-video_player: ^2.11.1      # 视频播放
-flutter_image_compress: ^2.3.0 # 图片压缩
-
-# AI & Markdown
-flutter_markdown: ^0.7.1   # Markdown 渲染
-html: ^0.15.4              # HTML 解析
-
-# 桌面端 SQLite
-sqflite_common_ffi: ^2.3.0 # 桌面端 SQLite 读取
-```
-
----
-
-## 📂 目录结构说明
-
-当前目录以实际代码为准，不再在文档里维护易过期的精确文件数量。
+## Repository map
 
 ```text
-lib/
-├── main.dart                 # 应用入口、插件初始化、路由和平台分流
-├── models.dart               # 核心数据模型：待办、倒数日、时间日志、课程、规划块、冲突等
-├── storage_service.dart      # SQLite 主存储、oplog、增量同步、冲突处理
-├── update_service.dart       # 版本检查、下载和安装
-├── course_import/            # 课程导入处理器、解析器和导入 UI
-├── models/                   # AI action、聊天消息、勋章 ML 模型等扩展模型
-├── screens/                  # 全屏页面和功能页
-│   ├── pomodoro/             # 番茄钟工作台、统计页和专用组件
-│   ├── settings/             # 设置页、设置区块、弹窗和处理器
-│   └── login_screen.dart     # 登录/注册（集成 Turnstile 人机验证 + 邮箱验证码）
-├── services/                 # API、数据库、同步、番茄钟、AI、课程、通知、平台服务
-│   └── environment_service.dart  # 环境管理（debug/prod 自动切换、Turnstile 配置）
-├── utils/                    # 导航、时区、动效和页面转场工具
-├── widgets/                  # 首页区块和可复用 UI 组件
-│   └── turnstile_verification_widget.dart  # Turnstile 人机验证 WebView 组件
-└── windows_island/           # Windows-only 灵动岛/悬浮窗模块
+lib/                    Flutter application
+  screens/              full screens and feature flows
+  widgets/              reusable and feature widgets
+  services/             persistence, sync and platform services
+    storage/            extracted StorageService responsibilities
+  windows_island/       Windows-only island UI/state/IPC
+android/                Kotlin host, widgets, notifications, HyperOS, band
+ios/                    iOS Flutter host
+macos/                  Swift host, menu bar, widgets and native island
+windows/                C++ Flutter host and installer definition
+web/                    Flutter web host
+webpage/web/            separate React web companion
+CountDownTodo-band/      Xiaomi band companion
+math-quiz-backend/       retained Cloudflare Worker compatibility backend
+test/                   Flutter unit and widget tests
 ```
 
-仓库级目录：
+The active Alibaba Cloud server is a separate `CDT-server` checkout. Develop
+against `debug/`; production code is in `math_quiz_backend/` and is not modified
+as part of normal client work.
 
-```text
-CDT-server/                   # Alibaba Cloud Express 后端（位于 /Users/junpgle/WebstormProjects/CDT-server）
-math-quiz-backend/            # Cloudflare Worker 后端（已停用，保留代码）
-CountDownTodo-band/           # 小米手环伴侣应用
-android/ windows/ macos/ ios/ linux/ web/  # 平台壳
-assets/ splash/ wallpaper/    # 资源目录
-scripts/                      # 构建和运行脚本
-docs/                         # 文档归档和索引
-webpage/                      # 网页版（React + TypeScript）
-```
----
+## Flutter layers
 
-## 🔧 核心开发规范
+- `models.dart` defines shared entities including todos, recurrence, countdowns,
+  groups, courses, plan blocks, Pomodoro, collaboration and sharing.
+- Screens/widgets call domain and platform services. Several feature files are
+  still large; this is a known modularization debt rather than a deliberate
+  single-file architecture.
+- `StorageService` is the compatibility facade and HTTP delta-sync coordinator.
+  Settings, user sessions, countdowns, Pomodoro preference data and conflict
+  cleanup have begun moving into `services/storage/`.
+- Platform services use conditional exports so web does not import `dart:io`
+  implementations and Android does not initialize Windows island code.
 
-### 1. 添加新页面
+## Local data
 
-```dart
-// 1. 在 lib/screens/ 创建新页面文件
-class NewPage extends StatefulWidget {
-  const NewPage({super.key});
-  @override
-  State<NewPage> createState() => _NewPageState();
-}
+- SQLite schema version: **32** in `DatabaseHelper`.
+- Per-user database: `uni_sync_<username>.db`.
+- Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
+  Pomodoro records/tags, settings, collaboration data, audit/conflict data,
+  search history and medal recommendations.
+- Search initializes FTS5 when available, then FTS4, then falls back to `LIKE`.
+- SharedPreferences holds lightweight settings and session information; it is
+  not the primary store for full synchronized datasets.
 
-// 2. 在 main.dart 中注册路由 (如需命名路由)
-routes: {
-  '/new-page': (context) => const NewPage(),
-},
+## Todo and planning semantics
 
-// 3. 页面跳转方式
-Navigator.push(context, MaterialPageRoute(builder: (_) => NewPage()));
-// 或
-Navigator.pushNamed(context, '/new-page');
-```
+- `TodoTimeMode` distinguishes unscheduled, date-only and deadline todos.
+- `ItemSemanticsService` classifies capture text as todo, fixed schedule, plan
+  block or confirmation-required. Generic fixed-schedule persistence is not yet
+  implemented, so current capture flows warn before temporarily saving one as a
+  todo.
+- Recurrence uses per-occurrence UUIDs plus `recurrence_series_id`; repair,
+  aliasing and deduplication protect older and cross-device data.
+- `TodoPlanBlock` represents an execution window independently of a todo's due
+  semantics. Blocks support planned/finished/delayed/cancelled/reminded/focusing/
+  missed/skipped states, reminders, Pomodoro linkage and calendar event IDs.
+- `docs/features/todo-semantics.md` defines additional approved semantics that
+  are not all implemented yet.
 
-### 2. 调用后端 API
+## Sync and backend
 
-```dart
-// 1. 在 ApiService 中添加静态方法
-static Future<Map<String, dynamic>> fetchSomething(int id) async {
-  try {
-    final response = await _client.get(
-      Uri.parse('$_effectiveBaseUrl/api/something?id=$id'),
-      headers: _getHeaders(),  // 自动携带 Token
-    );
-    if (response.statusCode == 200) return jsonDecode(response.body);
-    return {'success': false};
-  } catch (e) {
-    return {'success': false, 'message': e.toString()};
-  }
-}
+1. Client mutations update UUID/version/timestamps and local audit state.
+2. `StorageService.syncData()` sends deltas and receives server changes and
+   conflicts.
+3. The Alibaba server checks ownership/scope, versions and schedule overlap,
+   persists conflict snapshots, and broadcasts live-update signals.
+4. Client conflict screens can keep local/server data, merge supported fields,
+   ignore remote items, inspect history or request rollback.
 
-// 2. 在页面/服务中调用
-final result = await ApiService.fetchSomething(123);
-if (result['success'] == true) {
-  // 处理成功逻辑
-}
-```
+Native Android/Windows clients use direct Alibaba URLs; web uses the Zero Trust
+proxy. Pomodoro awareness and collaboration also use WebSocket. The Worker under
+`math-quiz-backend/` remains compatible but is no longer the default backend for
+new features.
 
-### 3. 数据模型约定
+## Platform integrations
 
-```dart
-// 所有可同步数据模型必须包含以下字段
-class MyItem {
-  String id;          // UUID v4
-  int version;        // 并发版本号
-  int updatedAt;      // UTC 毫秒时间戳
-  int createdAt;      // UTC 毫秒时间戳
-  bool isDeleted;     // 逻辑删除标记
+- Android: WorkManager/alarm reminder paths, five widget families, HyperOS live
+  notifications, usage access, and band communication.
+- Windows: standard Flutter host plus file-IPC island/floating window.
+- macOS: app menu, status bar, WidgetKit widgets, launch-at-login, deep links,
+  updater integration and a native island/status controller.
+- Web: Flutter client, JS Turnstile integration and proxy API routing.
 
-  // 每次修改必须调用
-  void markAsChanged() {
-    version++;
-    updatedAt = DateTime.now().millisecondsSinceEpoch;
-  }
-}
-```
+## Verification
 
-### 4. 本地存储模式
-
-```dart
-// 高容量业务数据统一走 StorageService / DatabaseHelper
-await StorageService.saveTodos(username, items);
-final items = await StorageService.getTodos(username);
-
-// 设置、登录态、水位线和轻量缓存继续使用 SharedPreferences。
-// 大体量 JSON 镜像不要重新写回 SharedPreferences，避免 Android 插件层 OOM。
-```
-
----
-
-## 🎨 样式约定
-
-### 颜色系统
-- 使用 Material 3 的 `ColorScheme.fromSeed` 生成主题色
-- 登录页等特殊页面使用自定义 `_T` 类定义颜色令牌
-- 支持深色/浅色模式自动切换
-
-### 组件样式
-- 圆角统一使用 `BorderRadius.circular(14)` 或 `.circular(16)`
-- 间距使用 `SizedBox(height: 16)` 等固定值
-- 阴影使用 `BoxShadow` 硬编码，无统一 token
-
----
-
-## 🔄 数据同步机制
-
-### Delta Sync 流程
-```
-1. 客户端收集 updatedAt > lastSyncTime 的变更数据
-2. POST 到 /api/sync，附带 deviceId 和 lastSyncTime
-3. 服务器合并数据 (LWW 策略)，返回服务器端变更
-4. 客户端合并服务器数据，更新 lastSyncTime
-```
-
-### Token 管理
-- 登录后存储在 `SharedPreferences` 的 `auth_session_token`
-- 通过 `ApiService.setToken()` 设置到内存
-- 每次请求通过 `_getHeaders()` 自动添加 `Authorization: Bearer {token}`
-- Token 失效时弹出重新登录对话框
-
-### 人机验证 (Cloudflare Turnstile)
-
-- 登录和注册流程强制要求 Turnstile 人机验证
-- Flutter 端使用 `turnstile_verification_widget.dart`（WebView 加载后端 `/turnstile` 页面）
-- Web 端使用 `TurnstileWidget.tsx`（React 组件，直接加载 Turnstile JS）
-- 验证 token 随登录/注册请求发送到后端，后端通过 Cloudflare API 校验
-- 环境自动选择 key：debug 包使用测试 key（`1x0000...`），release 包使用生产 key
-- 详细设计见 `docs/features/captcha-verification.md`
-
-### 邮箱验证码注册/找回密码
-
-- 注册为两步流程：填写表单 + Turnstile 验证 -> 输入 6 位邮箱验证码
-- 找回密码为三步流程：输入邮箱 + Turnstile -> 输入 6 位验证码 -> 设置新密码
-
----
-
-## ⚠️ 技术债务与注意事项
-
-1. **SSL 绕过**：`MyHttpOverrides` 全局绕过证书验证，生产环境需移除
-2. **无正式状态管理**：复杂状态依赖 `setState` + 回调链，大型重构可考虑 Provider/Riverpod
-3. **硬编码颜色值**：部分颜色直接写死在组件中，未完全 Design Token 化
-4. **平台分支代码**：多处 `Platform.isAndroid/isWindows` 条件判断，可抽象为平台服务
-5. **数据迁移逻辑**：`login_screen.dart` 中包含遗留数据迁移代码，已独立为 MigrationService
-
----
-
-## 🚀 快速上手指南
-
-### 环境要求
-- Flutter SDK >=3.1.0
-- Dart SDK >=3.1.0
-
-### 运行命令
-```bash
-flutter pub get          # 安装依赖
-flutter run              # 运行 (默认设备)
-flutter run -d windows   # Windows 桌面端
-flutter build apk        # 构建 Android APK
-```
-
-### 后端配置
-- Alibaba Cloud 是新后端能力的优先目标，调试实现位于 `aliyun_debug/`。
-- Cloudflare Worker 位于 `math-quiz-backend/`，保留兼容行为。
-- Web 通过 Cloudflare Zero Trust API 访问；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
-- 不要修改 `aliyun_release/`，除非任务明确要求。
-
----
-
-## 📝 代码风格
-
-- 遵循 `analysis_options.yaml` 中的 lint 规则
-- 使用 `flutter_lints` 推荐规则
-- 文件命名：`snake_case.dart`
-- 类命名：`PascalCase`
-- 私有成员：`_camelCase`
-- 异步方法：返回 `Future<T>`
-
----
-
-*最后更新：2026-06-14*
-*文档版本：v2.3*
-*项目版本：v4.15.7*
-
+Use `flutter analyze`, `flutter test`, targeted platform builds, Worker tests,
+and band lint/build as relevant. Storage migrations, recurrence, conflict logic,
+notification scheduling and platform guards deserve focused regression tests.

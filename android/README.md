@@ -1,36 +1,41 @@
-# android/ — Android 原生对接层
+# Android implementation
 
-## 📌 目录职责
+The Android host contains more than a standard Flutter bootstrap. Last reviewed:
+2026-07-20.
 
-包含 Android 平台的原生配置与代码实现。除了标准的 Flutter 壳程序外，本项目在此处实现了多项关键原生特性。
+## Native components
 
----
+- `MainActivity.kt`: method channels, HyperOS/HyperIsland live notifications,
+  screen-time usage access, background notification integration and band
+  communication.
+- `BackgroundNotificationScheduler.kt`, `NotificationPollWorker.kt`,
+  `ReminderAlarmReceiver.kt`, and `ReminderService.kt`: background polling,
+  alarms and reminder delivery.
+- `BandCommunicationPlugin.kt`: bridge to the Xiaomi band companion.
+- Five widget families, each with provider/service pairs: combined todo widget,
+  todo-only, countdown-only, course-only and focus-only.
 
-## 🚀 关键原生特性
+Resources and declarations live under `android/app/src/main/res/` and
+`AndroidManifest.xml`. Update both code and manifest/resource entries when
+adding a widget, receiver, service, permission or channel.
 
-1. **HyperOS 灵动岛集成**:
-   - 位于 `app/src/main/kotlin/.../MainActivity.kt`
-   - 通过 `Notification.Builder` 对接小米 HyperOS 的实况窗（Dynamic Island）协议。
-   - 支持番茄钟倒计时在系统状态栏的实时显示。
+## Platform boundary
 
-2. **桌面小组件 (Widgets)**:
-   - 实现了 Android 原生小组件，同步展示今日待办与课程。
+Android must never import or initialize Windows island/floating-window logic.
+Use `Platform.isWindows` or conditional exports in Flutter and keep Kotlin
+changes Android-specific. Notification behavior must account for runtime
+permission, exact-alarm/background restrictions and vendor-specific HyperOS
+capabilities.
 
-3. **权限管理**:
-   - 配置了 UsageStats 权限，用于屏幕时间统计。
-   - 配置了通知权限与通知渠道设置。
+## Verification
 
-4. **自动化脚本**:
-   - 包含 `verify_fix.ps1` 等辅助修复 native 编译问题的脚本。
+```bash
+flutter analyze
+flutter test
+flutter build apk
+# or
+flutter run -d <android-device>
+```
 
----
-
-## 🛠️ 编译说明
-
-- 使用 Gradle 进行构建。
-- **Kotlin 版本**: 配合 Flutter 插件推荐版本。
-- **签名配置**: 需在 `key.properties` 中指定。
-
----
-
-*最后更新：2026-04-24*
+There is no repository `verify_fix.ps1` script. Exercise reminders, widgets,
+background polling, HyperOS behavior and band messages on appropriate devices.

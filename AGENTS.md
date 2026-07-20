@@ -1,111 +1,93 @@
 # Repository Guidelines
 
-## Project Structure
+Last reviewed against the working tree: 2026-07-20.
 
-* Main Flutter app: `CountDownTodo`.
-* Dart code lives in `lib/`, organized by screens, widgets, services, models, utilities, course import logic, and Windows island features.
-* Platform code lives in `android/`, `windows/`, `macos/`, and `web/`.
-* Assets are declared in `pubspec.yaml` and stored in `assets/`, `splash/`, and `wallpaper/`.
-* Flutter tests belong in `test/`.
-* Cloudflare Worker backend: `math-quiz-backend/`.
-* Alibaba Cloud backend: `aliyun_debug/`, `aliyun_release/`. 
-* * Mac端位于 /Users/junpgle/WebstormProjects/CDT-server
-* Xiaomi band companion app: `CountDownTodo-band/`.
+## Project layout
 
-## Backend & Network Rules
+- Flutter client: repository root; Dart source in `lib/`, tests in `test/`.
+- Platform hosts: `android/`, `ios/`, `macos/`, `windows/`, and `web/`.
+- React web companion: `webpage/web/`.
+- Xiaomi band companion: `CountDownTodo-band/`.
+- Legacy-compatible Cloudflare Worker: `math-quiz-backend/`.
+- Alibaba Cloud server: separate checkout `CDT-server`; development code is in
+  `debug/`, while `math_quiz_backend/` is production code.
+- Assets: `assets/`, `splash/`, and `wallpaper/`.
 
-* The project has two backend systems: Cloudflare Worker and Alibaba Cloud.
-* New backend features should target Alibaba Cloud.
-* Only modify Alibaba Cloud backend files under `aliyun_debug/`.
-* Do not modify `aliyun_release/` unless explicitly requested.
-* Preserve compatibility with existing Cloudflare-backed behavior unless the task explicitly says to remove or migrate it.
-* Windows and Android clients access the Alibaba Cloud server directly over HTTP.
-* Web accesses the API through Cloudflare Zero Trust: `https://api-cdt.junpgle.me/`.
-* Pomodoro multi-device awareness and collaborative real-time sync depend on WebSocket.
-* Preserve platform-specific API paths and WebSocket behavior when changing networking code.
+## Backend and network rules
 
-## Platform-Specific Rules
+- New server features target the Alibaba Cloud server.
+- Only change `CDT-server/debug/` during normal development. Do not change the
+  production `CDT-server/math_quiz_backend/` tree unless explicitly requested.
+- Preserve the Cloudflare Worker compatibility path unless a task explicitly
+  removes or migrates it.
+- Native Windows and Android clients use the Alibaba Cloud HTTP/WebSocket
+  endpoints directly. Flutter web uses `https://api-cdt.junpgle.me/` through
+  Cloudflare Zero Trust.
+- Pomodoro device awareness and collaborative live sync depend on WebSocket;
+  preserve platform-specific URL selection and WebSocket behavior.
 
-* Windows island / floating-window logic is Windows-only.
-* `[FloatWindow] Island window not found` is a Windows island log.
-* Android must not execute, import, or initialize Windows island / floating-window logic.
-* Fix platform-specific issues with explicit platform guards instead of making Windows-only code cross-platform.
-* Keep Kotlin, Swift, C++, and platform resource changes isolated to the platform involved in the task.
+## Platform boundaries
 
-## Build, Test, and Development Commands
+- Windows island/floating-window code is Windows-only. Android must not import,
+  initialize, or execute it; use explicit platform guards.
+- macOS has its own menu bar, WidgetKit, launch-at-login, and native island
+  integrations. Keep Swift/Kotlin/C++ and platform resources isolated.
 
-Run Flutter commands from the repository root:
+## Build and test
 
-* `flutter pub get`
-* `flutter analyze`
-* `flutter test`
-* `flutter run -d windows`
-* `flutter run -d <device>`
-* `.\scripts\run.ps1 -- -d windows`
-* `.\scripts\build.ps1 -Android`
-* `.\scripts\build.ps1 -Windows`
-* `.\scripts\build.ps1 -All`
+Run Flutter commands at the repository root:
 
-For `math-quiz-backend/`:
+```bash
+flutter pub get
+flutter analyze
+flutter test
+flutter run -d <device>
+dart format lib test
+```
 
-* `npm install`
-* `npm run dev`
-* `npm test`
+Repository scripts currently available:
 
-For `CountDownTodo-band/`:
+```bash
+./scripts/build_macos.sh
+./scripts/sync_macos_version.sh
+./scripts/deploy_web_beta.sh
+```
 
-* `npm run start`
-* `npm run build`
-* `npm run lint`
+Cloudflare Worker:
 
-## Coding Style
+```bash
+cd math-quiz-backend
+npm install
+npm run dev
+npm test
+```
 
-* Follow `package:flutter_lints/flutter.yaml`.
-* Format Dart with `dart format lib test`.
-* Dart files use `snake_case.dart`.
-* Classes and enums use `PascalCase`.
-* Methods, fields, and variables use `lowerCamelCase`.
-* Prefer adding code under existing feature folders instead of creating broad new top-level folders.
-* Keep generated files, build output, and temporary diagnostics out of commits unless required for release.
+Band companion:
 
-## Theming & UI Rules
+```bash
+cd CountDownTodo-band
+npm run start
+npm run build
+npm run lint
+```
 
-* The app uses Flutter's Material 3 dynamic color themes (`ColorScheme.fromSeed` and `ColorScheme.fromImageProvider`).
-* Do not use hardcoded standard colors (e.g. `Colors.blue` or `Colors.blueAccent`) for custom UI components or elements.
-* Read colors dynamically from the theme context to support global dynamic theming.
-    * Use `Theme.of(context).colorScheme.primary` for primary/active elements.
-    * Use `Theme.of(context).colorScheme.secondary` for secondary/accent elements.
-    * Use `Theme.of(context).colorScheme.primaryContainer` or `surfaceContainer` for backgrounds and card bases.
-    * Use `Theme.of(context).colorScheme.onPrimary` for text/icons on top of primary colors.
+## Code and UI conventions
 
-## Testing Rules
+- Follow `package:flutter_lints/flutter.yaml`; Dart filenames use
+  `snake_case.dart`, types use `PascalCase`, and members use `lowerCamelCase`.
+- Add code under an existing feature folder when possible.
+- The app uses Material 3 dynamic colors. Custom UI must derive colors from
+  `Theme.of(context).colorScheme`, not hard-code standard colors.
+- Keep generated files, build output, credentials, certificates, keystores,
+  and private deployment configuration out of commits.
 
-* Use `flutter_test` for Flutter tests.
-* Test files must be named `*_test.dart` and placed under `test/`.
-* Mirror `lib/` structure in `test/` where practical.
-* Add focused tests for parser, storage, sync, networking, and service behavior.
-* Add widget tests for visible UI flows.
-* Backend changes should pass the relevant backend test command.
-* If tests cannot be run, clearly state which tests were skipped and why.
+## Testing and delivery
 
-## Commit & PR Rules
-
-* Release commits use Chinese version-prefixed summaries, for example:
-
-    * `v4.3.x 【新增】...`
-    * `v4.3.x 【优化】...`
-    * `v4.3.x 【修复】...`
-* Pull requests should include:
-
-    * Summary of changes.
-    * Test commands run.
-    * Linked issues, if any.
-    * Screenshots or recordings for UI changes.
-    * Notes for version bumps, assets, permissions, backend changes, and platform-specific risks.
-
-## Security Rules
-
-* Do not commit new secrets, signing keys, credentials, keystores, certificates, or private deployment config.
-* Treat existing keystores, certificates, and test account documents as sensitive.
-* Do not expose private server details beyond existing configured endpoints.
-* Do not change release deployment files or production backend files unless explicitly requested.
+- Put Flutter tests in `test/` as `*_test.dart`, mirroring `lib/` where useful.
+- Prioritize focused tests for parsing, storage, sync, networking, recurrence,
+  notifications, and services; use widget tests for visible flows.
+- State which commands ran and which were skipped.
+- Release commit summaries use the current version prefix, for example
+  `v5.5 【修复】...`, `v5.5 【优化】...`, or `v5.5 【新增】...`.
+- PRs should summarize changes, tests, linked issues, UI evidence, and any
+  version, asset, permission, backend, or platform risk.

@@ -1,38 +1,22 @@
-# windows/ — Windows 原生配置与打包
+# Windows host and packaging
 
-## 📌 目录职责
+The `windows/` directory contains Flutter's C++ desktop runner plus project
+packaging. Last reviewed: 2026-07-20.
 
-包含 Windows 桌面端的编译配置、原生入口（Runner）以及分发打包脚本。
+- `runner/`: window lifecycle, resources, manifest and generated plugin host.
+- `flutter/`: generated plugin registration and CMake integration.
+- `打包.iss`: Inno Setup installer definition.
+- `lib/windows_island/`: Dart island UI/state/IPC; it is intentionally outside
+  this native host directory.
 
----
+Run the client with:
 
-## 🚀 核心功能
+```bash
+flutter run -d windows
+flutter build windows
+```
 
-1. **多窗口引擎支持**:
-   - 配置了 `desktop_multi_window`，使得灵动岛可以在独立的 Flutter 引擎中运行。
-   - 实现了主窗口与灵动岛窗口的通信桥接。
-
-2. **Win32 API 调用**:
-   - 配合 `lib/windows_island/` 使用 FFI 直接调用 C++ API，实现窗口透明、置顶、穿透以及任务栏隐藏。
-
-3. **屏幕时间统计 (TAI)**:
-   - 调用 TAI 接口统计前台程序活跃时间。
-
----
-
-## 📦 打包分发
-
-项目使用 **Inno Setup** 进行打包：
-- 脚本文件：`打包.iss`
-- 包含应用图标、资源文件以及可执行文件的自动化封装。
-
----
-
-## 🛠️ 编译说明
-
-- 使用 CMake 构建系统。
-- 编译依赖 Visual Studio 2022 开发环境（含 C++ 支持）。
-
----
-
-*最后更新：2026-04-13*
+Do not hand-edit generated files under `windows/flutter/`. Keep Windows-only
+window and island initialization behind explicit platform guards so Android,
+macOS and web do not load it. Installer changes should be checked against the
+Flutter version in `pubspec.yaml`, icons/resources and the produced build path.

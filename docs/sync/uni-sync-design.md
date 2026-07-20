@@ -1,57 +1,45 @@
-# Uni-Sync 协同管理系统：全域技术设计圣经 (V4.0 究极版)
+# Uni-Sync design: current contract and former goals
 
-本规范是 Uni-Sync 系统实施的唯一准则。由模型与用户历经 45 轮穿透式交互共创。
+The former “V4.0 design bible” was aspirational. This reconciled description is
+the code-facing contract as of 2026-07-20.
 
----
+## Consistency model
 
-## 🏗️ 一、 底层数据与一致性哲学 (Consistency Core)
+- Each core object has a UUID and generally carries version, updated timestamp,
+  device ID, deletion and conflict metadata.
+- Local writes persist first and create operation/audit state. HTTP sync sends
+  deltas since the last sync time and merges server objects back into SQLite.
+- The Alibaba server detects version conflicts by comparing client/server
+  versions, timestamps and business data. It stores a conflict snapshot instead
+  of silently overwriting the disputed record.
+- Schedule-overlap detection is a separate concern. The user setting controls
+  client persistence/display of schedule conflicts, not version conflicts.
+- Occurrences in the same non-empty `recurrence_series_id` are excluded from
+  schedule-overlap conflicts. Series-ID-only backfill can be treated as a safe
+  migration rather than a business edit.
 
-| 子系统 | 执行细则与分支逻辑 | 逻辑预期 |
-| :--- | :--- | :--- |
-| **冲突裁决引擎** | **Smart Merge + 冲突挂起**：若同一字段冲突，系统不覆盖数据，而是将该项标记为 **黄色占位(Flagging)**。用户需在详情页根据 **版本 Diff 对比图** 手动裁决。 | 消除数据由于自动覆盖产生的业务误解。 |
-| **全量程回滚** | **原子追溯 + 批量恢复**：支持单条日程的历史树回退，及指定时间轴（最近 5min/1h）的批量撤销。所有回滚前必须展示 **后果预测预览(Snapshot Preview)**。 | 提供手术刀级别的纠错能力。 |
-| **同步对齐** | **重连三部曲**：(1) **Status Banner** 展示同步进度 -> (2) 卡片原位 **高亮/震动提醒** 变更位 -> (3) 异常项汇聚至 **冲突收件箱** 统一处理。 | 实现弱网环境下从离线到同步的平滑过渡。 |
-| **检索基座** | **Local Full-FTS**：各终端构建 SQLite 级全文搜索索引。支持毫秒级、离线搜索，确保海量日程的快速索引。 | 追求极致的“输入即出”感。 |
-| **数据治理** | **三级分治**：(1) 普通日志窗口清理 -> (2) 高危操作（删除/踢人）永久存根 -> (3) 全量历史异地压缩归档。 | 保证私有化部署环境下长久的数据库健康。 |
+## Resolution and history
 
----
+- Conflict inbox supports local/server choices and entity-specific merges.
+- Keeping local data bumps version/updated time, clears conflict metadata and
+  creates an operation for a later push.
+- Accepting server data clears stale local operations so the discarded version
+  is not uploaded again.
+- The debug server exposes authenticated history, rollback, ignore-remote and
+  conflict-resolution routes and validates user/team access.
 
-## 🌐 二、 网络韧性与安全防御 (Resilience & Security)
+## Network and scope
 
-- **云端隐形隧道**：由 **Cloudflare Tunnel (Zero Trust)** 承载。网页 HTTPS 与 服务器 HTTP 无缝穿透，规避备案限制。
-- **链路链路诊断 (Path Discovery)**：当连接波动，Banner 自动通过路径探测告知瓶颈点（本地/云端/隧道/后端）。
-- **防御装甲**：集成 **动态行为封禁(Adaptive Banning)** 防止恶意刷接口，并对回滚等高载操作强制执行 **PoW (计算证明)** 验证。
-- **主权逻辑**：坚持 **单点私有化部署**，数据不出物理领土。
+- Active server development is in external `CDT-server/debug/`; production is
+  protected under `CDT-server/math_quiz_backend/`.
+- Native clients use direct Alibaba HTTP/WebSocket endpoints; web uses the
+  Cloudflare Zero Trust proxy.
+- The in-repository Worker is a compatibility implementation and can differ from
+  newer Alibaba routes.
 
----
+## Former goals not guaranteed
 
-## 🔐 三、 组织协同与行政闭环 (Governance)
-
-- **全扁平广场**：通过 **文字标签(Team Tag)** 强力区分跨团队数据。
-- **双向准入通道**：邀请码校验后，必须通过管理员 **手动审批 (Approve Flow)** 方可入队。
-- **管理意志触达**：
-  - **强制已读确认**：顶层公告需成员点击“确认阅读”。
-  - **阅读率监控**：管理员实时获知公告的阅读/触达百分比。
-
----
-
-## ✨ 四、 感官美学与交互动效 (Rich Aesthetics)
-
-| 触发器场景 | 动效表现形式 | 设计目的 |
-| :--- | :--- | :--- |
-| **远端字段覆写** | **Field Pulse (字段脉冲)**：周边泛起波纹呼吸灯，伴随成员名气泡提示。 | 协同临场感。 |
-| **新冲突产生** | **Shake (原地微震)**：冲突卡片触发物理级抖动引导与边缘强调。 | 预警感知。 |
-| **回滚/同步完成** | **Traceback (时光倒流)**：数据变化伴随“翻书/反转”动画表现时空回溯感。 | 逻辑归属感。 |
-| **全景汇聚切换** | **Unified Waterfall (融合堆叠)**：跨团队数据垂直流布局，符合移动端操作自觉。 | 统筹视野。 |
-
----
-
-## 🚀 五、 核心实施路线图 (Implementation)
-
-1. **[协议层]**：确定基于 UUID + Logical Clock 的增量 Oplog 报文。
-2. **[数据库]**：设计 `audit_logs` 表，包含 `before_data_json` 与 `after_data_json`。
-3. **[感知层]**：构建 `Sync-Status-Banner` 组件，支持多级颜色状态（在线/离线/诊断/同步中）。
-4. **[业务层]**：实现“冲突收件箱”用于管理重连后的争议对齐。
-
----
-*Created By Antigravity with User 45-round Ultra Deep Collaboration - 2026.04.18*
+Universal smart merge, time-window atomic rollback previews, Proof-of-Work,
+network path discovery, permanent offsite audit archives and identical UX on
+every platform are not established current contracts. Add them only with schema,
+protocol, authorization, migration and test plans.
