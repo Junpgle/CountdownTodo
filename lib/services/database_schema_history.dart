@@ -11,10 +11,17 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 34;
+  static const int currentVersion = 35;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 35,
+      title: '固定日程同步安全',
+      changes: [
+        '为 fixed_schedules 保存所有者标识，避免团队成员误操作团队归属。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 34,
       title: '固定日程自定义重复间隔',

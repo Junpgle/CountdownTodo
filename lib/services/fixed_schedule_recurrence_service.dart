@@ -191,6 +191,7 @@ class FixedScheduleRecurrenceService {
       ..externalSource = template.externalSource
       ..externalId = template.externalId
       ..teamUuid = template.teamUuid
+      ..ownerUserId = template.ownerUserId
       ..deviceId = template.deviceId
       ..isDeleted = false;
   }

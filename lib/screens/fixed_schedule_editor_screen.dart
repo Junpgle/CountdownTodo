@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
 import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/reminder_schedule_service.dart';
 import '../services/schedule_conflict_service.dart';
 import '../storage_service.dart';
 
@@ -60,6 +62,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   List<FixedScheduleItem> _seriesItems = [];
   bool _loadingContext = true;
   bool _saving = false;
+  bool _canChangeTeam = true;
+  int? _currentUserId;
 
   bool get _editing => widget.item != null;
 
@@ -92,7 +96,11 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     }
     _cancelled = item?.status == FixedScheduleStatus.cancelled;
     _recurrence = item?.recurrence ?? RecurrenceType.none;
-    _recurrenceEndDate = _date;
+    _recurrenceEndDate = FixedScheduleRecurrenceService.defaultEndDate(
+      startDate: _date,
+      recurrence: _recurrence,
+      customIntervalDays: item?.customIntervalDays ?? 1,
+    );
     _selectedTeamUuid = item?.teamUuid ?? widget.initialTeamUuid;
     _seriesItems = item == null ? [] : [item];
     _loadEditorContext();
@@ -119,7 +127,12 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         _date = picked;
         if (_recurrence != RecurrenceType.none &&
             _recurrenceEndDate.isBefore(_date)) {
-          _recurrenceEndDate = _date.add(const Duration(days: 56));
+          _recurrenceEndDate = FixedScheduleRecurrenceService.defaultEndDate(
+            startDate: _date,
+            recurrence: _recurrence,
+            customIntervalDays:
+                int.tryParse(_customIntervalController.text.trim()) ?? 1,
+          );
         }
       });
     }
@@ -157,6 +170,7 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
   Future<void> _loadEditorContext() async {
     final results = await Future.wait<dynamic>([
       ApiService.fetchTeams(),
+      SharedPreferences.getInstance(),
       if (_editing)
         StorageService.getFixedSchedules(
           widget.username,
@@ -171,8 +185,8 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
         .where((team) => team.uuid.isNotEmpty)
         .toList();
     var seriesItems = _seriesItems;
-    if (_editing && results.length > 1) {
-      final allItems = results[1] as List<FixedScheduleItem>;
+    if (_editing && results.length > 2) {
+      final allItems = results[2] as List<FixedScheduleItem>;
       final current = widget.item!;
       final seriesId = current.recurrenceSeriesId;
       seriesItems = allItems.where((item) {
@@ -205,6 +219,10 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     setState(() {
       _teams = teams;
       _seriesItems = seriesItems;
+      _currentUserId =
+          (results[1] as SharedPreferences).getInt('current_user_id');
+      final item = widget.item;
+      _canChangeTeam = item == null || item.canChangeTeamFor(_currentUserId);
       _loadingContext = false;
     });
   }
@@ -276,9 +294,12 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
       ..customIntervalDays =
           _recurrence == RecurrenceType.customDays ? customIntervalDays : null
       ..teamUuid = _selectedTeamUuid
+      ..ownerUserId = existing?.ownerUserId ?? _currentUserId
       ..status = _cancelled
           ? FixedScheduleStatus.cancelled
-          : FixedScheduleStatus.scheduled;
+          : existing?.status == FixedScheduleStatus.finished
+              ? FixedScheduleStatus.finished
+              : FixedScheduleStatus.scheduled;
 
     late final ({
       List<FixedScheduleItem> active,
@@ -351,15 +372,19 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
     final saveAllHandler = widget.onSaveAll;
     if (saveAllHandler != null) {
       await saveAllHandler(items);
-      return;
+    } else {
+      final saveHandler = widget.onSave;
+      if (items.length == 1 && saveHandler != null) {
+        await saveHandler(items.single);
+      } else {
+        await StorageService.saveFixedSchedules(widget.username, items);
+        if (saveHandler != null) await saveHandler(refreshItem);
+      }
     }
-    final saveHandler = widget.onSave;
-    if (items.length == 1 && saveHandler != null) {
-      await saveHandler(items.single);
-      return;
-    }
-    await StorageService.saveFixedSchedules(widget.username, items);
-    if (saveHandler != null) await saveHandler(refreshItem);
+    await ReminderScheduleService.scheduleFromStorage(
+      widget.username,
+      force: true,
+    );
   }
 
   Future<bool> _confirmConflicts(List<ScheduleConflict> conflicts) async {
@@ -566,8 +591,14 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                       _recurrence = value;
                       if (value != RecurrenceType.none &&
                           !_recurrenceEndDate.isAfter(_date)) {
-                        _recurrenceEndDate = _date.add(
-                          const Duration(days: 56),
+                        _recurrenceEndDate =
+                            FixedScheduleRecurrenceService.defaultEndDate(
+                          startDate: _date,
+                          recurrence: value,
+                          customIntervalDays: int.tryParse(
+                                _customIntervalController.text.trim(),
+                              ) ??
+                              1,
                         );
                       }
                     });
@@ -625,10 +656,18 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
                 ),
               ),
             ],
-            onChanged: (value) => setState(() {
-              _selectedTeamUuid = value == null || value.isEmpty ? null : value;
-            }),
+            onChanged: _canChangeTeam
+                ? (value) => setState(() {
+                      _selectedTeamUuid =
+                          value == null || value.isEmpty ? null : value;
+                    })
+                : null,
           ),
+          if (!_canChangeTeam)
+            const Padding(
+              padding: EdgeInsets.only(top: 6, left: 12, right: 12),
+              child: Text('只有日程创建者可以更改团队归属；其他内容仍可协作编辑。'),
+            ),
           const SizedBox(height: 12),
           TextField(
             controller: _locationController,
@@ -640,11 +679,11 @@ class _FixedScheduleEditorScreenState extends State<FixedScheduleEditorScreen> {
           ),
           const SizedBox(height: 12),
           InputDecorator(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: '提醒（可多选）',
-              prefixIcon: Icon(Icons.notifications_outlined),
-              border: OutlineInputBorder(),
-              helperText: '全部取消即关闭提醒',
+              prefixIcon: const Icon(Icons.notifications_outlined),
+              border: const OutlineInputBorder(),
+              helperText: _timeTbd ? '时间确定后生效；全部取消即关闭提醒' : '全部取消即关闭提醒',
             ),
             child: Wrap(
               spacing: 8,

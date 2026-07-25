@@ -116,6 +116,7 @@ class StorageService {
             'external_source',
             'external_id',
             'team_uuid',
+            'owner_user_id',
             'device_id',
             'is_deleted',
             'version',

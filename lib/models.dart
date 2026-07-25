@@ -943,6 +943,7 @@ class FixedScheduleItem {
   String? externalSource;
   String? externalId;
   String? teamUuid;
+  int? ownerUserId;
   String? deviceId;
   bool isDeleted;
   int version;
@@ -952,6 +953,20 @@ class FixedScheduleItem {
   String get uuid => id;
   bool get isTimeTbd => startTime == null;
   bool get isEndTimeTbd => startTime != null && endTime == null;
+
+  bool canChangeTeamFor(int? userId) =>
+      teamUuid == null || (ownerUserId != null && ownerUserId == userId);
+
+  /// “结束时间待定”只在日程所属日期内视为进行中，避免跨天后永久占用
+  /// 进行中状态。这里的午夜边界仅用于展示，不会写回成虚构结束时间。
+  int? get effectiveActivityEndTime {
+    if (startTime == null) return null;
+    if (endTime != null) return endTime;
+    final parsedDate = DateTime.tryParse(date)?.toLocal();
+    final start = DateTime.fromMillisecondsSinceEpoch(startTime!).toLocal();
+    final day = parsedDate ?? start;
+    return DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
+  }
 
   FixedScheduleItem({
     String? id,
@@ -972,6 +987,7 @@ class FixedScheduleItem {
     this.externalSource,
     this.externalId,
     this.teamUuid,
+    this.ownerUserId,
     this.deviceId,
     this.isDeleted = false,
     this.version = 1,
@@ -1024,6 +1040,7 @@ class FixedScheduleItem {
         'external_source': externalSource,
         'external_id': externalId,
         'team_uuid': teamUuid,
+        'owner_user_id': ownerUserId,
         'device_id': deviceId,
         'is_deleted': isDeleted ? 1 : 0,
         'version': version,
@@ -1084,6 +1101,10 @@ class FixedScheduleItem {
       externalSource: _emptyStringToNull(json['external_source']?.toString()),
       externalId: _emptyStringToNull(json['external_id']?.toString()),
       teamUuid: _emptyStringToNull(json['team_uuid']?.toString()),
+      ownerUserId: int.tryParse(
+        (json['owner_user_id'] ?? json['ownerUserId'] ?? json['user_id'] ?? '')
+            .toString(),
+      ),
       deviceId: _emptyStringToNull(json['device_id']?.toString()),
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       version: (json['version'] as num?)?.toInt() ?? 1,

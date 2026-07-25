@@ -201,6 +201,7 @@ class DatabaseHelper {
         external_source TEXT,
         external_id TEXT,
         team_uuid TEXT,
+        owner_user_id INTEGER,
         device_id TEXT,
         is_deleted INTEGER NOT NULL DEFAULT 0,
         version INTEGER NOT NULL DEFAULT 1,
@@ -212,6 +213,11 @@ class DatabaseHelper {
     if (!columns.any((row) => row['name'] == 'custom_interval_days')) {
       await db.execute(
         'ALTER TABLE fixed_schedules ADD COLUMN custom_interval_days INTEGER',
+      );
+    }
+    if (!columns.any((row) => row['name'] == 'owner_user_id')) {
+      await db.execute(
+        'ALTER TABLE fixed_schedules ADD COLUMN owner_user_id INTEGER',
       );
     }
     await db.execute(
@@ -291,7 +297,7 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
-            if (oldVersion < 34) {
+            if (oldVersion < 35) {
               await ensureFixedScheduleSchema(db);
             }
             if (oldVersion < 32) {

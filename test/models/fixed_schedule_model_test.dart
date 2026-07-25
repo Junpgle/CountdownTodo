@@ -16,6 +16,7 @@ void main() {
         customIntervalDays: 3,
         recurrenceSeriesId: 'exam-series',
         relatedTodoIds: const ['review-todo'],
+        ownerUserId: 42,
       );
 
       final restored = FixedScheduleItem.fromJson(source.toJson());
@@ -28,6 +29,7 @@ void main() {
       expect(restored.recurrence, RecurrenceType.customDays);
       expect(restored.customIntervalDays, 3);
       expect(restored.recurrenceSeriesId, 'exam-series');
+      expect(restored.ownerUserId, 42);
     });
 
     test('supports a fixed date whose clock time is still unknown', () {
@@ -63,6 +65,24 @@ void main() {
       expect(item.relatedTodoIds, ['prepare-documents']);
       expect(item.isDeleted, isFalse);
       expect(item.version, 3);
+    });
+
+    test('only a known owner can change a shared schedule team', () {
+      final owned = FixedScheduleItem(
+        title: '团队会议',
+        date: '2026-07-27',
+        teamUuid: 'team-1',
+        ownerUserId: 42,
+      );
+      final legacyUnknownOwner = FixedScheduleItem(
+        title: '旧团队会议',
+        date: '2026-07-27',
+        teamUuid: 'team-1',
+      );
+
+      expect(owned.canChangeTeamFor(42), isTrue);
+      expect(owned.canChangeTeamFor(7), isFalse);
+      expect(legacyUnknownOwner.canChangeTeamFor(42), isFalse);
     });
 
     test('derives upcoming ongoing and ended phases', () {
