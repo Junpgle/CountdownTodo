@@ -22,6 +22,7 @@ class DataImportService {
     'todo_groups': '待办分组',
     'time_logs': '专注记录',
     'todo_plan_blocks': '规划区块',
+    'fixed_schedules': '固定日程',
     'courses': '课表',
     'pomodoro_tags': '番茄钟标签',
     'pomodoro_records': '番茄钟记录',
@@ -42,8 +43,8 @@ class DataImportService {
     if (_uuidRemap.containsKey(oldUuid)) {
       return _uuidRemap[oldUuid]!;
     }
-    final newUuid = const Uuid()
-        .v5(Namespace.url.value, '$_uuidNamespaceSalt|$oldUuid');
+    final newUuid =
+        const Uuid().v5(Namespace.url.value, '$_uuidNamespaceSalt|$oldUuid');
     _uuidRemap[oldUuid] = newUuid;
     return newUuid;
   }
@@ -259,6 +260,20 @@ class DataImportService {
         final result = await _importPlanBlocks(
           username,
           data['todo_plan_blocks'] as List<dynamic>,
+          uuidStrategy,
+        );
+        importedCount += result['imported']!;
+        skippedCount += result['skipped']!;
+        updatedCount += result['updated']!;
+      }
+
+      if (data.containsKey('fixed_schedules') &&
+          data['fixed_schedules'] is List) {
+        final result = await _importFixedSchedules(
+          username,
+          data['fixed_schedules'] as List<dynamic>,
+          joinedTeamUuids,
+          options.teamStrategy,
           uuidStrategy,
         );
         importedCount += result['imported']!;
@@ -699,6 +714,71 @@ class DataImportService {
       await CourseService.saveCourses(username, mergedCourses);
     }
 
+    return {'imported': imported, 'skipped': skipped, 'updated': updated};
+  }
+
+  static Future<Map<String, int>> _importFixedSchedules(
+    String username,
+    List<dynamic> items,
+    Set<String> joinedTeamUuids,
+    TeamDataStrategy teamStrategy,
+    UuidStrategy uuidStrategy,
+  ) async {
+    final localItems = await StorageService.getFixedSchedules(
+      username,
+      includeDeleted: true,
+    );
+    final localMap = {for (final item in localItems) item.id: item};
+    final shouldRegenerate = uuidStrategy == UuidStrategy.regenerate;
+    var imported = 0;
+    var skipped = 0;
+    var updated = 0;
+
+    for (final raw in items) {
+      final item = FixedScheduleItem.fromJson(
+        Map<String, dynamic>.from(raw as Map),
+      );
+      item.deviceId = null;
+
+      if (item.teamUuid?.isNotEmpty == true &&
+          !joinedTeamUuids.contains(item.teamUuid)) {
+        if (teamStrategy == TeamDataStrategy.skip) {
+          skipped++;
+          continue;
+        }
+        item.teamUuid = null;
+      }
+
+      final oldId = item.id;
+      item.id = _remapUuid(oldId, shouldRegenerate: shouldRegenerate);
+      if (item.recurrenceSeriesId?.isNotEmpty == true) {
+        item.recurrenceSeriesId = _remapUuid(
+          item.recurrenceSeriesId,
+          shouldRegenerate: shouldRegenerate,
+        );
+      }
+      item.relatedTodoIds = item.relatedTodoIds
+          .map((id) => _uuidRemap[id] ?? id)
+          .toList(growable: false);
+
+      final existing = localMap[oldId] ?? localMap[item.id];
+      if (existing == null) {
+        localItems.add(item);
+        imported++;
+      } else if (item.updatedAt > existing.updatedAt) {
+        final index = localItems.indexWhere((value) => value.id == existing.id);
+        if (index >= 0) {
+          localItems[index] = item;
+          updated++;
+        }
+      } else {
+        skipped++;
+      }
+    }
+
+    if (imported > 0 || updated > 0) {
+      await StorageService.saveFixedSchedules(username, localItems);
+    }
     return {'imported': imported, 'skipped': skipped, 'updated': updated};
   }
 

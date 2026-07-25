@@ -1,17 +1,31 @@
 # Current conflict logic
 
-Last verified against the Flutter client and external Alibaba debug server:
-2026-07-20.
+Last verified against the Flutter client and external Alibaba debug/release
+servers: 2026-07-21.
 
 ## Two conflict classes
 
 ### Version conflicts
 
 The server compares a submitted object with the stored UUID/version/timestamps
-and business fields. When a stale/equal-version payload differs and is not a
-safe migration, it marks the server object with `has_conflict`, stores
-`conflict_data`, and returns a `version_conflict`. These conflicts are not
-disabled by the schedule-detection setting.
+and business fields. Non-recurring todos retain the existing guarded conflict
+flow. Recurring todos and their generated instances use strict LWW ordering:
+`updated_at` wins first, and `version` is consulted only when timestamps are
+equal. A higher version can therefore never make an older recurring snapshot
+overwrite newer content or a newer tombstone.
+
+When a stale recurring payload is rejected, the server forces a full todo
+response for that request so an old client converges to the authoritative row
+even if its normal sync watermark has already advanced. An exact
+timestamp/version tie with different business data remains a version conflict;
+it is not silently resolved. The Flutter downlink merge uses the same ordering
+and does not apply conflicted recurring snapshots.
+
+Fixed schedules use the same strict ordering. A stale fixed-schedule write or
+tombstone is rejected even when it carries a higher version, and that response
+forces a full fixed-schedule downlink so the client converges past an advanced
+watermark. Team members may edit shared schedule content, but only the database
+owner may clear `team_uuid` or transfer the schedule to another joined team.
 
 Todo comparison includes content/completion/deletion, dates, recurrence and
 `recurrence_series_id`, custom interval/end date, remark/group/team/category,
@@ -50,13 +64,16 @@ The client repairs missing series IDs and can clear conflicts caused only by
 series-ID migration when all material business fields agree. Genuine content,
 completion, time or recurrence differences stay visible. The server likewise
 treats an empty→filled series-ID backfill as safe under its guarded conditions.
+This compatibility backfill is the only recurring-series metadata exception to
+the normal LWW rejection path.
 
 ## Source map
 
 - Client: `lib/storage_service.dart`, `lib/screens/conflict_inbox_screen.dart`,
   `lib/models.dart`, `lib/services/storage/storage_conflict_cleanup.dart`.
-- Alibaba debug server: `CDT-server/debug/routes/sync.js`,
-  `routes/other.js`, and `services/syncHelper.js` in the separate checkout.
+- Alibaba debug/release server: `CDT-server/debug/routes/sync.js` and
+  `CDT-server/math_quiz_backend/routes/sync.js`, plus their shared helper and
+  service modules in the separate checkout.
 - Compatibility Worker: `math-quiz-backend/src/index.js`.
 
 Any change needs tests for local/local and client/server races, accept-server

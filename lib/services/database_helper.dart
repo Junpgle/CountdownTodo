@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../models.dart';
 import '../utils/app_platform.dart';
 import 'database_path_resolver.dart';
+import 'database_schema_history.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -178,6 +179,51 @@ class DatabaseHelper {
     }
   }
 
+  static Future<void> ensureFixedScheduleSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS fixed_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        date TEXT NOT NULL,
+        start_time INTEGER,
+        end_time INTEGER,
+        status INTEGER NOT NULL DEFAULT 0,
+        source INTEGER NOT NULL DEFAULT 0,
+        location TEXT,
+        remark TEXT,
+        reminder_minutes TEXT,
+        timezone TEXT,
+        recurrence INTEGER NOT NULL DEFAULT 0,
+        custom_interval_days INTEGER,
+        recurrence_series_id TEXT,
+        related_todo_ids TEXT,
+        external_source TEXT,
+        external_id TEXT,
+        team_uuid TEXT,
+        device_id TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    final columns = await db.rawQuery('PRAGMA table_info(fixed_schedules)');
+    if (!columns.any((row) => row['name'] == 'custom_interval_days')) {
+      await db.execute(
+        'ALTER TABLE fixed_schedules ADD COLUMN custom_interval_days INTEGER',
+      );
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_fixed_schedules_date '
+      'ON fixed_schedules(is_deleted, date, start_time)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_fixed_schedules_external '
+      'ON fixed_schedules(external_source, external_id)',
+    );
+  }
+
   static Future<void> ensureSuggestionFeedbackSchema(Database db) async {
     try {
       await db.execute('''
@@ -231,7 +277,7 @@ class DatabaseHelper {
       try {
         return await openDatabase(
           path,
-          version: 32, // V32: pomodoro_records 新增暂停区间字段
+          version: DatabaseSchemaHistory.currentVersion,
           onConfigure: (db) async {
             // 🚀 Skip busy_timeout on Android - not supported in onConfigure callback
             // Only configure WAL for desktop platforms
@@ -245,6 +291,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 34) {
+              await ensureFixedScheduleSchema(db);
+            }
             if (oldVersion < 32) {
               try {
                 final info =
@@ -771,6 +820,7 @@ class DatabaseHelper {
             await ensureCourseTableSchema(db);
             await ensureTodoClientLocalSchema(db);
             await ensureTodoPlanBlockSchema(db);
+            await ensureFixedScheduleSchema(db);
             await ensureSuggestionFeedbackSchema(db);
             await ensureTeamsSchema(db);
             await ensureScreenTimeSchema(db);
@@ -1284,7 +1334,10 @@ class DatabaseHelper {
       )
     ''');
 
-    // 14. 创建勋章推荐 ML 跟踪表
+    // 14. 创建固定日程表
+    await ensureFixedScheduleSchema(db);
+
+    // 15. 创建勋章推荐 ML 跟踪表
     await db.execute('''
       CREATE TABLE IF NOT EXISTS medal_recommendations (
         medal_id TEXT PRIMARY KEY,
@@ -1299,13 +1352,13 @@ class DatabaseHelper {
       )
     ''');
 
-    // 15. 创建建议反馈表
+    // 16. 创建建议反馈表
     await ensureSuggestionFeedbackSchema(db);
 
-    // 16. 创建团队缓存表
+    // 17. 创建团队缓存表
     await ensureTeamsSchema(db);
 
-    // 17. 创建性能索引
+    // 18. 创建性能索引
     await ensureMissingIndexes(db);
   }
 

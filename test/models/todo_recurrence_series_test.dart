@@ -781,4 +781,28 @@ void main() {
     expect(first.hasConflict, isTrue);
     expect(second.hasConflict, isTrue);
   });
+
+  test('new deadline anchors do not report schedule conflict', () {
+    final firstDue = DateTime(2026, 7, 15, 11);
+    final secondDue = DateTime(2026, 7, 15, 12);
+    final first = TodoItem(
+      title: '任务 A',
+      createdDate: firstDue.millisecondsSinceEpoch,
+      dueDate: firstDue,
+    );
+    final second = TodoItem(
+      title: '任务 B',
+      createdDate: secondDue.millisecondsSinceEpoch,
+      dueDate: secondDue,
+    );
+
+    final changed = StorageService.recomputeLocalTodoScheduleConflictsForTest([
+      first,
+      second,
+    ]);
+
+    expect(changed, isFalse);
+    expect(first.hasConflict, isFalse);
+    expect(second.hasConflict, isFalse);
+  });
 }

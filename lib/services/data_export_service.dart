@@ -11,7 +11,7 @@ import 'course_service.dart';
 import 'pomodoro_service.dart';
 
 class DataExportService {
-  static const int _exportVersion = 1;
+  static const int _exportVersion = 2;
 
   static Future<List<ExportTypeOption>> getAvailableTypes(
       String username) async {
@@ -20,6 +20,7 @@ class DataExportService {
     final groups = await StorageService.getTodoGroups(username);
     final timeLogs = await StorageService.getTimeLogs(username);
     final planBlocks = await StorageService.getPlanBlocks(username);
+    final fixedSchedules = await StorageService.getFixedSchedules(username);
     final courses = await CourseService.getAllCourses(username);
     final tags = await PomodoroService.getTags();
     final records = await PomodoroService.getRecords();
@@ -59,6 +60,13 @@ class DataExportService {
         icon: Icons.calendar_view_week,
         count: planBlocks.where((b) => !b.isDeleted).length,
         description: '待办规划时间块',
+      ),
+      ExportTypeOption(
+        key: 'fixed_schedules',
+        label: '固定日程',
+        icon: Icons.event_busy_outlined,
+        count: fixedSchedules.where((item) => !item.isDeleted).length,
+        description: '考试、会议、预约等硬时间约束',
       ),
       ExportTypeOption(
         key: 'courses',
@@ -192,6 +200,25 @@ class DataExportService {
           }
         }
         data['todo_plan_blocks'] = items.map((e) => e.toJson()).toList();
+        totalItems += items.length;
+      }
+
+      if (selectedTypes.contains('fixed_schedules')) {
+        final items = await StorageService.getFixedSchedules(
+          username,
+          includeDeleted: true,
+        );
+        if (options.removeTeamBinding) {
+          for (final item in items) {
+            item.teamUuid = null;
+          }
+        }
+        if (options.removeDeviceId) {
+          for (final item in items) {
+            item.deviceId = null;
+          }
+        }
+        data['fixed_schedules'] = items.map((item) => item.toJson()).toList();
         totalItems += items.length;
       }
 
