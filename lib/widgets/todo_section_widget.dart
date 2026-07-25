@@ -25,6 +25,7 @@ import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/feature_tip_service.dart';
+import '../services/item_semantics_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
@@ -293,6 +294,13 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
             final updatedList = List<TodoItem>.from(widget.todos)..add(todo);
             widget.onTodosChanged(updatedList);
           },
+          onFixedScheduleAdded: (item) async {
+            await StorageService.saveFixedSchedules(
+              widget.username,
+              [item],
+            );
+            widget.onRefreshRequested();
+          },
           onLLMResultsParsed: widget.onLLMResultsParsed,
         ),
       ),
@@ -445,7 +453,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
-                      "全天事件",
+                      "某天内完成",
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -455,6 +463,11 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     activeThumbColor: Theme.of(context).colorScheme.primary,
                     onChanged: (val) {
                       setDialogState(() {
+                        final wasDateOnlyRange = dueDate != null &&
+                            TodoItem.looksLikeLegacyDateOnlyRange(
+                              createdAt,
+                              dueDate!,
+                            );
                         isAllDay = val;
                         if (isAllDay) {
                           createdAt = DateTime(
@@ -481,117 +494,138 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               59,
                             );
                           }
+                        } else if (wasDateOnlyRange) {
+                          final now = DateTime.now();
+                          createdAt = DateTime(
+                            createdAt.year,
+                            createdAt.month,
+                            createdAt.day,
+                            now.hour,
+                            now.minute,
+                          );
+                          dueDate = null;
                         }
                       });
                     },
                   ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      "开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}",
-                    ),
-                    trailing: Icon(
-                      Icons.edit_calendar,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    onTap: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: createdAt,
-                      );
-                      if (pickedDate != null) {
-                        if (isAllDay) {
-                          setDialogState(
-                            () => createdAt = DateTime(
-                              pickedDate.year,
-                              pickedDate.month,
-                              pickedDate.day,
-                              0,
-                              0,
-                            ),
-                          );
-                        } else {
-                          if (!context.mounted) return;
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(createdAt),
-                          );
-                          if (pickedTime != null) {
+                  if (isAllDay)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        "完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}",
+                      ),
+                      trailing: Icon(
+                        Icons.edit_calendar,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          initialDate: createdAt,
+                        );
+                        if (pickedDate != null) {
+                          if (isAllDay) {
                             setDialogState(
-                              () => createdAt = DateTime(
-                                pickedDate.year,
-                                pickedDate.month,
-                                pickedDate.day,
-                                pickedTime.hour,
-                                pickedTime.minute,
-                              ),
+                              () {
+                                createdAt = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  0,
+                                  0,
+                                );
+                                dueDate = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  23,
+                                  59,
+                                );
+                              },
                             );
+                          } else {
+                            if (!context.mounted) return;
+                            final pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(createdAt),
+                            );
+                            if (pickedTime != null) {
+                              setDialogState(
+                                () => createdAt = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ),
+                              );
+                            }
                           }
                         }
-                      }
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      dueDate == null
-                          ? "设置截止时间 (可选)"
-                          : "截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}",
+                      },
                     ),
-                    trailing: Icon(
-                      Icons.event,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    onTap: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: dueDate ?? createdAt,
-                      );
-                      if (pickedDate != null) {
-                        if (isAllDay) {
-                          setDialogState(
-                            () => dueDate = DateTime(
-                              pickedDate.year,
-                              pickedDate.month,
-                              pickedDate.day,
-                              23,
-                              59,
-                            ),
-                          );
-                        } else {
-                          if (!context.mounted) return;
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(
-                              dueDate ?? DateTime.now(),
-                            ),
-                          );
-                          if (pickedTime != null) {
+                  if (!isAllDay)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        dueDate == null
+                            ? "设置截止时间（当前未安排）"
+                            : "${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成",
+                      ),
+                      trailing: Icon(
+                        Icons.event,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          initialDate: dueDate ?? createdAt,
+                        );
+                        if (pickedDate != null) {
+                          if (isAllDay) {
                             setDialogState(
                               () => dueDate = DateTime(
                                 pickedDate.year,
                                 pickedDate.month,
                                 pickedDate.day,
-                                pickedTime.hour,
-                                pickedTime.minute,
+                                23,
+                                59,
                               ),
                             );
+                          } else {
+                            if (!context.mounted) return;
+                            final pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(
+                                dueDate ?? DateTime.now(),
+                              ),
+                            );
+                            if (pickedTime != null) {
+                              setDialogState(
+                                () => dueDate = DateTime(
+                                  pickedDate.year,
+                                  pickedDate.month,
+                                  pickedDate.day,
+                                  pickedTime.hour,
+                                  pickedTime.minute,
+                                ),
+                              );
+                            }
                           }
                         }
-                      }
-                    },
-                  ),
+                      },
+                    ),
                   const Divider(),
                   DropdownButtonFormField<RecurrenceType>(
                     initialValue: recurrence,
                     decoration: InputDecoration(
-                      labelText: "循环设置 (可选)",
+                      labelText: "重复 (可选)",
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -648,8 +682,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                         recurrenceEndDate == null
-                            ? "循环截止日期 (可选)"
-                            : "循环结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
+                            ? "重复结束日期 (可选)"
+                            : "重复结束: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}",
                       ),
                       trailing: Icon(
                         Icons.event_busy,
@@ -1218,24 +1252,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                       parsedResults[currentParseIndex].title,
                     ),
                     _buildParseResultItem(
-                      "开始时间",
-                      parsedResults[currentParseIndex].startTime != null
-                          ? DateFormat('yyyy-MM-dd HH:mm').format(
-                              parsedResults[currentParseIndex].startTime!,
-                            )
-                          : "未识别",
-                    ),
-                    _buildParseResultItem(
-                      "结束时间",
-                      parsedResults[currentParseIndex].endTime != null
-                          ? DateFormat(
-                              'yyyy-MM-dd HH:mm',
-                            ).format(parsedResults[currentParseIndex].endTime!)
-                          : "未识别",
-                    ),
-                    _buildParseResultItem(
-                      "全天事件",
-                      parsedResults[currentParseIndex].isAllDay ? "是" : "否",
+                      "完成时间",
+                      parsedResults[currentParseIndex].isAllDay
+                          ? parsedResults[currentParseIndex].startTime != null
+                              ? "${DateFormat('yyyy-MM-dd').format(parsedResults[currentParseIndex].startTime!)} 内完成"
+                              : "日期待确认"
+                          : parsedResults[currentParseIndex].endTime != null
+                              ? "${DateFormat('yyyy-MM-dd HH:mm').format(parsedResults[currentParseIndex].endTime!)} 前完成"
+                              : "未安排",
                     ),
                     _buildParseResultItem(
                       "重复",
@@ -1373,21 +1397,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onPressed: () {
+                onPressed: () async {
                   if (titleCtrl.text.isNotEmpty) {
+                    final canSave = await _confirmQuickCaptureIntent(
+                      currentOriginalText ?? titleCtrl.text,
+                    );
+                    if (!canSave || !context.mounted) return;
+                    final normalizedTime = TodoItem.normalizeTimeForWrite(
+                      selectedDate: createdAt,
+                      dueDate: dueDate,
+                      isDateOnly: isAllDay,
+                    );
+                    if (recurrence != RecurrenceType.none &&
+                        normalizedTime.start == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('重复待办需要先设置首次完成日期'),
+                        ),
+                      );
+                      return;
+                    }
                     final newTodo = TodoItem(
                       title: titleCtrl.text,
                       recurrence: recurrence,
                       customIntervalDays: customDays,
                       recurrenceEndDate: recurrenceEndDate,
-                      dueDate: dueDate,
-                      createdDate: createdAt.millisecondsSinceEpoch,
+                      dueDate: normalizedTime.due,
+                      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
                       remark: remarkCtrl.text.trim().isEmpty
                           ? null
                           : remarkCtrl.text.trim(),
                       imagePath: sharedImagePath,
                       originalText: currentOriginalText,
                       reminderMinutes: reminderMinutes,
+                      isAllDay: isAllDay,
                     );
                     List<TodoItem> updatedList = List.from(widget.todos)
                       ..add(newTodo);
@@ -1402,6 +1445,44 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         },
       ),
     );
+  }
+
+  Future<bool> _confirmQuickCaptureIntent(String sourceText) async {
+    final intent = ItemSemanticsService.classifyCaptureIntent(sourceText);
+    if (intent == CaptureIntentKind.todo || !mounted) return true;
+    final (title, message) = switch (intent) {
+      CaptureIntentKind.fixedSchedule => (
+          '识别为固定日程',
+          '考试、会议或预约属于不可自由移动的固定日程。继续会暂存为待办。',
+        ),
+      CaptureIntentKind.planBlock => (
+          '识别为规划时段',
+          '这个时间段更适合关联到待办的规划块。继续只保存待办，不占用规划日历。',
+        ),
+      CaptureIntentKind.needsConfirmation => (
+          '需要确认时间性质',
+          '无法确定这是固定日程还是可调整的规划时段。继续会暂存为待办。',
+        ),
+      CaptureIntentKind.todo => ('', ''),
+    };
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('返回调整'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('暂存为待办'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   /// 显示全屏图片预览
@@ -1588,23 +1669,24 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     bool isFuture,
     DateTime now,
   ) {
-    final bool isAllDay = todo.dueDate != null &&
-        cDate.hour == 0 &&
-        cDate.minute == 0 &&
-        todo.dueDate!.hour == 23 &&
-        todo.dueDate!.minute == 59;
-
-    final String startStr = isAllDay
-        ? DateFormat('MM/dd').format(cDate)
-        : DateFormat('MM/dd HH:mm').format(cDate);
+    final isDateOnly = todo.isDateOnly;
 
     if (todo.dueDate != null) {
-      final String dueStr = isAllDay
-          ? DateFormat('MM/dd').format(todo.dueDate!)
-          : DateFormat('MM/dd HH:mm').format(todo.dueDate!);
-      return "$startStr → $dueStr";
+      if (isDateOnly) {
+        return '${DateFormat('MM/dd').format(todo.dueDate!)}内完成';
+      }
+      if (todo.hasLegacyTimeRange) {
+        final startStr = DateFormat('MM/dd HH:mm').format(cDate);
+        final dueStr = DateFormat('MM/dd HH:mm').format(todo.dueDate!);
+        return '$startStr → $dueStr';
+      }
+      final dueStr = DateFormat('MM/dd HH:mm').format(todo.dueDate!);
+      return '$dueStr前完成';
     } else {
-      return "开始 $startStr";
+      if (todo.hasLegacyTiming) {
+        return '开始 ${DateFormat('MM/dd HH:mm').format(cDate)}';
+      }
+      return '未安排';
     }
   }
 
@@ -4188,6 +4270,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   int? _customDays;
   DateTime? _recurrenceEndDate;
   late bool _isAllDay;
+  late bool _preserveLegacyTiming;
   String? _selectedGroupId;
   late int _reminderMinutes;
   Map<String, int> _categoryReminderDefaults = {};
@@ -4237,11 +4320,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _customDaysCtrl =
         TextEditingController(text: _customDays?.toString() ?? '');
     _recurrenceEndDate = t.recurrenceEndDate;
-    _isAllDay = _dueDate != null &&
-        _createdDate.hour == 0 &&
-        _createdDate.minute == 0 &&
-        _dueDate!.hour == 23 &&
-        _dueDate!.minute == 59;
+    _isAllDay = t.isDateOnly;
+    _preserveLegacyTiming = t.hasLegacyTiming;
     _selectedGroupId = t.groupId;
     _reminderMinutes = t.reminderMinutes ?? 5;
     _selectedTeamUuid = t.teamUuid;
@@ -4311,9 +4391,35 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   Future<void> _save() async {
     if (_titleCtrl.text.isEmpty) return;
     final todo = widget.todo;
+    if (_preserveLegacyTiming &&
+        _dueDate != null &&
+        !_dueDate!.isAfter(_createdDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('结束时间必须晚于开始时间')),
+      );
+      return;
+    }
+    final normalizedTime = TodoItem.normalizeTimeForEdit(
+      selectedDate: _createdDate,
+      dueDate: _dueDate,
+      isDateOnly: _isAllDay,
+      preserveExistingTiming: _preserveLegacyTiming,
+    );
+    if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
+      );
+      return;
+    }
+    final normalizedStart = normalizedTime.start;
+    final normalizedDue = normalizedTime.due;
     final seriesId = todo.recurrenceSeriesId;
-    final startShift = _createdDate.difference(_originalCreatedDate);
-    final editedDuration = _dueDate?.difference(_createdDate);
+    final startShift = normalizedStart == null
+        ? Duration.zero
+        : normalizedStart.difference(_originalCreatedDate);
+    final editedDuration = normalizedStart == null || normalizedDue == null
+        ? null
+        : normalizedDue.difference(normalizedStart);
 
     if (widget.applyToFutureOccurrences &&
         seriesId != null &&
@@ -4379,8 +4485,8 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (!wasDone && _isDone) {
       PomodoroSyncService().sendStopSignal(todoUuid: todo.id);
     }
-    todo.createdDate = _createdDate.millisecondsSinceEpoch;
-    todo.dueDate = _dueDate;
+    todo.createdDate = normalizedStart?.millisecondsSinceEpoch;
+    todo.dueDate = normalizedDue;
     todo.recurrence = _recurrence;
     if (_recurrence != RecurrenceType.none &&
         (todo.recurrenceSeriesId == null || todo.recurrenceSeriesId!.isEmpty)) {
@@ -4574,7 +4680,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               Row(
                 children: [
-                  const Text("全天事件",
+                  const Text("某天内完成",
                       style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(width: 6),
                   SizedBox(
@@ -4583,8 +4689,14 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       value: _isAllDay,
                       onChanged: (val) {
                         setState(() {
+                          final wasDateOnlyRange = _dueDate != null &&
+                              TodoItem.looksLikeLegacyDateOnlyRange(
+                                _createdDate,
+                                _dueDate!,
+                              );
                           _isAllDay = val;
                           if (_isAllDay) {
+                            _preserveLegacyTiming = false;
                             _createdDate = DateTime(_createdDate.year,
                                 _createdDate.month, _createdDate.day, 0, 0);
                             _dueDate = _dueDate != null
@@ -4596,6 +4708,16 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                                     _createdDate.day,
                                     23,
                                     59);
+                          } else if (wasDateOnlyRange) {
+                            final now = DateTime.now();
+                            _createdDate = DateTime(
+                              _createdDate.year,
+                              _createdDate.month,
+                              _createdDate.day,
+                              now.hour,
+                              now.minute,
+                            );
+                            _dueDate = null;
                           }
                         });
                       },
@@ -4606,26 +4728,83 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          if (_preserveLegacyTiming && !_isAllDay) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.secondaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '这是旧版时间待办，已有的开始/结束设置会继续保留。新的不可移动事项请使用“固定日程”。',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+              ),
+            ),
+          ],
           Row(
             children: [
-              Expanded(
-                  child: _buildSquareTile(
-                title: "开始时间",
-                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
-                    .format(_createdDate),
-                icon: Icons.play_circle_fill,
-                color: Theme.of(context).colorScheme.secondary,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                      initialDate: _createdDate);
-                  if (!context.mounted || pickedDate == null) return;
-                  if (_isAllDay) {
-                    setState(() => _createdDate = DateTime(pickedDate.year,
-                        pickedDate.month, pickedDate.day, 0, 0));
-                  } else {
+              if (_isAllDay)
+                Expanded(
+                    child: _buildSquareTile(
+                  title: "完成日期",
+                  subtitle: DateFormat('MM-dd').format(_createdDate),
+                  icon: Icons.event_available_rounded,
+                  color: Theme.of(context).colorScheme.secondary,
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: _createdDate);
+                    if (!context.mounted || pickedDate == null) return;
+                    if (_isAllDay) {
+                      setState(() {
+                        _createdDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                        );
+                        _dueDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                          23,
+                          59,
+                        );
+                      });
+                    } else {
+                      final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_createdDate));
+                      if (!mounted || pickedTime == null) return;
+                      setState(() => _createdDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                          pickedTime.hour,
+                          pickedTime.minute));
+                    }
+                  },
+                )),
+              if (_preserveLegacyTiming && !_isAllDay) ...[
+                Expanded(
+                    child: _buildSquareTile(
+                  title: "开始时间",
+                  subtitle: DateFormat('MM-dd HH:mm').format(_createdDate),
+                  icon: Icons.play_circle_outline_rounded,
+                  color: colorScheme.primary,
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: _createdDate);
+                    if (!context.mounted || pickedDate == null) return;
                     final pickedTime = await showTimePicker(
                         context: context,
                         initialTime: TimeOfDay.fromDateTime(_createdDate));
@@ -4636,46 +4815,62 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                         pickedDate.day,
                         pickedTime.hour,
                         pickedTime.minute));
-                  }
-                },
-              )),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _buildSquareTile(
-                title: "截止时间",
-                subtitle: _dueDate == null
-                    ? "未设置"
-                    : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
-                        .format(_dueDate!),
-                icon: Icons.stop_circle_rounded,
-                color: Colors.deepOrangeAccent,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                      initialDate: _dueDate ?? _createdDate);
-                  if (!context.mounted || pickedDate == null) return;
-                  if (_isAllDay) {
-                    setState(() => _dueDate = DateTime(pickedDate.year,
-                        pickedDate.month, pickedDate.day, 23, 59));
-                  } else {
-                    final pickedTime = await showTimePicker(
+                  },
+                )),
+                const SizedBox(width: 12),
+              ],
+              if (!_isAllDay)
+                Expanded(
+                    child: _buildSquareTile(
+                  title: _preserveLegacyTiming ? "结束时间" : "截止时间",
+                  subtitle: _dueDate == null
+                      ? (_preserveLegacyTiming ? "结束时间待定" : "未安排")
+                      : _preserveLegacyTiming
+                          ? DateFormat('MM-dd HH:mm').format(_dueDate!)
+                          : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成",
+                  icon: _preserveLegacyTiming
+                      ? Icons.stop_circle_outlined
+                      : Icons.flag_rounded,
+                  color: Colors.deepOrangeAccent,
+                  onTap: () async {
+                    final pickedDate = await showDatePicker(
                         context: context,
-                        initialTime:
-                            TimeOfDay.fromDateTime(_dueDate ?? DateTime.now()));
-                    if (!mounted || pickedTime == null) return;
-                    setState(() => _dueDate = DateTime(
-                        pickedDate.year,
-                        pickedDate.month,
-                        pickedDate.day,
-                        pickedTime.hour,
-                        pickedTime.minute));
-                  }
-                },
-              )),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: _dueDate ?? _createdDate);
+                    if (!context.mounted || pickedDate == null) return;
+                    if (_isAllDay) {
+                      setState(() => _dueDate = DateTime(pickedDate.year,
+                          pickedDate.month, pickedDate.day, 23, 59));
+                    } else {
+                      final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(
+                              _dueDate ?? DateTime.now()));
+                      if (!mounted || pickedTime == null) return;
+                      setState(() => _dueDate = DateTime(
+                          pickedDate.year,
+                          pickedDate.month,
+                          pickedDate.day,
+                          pickedTime.hour,
+                          pickedTime.minute));
+                    }
+                  },
+                )),
             ],
           ),
+          if (!_isAllDay && (_dueDate != null || _preserveLegacyTiming))
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => setState(() {
+                  _dueDate = null;
+                  _preserveLegacyTiming = false;
+                }),
+                icon: const Icon(Icons.event_busy_outlined, size: 16),
+                label: const Text('改为未安排'),
+              ),
+            ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -4695,7 +4890,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               const SizedBox(width: 12),
               Expanded(
                   child: _buildPopupSquareTile<RecurrenceType>(
-                title: "循环规则",
+                title: "重复",
                 subtitle: _getRecurrenceLabel(_recurrence),
                 icon: Icons.replay_rounded,
                 color: Colors.teal,
@@ -4767,7 +4962,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("循环截止日期"),
+                        const Text("重复结束日期"),
                         Row(children: [
                           Text(
                               _recurrenceEndDate == null

@@ -50,6 +50,7 @@ import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
 import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
+import 'fixed_schedule_editor_screen.dart';
 import 'course_screens.dart';
 import 'course_calendar_adjustment_screen.dart';
 import 'time_log_screen.dart';
@@ -616,6 +617,20 @@ class _HomeDashboardState extends State<HomeDashboard>
         originalText: originalText,
         initialTeamUuid: teamUuid,
         initialTeamName: teamName,
+        onFixedScheduleAdded: (item) async {
+          await StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          );
+          if (!mounted) return;
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+          await _loadAllData(deferred: true);
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
+        },
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
           _batchAddTodos(confirmedResults, teamUuid, teamName);
@@ -641,9 +656,28 @@ class _HomeDashboardState extends State<HomeDashboard>
       [String? teamUuid, String? teamName]) async {
     if (todosData.isEmpty) return;
 
+    RecurrenceType parseRecurrence(dynamic value) {
+      if (value is int && value >= 0 && value < RecurrenceType.values.length) {
+        return RecurrenceType.values[value];
+      }
+      final name = value?.toString();
+      return RecurrenceType.values.firstWhere(
+        (type) => type.name == name,
+        orElse: () => RecurrenceType.none,
+      );
+    }
+
+    int? parseInt(dynamic value) {
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '');
+    }
+
     final newTodos = todosData.map((data) {
       DateTime? dueDate;
-      int? createdDate;
+      DateTime? selectedDate;
+      final isDateOnly = data['isAllDay'] == true ||
+          data['is_all_day'] == true ||
+          data['is_all_day'] == 1;
 
       if (data['endTime'] != null) {
         dueDate = DateTime.tryParse(data['endTime']);
@@ -652,16 +686,41 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (data['startTime'] != null) {
         final startTime = DateTime.tryParse(data['startTime']);
         if (startTime != null) {
-          createdDate = startTime.millisecondsSinceEpoch;
+          selectedDate = startTime;
+          if (isDateOnly && dueDate == null) {
+            dueDate = DateTime(
+              startTime.year,
+              startTime.month,
+              startTime.day,
+              23,
+              59,
+            );
+          }
         }
       }
+
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: selectedDate,
+        dueDate: dueDate,
+        isDateOnly: isDateOnly,
+      );
 
       return TodoItem(
         title: data['title'] ?? '',
         remark: data['remark'],
-        dueDate: dueDate,
-        createdDate: createdDate,
+        dueDate: normalizedTime.due,
+        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
         createdAt: DateTime.now().millisecondsSinceEpoch,
+        recurrence: parseRecurrence(data['recurrence']),
+        customIntervalDays: parseInt(
+            data['customIntervalDays'] ?? data['custom_interval_days']),
+        recurrenceEndDate:
+            (data['recurrence_end_date'] ?? data['recurrenceEndDate']) != null
+                ? DateTime.tryParse(
+                    (data['recurrence_end_date'] ?? data['recurrenceEndDate'])
+                        .toString(),
+                  )
+                : null,
         // 📸 关联图片路径（兼容确认页与存储层两种字段名）
         imagePath: (data['imagePath'] ?? data['image_path']) as String?,
         // 📄 原始分析文本
@@ -669,6 +728,11 @@ class _HomeDashboardState extends State<HomeDashboard>
             (data['originalText'] ?? data['original_text']) as String?,
         teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
         teamName: data['team_name'] ?? teamName, // 🚀 团队名称
+        groupId: data['groupId']?.toString(),
+        reminderMinutes:
+            parseInt(data['reminderMinutes'] ?? data['reminder_minutes']),
+        collabType: parseInt(data['collab_type'] ?? data['collabType']) ?? 0,
+        isAllDay: isDateOnly,
       );
     }).toList();
 
@@ -866,6 +930,23 @@ class _HomeDashboardState extends State<HomeDashboard>
       return;
     }
 
+    if (kind == 'fixed_schedule') {
+      final item = await _findIslandFixedSchedule(id);
+      if (item == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => FixedScheduleEditorScreen(
+            username: widget.username,
+            item: item,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      _scheduleRevision.value++;
+      _timelineRevision.value++;
+      return;
+    }
+
     _navigateToPomodoro();
   }
 
@@ -970,6 +1051,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     final courses = await CourseService.getAllCourses(widget.username);
     for (final course in courses) {
       if (course.uuid == id && !course.isDeleted) return course;
+    }
+    return null;
+  }
+
+  Future<FixedScheduleItem?> _findIslandFixedSchedule(String id) async {
+    final items = await StorageService.getFixedSchedules(widget.username);
+    for (final item in items) {
+      if (item.id == id && !item.isDeleted) return item;
     }
     return null;
   }
@@ -2426,13 +2515,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         AppPlatform.isWindows || AppPlatform.isMacOS;
     final desktopShownStateKey =
         'desktop_live_notification_shown_${widget.username}';
-    final desktopPrefs = persistDesktopShownState
-        ? await SharedPreferences.getInstance()
-        : null;
-    final desktopShownKeys = desktopPrefs
-            ?.getStringList(desktopShownStateKey)
-            ?.toSet() ??
-        <String>{};
+    final desktopPrefs =
+        persistDesktopShownState ? await SharedPreferences.getInstance() : null;
+    final desktopShownKeys =
+        desktopPrefs?.getStringList(desktopShownStateKey)?.toSet() ??
+            <String>{};
 
     Future<void> markDesktopNotificationShown(String key) async {
       if (desktopPrefs == null || !desktopShownKeys.add(key)) return;
@@ -3368,9 +3455,11 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
         final bool groupsChanged = !_isListEqual(_todoGroups, allGroups);
-        final bool countdownsChanged = !_isListEqual(_countdowns, allCountdowns);
+        final bool countdownsChanged =
+            !_isListEqual(_countdowns, allCountdowns);
         final bool mathChanged = !_isMapEqual(_mathStats, mathStats);
-        final bool coursesChanged = !_isMapEqual(_dashboardCourseData, courseData);
+        final bool coursesChanged =
+            !_isMapEqual(_dashboardCourseData, courseData);
         final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
 
         if (todosChanged) {
@@ -4707,8 +4796,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     // ... (rest of section definitions)
                                     Widget courseSection =
                                         ValueListenableBuilder<int>(
-                                      valueListenable:
-                                          _scheduleRevision,
+                                      valueListenable: _scheduleRevision,
                                       builder: (context, trigger, _) {
                                         return CourseSectionWidget(
                                           dashboardCourseData:
@@ -4730,8 +4818,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
-                                              _timelineRevision
-                                                  .value++;
+                                              _timelineRevision.value++;
                                             });
                                     Widget todoSection =
                                         ValueListenableBuilder<int>(
@@ -4878,8 +4965,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget timelineSection = KeyedSubtree(
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _timelineRevision,
+                                        valueListenable: _timelineRevision,
                                         builder: (context, trigger, _) {
                                           return PersonalTimelineSection(
                                             username: widget.username,
@@ -4892,8 +4978,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
                                     Widget pomodoroSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _pomodoroRevision,
+                                        valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
                                             key: _pomodoroCardKey,
@@ -4911,8 +4996,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
                                                 );
-                                                _pomodoroRevision
-                                                    .value++;
+                                                _pomodoroRevision.value++;
                                                 _loadAllData();
                                               },
                                             ),
@@ -4923,8 +5007,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
                                     Widget planBlockSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _scheduleRevision,
+                                        valueListenable: _scheduleRevision,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
                                             chartKey: _todayPlanChartKey,
@@ -4940,8 +5023,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                               widget.username),
                                                 ),
                                               );
-                                              _scheduleRevision
-                                                  .value++;
+                                              _scheduleRevision.value++;
                                               _loadAllData();
                                             },
                                           );
@@ -5268,6 +5350,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                 todoGroups: _todoGroups,
                 initialTeamUuid: _currentSelectedTeamUuid,
                 initialTeamName: _currentSelectedTeamName,
+                onFixedScheduleAdded: (item) async {
+                  await StorageService.saveFixedSchedules(
+                    widget.username,
+                    [item],
+                  );
+                  if (mounted) {
+                    _scheduleRevision.value++;
+                    _timelineRevision.value++;
+                    await _loadAllData(deferred: true);
+                  }
+                },
                 onTodoAdded: (todo) async {
                   final allTodos =
                       await StorageService.getTodos(widget.username);

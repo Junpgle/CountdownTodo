@@ -9,20 +9,26 @@ import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
+import '../screens/fixed_schedule_editor_screen.dart';
 import '../services/todo_classification_service.dart';
+import '../services/item_semantics_service.dart';
 import '../utils/time_utils.dart';
 import '../utils/local_image_provider.dart';
 import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
+import '../services/fixed_schedule_recurrence_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
 
+enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
+
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
   final Function(List<TodoItem>)? onTodosBatchAdded;
+  final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final Function(
           List<Map<String, dynamic>>, String?, String?, String?, String?)?
       onLLMResultsParsed;
@@ -35,6 +41,7 @@ class AddTodoScreen extends StatefulWidget {
     super.key,
     required this.onTodoAdded,
     this.onTodosBatchAdded,
+    this.onFixedScheduleAdded,
     this.onLLMResultsParsed,
     this.todoGroups = const [],
     this.initialGroupId,
@@ -98,8 +105,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
           CoachMarkStep(
             targetKey: _allDayKey,
-            title: '全天事件与灵动岛',
-            description: '全天事件会在截止的最后一天上岛通知。取餐、外卖等特殊待办设置为全天事件时，也会自动上岛。',
+            title: '日期待办与灵动岛',
+            description: '没有具体时刻的待办会在目标日期集中展示。取餐、取件等事项会按“待领取”状态展示，不需要伪装成全天事件。',
           ),
           CoachMarkStep(
             targetKey: _saveButtonKey,
@@ -529,6 +536,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
           reminderMinutes: result['reminderMinutes'],
+          originalText: _aiInputCtrl.text,
         );
       }).toList();
 
@@ -563,6 +571,28 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
       return;
     }
+    final sourceText = _currentOriginalText ?? _titleCtrl.text;
+    final saveTarget = await _confirmCaptureIntent(sourceText);
+    if (saveTarget == _CaptureSaveTarget.cancel) return;
+    if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
+      await _saveFixedScheduleFromText(sourceText);
+      if (!mounted) return;
+      Navigator.pop(context);
+      return;
+    }
+
+    final normalizedTime = TodoItem.normalizeTimeForWrite(
+      selectedDate: _createdAt,
+      dueDate: _dueDate,
+      isDateOnly: _isAllDay,
+    );
+    if (_recurrence != RecurrenceType.none && normalizedTime.start == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
+      );
+      return;
+    }
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
     final selectedTeam = _selectedTeamUuid != null
@@ -574,8 +604,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       recurrence: _recurrence,
       customIntervalDays: _customDays,
       recurrenceEndDate: _recurrenceEndDate,
-      dueDate: _dueDate,
-      createdDate: _createdAt.millisecondsSinceEpoch,
+      dueDate: normalizedTime.due,
+      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
       remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
       originalText: _currentOriginalText,
       imagePath: persistentImagePath,
@@ -585,6 +615,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       teamName: selectedTeam?.name,
       creatorName: _username,
       collabType: _collabType,
+      isAllDay: _isAllDay,
     );
 
     widget.onTodoAdded(todo);
@@ -592,8 +623,161 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     Navigator.pop(context);
   }
 
+  Future<_CaptureSaveTarget> _confirmCaptureIntent(String sourceText) async {
+    final intent = ItemSemanticsService.classifyCaptureIntent(sourceText);
+    if (intent == CaptureIntentKind.todo || !mounted) {
+      return _CaptureSaveTarget.todo;
+    }
+
+    final (title, message) = switch (intent) {
+      CaptureIntentKind.fixedSchedule => (
+          '识别为固定日程',
+          widget.onFixedScheduleAdded == null
+              ? '考试、会议或预约属于不可自由移动的固定日程。当前入口尚未连接固定日程存储，继续会暂存为待办。'
+              : '考试、会议或预约属于不可自由移动的固定日程，可以直接按固定日程保存。',
+        ),
+      CaptureIntentKind.planBlock => (
+          '识别为规划时段',
+          '这个时间段更适合关联到待办的规划块。现在继续只会保存待办，不会占用规划日历。',
+        ),
+      CaptureIntentKind.needsConfirmation => (
+          '需要确认时间性质',
+          '无法确定这是外部固定日程，还是你可以调整的规划时段。现在继续会暂存为待办。',
+        ),
+      CaptureIntentKind.todo => ('', ''),
+    };
+
+    return await showDialog<_CaptureSaveTarget>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _CaptureSaveTarget.cancel),
+                child: const Text('返回调整'),
+              ),
+              if (intent == CaptureIntentKind.fixedSchedule &&
+                  widget.onFixedScheduleAdded != null)
+                FilledButton.tonal(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _CaptureSaveTarget.fixedSchedule,
+                  ),
+                  child: const Text('保存为固定日程'),
+                ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _CaptureSaveTarget.todo),
+                child: const Text('暂存为待办'),
+              ),
+            ],
+          ),
+        ) ??
+        _CaptureSaveTarget.cancel;
+  }
+
+  Future<void> _saveFixedScheduleFromText(
+    String sourceText, {
+    ParsedTodoResult? parsedResult,
+  }) async {
+    final callback = widget.onFixedScheduleAdded;
+    if (callback == null) return;
+    final parsed = parsedResult ?? TodoParserService.parse(sourceText);
+    final dateSource =
+        parsed.startTime ?? parsed.endTime ?? _dueDate ?? _createdAt;
+    DateTime? start = parsed.startTime;
+    DateTime? end = parsed.endTime;
+    if (parsed.isAllDay) {
+      start = null;
+      end = null;
+    } else if (start != null &&
+        end != null &&
+        start.hour == 0 &&
+        start.minute == 0) {
+      // 单一时刻在待办解析中表示截止点；对固定日程则表示开始时刻，
+      // 结束时间保持待定，不能静默补出一小时。
+      start = end;
+      end = null;
+    } else if (start == null && _dueDate != null) {
+      start = _dueDate;
+    }
+
+    final item = FixedScheduleItem(
+      title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
+      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      startTime: start?.millisecondsSinceEpoch,
+      endTime: end?.millisecondsSinceEpoch,
+      source: parsedResult == null
+          ? FixedScheduleSource.manual
+          : FixedScheduleSource.ai,
+      remark: _remarkCtrl.text.trim().isNotEmpty
+          ? _remarkCtrl.text.trim()
+          : (parsed.remark?.trim().isNotEmpty == true
+              ? parsed.remark!.trim()
+              : null),
+      reminderMinutes: [parsed.reminderMinutes ?? _reminderMinutes],
+      timezone: DateTime.now().timeZoneName,
+      recurrence: parsed.recurrence,
+      recurrenceSeriesId: null,
+      teamUuid: _selectedTeamUuid,
+    );
+    if (item.recurrence != RecurrenceType.none) {
+      item.recurrenceSeriesId = item.id;
+    }
+    final recurrenceEnd = parsed.recurrenceEndDate;
+    if (item.recurrence == RecurrenceType.none || recurrenceEnd == null) {
+      await callback(item);
+      return;
+    }
+    late final ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+    }) series;
+    try {
+      series = FixedScheduleRecurrenceService.rebuildSeries(
+        template: item,
+        existingSeries: const [],
+        recurrence: item.recurrence,
+        recurrenceEndDate: recurrenceEnd,
+        customIntervalDays: parsed.customIntervalDays ?? 1,
+      );
+    } on FixedScheduleRecurrenceLimitException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+      return;
+    }
+    final username = _username ?? await StorageService.getLoginSession();
+    if (username != null) {
+      await StorageService.saveFixedSchedules(username, series.changes);
+      await callback(series.active.first);
+    } else {
+      for (final occurrence in series.active) {
+        await callback(occurrence);
+      }
+    }
+  }
+
   Future<void> _addBatchTodos() async {
     if (_parsedResults.isEmpty) return;
+
+    final todoResults = <ParsedTodoResult>[];
+    for (final result in _parsedResults) {
+      final sourceText = result.originalText ?? result.title;
+      final saveTarget = await _confirmCaptureIntent(sourceText);
+      if (saveTarget == _CaptureSaveTarget.cancel) return;
+      if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
+        await _saveFixedScheduleFromText(
+          sourceText,
+          parsedResult: result,
+        );
+      } else {
+        todoResults.add(result);
+      }
+    }
 
     final persistentImagePath = await _persistAttachmentImageIfNeeded();
     final selectedTeam = _selectedTeamUuid != null
@@ -601,13 +785,35 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         : null;
 
     final List<TodoItem> todos = [];
-    for (final r in _parsedResults) {
+    for (final r in todoResults) {
+      final parsedDueDate = r.endTime ??
+          (r.isAllDay && r.startTime != null
+              ? DateTime(
+                  r.startTime!.year,
+                  r.startTime!.month,
+                  r.startTime!.day,
+                  23,
+                  59,
+                )
+              : null);
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: r.startTime,
+        dueDate: parsedDueDate,
+        isDateOnly: r.isAllDay,
+      );
+      if (r.recurrence != RecurrenceType.none && normalizedTime.start == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('“${r.title}”是重复待办，请先设置首次完成日期')),
+        );
+        return;
+      }
       final classification = await TodoClassificationService.recommendForText(
         title: r.title,
         remark: r.remark ?? '',
         groups: _localTodoGroups,
         categoryReminderDefaults: _categoryReminderDefaults,
-        dueDate: r.endTime,
+        dueDate: parsedDueDate,
       );
       final suggestedGroupId =
           classification.confidence >= 0.20 ? classification.groupId : null;
@@ -616,8 +822,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         recurrence: r.recurrence,
         customIntervalDays: r.customIntervalDays,
         recurrenceEndDate: r.recurrenceEndDate,
-        dueDate: r.endTime,
-        createdDate: (r.startTime ?? DateTime.now()).millisecondsSinceEpoch,
+        dueDate: normalizedTime.due,
+        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
         remark: r.remark,
         originalText: _currentOriginalText,
         imagePath: persistentImagePath,
@@ -630,14 +836,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         teamName: selectedTeam?.name,
         creatorName: _username,
         collabType: _collabType,
+        isAllDay: r.isAllDay,
       ));
     }
 
-    if (widget.onTodosBatchAdded != null) {
-      widget.onTodosBatchAdded!(todos);
-    } else {
-      for (var t in todos) {
-        widget.onTodoAdded(t);
+    if (todos.isNotEmpty) {
+      if (widget.onTodosBatchAdded != null) {
+        widget.onTodosBatchAdded!(todos);
+      } else {
+        for (var t in todos) {
+          widget.onTodoAdded(t);
+        }
       }
     }
     if (!mounted) return;
@@ -702,88 +911,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   // ================= 网格化组件 (N*N Array UI Helpers) =================
 
-  Widget _buildSquareTile({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 105,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.01),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              )
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 26),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPopupSquareTile<T>({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required T value,
-    required List<PopupMenuEntry<T>> items,
-    required ValueChanged<T> onSelected,
-  }) {
-    return PopupMenuButton<T>(
-      initialValue: value,
-      onSelected: onSelected,
-      itemBuilder: (context) => items,
-      offset: const Offset(0, 45),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: _buildSquareTile(
-        title: title,
-        subtitle: subtitle,
-        icon: icon,
-        color: color,
-        onTap: null, // Let PopupMenu handle it
-      ),
-    );
-  }
-
   // 时间选择助手
   Future<void> _pickStartTime() async {
     final pickedDate = await showDatePicker(
@@ -797,7 +924,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         setState(() {
           _createdAt =
               DateTime(pickedDate.year, pickedDate.month, pickedDate.day, 0, 0);
-          _updateSuggestedDueDate();
+          _dueDate = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            23,
+            59,
+          );
         });
       } else {
         if (!mounted) return;
@@ -842,6 +975,29 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         }
       }
     }
+  }
+
+  Future<void> _openFixedScheduleEditor() async {
+    final saveHandler = widget.onFixedScheduleAdded;
+    if (saveHandler == null) return;
+    final username = _username ?? await StorageService.getLoginSession();
+    if (!mounted || username == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录状态无效，暂时无法创建固定日程')),
+      );
+      return;
+    }
+
+    await Navigator.of(context).pushReplacement(
+      PageTransitions.material(
+        builder: (_) => FixedScheduleEditorScreen(
+          username: username,
+          initialTeamUuid: _selectedTeamUuid,
+          onSave: saveHandler,
+        ),
+      ),
+    );
   }
 
   /// Re-compute suggested due date when start time changes
@@ -1319,409 +1475,462 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
-  Widget _buildManualInputTab({Key? key}) {
-    return SingleChildScrollView(
-      key: key,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // --- 1. 核心标题与附件区 ---
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)
-              ],
-            ),
-            child: Column(
+  Widget _buildResponsiveGrid(List<Widget> children) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        bool isWide = MediaQuery.of(context).size.width > 600;
+        if (!isWide) {
+          List<Widget> colChildren = [];
+          for (int i = 0; i < children.length; i++) {
+            colChildren.add(children[i]);
+            if (i < children.length - 1) {
+              colChildren.add(const Divider(height: 1));
+            }
+          }
+          return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _titleCtrl,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600),
-                  decoration: const InputDecoration(
-                      hintText: "准备做些什么？", border: InputBorder.none),
-                ),
-                _buildAISuggestionCard(),
-                const Divider(height: 1),
-                TextField(
-                  controller: _remarkCtrl,
-                  style: const TextStyle(fontSize: 15),
-                  maxLines: 3,
-                  minLines: 1,
-                  decoration: InputDecoration(
-                    hintText: "补充细节或备注...",
-                    hintStyle:
-                        TextStyle(color: Colors.grey.withValues(alpha: 0.8)),
-                    border: InputBorder.none,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // 🚀 将附件功能融合进输入卡片内部
-                if (_selectedImagePath == null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: KeyedSubtree(
-                      key: _attachmentKey,
-                      child: TextButton.icon(
-                        onPressed: _pickAttachmentImage,
-                        icon: const Icon(Icons.add_photo_alternate_outlined,
-                            size: 20),
-                        label: const Text("添加图片"),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12, top: 4),
-                    child: Stack(
-                      children: [
-                        InkWell(
-                          onTap: _pickAttachmentImage,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: localImageWidget(
-                              _selectedImagePath!,
-                              height: 140,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: IconButton.filled(
-                            onPressed: () =>
-                                setState(() => _selectedImagePath = null),
-                            icon: const Icon(Icons.close, size: 16),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black45,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(4),
-                              minimumSize: Size.zero,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // --- 2. 时间与提醒网格 (2x2) ---
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("时间与提醒",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              KeyedSubtree(
-                key: _allDayKey,
-                child: Row(
-                  children: [
-                    const Text("全天事件",
-                        style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    const SizedBox(width: 6),
-                    SizedBox(
-                      height: 24, // 紧凑的Switch
-                      child: Switch(
-                        value: _isAllDay,
-                        onChanged: (val) {
-                          setState(() {
-                            _isAllDay = val;
-                            if (_isAllDay) {
-                              _createdAt = DateTime(_createdAt.year,
-                                  _createdAt.month, _createdAt.day, 0, 0);
-                              if (_dueDate != null) {
-                                _dueDate = DateTime(_dueDate!.year,
-                                    _dueDate!.month, _dueDate!.day, 23, 59);
-                              } else {
-                                _dueDate = DateTime(_createdAt.year,
-                                    _createdAt.month, _createdAt.day, 23, 59);
-                              }
-                            }
-                          });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                  child: _buildSquareTile(
-                title: "开始时间",
-                subtitle: DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
-                    .format(_createdAt),
-                icon: Icons.play_circle_fill,
-                color: Theme.of(context).colorScheme.secondary,
-                onTap: _pickStartTime,
-              )),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _buildSquareTile(
-                title: "截止时间",
-                subtitle: _dueDate == null
-                    ? "未设置"
-                    : DateFormat(_isAllDay ? 'MM-dd' : 'MM-dd HH:mm')
-                        .format(_dueDate!),
-                icon: Icons.stop_circle_rounded,
-                color: Colors.deepOrangeAccent,
-                onTap: _pickEndTime,
-              )),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                  child: _buildPopupSquareTile<int>(
-                title: "任务提醒",
-                subtitle: _getReminderText(_reminderMinutes),
-                icon: Icons.notifications_active_rounded,
-                color: Colors.purpleAccent,
-                value: _reminderMinutes,
-                items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
-                    .map((m) => PopupMenuItem(
-                        value: m, child: Text(_getReminderText(m))))
-                    .toList(),
-                onSelected: (v) => setState(() => _reminderMinutes = v),
-              )),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: _buildPopupSquareTile<RecurrenceType>(
-                title: "循环规则",
-                subtitle: _getRecurrenceLabel(_recurrence),
-                icon: Icons.replay_rounded,
-                color: Colors.teal,
-                value: _recurrence,
-                items: [
-                  RecurrenceType.none,
-                  RecurrenceType.daily,
-                  RecurrenceType.weekly,
-                  RecurrenceType.monthly,
-                  RecurrenceType.yearly,
-                  RecurrenceType.weekdays,
-                  RecurrenceType.customDays
-                ]
-                    .map((r) => PopupMenuItem(
-                        value: r, child: Text(_getRecurrenceLabel(r))))
-                    .toList(),
-                onSelected: (v) => setState(() => _recurrence = v),
-              )),
-            ],
-          ),
-
-          // --- 循环附加选项 (条件显示) ---
-          if (_recurrence == RecurrenceType.customDays ||
-              _recurrence != RecurrenceType.none)
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
-              ),
-              child: Column(
-                children: [
-                  if (_recurrence == RecurrenceType.customDays) ...[
-                    Row(
-                      children: [
-                        const Text("每隔"),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _customDaysCtrl,
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 8),
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                            ),
-                            onChanged: (val) =>
-                                setState(() => _customDays = int.tryParse(val)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text("天重复"),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                  ],
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _recurrenceEndDate ?? DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        setState(() => _recurrenceEndDate = picked);
-                      }
-                    },
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("循环截止日期"),
-                        Row(
-                          children: [
-                            Text(
-                              _recurrenceEndDate == null
-                                  ? "未指定"
-                                  : DateFormat('yyyy-MM-dd')
-                                      .format(_recurrenceEndDate!),
-                              style: TextStyle(
-                                  color: _recurrenceEndDate == null
-                                      ? Colors.grey
-                                      : Theme.of(context).colorScheme.primary),
-                            ),
-                            const Icon(Icons.chevron_right,
-                                color: Colors.grey, size: 20),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-
-          // --- 3. 组织归属网格 (2xN) ---
-          if (_localTodoGroups.isNotEmpty || _teams.isNotEmpty) ...[
-            const Text("组织与协作",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (_localTodoGroups.isNotEmpty)
-                  Expanded(
-                      child: _buildPopupSquareTile<String>(
-                    title: "归属文件夹",
-                    subtitle: _selectedGroupId == null
-                        ? "未分类"
-                        : (_localTodoGroups
-                                .where((g) => g.id == _selectedGroupId)
-                                .firstOrNull
-                                ?.name ??
-                            '未知'),
-                    icon: Icons.folder_rounded,
-                    color: Colors.amber.shade600,
-                    // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
-                    value: _selectedGroupId ?? "__none__",
-                    items: [
-                      const PopupMenuItem<String>(
-                          value: "__none__", child: Text("未分类")),
-                      ..._localTodoGroups.where((g) => !g.isDeleted).map((g) =>
-                          PopupMenuItem(value: g.id, child: Text(g.name)))
-                    ],
-                    onSelected: (v) {
-                      final newGroupId = v == "__none__" ? null : v;
-                      _recordUserGroupChoice(newGroupId);
-                      setState(() {
-                        _selectedGroupId = newGroupId;
-                        if (_selectedGroupId != null &&
-                            _categoryReminderDefaults
-                                .containsKey(_selectedGroupId)) {
-                          _reminderMinutes =
-                              _categoryReminderDefaults[_selectedGroupId]!;
-                        } else if (_selectedGroupId == null) {
-                          _reminderMinutes = 5;
-                        }
-                      });
-                    },
-                  )),
-                if (_localTodoGroups.isNotEmpty && _teams.isNotEmpty)
-                  const SizedBox(width: 12),
-                if (_teams.isNotEmpty)
-                  Expanded(
-                      child: _buildPopupSquareTile<String>(
-                    title: "团队归属",
-                    subtitle: _selectedTeamUuid == null
-                        ? "个人私有"
-                        : (_teams
-                                .where((t) => t.uuid == _selectedTeamUuid)
-                                .firstOrNull
-                                ?.name ??
-                            '未知'),
-                    icon: Icons.groups_rounded,
-                    color: Colors.indigoAccent,
-                    // 🚀 核心修复：使用 "__none__" 避免 Menu 返回 null 而被忽略
-                    value: _selectedTeamUuid ?? "__none__",
-                    items: [
-                      const PopupMenuItem<String>(
-                          value: "__none__", child: Text("个人私有 (仅自己可见)")),
-                      ..._teams.map((t) =>
-                          PopupMenuItem(value: t.uuid, child: Text(t.name)))
-                    ],
-                    onSelected: (v) => setState(() {
-                      _selectedTeamUuid = v == "__none__" ? null : v;
-                    }),
-                  )),
-              ],
-            ),
-            if (_selectedTeamUuid != null) _buildCompactTeamSection(),
-            const SizedBox(height: 24),
-          ],
-
-          const SizedBox(height: 60),
-        ],
-      ),
+              children: colChildren);
+        } else {
+          return Wrap(
+            children: children
+                .map((c) => SizedBox(width: constraints.maxWidth / 2, child: c))
+                .toList(),
+          );
+        }
+      },
     );
   }
 
-  Widget _buildCompactTeamSection() {
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text("完成规则",
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500)),
-          SizedBox(
-            width: 160,
-            child: _buildCustomSegmentedControl(
-              labels: const ["全队同步", "各自独立"],
-              selectedIndex: _collabType,
-              onChanged: (idx) => setState(() => _collabType = idx),
+  Widget _buildManualInputTab({Key? key}) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(builder: (context, constraints) {
+      return SingleChildScrollView(
+        key: key,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Type Switcher
+            Center(
+              child: SizedBox(
+                width: 200,
+                child: _buildCustomSegmentedControl(
+                  labels: const ["待办", "日程"],
+                  selectedIndex: 0,
+                  onChanged: (idx) {
+                    if (idx == 1) _openFixedScheduleEditor();
+                  },
+                ),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(height: 16),
+            // Input Section
+            Card(
+              elevation: 0,
+              color: colors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _titleCtrl,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600),
+                      decoration: InputDecoration(
+                        hintText: "准备做些什么？",
+                        border: InputBorder.none,
+                        isDense: true,
+                      ),
+                    ),
+                    _buildAISuggestionCard(),
+                    const Divider(height: 24),
+                    TextField(
+                      controller: _remarkCtrl,
+                      style: const TextStyle(fontSize: 15),
+                      maxLines: 4,
+                      minLines: 1,
+                      decoration: InputDecoration(
+                        hintText: "补充细节或备注...",
+                        border: InputBorder.none,
+                        isDense: true,
+                        hintStyle: TextStyle(
+                            color: Colors.grey.withValues(alpha: 0.8)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_selectedImagePath == null)
+                      KeyedSubtree(
+                        key: _attachmentKey,
+                        child: TextButton.icon(
+                          onPressed: _pickAttachmentImage,
+                          icon: const Icon(Icons.add_photo_alternate_outlined,
+                              size: 20),
+                          label: const Text("添加图片"),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: colors.primary,
+                          ),
+                        ),
+                      )
+                    else
+                      Stack(
+                        children: [
+                          InkWell(
+                            onTap: _pickAttachmentImage,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: localImageWidget(
+                                _selectedImagePath!,
+                                height: 140,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: IconButton.filled(
+                              onPressed: () =>
+                                  setState(() => _selectedImagePath = null),
+                              icon: const Icon(Icons.close, size: 16),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black45,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(4),
+                                minimumSize: Size.zero,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Properties
+            ...[
+              // Todo Properties
+              Card(
+                elevation: 0,
+                color: colors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                child: _buildResponsiveGrid(
+                  [
+                    SwitchListTile(
+                      title: const Text("某天内完成"),
+                      subtitle: const Text("不指定具体时刻"),
+                      value: _isAllDay,
+                      secondary: KeyedSubtree(
+                          key: _allDayKey,
+                          child: const Icon(Icons.calendar_today)),
+                      onChanged: (val) {
+                        setState(() {
+                          final wasDateOnlyRange = _dueDate != null &&
+                              TodoItem.looksLikeLegacyDateOnlyRange(
+                                  _createdAt, _dueDate!);
+                          _isAllDay = val;
+                          if (_isAllDay) {
+                            _createdAt = DateTime(_createdAt.year,
+                                _createdAt.month, _createdAt.day, 0, 0);
+                            if (_dueDate != null) {
+                              _dueDate = DateTime(_dueDate!.year,
+                                  _dueDate!.month, _dueDate!.day, 23, 59);
+                            } else {
+                              _dueDate = DateTime(_createdAt.year,
+                                  _createdAt.month, _createdAt.day, 23, 59);
+                            }
+                          } else if (wasDateOnlyRange) {
+                            final now = DateTime.now();
+                            _createdAt = DateTime(
+                                _createdAt.year,
+                                _createdAt.month,
+                                _createdAt.day,
+                                now.hour,
+                                now.minute);
+                            _dueDate = null;
+                          }
+                        });
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.event),
+                      title: Text(_isAllDay ? "完成日期" : "截止时间"),
+                      subtitle: Text(_isAllDay
+                          ? DateFormat('MM-dd').format(_createdAt)
+                          : (_dueDate == null
+                              ? "未安排"
+                              : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
+                      trailing: _dueDate != null && !_isAllDay
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => setState(() => _dueDate = null),
+                            )
+                          : const Icon(Icons.chevron_right),
+                      onTap: _isAllDay ? _pickStartTime : _pickEndTime,
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.notifications_outlined),
+                      title: const Text("提醒"),
+                      subtitle: Text(_getReminderText(_reminderMinutes)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final val = await showMenu<int>(
+                          context: context,
+                          position: const RelativeRect.fromLTRB(100, 400, 0, 0),
+                          items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
+                              .map((m) => PopupMenuItem(
+                                  value: m, child: Text(_getReminderText(m))))
+                              .toList(),
+                        );
+                        if (val != null) setState(() => _reminderMinutes = val);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.repeat),
+                      title: const Text("重复规则"),
+                      subtitle: Text(_getRecurrenceLabel(_recurrence)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        final val = await showMenu<RecurrenceType>(
+                          context: context,
+                          position: const RelativeRect.fromLTRB(100, 500, 0, 0),
+                          items: [
+                            RecurrenceType.none,
+                            RecurrenceType.daily,
+                            RecurrenceType.weekly,
+                            RecurrenceType.monthly,
+                            RecurrenceType.yearly,
+                            RecurrenceType.weekdays,
+                            RecurrenceType.customDays
+                          ]
+                              .map((r) => PopupMenuItem(
+                                  value: r,
+                                  child: Text(_getRecurrenceLabel(r))))
+                              .toList(),
+                        );
+                        if (val != null) setState(() => _recurrence = val);
+                      },
+                    ),
+                    if (_recurrence == RecurrenceType.customDays ||
+                        _recurrence != RecurrenceType.none)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_recurrence == RecurrenceType.customDays) ...[
+                              Row(
+                                children: [
+                                  const Text("每隔"),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _customDaysCtrl,
+                                      keyboardType: TextInputType.number,
+                                      textAlign: TextAlign.center,
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                vertical: 8),
+                                        border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8)),
+                                      ),
+                                      onChanged: (val) => setState(() =>
+                                          _customDays = int.tryParse(val)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text("天重复"),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      _recurrenceEndDate ?? DateTime.now(),
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime(2100),
+                                );
+                                if (picked != null) {
+                                  setState(() => _recurrenceEndDate = picked);
+                                }
+                              },
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text("重复结束日期"),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          _recurrenceEndDate == null
+                                              ? "未指定"
+                                              : DateFormat('yyyy-MM-dd')
+                                                  .format(_recurrenceEndDate!),
+                                          style: TextStyle(
+                                              color: _recurrenceEndDate == null
+                                                  ? Colors.grey
+                                                  : colors.primary),
+                                        ),
+                                        const Icon(Icons.chevron_right,
+                                            color: Colors.grey, size: 20),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            // Group and Team
+            if (_localTodoGroups.isNotEmpty || _teams.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text("组织与协作",
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey)),
+              ),
+              Card(
+                elevation: 0,
+                color: colors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                child: _buildResponsiveGrid(
+                  [
+                    if (_localTodoGroups.isNotEmpty)
+                      ListTile(
+                        leading:
+                            Icon(Icons.folder_outlined, color: colors.primary),
+                        title: const Text("归属文件夹"),
+                        subtitle: Text(_selectedGroupId == null
+                            ? "未分类"
+                            : (_localTodoGroups
+                                    .where((g) => g.id == _selectedGroupId)
+                                    .firstOrNull
+                                    ?.name ??
+                                '未知')),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final val = await showMenu<String>(
+                            context: context,
+                            position:
+                                const RelativeRect.fromLTRB(100, 600, 0, 0),
+                            items: [
+                              const PopupMenuItem<String>(
+                                  value: "__none__", child: Text("未分类")),
+                              ..._localTodoGroups
+                                  .where((g) => !g.isDeleted)
+                                  .map((g) => PopupMenuItem(
+                                      value: g.id, child: Text(g.name)))
+                            ],
+                          );
+                          if (val != null) {
+                            final newGroupId = val == "__none__" ? null : val;
+                            _recordUserGroupChoice(newGroupId);
+                            setState(() {
+                              _selectedGroupId = newGroupId;
+                              if (_selectedGroupId != null &&
+                                  _categoryReminderDefaults
+                                      .containsKey(_selectedGroupId)) {
+                                _reminderMinutes = _categoryReminderDefaults[
+                                    _selectedGroupId]!;
+                              } else if (_selectedGroupId == null) {
+                                _reminderMinutes = 5;
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    if (_teams.isNotEmpty)
+                      ListTile(
+                        leading: Icon(Icons.groups_outlined,
+                            color: colors.secondary),
+                        title: const Text("团队归属"),
+                        subtitle: Text(_selectedTeamUuid == null
+                            ? "个人私有"
+                            : (_teams
+                                    .where((t) => t.uuid == _selectedTeamUuid)
+                                    .firstOrNull
+                                    ?.name ??
+                                '未知')),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final val = await showMenu<String>(
+                            context: context,
+                            position:
+                                const RelativeRect.fromLTRB(100, 650, 0, 0),
+                            items: [
+                              const PopupMenuItem<String>(
+                                  value: "__none__",
+                                  child: Text("个人私有 (仅自己可见)")),
+                              ..._teams.map((t) => PopupMenuItem(
+                                  value: t.uuid, child: Text(t.name)))
+                            ],
+                          );
+                          if (val != null) {
+                            setState(() => _selectedTeamUuid =
+                                val == "__none__" ? null : val);
+                          }
+                        },
+                      ),
+                    if (_selectedTeamUuid != null)
+                      ListTile(
+                        leading: const Icon(Icons.sync_alt_rounded),
+                        title: const Text("完成规则"),
+                        trailing: SizedBox(
+                          width: 140,
+                          child: _buildCustomSegmentedControl(
+                            labels: const ["全队同步", "各自独立"],
+                            selectedIndex: _collabType,
+                            onChanged: (idx) =>
+                                setState(() => _collabType = idx),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 60),
+          ],
+        ),
+      );
+    });
   }
 
   // ================= 待确认图片识别待办卡片 =================

@@ -4,8 +4,12 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../services/llm_service.dart';
 import '../services/notification_service.dart';
+import '../services/item_semantics_service.dart';
+import '../services/fixed_schedule_recurrence_service.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/persistent_image_storage.dart';
+
+enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 
 class ParsedTodoResult {
   final String title;
@@ -42,12 +46,17 @@ class ParsedTodoResult {
   });
 
   Map<String, dynamic> toMap() {
+    final normalizedTime = TodoItem.normalizeTimeForWrite(
+      selectedDate: startTime,
+      dueDate: endTime,
+      isDateOnly: isAllDay,
+    );
     return {
       'title': title,
       'remark': remark,
       'isAllDay': isAllDay,
-      'startTime': startTime?.toIso8601String(),
-      'endTime': endTime?.toIso8601String(),
+      'startTime': normalizedTime.start?.toIso8601String(),
+      'endTime': normalizedTime.due?.toIso8601String(),
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'originalText': originalText,
@@ -66,6 +75,7 @@ class TodoConfirmScreen extends StatefulWidget {
   final String? imagePath;
   final String? originalText;
   final Function(List<Map<String, dynamic>>)? onConfirm;
+  final Future<void> Function(FixedScheduleItem)? onFixedScheduleAdded;
   final VoidCallback? onSkip;
 
   final String? initialTeamUuid;
@@ -77,6 +87,7 @@ class TodoConfirmScreen extends StatefulWidget {
     this.imagePath,
     this.originalText,
     this.onConfirm,
+    this.onFixedScheduleAdded,
     this.onSkip,
     this.initialTeamUuid,
     this.initialTeamName,
@@ -89,6 +100,7 @@ class TodoConfirmScreen extends StatefulWidget {
 class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   late List<ParsedTodoResult> _allTodos;
   final List<Map<String, dynamic>> _confirmedTodos = [];
+  int _fixedScheduleCount = 0;
   int _currentIndex = 0;
   bool _isRetrying = false;
   String? _retryStatus;
@@ -292,95 +304,135 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   const SizedBox(height: 12),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('全天事件'),
+                    title: const Text('某天内完成'),
                     value: isAllDay,
                     onChanged: (val) {
-                      setDialogState(() => isAllDay = val);
+                      setDialogState(() {
+                        final wasDateOnlyRange = dueDate != null &&
+                            TodoItem.looksLikeLegacyDateOnlyRange(
+                              createdAt,
+                              dueDate!,
+                            );
+                        isAllDay = val;
+                        if (isAllDay) {
+                          createdAt = DateTime(
+                            createdAt.year,
+                            createdAt.month,
+                            createdAt.day,
+                          );
+                          dueDate = DateTime(
+                            dueDate?.year ?? createdAt.year,
+                            dueDate?.month ?? createdAt.month,
+                            dueDate?.day ?? createdAt.day,
+                            23,
+                            59,
+                          );
+                        } else if (wasDateOnlyRange) {
+                          final now = DateTime.now();
+                          createdAt = DateTime(
+                            createdAt.year,
+                            createdAt.month,
+                            createdAt.day,
+                            now.hour,
+                            now.minute,
+                          );
+                          dueDate = null;
+                        }
+                      });
                     },
                   ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      '开始时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(createdAt)}',
-                    ),
-                    onTap: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: createdAt,
-                      );
-                      if (pickedDate != null) {
-                        if (isAllDay) {
-                          setDialogState(() => createdAt = DateTime(
+                  if (isAllDay)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        '完成日期: ${DateFormat('yyyy-MM-dd').format(createdAt)}',
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          initialDate: createdAt,
+                        );
+                        if (pickedDate != null) {
+                          if (isAllDay) {
+                            setDialogState(() {
+                              createdAt = DateTime(
                                 pickedDate.year,
                                 pickedDate.month,
                                 pickedDate.day,
-                                0,
-                                0,
-                              ));
-                        } else {
-                          if (!context.mounted) return;
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(createdAt),
-                          );
-                          if (pickedTime != null) {
-                            setDialogState(() => createdAt = DateTime(
-                                  pickedDate.year,
-                                  pickedDate.month,
-                                  pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
-                                ));
-                          }
-                        }
-                      }
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      dueDate == null
-                          ? '设置截止时间 (可选)'
-                          : '截止时间: ${DateFormat(isAllDay ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm').format(dueDate!)}',
-                    ),
-                    onTap: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        initialDate: dueDate ?? createdAt,
-                      );
-                      if (pickedDate != null) {
-                        if (isAllDay) {
-                          setDialogState(() => dueDate = DateTime(
+                              );
+                              dueDate = DateTime(
                                 pickedDate.year,
                                 pickedDate.month,
                                 pickedDate.day,
                                 23,
                                 59,
-                              ));
-                        } else {
-                          if (!context.mounted) return;
-                          final pickedTime = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(dueDate ??
-                                createdAt.add(const Duration(hours: 1))),
-                          );
-                          if (pickedTime != null) {
+                              );
+                            });
+                          } else {
+                            if (!context.mounted) return;
+                            final pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(createdAt),
+                            );
+                            if (pickedTime != null) {
+                              setDialogState(() => createdAt = DateTime(
+                                    pickedDate.year,
+                                    pickedDate.month,
+                                    pickedDate.day,
+                                    pickedTime.hour,
+                                    pickedTime.minute,
+                                  ));
+                            }
+                          }
+                        }
+                      },
+                    ),
+                  if (!isAllDay)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        dueDate == null
+                            ? '设置截止时间（当前未安排）'
+                            : '${DateFormat('yyyy-MM-dd HH:mm').format(dueDate!)} 前完成',
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                          initialDate: dueDate ?? createdAt,
+                        );
+                        if (pickedDate != null) {
+                          if (isAllDay) {
                             setDialogState(() => dueDate = DateTime(
                                   pickedDate.year,
                                   pickedDate.month,
                                   pickedDate.day,
-                                  pickedTime.hour,
-                                  pickedTime.minute,
+                                  23,
+                                  59,
                                 ));
+                          } else {
+                            if (!context.mounted) return;
+                            final pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(dueDate ??
+                                  createdAt.add(const Duration(hours: 1))),
+                            );
+                            if (pickedTime != null) {
+                              setDialogState(() => dueDate = DateTime(
+                                    pickedDate.year,
+                                    pickedDate.month,
+                                    pickedDate.day,
+                                    pickedTime.hour,
+                                    pickedTime.minute,
+                                  ));
+                            }
                           }
                         }
-                      }
-                    },
-                  ),
+                      },
+                    ),
                   const Divider(),
                   DropdownButtonFormField<String?>(
                     initialValue: selectedGroupId,
@@ -463,7 +515,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   DropdownButtonFormField<RecurrenceType>(
                     initialValue: recurrence,
                     decoration: InputDecoration(
-                      labelText: '循环设置 (可选)',
+                      labelText: '重复 (可选)',
                       prefixIcon: const Icon(Icons.replay_rounded),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -509,7 +561,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                         recurrenceEndDate == null
-                            ? '循环截止日期 (可选)'
+                            ? '重复结束日期 (可选)'
                             : '循环截止: ${DateFormat('yyyy-MM-dd').format(recurrenceEndDate!)}',
                       ),
                       trailing: const Icon(Icons.event_busy, size: 20),
@@ -564,10 +616,168 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     );
   }
 
-  void _confirmCurrentTodo() {
+  Future<void> _confirmCurrentTodo() async {
     if (_currentIndex >= _allTodos.length) return;
-    _confirmedTodos.add(_allTodos[_currentIndex].toMap());
+    final todo = _allTodos[_currentIndex];
+    final action = await _confirmationAction(todo);
+    if (action == _TodoConfirmationAction.cancel) return;
+    if (action == _TodoConfirmationAction.addFixedSchedule) {
+      if (!await _saveAsFixedSchedule(todo)) return;
+    } else {
+      _confirmedTodos.add(todo.toMap());
+    }
     _moveToNext();
+  }
+
+  Future<_TodoConfirmationAction> _confirmationAction(
+    ParsedTodoResult todo,
+  ) async {
+    if (todo.recurrence != RecurrenceType.none) {
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: todo.startTime,
+        dueDate: todo.endTime,
+        isDateOnly: todo.isAllDay,
+      );
+      if (normalizedTime.start == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('“${todo.title}”是重复待办，请先设置首次完成日期')),
+        );
+        return _TodoConfirmationAction.cancel;
+      }
+    }
+
+    final intent = ItemSemanticsService.classifyCaptureIntent(
+      todo.originalText ?? todo.title,
+    );
+    if (intent == CaptureIntentKind.todo || !mounted) {
+      return _TodoConfirmationAction.addTodo;
+    }
+    final (title, message) = switch (intent) {
+      CaptureIntentKind.fixedSchedule => (
+          '识别为固定日程',
+          widget.onFixedScheduleAdded == null
+              ? '考试、会议或预约应保存为固定日程。当前入口尚未连接固定日程存储，继续会暂存为待办。'
+              : '考试、会议或预约应保存为固定日程，可以直接按固定日程添加。',
+        ),
+      CaptureIntentKind.planBlock => (
+          '识别为规划时段',
+          '这个时间段更适合建立规划块。当前继续只保存待办，不会占用该时段。',
+        ),
+      CaptureIntentKind.needsConfirmation => (
+          '需要确认时间性质',
+          '无法确定这是固定日程还是可调整的规划时段。当前继续会暂存为待办。',
+        ),
+      CaptureIntentKind.todo => ('', ''),
+    };
+    return await showDialog<_TodoConfirmationAction>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _TodoConfirmationAction.cancel,
+                ),
+                child: const Text('返回调整'),
+              ),
+              if (intent == CaptureIntentKind.fixedSchedule &&
+                  widget.onFixedScheduleAdded != null)
+                FilledButton.tonal(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _TodoConfirmationAction.addFixedSchedule,
+                  ),
+                  child: const Text('保存为固定日程'),
+                ),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _TodoConfirmationAction.addTodo,
+                ),
+                child: const Text('暂存为待办'),
+              ),
+            ],
+          ),
+        ) ??
+        _TodoConfirmationAction.cancel;
+  }
+
+  Future<bool> _saveAsFixedSchedule(ParsedTodoResult todo) async {
+    final callback = widget.onFixedScheduleAdded;
+    if (callback == null) return false;
+    final dateSource = todo.startTime ?? todo.endTime;
+    if (dateSource == null) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('固定日程需要先确认日期')),
+      );
+      return false;
+    }
+    DateTime? start = todo.startTime;
+    DateTime? end = todo.endTime;
+    if (todo.isAllDay) {
+      start = null;
+      end = null;
+    } else if (start != null &&
+        end != null &&
+        start.hour == 0 &&
+        start.minute == 0) {
+      start = end;
+      end = null;
+    }
+    final item = FixedScheduleItem(
+      title: todo.title,
+      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      startTime: start?.millisecondsSinceEpoch,
+      endTime: end?.millisecondsSinceEpoch,
+      source: FixedScheduleSource.ai,
+      remark: todo.remark,
+      reminderMinutes: [todo.reminderMinutes ?? 15],
+      timezone: DateTime.now().timeZoneName,
+      recurrence: todo.recurrence,
+      teamUuid: todo.teamUuid,
+    );
+    if (item.recurrence != RecurrenceType.none) {
+      item.recurrenceSeriesId = item.id;
+    }
+    final recurrenceEnd = todo.recurrenceEndDate;
+    if (item.recurrence == RecurrenceType.none || recurrenceEnd == null) {
+      await callback(item);
+      _fixedScheduleCount++;
+      return true;
+    }
+    late final ({
+      List<FixedScheduleItem> active,
+      List<FixedScheduleItem> changes,
+    }) series;
+    try {
+      series = FixedScheduleRecurrenceService.rebuildSeries(
+        template: item,
+        existingSeries: const [],
+        recurrence: item.recurrence,
+        recurrenceEndDate: recurrenceEnd,
+        customIntervalDays: todo.customIntervalDays ?? 1,
+      );
+    } on FixedScheduleRecurrenceLimitException catch (error) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+      return false;
+    }
+    final username = await StorageService.getLoginSession();
+    if (username != null) {
+      await StorageService.saveFixedSchedules(username, series.changes);
+      await callback(series.active.first);
+    } else {
+      for (final occurrence in series.active) {
+        await callback(occurrence);
+      }
+    }
+    _fixedScheduleCount += series.active.length;
+    return true;
   }
 
   void _skipCurrentTodo() {
@@ -585,9 +795,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   }
 
   Future<void> _finishConfirm() async {
-    if (_confirmedTodos.isEmpty) {
+    if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有添加任何待办')),
+        const SnackBar(content: Text('没有添加任何内容')),
       );
       widget.onSkip?.call();
       Navigator.pop(context);
@@ -596,7 +806,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
 
     // 🚀 核心：移动图片到持久化目录
     String? persistentImagePath;
-    if (widget.imagePath != null) {
+    if (_confirmedTodos.isNotEmpty && widget.imagePath != null) {
       try {
         persistentImagePath =
             await persistImagePath(widget.imagePath!, 'analysis_images');
@@ -615,7 +825,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       }
     }
 
-    if (widget.onConfirm != null) {
+    if (_confirmedTodos.isNotEmpty && widget.onConfirm != null) {
       widget.onConfirm!(_confirmedTodos);
     }
     if (!mounted) return;
@@ -632,7 +842,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(hasMoreTodos
-            ? '确认待办 (${_currentIndex + 1}/${_allTodos.length})'
+            ? '确认事项 (${_currentIndex + 1}/${_allTodos.length})'
             : '确认完成'),
         actions: [
           if (_isRetrying)
@@ -901,23 +1111,19 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     if (todo.isAllDay) {
       timeIcon = Icons.today;
       if (todo.startTime != null) {
-        timeText = '全天 | ${DateFormat('yyyy-MM-dd').format(todo.startTime!)}';
+        timeText = '${DateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';
       } else {
-        timeText = '全天';
+        timeText = '某天内完成';
       }
-    } else if (todo.startTime != null && todo.endTime != null) {
+    } else if (todo.endTime != null) {
       timeIcon = Icons.schedule;
-      timeText =
-          '${DateFormat('MM-dd HH:mm').format(todo.startTime!)} - ${DateFormat('HH:mm').format(todo.endTime!)}';
+      timeText = '${DateFormat('MM-dd HH:mm').format(todo.endTime!)}前完成';
     } else if (todo.startTime != null) {
       timeIcon = Icons.play_circle_outline;
-      timeText = '开始: ${DateFormat('MM-dd HH:mm').format(todo.startTime!)}';
-    } else if (todo.endTime != null) {
-      timeIcon = Icons.flag_outlined;
-      timeText = '截止: ${DateFormat('MM-dd HH:mm').format(todo.endTime!)}';
+      timeText = '时间待确认: ${DateFormat('MM-dd HH:mm').format(todo.startTime!)}';
     } else {
       timeIcon = Icons.access_time;
-      timeText = '未设置时间';
+      timeText = '未安排';
     }
 
     return Row(
@@ -952,7 +1158,10 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '已添加 ${_confirmedTodos.length} 个待办',
+            [
+              if (_confirmedTodos.isNotEmpty) '${_confirmedTodos.length} 个待办',
+              if (_fixedScheduleCount > 0) '$_fixedScheduleCount 个固定日程',
+            ].join('、'),
             style: TextStyle(color: Colors.grey),
           ),
         ],
@@ -970,7 +1179,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           child: FilledButton.icon(
             onPressed: _isRetrying ? null : _confirmCurrentTodo,
             icon: const Icon(Icons.add),
-            label: const Text('添加这个待办'),
+            label: const Text('确认并添加'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -995,10 +1204,17 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
               child: OutlinedButton.icon(
                 onPressed: _isRetrying
                     ? null
-                    : () {
-                        // 添加剩余全部
-                        for (int i = _currentIndex; i < _allTodos.length; i++) {
-                          _confirmedTodos.add(_allTodos[i].toMap());
+                    : () async {
+                        final remaining = _allTodos.sublist(_currentIndex);
+                        for (final todo in remaining) {
+                          final action = await _confirmationAction(todo);
+                          if (action == _TodoConfirmationAction.cancel) return;
+                          if (action ==
+                              _TodoConfirmationAction.addFixedSchedule) {
+                            if (!await _saveAsFixedSchedule(todo)) return;
+                          } else {
+                            _confirmedTodos.add(todo.toMap());
+                          }
                         }
                         _finishConfirm();
                       },
@@ -1020,7 +1236,9 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       width: double.infinity,
       child: FilledButton.icon(
         onPressed: () {
-          if (_confirmedTodos.isEmpty) widget.onSkip?.call();
+          if (_confirmedTodos.isEmpty && _fixedScheduleCount == 0) {
+            widget.onSkip?.call();
+          }
           Navigator.pop(context);
         },
         icon: const Icon(Icons.check),
