@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models.dart';
@@ -5,7 +6,7 @@ import '../storage_service.dart';
 import '../utils/app_platform.dart';
 import 'course_service.dart';
 
-enum CalendarSyncEntryType { todo, course, countdown, planBlock }
+enum CalendarSyncEntryType { todo, fixedSchedule, course, countdown, planBlock }
 
 class CalendarSyncEntry {
   CalendarSyncEntry({
@@ -32,6 +33,8 @@ class CalendarSyncEntry {
     switch (type) {
       case CalendarSyncEntryType.todo:
         return '待办';
+      case CalendarSyncEntryType.fixedSchedule:
+        return '固定日程';
       case CalendarSyncEntryType.course:
         return '课程';
       case CalendarSyncEntryType.countdown:
@@ -199,12 +202,14 @@ class CalendarSyncService {
       CourseService.getAllCourses(username),
       StorageService.getCountdowns(username),
       StorageService.getPlanBlocks(username),
+      StorageService.getFixedSchedules(username),
     ]);
 
     final todos = results[0] as List<TodoItem>;
     final courses = results[1] as List<CourseItem>;
     final countdowns = results[2] as List<CountdownItem>;
     final planBlocks = results[3] as List<TodoPlanBlock>;
+    final fixedSchedules = results[4] as List<FixedScheduleItem>;
     final entries = <CalendarSyncEntry>[];
 
     for (final todo in todos) {
@@ -216,6 +221,11 @@ class CalendarSyncService {
     for (final course in courses) {
       if (course.isDeleted) continue;
       final entry = _courseToEntry(course);
+      if (entry != null) entries.add(entry);
+    }
+
+    for (final item in fixedSchedules) {
+      final entry = _fixedScheduleToEntry(item);
       if (entry != null) entries.add(entry);
     }
 
@@ -238,19 +248,24 @@ class CalendarSyncService {
     return entries;
   }
 
+  @visibleForTesting
+  static CalendarSyncEntry? todoToEntryForTest(TodoItem todo) =>
+      _todoToEntry(todo);
+
+  @visibleForTesting
+  static CalendarSyncEntry? fixedScheduleToEntryForTest(
+    FixedScheduleItem item,
+  ) =>
+      _fixedScheduleToEntry(item);
+
   static CalendarSyncEntry? _todoToEntry(TodoItem todo) {
+    if (todo.timeMode == TodoTimeMode.unscheduled) return null;
+
     final start = DateTime.fromMillisecondsSinceEpoch(
       todo.createdDate ?? todo.createdAt,
       isUtc: true,
     ).toLocal();
-
-    DateTime end =
-        todo.dueDate?.toLocal() ?? start.add(const Duration(minutes: 30));
-    if (!end.isAfter(start)) {
-      end = start.add(todo.isAllDayTask
-          ? const Duration(days: 1)
-          : const Duration(minutes: 30));
-    }
+    final due = todo.dueDate!.toLocal();
 
     final details = <String>[
       if (todo.teamName?.trim().isNotEmpty == true)
@@ -259,17 +274,34 @@ class CalendarSyncService {
         '创建人：${todo.creatorName!.trim()}',
       if (todo.remark?.trim().isNotEmpty == true) todo.remark!.trim(),
     ];
-    final shouldWriteAsAllDay = _shouldWriteAsAllDayTodo(todo, start, end);
-    final allDayStart = _dateOnly(start);
-    final allDayEnd = _exclusiveAllDayEnd(start, end);
+    if (todo.isDateOnly) {
+      final allDayStart = _dateOnly(start);
+      final allDayEnd = _exclusiveAllDayEnd(start, due);
+      return CalendarSyncEntry(
+        id: todo.id,
+        type: CalendarSyncEntryType.todo,
+        title: todo.title,
+        start: allDayStart,
+        end: allDayEnd,
+        allDay: true,
+        description: details.isEmpty ? null : details.join('\n'),
+      );
+    }
+
+    // 新截止待办以截止点为锚，导出成截止前的一分钟标记；旧版已经保存
+    // 为真实时间段的待办保持原范围，避免同步时悄悄改动历史日历事件。
+    final hasLegacyRange = start.isBefore(due);
+    final entryStart =
+        hasLegacyRange ? start : due.subtract(const Duration(minutes: 1));
+    final entryEnd = due;
 
     return CalendarSyncEntry(
       id: todo.id,
       type: CalendarSyncEntryType.todo,
       title: todo.title,
-      start: shouldWriteAsAllDay ? allDayStart : start,
-      end: shouldWriteAsAllDay ? allDayEnd : end,
-      allDay: shouldWriteAsAllDay,
+      start: entryStart,
+      end: entryEnd,
+      allDay: false,
       description: details.isEmpty ? null : details.join('\n'),
     );
   }
@@ -313,6 +345,26 @@ class CalendarSyncService {
       allDay: false,
       location: course.roomName == '未知地点' ? null : course.roomName,
       description: desc.isEmpty ? null : desc,
+    );
+  }
+
+  static CalendarSyncEntry? _fixedScheduleToEntry(FixedScheduleItem item) {
+    if (item.isDeleted || item.status == FixedScheduleStatus.cancelled) {
+      return null;
+    }
+    final startMs = item.startTime;
+    final endMs = item.endTime;
+    // 时间待定或结束待定时不伪造日历占用，待信息完整后再导出。
+    if (startMs == null || endMs == null || endMs <= startMs) return null;
+    return CalendarSyncEntry(
+      id: item.id,
+      type: CalendarSyncEntryType.fixedSchedule,
+      title: item.title,
+      start: DateTime.fromMillisecondsSinceEpoch(startMs).toLocal(),
+      end: DateTime.fromMillisecondsSinceEpoch(endMs).toLocal(),
+      allDay: false,
+      location: item.location,
+      description: item.remark,
     );
   }
 
@@ -363,18 +415,5 @@ class CalendarSyncService {
       return endDate;
     }
     return endDate.add(const Duration(days: 1));
-  }
-
-  static bool _shouldWriteAsAllDayTodo(
-    TodoItem todo,
-    DateTime start,
-    DateTime end,
-  ) {
-    if (todo.isAllDay) return true;
-    final startIsMidnight = start.hour == 0 && start.minute == 0;
-    final endLooksLikeMidnightOrEndOfDay =
-        (end.hour == 23 && end.minute == 59) ||
-            (end.hour == 0 && end.minute == 0 && end.isAfter(start));
-    return startIsMidnight && endLooksLikeMidnightOrEndOfDay;
   }
 }
