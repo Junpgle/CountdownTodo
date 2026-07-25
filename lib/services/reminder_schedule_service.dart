@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
+import 'course_service.dart';
 import 'notification_service.dart';
 
 /// 保活提醒调度服务
@@ -13,6 +14,7 @@ import 'notification_service.dart';
 ///       30001 ~ 30999  →  待办提醒
 ///       31001 ~ 31999  →  课程提醒
 ///       32001 ~ 32999  →  特殊待办提醒（快递/外卖/餐饮）
+///       34001 ~ 41999  →  固定日程提醒（每个日程最多 8 个）
 ///   - 每次调用 scheduleAll 都覆盖上一次的完整列表（幂等）
 ///   - 只注册未来 7 天内的提醒，超出部分在下次 App 启动时补注册
 class ReminderScheduleService {
@@ -20,6 +22,8 @@ class ReminderScheduleService {
   static const int _courseBaseId = 31001;
   static const int _specialTodoBaseId = 32001;
   static const int _planBlockBaseId = 33001;
+  static const int _fixedScheduleBaseId = 34001;
+  static const int _fixedScheduleReminderStride = 8;
 
   // 提前多少分钟提醒
   static const int _todoAdvanceMinutes = 5;
@@ -105,6 +109,8 @@ class ReminderScheduleService {
     final prefs = await SharedPreferences.getInstance();
     final username =
         prefs.getString(StorageService.keyCurrentUser) ?? 'default';
+
+    final fixedSchedules = await StorageService.getFixedSchedules(username);
 
     // ── 待办提醒（普通 + 特殊）──────────────────────────────────────────
     for (int i = 0; i < todos.length && i < 999; i++) {
@@ -237,6 +243,12 @@ class ReminderScheduleService {
       }
     }
 
+    reminders.addAll(buildFixedScheduleReminders(
+      fixedSchedules: fixedSchedules,
+      now: now,
+      limit: limit,
+    ));
+
     // ── 规划块提醒 ──────────────────────────────────────────────────
     final planBlocks = await StorageService.getPlanBlocks(username);
     final remindedBlocks = <TodoPlanBlock>[];
@@ -293,6 +305,81 @@ class ReminderScheduleService {
     }
 
     await NotificationService.scheduleReminders(reminders);
+  }
+
+  static Future<void> scheduleFromStorage(
+    String username, {
+    bool force = false,
+  }) async {
+    final results = await Future.wait<dynamic>([
+      StorageService.getTodos(username),
+      CourseService.getAllCourses(username),
+    ]);
+    await scheduleAll(
+      todos: results[0] as List<TodoItem>,
+      courses: results[1] as List<CourseItem>,
+      force: force,
+    );
+  }
+
+  static List<Map<String, dynamic>> buildFixedScheduleReminders({
+    required List<FixedScheduleItem> fixedSchedules,
+    required DateTime now,
+    required DateTime limit,
+  }) {
+    final reminders = <Map<String, dynamic>>[];
+    for (var index = 0; index < fixedSchedules.length && index < 999; index++) {
+      final item = fixedSchedules[index];
+      if (item.isDeleted ||
+          item.status == FixedScheduleStatus.cancelled ||
+          item.status == FixedScheduleStatus.finished ||
+          item.startTime == null) {
+        continue;
+      }
+      final start =
+          DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+      final advances = item.reminderMinutes
+          .where((minutes) => minutes >= 0)
+          .toSet()
+          .toList()
+        ..sort((left, right) => right.compareTo(left));
+      final timeText = item.endTime == null
+          ? '${_hm(start)} · 结束时间待定'
+          : '${_hm(start)} - ${_hm(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
+      final detailParts = [
+        if (item.location?.trim().isNotEmpty == true) item.location!.trim(),
+        if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
+        timeText,
+      ];
+      for (var reminderIndex = 0;
+          reminderIndex < advances.length &&
+              reminderIndex < _fixedScheduleReminderStride;
+          reminderIndex++) {
+        final advance = advances[reminderIndex];
+        final triggerAt = start.subtract(Duration(minutes: advance));
+        if (!shouldSchedulePreStart(
+          startAt: start,
+          triggerAt: triggerAt,
+          now: now,
+          limit: limit,
+        )) {
+          continue;
+        }
+        reminders.add({
+          'triggerAtMs': triggerAt.toUtc().millisecondsSinceEpoch,
+          'startAtMs': start.toUtc().millisecondsSinceEpoch,
+          'title': '📌 ${item.title}',
+          'text': detailParts.join(' · '),
+          'notifId': _fixedScheduleBaseId +
+              index * _fixedScheduleReminderStride +
+              reminderIndex,
+          'type': 'fixed_schedule',
+          'fixedScheduleId': item.id,
+          'timeStr': timeText,
+        });
+      }
+    }
+    return reminders;
   }
 
   static String _hm(DateTime dt) =>

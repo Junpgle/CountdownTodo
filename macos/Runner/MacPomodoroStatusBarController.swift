@@ -3371,6 +3371,9 @@ class MacPomodoroStatusBarController {
         if type == "plan_block" {
             return ("plan_block", reminder["planBlockId"] as? String ?? "")
         }
+        if type == "fixed_schedule" {
+            return ("fixed_schedule", reminder["fixedScheduleId"] as? String ?? "")
+        }
         return ("todo", reminder["todoId"] as? String ?? "")
     }
 

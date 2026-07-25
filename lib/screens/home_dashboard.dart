@@ -4014,7 +4014,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (hasChanges) {
           // 同步后数据有变化，刷新 Island 槽位缓存
           FloatWindowService.invalidateSlotCache();
-          _loadAllData(); // _loadAllData 内部会重新 scheduleAll
+          _rescheduleAlarms();
+          _loadAllData();
         }
 
         // 🚀 同步手环版本信息

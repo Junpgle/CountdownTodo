@@ -688,6 +688,8 @@ class NotificationService {
           if (r['teacher'] != null) 'teacher': r['teacher'],
           if (r['originalText'] != null) 'originalText': r['originalText'],
           if (r['planBlockId'] != null) 'planBlockId': r['planBlockId'],
+          if (r['fixedScheduleId'] != null)
+            'fixedScheduleId': r['fixedScheduleId'],
           if (r['todoId'] != null) 'todoId': r['todoId'],
           if (imagePath != null && imagePath.isNotEmpty)
             'analysisImagePath': imagePath,
