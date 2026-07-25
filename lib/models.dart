@@ -236,7 +236,8 @@ class TodoItem {
   // 🚀 核心方法：每次本地对任务的修改，都必须调用此方法！
   void markAsChanged() {
     version++;
-    updatedAt = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    updatedAt = now > updatedAt ? now : updatedAt + 1;
   }
 
   DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
@@ -1000,7 +1001,8 @@ class FixedScheduleItem {
 
   void markAsChanged() {
     version++;
-    updatedAt = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    updatedAt = now > updatedAt ? now : updatedAt + 1;
   }
 
   Map<String, dynamic> toJson() => {

@@ -66,7 +66,13 @@ class StorageService {
     final deduped = <String, FixedScheduleItem>{};
     for (final item in items) {
       final existing = deduped[item.id];
-      if (existing == null || item.updatedAt > existing.updatedAt) {
+      if (existing == null ||
+          TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: item.updatedAt,
+            incomingVersion: item.version,
+            currentUpdatedAt: existing.updatedAt,
+            currentVersion: existing.version,
+          )) {
         deduped[item.id] = item;
       }
     }

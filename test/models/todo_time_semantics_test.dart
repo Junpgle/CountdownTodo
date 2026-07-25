@@ -170,5 +170,19 @@ void main() {
       expect(normalized.start, due);
       expect(normalized.due, due);
     });
+
+    test('local edits stay newer than a future pulled timestamp', () {
+      final future = DateTime.now().add(const Duration(days: 1));
+      final todo = TodoItem(
+        title: '时钟偏移待办',
+        updatedAt: future.millisecondsSinceEpoch,
+        version: 7,
+      );
+
+      todo.markAsChanged();
+
+      expect(todo.updatedAt, future.millisecondsSinceEpoch + 1);
+      expect(todo.version, 8);
+    });
   });
 }
