@@ -309,6 +309,6 @@ class _TodoRecurrenceProgressState extends State<TodoRecurrenceProgress> {
         TodoRecurrenceNodeState.current => '当前周期',
         TodoRecurrenceNodeState.pending => '待完成',
         TodoRecurrenceNodeState.future => '未来周期',
-        TodoRecurrenceNodeState.neutral => '已跳过或循环结束',
+        TodoRecurrenceNodeState.neutral => '已跳过或重复结束',
       };
 }

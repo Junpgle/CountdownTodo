@@ -447,7 +447,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     await _syncService.forceReconnect(_userId, 'flutter_$_deviceId',
         authToken: authToken, appVersion: _appVersion);
-
   }
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
@@ -2184,7 +2183,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Widget? _buildTodoPickerSubtitle(TodoItem todo) {
     final labels = <String>[
-      if (todo.recurrenceSeriesId?.isNotEmpty == true) '循环任务',
+      if (todo.recurrenceSeriesId?.isNotEmpty == true) '重复待办',
       if (todo.remark?.isNotEmpty == true) todo.remark!,
     ];
     if (labels.isEmpty) return null;

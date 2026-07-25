@@ -75,43 +75,51 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
     // 解析待办
     final rawTodos = (result['todos'] as List?) ?? [];
-    _todos = rawTodos.map((t) => TodoItem(
-      id: t['uuid']?.toString(),
-      title: t['content']?.toString() ?? '',
-      isDone: t['is_completed'] == 1,
-      dueDate: t['due_date'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(t['due_date'] as int)
-          : null,
-      createdDate: t['created_date'] as int?,
-      createdAt: t['created_at'] as int?,
-      collabType: t['collab_type'] ?? 0,
-      groupId: t['group_id']?.toString(),
-      teamUuid: teamUuid,
-      teamName: teamName,
-    )).toList();
+    _todos = rawTodos
+        .map((t) => TodoItem(
+              id: t['uuid']?.toString(),
+              title: t['content']?.toString() ?? '',
+              isDone: t['is_completed'] == 1,
+              dueDate: t['due_date'] != null
+                  ? DateTime.fromMillisecondsSinceEpoch(t['due_date'] as int)
+                  : null,
+              createdDate: t['created_date'] as int?,
+              createdAt: t['created_at'] as int?,
+              collabType: t['collab_type'] ?? 0,
+              groupId: t['group_id']?.toString(),
+              isAllDay: t['is_all_day'] == 1 || t['isAllDay'] == true,
+              teamUuid: teamUuid,
+              teamName: teamName,
+            ))
+        .toList();
 
     // 解析分组
     final rawGroups = (result['groups'] as List?) ?? [];
-    _todoGroups = rawGroups.map((g) => TodoGroup(
-      id: g['uuid']?.toString(),
-      name: g['name']?.toString() ?? '未命名分组',
-      isExpanded: g['is_expanded'] == 1,
-      teamUuid: teamUuid,
-      teamName: teamName,
-    )).toList();
+    _todoGroups = rawGroups
+        .map((g) => TodoGroup(
+              id: g['uuid']?.toString(),
+              name: g['name']?.toString() ?? '未命名分组',
+              isExpanded: g['is_expanded'] == 1,
+              teamUuid: teamUuid,
+              teamName: teamName,
+            ))
+        .toList();
 
     // 解析倒计时
     final rawCountdowns = (result['countdowns'] as List?) ?? [];
-    _countdowns = rawCountdowns.map((c) => CountdownItem(
-      id: c['uuid']?.toString(),
-      title: c['title']?.toString() ?? '',
-      targetDate: DateTime.fromMillisecondsSinceEpoch(
-          (c['target_time'] as int?) ?? DateTime.now().millisecondsSinceEpoch),
-      isCompleted: c['is_completed'] == 1,
-      createdAt: c['created_at'] as int?,
-      teamUuid: teamUuid,
-      teamName: teamName,
-    )).toList();
+    _countdowns = rawCountdowns
+        .map((c) => CountdownItem(
+              id: c['uuid']?.toString(),
+              title: c['title']?.toString() ?? '',
+              targetDate: DateTime.fromMillisecondsSinceEpoch(
+                  (c['target_time'] as int?) ??
+                      DateTime.now().millisecondsSinceEpoch),
+              isCompleted: c['is_completed'] == 1,
+              createdAt: c['created_at'] as int?,
+              teamUuid: teamUuid,
+              teamName: teamName,
+            ))
+        .toList();
   }
 
   Future<void> _verifyPassword() async {
@@ -139,8 +147,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(children: [
             Icon(Icons.person_add_rounded,
                 color: Theme.of(context).colorScheme.secondary),
@@ -153,8 +161,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('填写你的邮箱，管理员审批后你将收到通知。',
-                    style: TextStyle(
-                        fontSize: 13, color: Colors.grey.shade600)),
+                    style:
+                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: emailCtrl,
@@ -185,8 +193,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消')),
+                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
             ElevatedButton(
               onPressed: submitting
                   ? null
@@ -214,8 +221,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                       ));
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    Theme.of(context).colorScheme.secondary,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
@@ -287,8 +293,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               ),
               const SizedBox(height: 20),
               Text(_errorMessage,
-                  style: TextStyle(
-                      fontSize: 16, color: Colors.grey.shade600),
+                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   textAlign: TextAlign.center),
               const SizedBox(height: 24),
               FilledButton.icon(
@@ -322,13 +327,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.lock_outline,
-                    size: 48,
-                    color: Theme.of(context).colorScheme.primary),
+                    size: 48, color: Theme.of(context).colorScheme.primary),
               ),
               const SizedBox(height: 20),
               const Text('需要密码验证',
-                  style:
-                      TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text('此分享链接设置了访问密码',
                   style: TextStyle(color: Colors.grey.shade600)),
@@ -385,11 +388,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     final secondary = Theme.of(context).colorScheme.secondary;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFE8F4FD),
+      backgroundColor:
+          isDark ? const Color(0xFF1E1E2E) : const Color(0xFFE8F4FD),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: CustomScrollView(
-          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics()),
           slivers: [
             // ── 顶部 AppBar ──
             SliverAppBar(
@@ -403,7 +408,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                 titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
                 title: Text(
                   share['title'] ?? teamName,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 background: Container(
                   decoration: BoxDecoration(
@@ -437,7 +443,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: ShareCountdownSection(countdowns: _countdowns, isLight: isLight),
+                  child: ShareCountdownSection(
+                      countdowns: _countdowns, isLight: isLight),
                 ),
               ),
 
@@ -446,7 +453,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: ShareTodoSection(todos: _todos, todoGroups: _todoGroups, isLight: isLight),
+                  child: ShareTodoSection(
+                      todos: _todos, todoGroups: _todoGroups, isLight: isLight),
                 ),
               ),
 
@@ -458,9 +466,12 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inbox_outlined, size: 64, color: Colors.grey.shade300),
+                      Icon(Icons.inbox_outlined,
+                          size: 64, color: Colors.grey.shade300),
                       const SizedBox(height: 16),
-                      Text('暂无分享内容', style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
+                      Text('暂无分享内容',
+                          style: TextStyle(
+                              fontSize: 16, color: Colors.grey.shade500)),
                     ],
                   ),
                 ),
@@ -475,7 +486,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         onPressed: _showJoinDialog,
         backgroundColor: secondary,
         icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text('申请加入团队', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('申请加入团队',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -514,19 +526,15 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   Widget _buildAnnouncementCard(Map<String, dynamic> a, bool isDark) {
-    final isPriority =
-        a['is_priority'] == 1 || a['is_priority'] == true;
+    final isPriority = a['is_priority'] == 1 || a['is_priority'] == true;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.white,
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: isPriority
             ? Border.all(
-                color: Colors.orangeAccent.withValues(alpha: 0.3),
-                width: 1.5)
+                color: Colors.orangeAccent.withValues(alpha: 0.3), width: 1.5)
             : null,
         boxShadow: isDark
             ? null
@@ -546,8 +554,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
               children: [
                 if (isPriority) ...[
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.orangeAccent,
                       borderRadius: BorderRadius.circular(10),
@@ -571,9 +579,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
             Text(a['content'] ?? '',
                 style: TextStyle(
                     fontSize: 14,
-                    color: isDark
-                        ? Colors.grey.shade300
-                        : Colors.grey.shade700,
+                    color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
                     height: 1.5)),
             const SizedBox(height: 10),
             Text(
@@ -582,8 +588,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                 if (a['created_at'] != null)
                   _fmtDateTime(a['created_at'] as int),
               ].join(' · '),
-              style:
-                  TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
           ],
         ),

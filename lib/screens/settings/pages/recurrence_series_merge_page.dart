@@ -130,11 +130,11 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('合并循环待办'),
+        title: const Text('合并重复待办'),
         content: Text(
           '将 ${_selectedSeriesIds.length} 个系列合并为一个，并保留“${target.title}”所在系列为主系列。\n\n'
           '每期待办的独立 ID、完成状态、规划、专注记录和时间日志都会保留。同一天的重复实例会自动去重。\n\n'
-          '主系列现有的循环规则优先保留。',
+          '主系列现有的重复规则优先保留。',
         ),
         actions: [
           TextButton(
@@ -190,7 +190,7 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
     }).toList();
 
     return Scaffold(
-      appBar: widget.isEmbedded ? null : AppBar(title: const Text('合并循环待办')),
+      appBar: widget.isEmbedded ? null : AppBar(title: const Text('合并重复待办')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -243,7 +243,7 @@ class _RecurrenceSeriesMergePageState extends State<RecurrenceSeriesMergePage> {
                   child: filtered.isEmpty
                       ? Center(
                           child: Text(
-                            _series.isEmpty ? '暂无可合并的循环待办' : '没有匹配的循环系列',
+                            _series.isEmpty ? '暂无可合并的重复待办' : '没有匹配的重复系列',
                             style: TextStyle(
                               color: colorScheme.onSurfaceVariant,
                             ),

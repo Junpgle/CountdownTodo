@@ -390,7 +390,7 @@ class _VersionHistorySheetState extends State<VersionHistorySheet>
           contextFormatter: (v, ctx) => formatTime(v));
       addChange('重复规则', before?['recurrence'] ?? 0, after['recurrence'] ?? 0,
           contextFormatter: (v, ctx) => getRecurrenceName(v as int));
-      addChange('全天事件', before?['is_all_day'] ?? 0, after['is_all_day'] ?? 0,
+      addChange('日期待办', before?['is_all_day'] ?? 0, after['is_all_day'] ?? 0,
           contextFormatter: (v, ctx) => v == 1 ? '是' : '否');
 
       // 🚀 新增：显示循环截止时间的变更

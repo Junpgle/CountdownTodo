@@ -1871,7 +1871,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final achievements = <String>[
       if (_completedCount > 0 || _recurringCompletedCount == 0)
         '完成 $_completedCount 个任务',
-      if (_recurringCompletedCount > 0) '坚持 $_recurringCompletedCount 期习惯',
+      if (_recurringCompletedCount > 0) '完成 $_recurringCompletedCount 期重复任务',
     ].join('，');
 
     final hero = Container(
@@ -1925,7 +1925,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                   Icons.local_fire_department_outlined, Colors.deepOrange, cs),
               if (_recurringScheduledCount > 0)
                 _buildInsightPill(
-                    '习惯完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
+                    '重复完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
                     Icons.repeat_rounded,
                     cs.secondary,
                     cs),
@@ -2561,11 +2561,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       ),
       if (_recurringScheduledCount > 0)
         _buildStatCard(
-          '周期习惯',
+          '重复待办',
           _recurringResolvedCount > 0
               ? '完成率 ${_formatPercent(_recurringCompletedCount / _recurringResolvedCount)}'
-              : '习惯进行中',
-          '${_recurrenceSeries.length} 个习惯 · $_recurringScheduledCount 个周期实例',
+              : '重复计划进行中',
+          '${_recurrenceSeries.length} 个系列 · $_recurringScheduledCount 个周期实例',
           Icons.repeat_rounded,
           cs.secondary,
           cs,

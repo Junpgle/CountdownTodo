@@ -234,7 +234,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
       _buildFeatureCard(
         id: 'recurrence_merge',
         icon: Icons.merge_type_rounded,
-        title: '循环待办合并',
+        title: '重复待办合并',
         subtitle: '手动选择并归并被拆开的循环系列',
         onTap: () {
           Navigator.push(
@@ -244,7 +244,7 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                 username: widget.username,
                 isEmbedded: widget.isEmbedded,
               ),
-              settings: const RouteSettings(name: '合并循环待办'),
+              settings: const RouteSettings(name: '合并重复待办'),
             ),
           );
         },
