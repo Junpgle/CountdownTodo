@@ -18,6 +18,7 @@ import '../services/time_estimation_service.dart';
 import '../services/suggestion_feedback_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
@@ -356,11 +357,29 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         return RecurrenceType.monthly;
       case 'yearly':
         return RecurrenceType.yearly;
+      case 'weekdays':
+        return RecurrenceType.weekdays;
       case 'customDays':
         return RecurrenceType.customDays;
       default:
         return RecurrenceType.none;
     }
+  }
+
+  ParsedTimeSemantics _parseTimeSemantics(
+    dynamic raw, {
+    required bool isAllDay,
+    required DateTime? startTime,
+    required DateTime? endTime,
+  }) {
+    if (isAllDay) return ParsedTimeSemantics.dateOnly;
+    final name = raw?.toString();
+    return ParsedTimeSemantics.values.firstWhere(
+      (value) => value.name == name,
+      orElse: () => startTime != null && endTime != null
+          ? ParsedTimeSemantics.range
+          : ParsedTimeSemantics.unscheduled,
+    );
   }
 
   String _getRecurrenceLabel(RecurrenceType r) {
@@ -523,18 +542,31 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       }
 
       final parsedResultsList = results.map((result) {
+        final startTime = result['startTime'] != null
+            ? DateTime.tryParse(result['startTime'])
+            : null;
+        final endTime = result['endTime'] != null
+            ? DateTime.tryParse(result['endTime'])
+            : null;
+        final isAllDay = result['isAllDay'] ?? false;
         return ParsedTodoResult(
           title: result['title'] ?? _aiInputCtrl.text,
           remark: result['remark'],
-          isAllDay: result['isAllDay'] ?? false,
-          startTime: result['startTime'] != null
-              ? DateTime.tryParse(result['startTime'])
-              : null,
-          endTime: result['endTime'] != null
-              ? DateTime.tryParse(result['endTime'])
-              : null,
+          isAllDay: isAllDay,
+          startTime: startTime,
+          endTime: endTime,
+          timeSemantics: _parseTimeSemantics(
+            result['timeMode'],
+            isAllDay: isAllDay,
+            startTime: startTime,
+            endTime: endTime,
+          ),
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
+          recurrenceEndDate: DateTime.tryParse(
+            (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
+                .toString(),
+          ),
           reminderMinutes: result['reminderMinutes'],
           originalText: _aiInputCtrl.text,
         );
@@ -692,10 +724,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (parsed.isAllDay) {
       start = null;
       end = null;
-    } else if (start != null &&
-        end != null &&
-        start.hour == 0 &&
-        start.minute == 0) {
+    } else if (parsed.timeSemantics == ParsedTimeSemantics.deadline &&
+        end != null) {
       // 单一时刻在待办解析中表示截止点；对固定日程则表示开始时刻，
       // 结束时间保持待定，不能静默补出一小时。
       start = end;
@@ -726,11 +756,23 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (item.recurrence != RecurrenceType.none) {
       item.recurrenceSeriesId = item.id;
     }
-    final recurrenceEnd = parsed.recurrenceEndDate;
-    if (item.recurrence == RecurrenceType.none || recurrenceEnd == null) {
+    if (item.recurrence == RecurrenceType.none) {
       await callback(item);
+      final username = _username ?? await StorageService.getLoginSession();
+      if (username != null) {
+        await ReminderScheduleService.scheduleFromStorage(
+          username,
+          force: true,
+        );
+      }
       return;
     }
+    final recurrenceEnd = parsed.recurrenceEndDate ??
+        FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: dateSource,
+          recurrence: item.recurrence,
+          customIntervalDays: parsed.customIntervalDays ?? 1,
+        );
     late final ({
       List<FixedScheduleItem> active,
       List<FixedScheduleItem> changes,
@@ -758,6 +800,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       for (final occurrence in series.active) {
         await callback(occurrence);
       }
+    }
+    final reminderUsername =
+        _username ?? await StorageService.getLoginSession();
+    if (reminderUsername != null) {
+      await ReminderScheduleService.scheduleFromStorage(
+        reminderUsername,
+        force: true,
+      );
     }
   }
 

@@ -4,6 +4,31 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('FixedScheduleRecurrenceService', () {
+    test('uses recurrence-aware default materialization windows', () {
+      final start = DateTime(2026, 7, 25);
+
+      expect(
+        FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: start,
+          recurrence: RecurrenceType.weekly,
+        ),
+        DateTime(2026, 9, 19),
+      );
+      expect(
+        FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: start,
+          recurrence: RecurrenceType.monthly,
+        ),
+        DateTime(2027, 7, 25),
+      );
+      expect(
+        FixedScheduleRecurrenceService.defaultEndDate(
+          startDate: start,
+          recurrence: RecurrenceType.yearly,
+        ),
+        DateTime(2031, 7, 25),
+      );
+    });
     test('weekly summer classes are expanded through the inclusive end date',
         () {
       final dates = FixedScheduleRecurrenceService.occurrenceDates(

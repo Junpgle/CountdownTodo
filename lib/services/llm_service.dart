@@ -62,13 +62,13 @@ class LLMConfig {
 
 4. 示例：
    输入: "KFC取餐码1234"
-   输出: {"title":"KFC取餐","remark":"取餐码: 1234","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"KFC取餐","remark":"取餐码: 1234","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "顺丰快递到了取件码8866"
-   输出: {"title":"顺丰取件","remark":"取件码: 8866","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"顺丰取件","remark":"取件码: 8866","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "茶百道做好了A056"
-   输出: {"title":"茶百道取餐","remark":"取餐码: A056","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"茶百道取餐","remark":"取餐码: A056","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
 ===== 通用待办规则 =====
 如果不是取餐/取件场景，则按以下规则：
@@ -78,18 +78,19 @@ class LLMConfig {
 3. isAllDay: 只有用户给出日期但没有具体时刻时才为true；没有日期和时间时为false。
 4. startTime: 没有日期和时间时为null；日期待办设为当天"00:00"；只有截止时刻时也设为目标日期"00:00"。
 5. endTime: 没有安排时为null；日期待办设为当天"23:59"；有明确截止时刻时使用该时刻。禁止默认给startTime增加1小时。
-6. recurrence: 识别重复周期。
+6. timeMode: 必须明确时间语义：未安排为"unscheduled"；仅日期为"dateOnly"；单一截止时刻为"deadline"；用户明确给出开始—结束区间为"range"。真实的00:00开始区间仍必须是"range"。
+7. recurrence: 识别重复周期。
    - 极其重要：只有当文本包含"每天"、"每周"、"每个[周几]"、"每月"、"每年"、"每隔X天"、"工作日"等表示【持续循环】的词时才设定。
    - 特别注意：类似"下周一"、"这周五"、"下个月1号"是指【特定的某一天】，不是重复事件，recurrence 必须设为 "none"。
-7. customIntervalDays: 仅限customDays时使用，否则为null。
-8. recurrenceEndDate: 重复结束日期，若无则null。
-9. reminderMinutes: 提前多少分钟提醒。
+8. customIntervalDays: 仅限customDays时使用，否则为null。
+9. recurrenceEndDate: 重复结束日期，若无则null。
+10. reminderMinutes: 提前多少分钟提醒。
    - 识别用户提到的"提前5分钟"、"提前半小时"、"提前1小时"、"准时提醒"等。
    - 默认为 5。如果是"准时提醒"设为 0。
 
 【输出格式】
 如果输入包含多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。
-例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
+例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
 
 【重要约束】
 必须且只能返回纯JSON格式数组，绝对不要包含任何Markdown标记（如```json），确保能够直接被程序反序列化。
@@ -135,14 +136,15 @@ class LLMConfig {
 3. isAllDay: 只有明确日期但没有具体时刻时为true；完全没有日期时为false
 4. startTime: 未安排为null；日期待办或单一截止时刻使用目标日期"00:00"
 5. endTime: 未安排为null；日期待办使用"23:59"；具体截止使用原始时刻，禁止默认增加1小时
-6. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
-7. customIntervalDays: 仅customDays时使用
-8. recurrenceEndDate: 重复结束日期
-9. reminderMinutes: 提前多少分钟提醒（默认 5）
+6. timeMode: 未安排为unscheduled；仅日期为dateOnly；单一截止时刻为deadline；明确开始—结束区间为range。真实的00:00开始区间仍是range
+7. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
+8. customIntervalDays: 仅customDays时使用
+9. recurrenceEndDate: 重复结束日期
+10. reminderMinutes: 提前多少分钟提醒（默认 5）
 
 【输出格式】
 如果图片中有多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。
-例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
+例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
 
 必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
 

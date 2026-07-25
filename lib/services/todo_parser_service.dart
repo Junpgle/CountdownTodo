@@ -16,6 +16,7 @@ class ParsedTodoResult {
   bool isAllDay;
   DateTime? startTime;
   DateTime? endTime;
+  ParsedTimeSemantics timeSemantics;
   RecurrenceType recurrence;
   int? customIntervalDays;
   DateTime? recurrenceEndDate;
@@ -30,6 +31,7 @@ class ParsedTodoResult {
     this.isAllDay = false,
     this.startTime,
     this.endTime,
+    this.timeSemantics = ParsedTimeSemantics.unscheduled,
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
     this.recurrenceEndDate,
@@ -48,6 +50,7 @@ class ParsedTodoResult {
       'isAllDay': isAllDay,
       'startTime': startTime?.toIso8601String(),
       'endTime': endTime?.toIso8601String(),
+      'timeMode': timeSemantics.name,
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
@@ -434,6 +437,13 @@ class TodoParserService {
       isAllDay: isAllDay,
       startTime: startTime,
       endTime: endTime,
+      timeSemantics: isAllDay
+          ? ParsedTimeSemantics.dateOnly
+          : timeRangeMatch != null
+              ? ParsedTimeSemantics.range
+              : singleTimeMatch != null
+                  ? ParsedTimeSemantics.deadline
+                  : ParsedTimeSemantics.unscheduled,
       recurrence: recurrence,
       customIntervalDays: customIntervalDays,
       recurrenceEndDate: recurrenceEndDate,

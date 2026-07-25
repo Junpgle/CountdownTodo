@@ -20,6 +20,30 @@ class FixedScheduleRecurrenceService {
 
   static const int maxOccurrences = 2000;
 
+  /// 快速创建未指定截止日期时使用的可控物化窗口。
+  /// 日/周类覆盖常见的 8 周安排，月重复覆盖 1 年，年重复覆盖 5 年。
+  static DateTime defaultEndDate({
+    required DateTime startDate,
+    required RecurrenceType recurrence,
+    int customIntervalDays = 1,
+  }) {
+    final start = _day(startDate);
+    return switch (recurrence) {
+      RecurrenceType.none => start,
+      RecurrenceType.daily ||
+      RecurrenceType.weekdays ||
+      RecurrenceType.weekly =>
+        start.add(const Duration(days: 56)),
+      RecurrenceType.customDays => start.add(
+          Duration(
+            days: customIntervalDays * 8 > 56 ? customIntervalDays * 8 : 56,
+          ),
+        ),
+      RecurrenceType.monthly => _addMonths(start, 12, start.day),
+      RecurrenceType.yearly => _addYears(start, 5, start.month, start.day),
+    };
+  }
+
   static List<DateTime> occurrenceDates({
     required DateTime startDate,
     required DateTime endDate,

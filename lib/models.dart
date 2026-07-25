@@ -168,6 +168,9 @@ enum RecurrenceType {
 /// 不属于待办本体的时间模式。
 enum TodoTimeMode { unscheduled, dateOnly, deadline }
 
+/// 文本解析阶段保留的时间含义，避免通过“00:00”反推用户输入类型。
+enum ParsedTimeSemantics { unscheduled, dateOnly, deadline, range }
+
 class TodoItem {
   String id; // 核心：全局唯一 UUID
   String title;
