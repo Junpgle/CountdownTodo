@@ -158,9 +158,11 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
       AppPermissionKind permission) async {
     final previousStatus = await status(permission);
 
-    final prefs = await SharedPreferences.getInstance();
     final agreedKey = 'permission_agreed_${permission.name}';
-    final hasAgreed = prefs.getBool(agreedKey) ?? false;
+    final prefsFuture = SharedPreferences.getInstance();
+    final hasAgreed = previousStatus.isGranted || previousStatus.isLimited
+        ? (await prefsFuture).getBool(agreedKey) ?? false
+        : false;
 
     if ((previousStatus.isGranted || previousStatus.isLimited) && hasAgreed) {
       return PermissionRequestResult(
@@ -185,7 +187,7 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
       );
     }
 
-    await prefs.setBool(agreedKey, true);
+    await (await prefsFuture).setBool(agreedKey, true);
 
     try {
       if (permission.opensDedicatedSettings ||
