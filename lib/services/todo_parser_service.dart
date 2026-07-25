@@ -381,8 +381,8 @@ class TodoParserService {
         int sH = int.parse(singleTimeMatch.namedGroup('sh')!);
         int sM = int.tryParse(singleTimeMatch.namedGroup('sm') ?? '') ?? 0;
         sH = _adjustHour(p1, sH);
-        startTime =
-            DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
+        endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
+        startTime = DateTime(baseDate.year, baseDate.month, baseDate.day);
       }
     } else if (parsedDate != null) {
       isAllDay = true;
@@ -393,8 +393,6 @@ class TodoParserService {
     if (startTime != null && !isAllDay && endTime == null) {
       if (durationMin != null) {
         endTime = startTime.add(Duration(minutes: durationMin));
-      } else {
-        endTime = startTime.add(const Duration(hours: 1)); // 默认给 1 小时
       }
     }
 

@@ -161,6 +161,13 @@ enum RecurrenceType {
   weekdays
 }
 
+/// 用户可理解的待办时间语义。
+///
+/// [unscheduled] 没有完成日期；[dateOnly] 只要求在某天内完成；
+/// [deadline] 有明确的截止时刻。实际执行时段由 [TodoPlanBlock] 表达，
+/// 不属于待办本体的时间模式。
+enum TodoTimeMode { unscheduled, dateOnly, deadline }
+
 class TodoItem {
   String id; // 核心：全局唯一 UUID
   String title;
@@ -229,41 +236,104 @@ class TodoItem {
     updatedAt = DateTime.now().millisecondsSinceEpoch;
   }
 
-  static int _parseMs(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+  DateTime get effectiveStartTime => DateTime.fromMillisecondsSinceEpoch(
+        createdDate ?? createdAt,
+        isUtc: true,
+      ).toLocal();
+
+  TodoTimeMode get timeMode {
+    final end = dueDate?.toLocal();
+    if (end == null) return TodoTimeMode.unscheduled;
+    if (isAllDay || looksLikeLegacyDateOnlyRange(effectiveStartTime, end)) {
+      return TodoTimeMode.dateOnly;
+    }
+    return TodoTimeMode.deadline;
   }
 
-  bool get isAllDayTask {
-    if (isAllDay) return true;
-    final data = toJson();
-    final startMs = _parseMs(data['start_time'] ??
-        data['startTime'] ??
-        data['created_date'] ??
-        data['createdDate']);
-    final endMs = _parseMs(data['end_time'] ??
-        data['endTime'] ??
-        data['due_date'] ??
-        data['dueDate']);
-    if (startMs <= 0 || endMs <= startMs) return false;
+  bool get isDateOnly => timeMode == TodoTimeMode.dateOnly;
 
-    final start =
-        DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-    final end =
-        DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true).toLocal();
+  /// 旧版客户端曾允许待办直接保存“开始—结束”执行时间段。
+  ///
+  /// 新版不再为新待办创建这种时间段，但编辑历史记录时必须识别并原样保留，
+  /// 否则一次普通编辑就会把 [createdDate] 覆盖成 [dueDate]。
+  bool get hasLegacyTimeRange {
+    final end = dueDate?.toLocal();
+    if (createdDate == null || end == null || isDateOnly) return false;
+    return end.isAfter(effectiveStartTime);
+  }
 
-    // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
-    if (start.hour == 0 && start.minute == 0) {
-      if ((end.hour == 23 && end.minute == 59) ||
-          (end.hour == 0 && end.minute == 0 && end.isAfter(start))) {
-        return true;
-      }
+  /// 是否包含新版待办不再主动创建、但编辑时仍需保留的旧版时间信息。
+  /// 包括“只有开始时间”和“开始—结束时间段”两种历史格式。
+  bool get hasLegacyTiming =>
+      createdDate != null &&
+      !isDateOnly &&
+      (dueDate == null || hasLegacyTimeRange);
+
+  /// 兼容旧代码和旧插件命名；新业务代码优先使用 [isDateOnly]。
+  bool get isAllDayTask => isDateOnly;
+
+  /// 兼容早期未正确写入 `is_all_day`、只保存 00:00/23:59 的记录。
+  ///
+  /// 不再使用“持续超过 23.5 小时”作为判断条件，避免把真正的跨日
+  /// 截止任务错误归为日期待办。
+  static bool looksLikeLegacyDateOnlyRange(DateTime start, DateTime end) {
+    if (!end.isAfter(start)) return false;
+    final startsAtMidnight = start.hour == 0 &&
+        start.minute == 0 &&
+        start.second == 0 &&
+        start.millisecond == 0;
+    if (!startsAtMidnight) return false;
+
+    final endsAtEndOfDay = end.hour == 23 && end.minute == 59;
+    final endsAtLaterMidnight = end.hour == 0 &&
+        end.minute == 0 &&
+        end.second == 0 &&
+        end.millisecond == 0;
+    return endsAtEndOfDay || endsAtLaterMidnight;
+  }
+
+  /// 统一新建和重新编辑待办时的时间写入方式。
+  ///
+  /// - 未安排：不写业务开始时间和截止时间；
+  /// - 日期待办：保存目标日 00:00 到 23:59，兼容旧客户端；
+  /// - 截止待办：开始锚点与截止点相同，避免被旧逻辑当成执行时段。
+  ///
+  /// 旧数据不会在读取时调用此方法，因此历史时间段仍可按原值保留。
+  static ({DateTime? start, DateTime? due}) normalizeTimeForWrite({
+    DateTime? selectedDate,
+    DateTime? dueDate,
+    required bool isDateOnly,
+  }) {
+    if (isDateOnly) {
+      final source = selectedDate ?? dueDate;
+      if (source == null) return (start: null, due: null);
+      return (
+        start: DateTime(source.year, source.month, source.day),
+        due: DateTime(source.year, source.month, source.day, 23, 59),
+      );
     }
-    // 跨度超过 23.5 小时也视为全天
-    if (end.difference(start).inMinutes >= 1410) return true;
+    if (dueDate == null) return (start: null, due: null);
+    return (start: dueDate, due: dueDate);
+  }
 
-    return false;
+  /// 编辑待办时的时间写入方式。
+  ///
+  /// 只有已经存在的旧版时间信息可以走 [preserveExistingTiming]；新建待办
+  /// 仍应使用 [normalizeTimeForWrite]，将时间表达为未安排、日期或截止时刻。
+  static ({DateTime? start, DateTime? due}) normalizeTimeForEdit({
+    required DateTime selectedDate,
+    DateTime? dueDate,
+    required bool isDateOnly,
+    required bool preserveExistingTiming,
+  }) {
+    if (preserveExistingTiming && !isDateOnly) {
+      return (start: selectedDate, due: dueDate);
+    }
+    return normalizeTimeForWrite(
+      selectedDate: selectedDate,
+      dueDate: dueDate,
+      isDateOnly: isDateOnly,
+    );
   }
 
   Map<String, dynamic> toJson() => {
@@ -835,6 +905,188 @@ class TodoPlanBlock {
         deviceId: j['device_id']?.toString(),
       );
 }
+
+// ==========================================
+// 📌 2.6 固定日程 (Fixed Schedules)
+// ==========================================
+
+enum FixedScheduleStatus { scheduled, finished, cancelled }
+
+enum FixedScheduleSource { manual, ai, imported, calendar }
+
+enum FixedSchedulePhase { timeTbd, upcoming, ongoing, ended, cancelled }
+
+/// 由学校、组织、预约方等外部来源决定时间的硬约束日程。
+///
+/// 该模型独立于 [TodoItem] 和 [TodoPlanBlock]：不使用完成勾选表达日程
+/// 状态，也不会被待办的截止时间和规划块的可移动语义污染。
+class FixedScheduleItem {
+  String id;
+  String title;
+  String date;
+  int? startTime;
+  int? endTime;
+  FixedScheduleStatus status;
+  FixedScheduleSource source;
+  String? location;
+  String? remark;
+  List<int> reminderMinutes;
+  String? timezone;
+  RecurrenceType recurrence;
+  int? customIntervalDays;
+  String? recurrenceSeriesId;
+  List<String> relatedTodoIds;
+  String? externalSource;
+  String? externalId;
+  String? teamUuid;
+  String? deviceId;
+  bool isDeleted;
+  int version;
+  int createdAt;
+  int updatedAt;
+
+  String get uuid => id;
+  bool get isTimeTbd => startTime == null;
+  bool get isEndTimeTbd => startTime != null && endTime == null;
+
+  FixedScheduleItem({
+    String? id,
+    required this.title,
+    required this.date,
+    this.startTime,
+    this.endTime,
+    this.status = FixedScheduleStatus.scheduled,
+    this.source = FixedScheduleSource.manual,
+    this.location,
+    this.remark,
+    List<int>? reminderMinutes,
+    this.timezone,
+    this.recurrence = RecurrenceType.none,
+    this.customIntervalDays,
+    this.recurrenceSeriesId,
+    List<String>? relatedTodoIds,
+    this.externalSource,
+    this.externalId,
+    this.teamUuid,
+    this.deviceId,
+    this.isDeleted = false,
+    this.version = 1,
+    int? createdAt,
+    int? updatedAt,
+  })  : id = id ?? const Uuid().v4(),
+        reminderMinutes = List<int>.from(reminderMinutes ?? const [15]),
+        relatedTodoIds = List<String>.from(relatedTodoIds ?? const []),
+        createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
+        updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  FixedSchedulePhase phaseAt(DateTime now) {
+    if (status == FixedScheduleStatus.cancelled || isDeleted) {
+      return FixedSchedulePhase.cancelled;
+    }
+    if (startTime == null) return FixedSchedulePhase.timeTbd;
+    if (status == FixedScheduleStatus.finished) {
+      return FixedSchedulePhase.ended;
+    }
+    final nowMs = now.millisecondsSinceEpoch;
+    if (nowMs < startTime!) return FixedSchedulePhase.upcoming;
+    if (endTime == null || nowMs < endTime!) {
+      return FixedSchedulePhase.ongoing;
+    }
+    return FixedSchedulePhase.ended;
+  }
+
+  void markAsChanged() {
+    version++;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'uuid': id,
+        'title': title,
+        'date': date,
+        'start_time': startTime,
+        'end_time': endTime,
+        'status': status.index,
+        'source': source.index,
+        'location': location,
+        'remark': remark,
+        'reminder_minutes': jsonEncode(reminderMinutes),
+        'timezone': timezone,
+        'recurrence': recurrence.index,
+        'custom_interval_days': customIntervalDays,
+        'recurrence_series_id': recurrenceSeriesId,
+        'related_todo_ids': jsonEncode(relatedTodoIds),
+        'external_source': externalSource,
+        'external_id': externalId,
+        'team_uuid': teamUuid,
+        'device_id': deviceId,
+        'is_deleted': isDeleted ? 1 : 0,
+        'version': version,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  factory FixedScheduleItem.fromJson(Map<String, dynamic> json) {
+    List<T> parseList<T>(dynamic raw, T Function(dynamic) convert) {
+      if (raw == null) return <T>[];
+      dynamic decoded = raw;
+      if (raw is String) {
+        if (raw.trim().isEmpty) return <T>[];
+        try {
+          decoded = jsonDecode(raw);
+        } catch (_) {
+          decoded = raw.split(',');
+        }
+      }
+      if (decoded is! List) return <T>[];
+      return decoded.map(convert).toList();
+    }
+
+    final rawStatus = (json['status'] as num?)?.toInt() ?? 0;
+    final rawSource = (json['source'] as num?)?.toInt() ?? 0;
+    final rawRecurrence = (json['recurrence'] as num?)?.toInt() ?? 0;
+    return FixedScheduleItem(
+      id: (json['uuid'] ?? json['id'])?.toString(),
+      title: json['title']?.toString() ?? '',
+      date: json['date']?.toString() ?? '',
+      startTime: (json['start_time'] as num?)?.toInt(),
+      endTime: (json['end_time'] as num?)?.toInt(),
+      status: FixedScheduleStatus
+          .values[rawStatus.clamp(0, FixedScheduleStatus.values.length - 1)],
+      source: FixedScheduleSource
+          .values[rawSource.clamp(0, FixedScheduleSource.values.length - 1)],
+      location: _emptyStringToNull(json['location']?.toString()),
+      remark: _emptyStringToNull(json['remark']?.toString()),
+      reminderMinutes: parseList<int>(
+        json['reminder_minutes'] ?? json['reminderMinutes'],
+        (value) =>
+            value is num ? value.toInt() : int.tryParse(value.toString()) ?? 0,
+      ),
+      timezone: _emptyStringToNull(json['timezone']?.toString()),
+      recurrence: RecurrenceType
+          .values[rawRecurrence.clamp(0, RecurrenceType.values.length - 1)],
+      customIntervalDays: int.tryParse(
+        (json['custom_interval_days'] ?? json['customIntervalDays'] ?? '')
+            .toString(),
+      ),
+      recurrenceSeriesId: _emptyStringToNull(
+          (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
+              ?.toString()),
+      relatedTodoIds: parseList<String>(
+        json['related_todo_ids'] ?? json['relatedTodoIds'],
+        (value) => value.toString(),
+      ),
+      externalSource: _emptyStringToNull(json['external_source']?.toString()),
+      externalId: _emptyStringToNull(json['external_id']?.toString()),
+      teamUuid: _emptyStringToNull(json['team_uuid']?.toString()),
+      deviceId: _emptyStringToNull(json['device_id']?.toString()),
+      isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
+      version: (json['version'] as num?)?.toInt() ?? 1,
+      createdAt: (json['created_at'] as num?)?.toInt(),
+      updatedAt: (json['updated_at'] as num?)?.toInt(),
+    );
+  }
+}
 // ==========================================
 // 🚀 3. 课表相关
 // ==========================================
@@ -881,12 +1133,10 @@ class SemesterInfo {
         'is_current': isCurrent,
       };
 
-  factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) =>
-      SemesterInfo(
+  factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) => SemesterInfo(
         id: json['id'] ?? '',
         name: json['name'] ?? '',
-        startDate:
-            DateTime.fromMillisecondsSinceEpoch(json['start_ms'] as int),
+        startDate: DateTime.fromMillisecondsSinceEpoch(json['start_ms'] as int),
         endDate: json['end_ms'] != null
             ? DateTime.fromMillisecondsSinceEpoch(json['end_ms'] as int)
             : null,
@@ -1168,7 +1418,8 @@ class TeamShare {
     this.shareUrl,
   });
 
-  bool get isExpired => expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
+  bool get isExpired =>
+      expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
 
   factory TeamShare.fromJson(Map<String, dynamic> json) => TeamShare(
         id: (json['id'] as num?)?.toInt() ?? 0,
@@ -1177,8 +1428,10 @@ class TeamShare {
         title: json['title']?.toString(),
         description: json['description']?.toString(),
         shareTodos: json['share_todos'] == 1 || json['share_todos'] == true,
-        shareCountdowns: json['share_countdowns'] == 1 || json['share_countdowns'] == true,
-        shareAnnouncements: json['share_announcements'] == 1 || json['share_announcements'] == true,
+        shareCountdowns:
+            json['share_countdowns'] == 1 || json['share_countdowns'] == true,
+        shareAnnouncements: json['share_announcements'] == 1 ||
+            json['share_announcements'] == true,
         hasPassword: json['has_password'] == true || json['has_password'] == 1,
         expiresAt: (json['expires_at'] as num?)?.toInt(),
         viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
