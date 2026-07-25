@@ -529,6 +529,11 @@ class AiTodoActionExecutor {
         (e) => e.name == action.recurrence,
         orElse: () => RecurrenceType.none,
       );
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: startTime,
+        dueDate: dueDate,
+        isDateOnly: action.isAllDay,
+      );
       return TodoItem(
         id: id,
         title: action.title ?? '',
@@ -536,9 +541,9 @@ class AiTodoActionExecutor {
         isDone: action.type == AiTodoActionType.completeTodo,
         isDeleted: action.type == AiTodoActionType.deleteTodo,
         remark: action.remark,
-        dueDate: dueDate,
-        createdDate:
-            startTime?.millisecondsSinceEpoch ?? now.millisecondsSinceEpoch,
+        dueDate: normalizedTime.due,
+        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+        createdAt: now.millisecondsSinceEpoch,
         recurrence: recurrence,
         customIntervalDays: action.customIntervalDays,
         recurrenceEndDate: recurrenceEndDate,
@@ -566,6 +571,15 @@ class AiTodoActionExecutor {
     final nextDueDate = action.dueDate != null
         ? DateTime.tryParse(action.dueDate!)
         : existingDueDate;
+    final nextIsAllDay = action.isAllDay || existing['isAllDay'] == true;
+    final normalizedTime =
+        action.startTime != null || action.dueDate != null || action.isAllDay
+            ? TodoItem.normalizeTimeForWrite(
+                selectedDate: nextStartTime,
+                dueDate: nextDueDate,
+                isDateOnly: nextIsAllDay,
+              )
+            : (start: nextStartTime, due: nextDueDate);
 
     return TodoItem(
       id: id,
@@ -578,8 +592,8 @@ class AiTodoActionExecutor {
           ? true
           : existing['isDeleted'] ?? false,
       remark: action.remark ?? existing['remark'],
-      dueDate: nextDueDate,
-      createdDate: nextStartTime?.millisecondsSinceEpoch,
+      dueDate: normalizedTime.due,
+      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
       recurrence: _parseRecurrence(action.recurrence, existing),
       customIntervalDays: action.customIntervalDays ??
           _parseNullableInt(
@@ -590,7 +604,7 @@ class AiTodoActionExecutor {
           : _parseExistingDate(
               existing['recurrenceEndDate'] ?? existing['recurrence_end_date'],
             ),
-      isAllDay: action.isAllDay || existing['isAllDay'] == true,
+      isAllDay: nextIsAllDay,
       reminderMinutes:
           action.reminderMinutes ?? existing['reminderMinutes'] as int?,
     )..markAsChanged();
@@ -613,13 +627,18 @@ class AiTodoActionExecutor {
       orElse: () => RecurrenceType.none,
     );
     final gId = action.groupId;
+    final normalizedTime = TodoItem.normalizeTimeForWrite(
+      selectedDate: startTime,
+      dueDate: dueDate,
+      isDateOnly: action.isAllDay,
+    );
 
     return TodoItem(
       title: action.title ?? '未命名待办',
       remark: _buildRemark(action),
-      dueDate: dueDate,
-      createdDate:
-          startTime?.millisecondsSinceEpoch ?? now.millisecondsSinceEpoch,
+      dueDate: normalizedTime.due,
+      createdDate: normalizedTime.start?.millisecondsSinceEpoch,
+      createdAt: now.millisecondsSinceEpoch,
       recurrence: recurrence,
       customIntervalDays: action.customIntervalDays,
       recurrenceEndDate: recurrenceEndDate,

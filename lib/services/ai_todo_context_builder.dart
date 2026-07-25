@@ -132,6 +132,13 @@ ${actions.join('\n')}
 字段约束（必须）：
 - 仅操作已有对象时必须携带对应ID（todoId / groupId / countdownId / tagId / planBlockId / logId）
 - 时间字段统一使用 yyyy-MM-dd HH:mm（如 startTime / dueDate）
+- 没有日期和时间的待办保持未安排，不得默认今天全天
+- 只有日期没有具体时刻时才使用日期待办语义（isAllDay=true）
+- 单一时刻默认表示截止点，不得自动扩展为一小时执行区间
+- 取件、取餐、取药默认是可完成的待办，不得仅为触发提醒而伪装成全天事件
+- 考试、课程、会议、面试、预约、航班等外部固定时间属于固定日程；当前动作协议没有通用固定日程写入能力，必须说明限制或请求确认，不得静默创建为待办或规划块
+- 把已有待办安排到用户可调整的执行时段时使用create_plan_block
+- 重复只表示周期机制，不得自动称为习惯
 - 危险操作（删除/完成/停止）仅在用户明确要求时输出''';
   }
 
@@ -160,6 +167,14 @@ ${actions.join('\n')}
 
 【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
+
+【事项语义】
+- 待办表示需要完成的结果；没有日期和时间时保持未安排，不能默认今天全天。
+- 只有日期没有具体时刻时表示“某天内完成”；单一时刻表示截止点，不能自动补一小时。
+- 规划块表示用户自行安排、可以调整的执行时段。
+- 考试、课程、会议、面试、预约、航班等外部固定时间属于固定日程，不是待办或规划块。当前协议没有通用固定日程写入动作，遇到创建请求时应说明限制或请求用户确认，不能静默降级。
+- 取件、取餐、取药默认属于待办；可领取窗口不占用整个日历时段。只有必须按预约时刻到场时才属于固定日程。
+- 重复是一种周期机制，不等于习惯；不得把每周周报、每月交租等称为习惯。
 
 【待办管理功能 - 重要规则】
 当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
@@ -680,6 +695,11 @@ JSON操作块必须且只能使用以下协议：
       final startTime = t['startTime'] ?? '';
       final endTime = t['endTime'] ?? '';
       final isAllDay = t['isAllDay'] ?? false;
+      final timeMode = isAllDay == true
+          ? '日期内完成'
+          : endTime.toString().isEmpty
+              ? '未安排'
+              : '定时截止';
       final recurrence = t['recurrence'] ?? 'none';
       final reminderMinutes = t['reminderMinutes'] ?? 5;
       final gid = t['groupId'] ?? '';
@@ -690,7 +710,7 @@ JSON操作块必须且只能使用以下协议：
             .name;
       }
 
-      return '- [ID: $id] 标题: $title${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 开始: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 结束: $endTime' : ''} | 全天: $isAllDay | 循环: $recurrence | 提醒: 提前$reminderMinutes分钟';
+      return '- [ID: $id] 标题: $title${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 日期锚点: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 截止: $endTime' : ''} | 时间语义: $timeMode | 重复: $recurrence | 提醒: 提前$reminderMinutes分钟';
     }).join('\n')}';
   }
 

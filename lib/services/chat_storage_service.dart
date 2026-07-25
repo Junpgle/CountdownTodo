@@ -82,7 +82,9 @@ class ChatStorageService {
 【回复要求】
 - 使用Markdown格式，简洁明了
 - 给出具体可执行的建议
-- 涉及时间安排时说明理由''';
+- 涉及时间安排时说明理由
+- 待办表示要完成的结果，规划块表示用户可调整的执行时段，考试/课程/会议等外部时间约束属于固定日程
+- 没有日期时不要默认今天全天；重复待办也不要自动称为习惯''';
 
   static String get defaultPrompt => _defaultPrompt;
 

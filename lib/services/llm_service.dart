@@ -55,33 +55,34 @@ class LLMConfig {
      * 识别到具体品牌：如"肯德基取餐"、"顺丰取件"
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值（纯数字或字母数字组合）
-   - isAllDay: true（默认全天事件）
-   - startTime: 当天"00:00"
-   - endTime: 当天"23:59"
+   - 这是需要用户完成领取动作的待办，不是固定日程
+   - 普通文本没有可靠日期时：isAllDay=false，startTime=null，endTime=null，不得擅自设为今天
+   - 文本明确领取日期但没有具体时刻时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
+   - 文本明确最晚领取时刻时：isAllDay=false，startTime为目标日期"00:00"，endTime为最晚领取时刻
 
 4. 示例：
    输入: "KFC取餐码1234"
-   输出: {"title":"KFC取餐","remark":"取餐码: 1234","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"KFC取餐","remark":"取餐码: 1234","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "顺丰快递到了取件码8866"
-   输出: {"title":"顺丰取件","remark":"取件码: 8866","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"顺丰取件","remark":"取件码: 8866","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "茶百道做好了A056"
-   输出: {"title":"茶百道取餐","remark":"取餐码: A056","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"title":"茶百道取餐","remark":"取餐码: A056","isAllDay":false,"startTime":null,"endTime":null,"recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
 ===== 通用待办规则 =====
 如果不是取餐/取件场景，则按以下规则：
 
 1. title: 核心动作/事件。必须极度精简！必须去除口语化前缀（如"提醒我"、"帮我记一下"、"我要"）、去除时间、去除地点（地点必须剥离到remark中）。
 2. remark: 提取地点、人物、携带物品等补充信息。极其重要：一旦提取了地点（如"在图书馆"），必须将地点词从title中彻底删除！若无补充信息设为null。
-3. isAllDay: 若用户没说具体几点（如"明天去学习"），设为true。
-4. startTime: 格式"YYYY-MM-DD HH:mm"。全天事件设为当天的"00:00"。
-5. endTime: 格式"YYYY-MM-DD HH:mm"。默认startTime加1小时。
+3. isAllDay: 只有用户给出日期但没有具体时刻时才为true；没有日期和时间时为false。
+4. startTime: 没有日期和时间时为null；日期待办设为当天"00:00"；只有截止时刻时也设为目标日期"00:00"。
+5. endTime: 没有安排时为null；日期待办设为当天"23:59"；有明确截止时刻时使用该时刻。禁止默认给startTime增加1小时。
 6. recurrence: 识别重复周期。
    - 极其重要：只有当文本包含"每天"、"每周"、"每个[周几]"、"每月"、"每年"、"每隔X天"、"工作日"等表示【持续循环】的词时才设定。
    - 特别注意：类似"下周一"、"这周五"、"下个月1号"是指【特定的某一天】，不是重复事件，recurrence 必须设为 "none"。
 7. customIntervalDays: 仅限customDays时使用，否则为null。
-8. recurrenceEndDate: 循环截止日期，若无则null。
+8. recurrenceEndDate: 重复结束日期，若无则null。
 9. reminderMinutes: 提前多少分钟提醒。
    - 识别用户提到的"提前5分钟"、"提前半小时"、"提前1小时"、"准时提醒"等。
    - 默认为 5。如果是"准时提醒"设为 0。
@@ -123,19 +124,20 @@ class LLMConfig {
      * 识别到具体品牌：如"肯德基取餐"、"顺丰取件"
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值
-   - isAllDay: true（默认全天事件）
-   - startTime: 当天"00:00"
-   - endTime: 当天"23:59"
+   - 这是需要用户完成领取动作的待办，不是固定日程
+   - 截图能可靠确认是当前已出餐/已到站通知且没有期限时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
+   - 截图包含明确领取期限时，按期限设置日期待办或具体截止时刻
+   - 截图日期来源不可靠时，不得猜测今天，时间字段设为null
 
 ===== 通用待办规则 =====
 1. title: 核心事件名称（如"开会"、"交作业"、"体检"）
 2. remark: 地点、备注等补充信息，没有则null
-3. isAllDay: 没有具体时间则为true
-4. startTime: 格式"YYYY-MM-DD HH:mm"，全天事件设为"00:00"
-5. endTime: 格式"YYYY-MM-DD HH:mm"，默认加1小时
+3. isAllDay: 只有明确日期但没有具体时刻时为true；完全没有日期时为false
+4. startTime: 未安排为null；日期待办或单一截止时刻使用目标日期"00:00"
+5. endTime: 未安排为null；日期待办使用"23:59"；具体截止使用原始时刻，禁止默认增加1小时
 6. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
 7. customIntervalDays: 仅customDays时使用
-8. recurrenceEndDate: 循环截止日期
+8. recurrenceEndDate: 重复结束日期
 9. reminderMinutes: 提前多少分钟提醒（默认 5）
 
 【输出格式】
