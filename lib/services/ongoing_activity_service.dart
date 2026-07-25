@@ -2,7 +2,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 
-enum OngoingActivityKind { course, planBlock, todo }
+enum OngoingActivityKind { fixedSchedule, course, planBlock, todo }
 
 class OngoingActivity {
   const OngoingActivity({
@@ -30,6 +30,7 @@ class OngoingActivity {
   Map<String, dynamic> toMap() => {
         'id': id,
         'kind': switch (kind) {
+          OngoingActivityKind.fixedSchedule => 'fixed_schedule',
           OngoingActivityKind.course => 'course',
           OngoingActivityKind.planBlock => 'plan_block',
           OngoingActivityKind.todo => 'todo',
@@ -56,7 +57,7 @@ class OngoingActivityResolution {
   final DateTime? nextBoundary;
 }
 
-/// 统一解析当前正在发生的课程、计划块和有明确时段的待办。
+/// 统一解析当前正在发生的固定日程、课程、规划块和旧版时间段待办。
 class OngoingActivityService {
   OngoingActivityService._();
 
@@ -69,12 +70,14 @@ class OngoingActivityService {
       StorageService.getPlanBlocks(username),
       CourseService.getAllCourses(username),
       StorageService.getTodoGroups(username),
+      StorageService.getFixedSchedules(username),
     ]);
     return resolve(
       todos: results[0] as List<TodoItem>,
       planBlocks: results[1] as List<TodoPlanBlock>,
       courses: results[2] as List<CourseItem>,
       todoGroups: results[3] as List<TodoGroup>,
+      fixedSchedules: results[4] as List<FixedScheduleItem>,
       now: now,
     );
   }
@@ -84,6 +87,7 @@ class OngoingActivityService {
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
     List<TodoGroup> todoGroups = const [],
+    List<FixedScheduleItem> fixedSchedules = const [],
     DateTime? now,
   }) {
     final localNow = (now ?? DateTime.now()).toLocal();
@@ -94,6 +98,32 @@ class OngoingActivityService {
     final todoById = {for (final todo in todos) todo.id: todo};
     final groupById = {for (final group in todoGroups) group.id: group};
     final activePlanTodoIds = <String>{};
+
+    for (final item in fixedSchedules) {
+      if (item.isDeleted ||
+          item.status == FixedScheduleStatus.cancelled ||
+          item.status == FixedScheduleStatus.finished) {
+        continue;
+      }
+      final startMs = item.startTime;
+      final endMs = item.endTime;
+      if (startMs == null || endMs == null || endMs <= startMs) continue;
+      _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
+      _classifyCandidate(
+        OngoingActivity(
+          id: item.id,
+          kind: OngoingActivityKind.fixedSchedule,
+          title: _firstNonEmpty([item.title, '未命名固定日程']),
+          subtitle: item.location ?? '',
+          detail: item.remark ?? '',
+          startMs: startMs,
+          endMs: endMs,
+        ),
+        nowMs: nowMs,
+        current: candidates,
+        upcoming: nextCandidates,
+      );
+    }
 
     for (final course in courses) {
       if (course.isDeleted) continue;
@@ -267,6 +297,7 @@ class OngoingActivityService {
       status != TodoPlanStatus.skipped;
 
   static int _kindPriority(OngoingActivityKind kind) => switch (kind) {
+        OngoingActivityKind.fixedSchedule => 0,
         OngoingActivityKind.course => 0,
         OngoingActivityKind.planBlock => 1,
         OngoingActivityKind.todo => 2,

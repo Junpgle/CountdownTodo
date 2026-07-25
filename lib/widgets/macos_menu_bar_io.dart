@@ -214,6 +214,8 @@ class MacosMenuBar extends StatelessWidget {
     Navigator.of(context).push(
       PageTransitions.material(
         builder: (_) => AddTodoScreen(
+          onFixedScheduleAdded: (item) =>
+              StorageService.saveFixedSchedules(username, [item]),
           onTodoAdded: (todo) async {
             final allTodos = await StorageService.getTodos(username);
             allTodos.add(todo);

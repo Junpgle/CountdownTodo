@@ -2260,6 +2260,7 @@ struct MacIslandSwiftUIView: View {
 
     private func activityKindLabel(_ kind: String) -> String {
         switch kind {
+        case "fixed_schedule": return "固定日程"
         case "course": return "课程"
         case "plan_block": return "计划"
         case "todo": return "待办"
@@ -2269,6 +2270,7 @@ struct MacIslandSwiftUIView: View {
 
     private func activityIconName(_ kind: String) -> String {
         switch kind {
+        case "fixed_schedule": return "calendar.badge.exclamationmark"
         case "course": return "book.closed.fill"
         case "plan_block": return "calendar.badge.clock"
         case "todo": return "checklist"

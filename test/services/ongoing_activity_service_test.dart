@@ -74,6 +74,36 @@ void main() {
       expect(result.activity?.title, '写方案');
     });
 
+    test('固定日程作为硬约束优先于同时进行的规划块', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'exam-1',
+        title: '高数考试',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+        location: 'A101',
+      );
+      final plan = TodoPlanBlock(
+        id: 'plan-1',
+        todoId: 'todo-1',
+        titleSnapshot: '复习',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: const [],
+        planBlocks: [plan],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.activity?.title, '高数考试');
+      expect(result.activity?.subtitle, 'A101');
+    });
+
     test('忽略全天和跨日待办，并返回下一处时间边界', () {
       final crossDay = TodoItem(
         title: '跨日任务',
@@ -137,6 +167,26 @@ void main() {
       );
 
       expect(result.activity, isNull);
+      expect(result.nextBoundary, isNull);
+    });
+
+    test('新截止待办不会被当成正在进行的时间段', () {
+      final due = DateTime(2026, 7, 15, 12);
+      final todo = TodoItem(
+        title: '中午前交材料',
+        createdDate: due.millisecondsSinceEpoch,
+        dueDate: due,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity, isNull);
       expect(result.nextBoundary, isNull);
     });
 
