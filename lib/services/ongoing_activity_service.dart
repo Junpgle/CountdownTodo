@@ -106,7 +106,7 @@ class OngoingActivityService {
         continue;
       }
       final startMs = item.startTime;
-      final endMs = item.endTime;
+      final endMs = item.effectiveActivityEndTime;
       if (startMs == null || endMs == null || endMs <= startMs) continue;
       _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
       _classifyCandidate(
@@ -115,7 +115,9 @@ class OngoingActivityService {
           kind: OngoingActivityKind.fixedSchedule,
           title: _firstNonEmpty([item.title, '未命名固定日程']),
           subtitle: item.location ?? '',
-          detail: item.remark ?? '',
+          detail: item.endTime == null
+              ? _firstNonEmpty([item.remark, '结束时间待定'])
+              : item.remark ?? '',
           startMs: startMs,
           endMs: endMs,
         ),

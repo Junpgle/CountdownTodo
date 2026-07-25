@@ -106,5 +106,41 @@ void main() {
         FixedSchedulePhase.ended,
       );
     });
+
+    test('end-time-TBD is ongoing only until the schedule day ends', () {
+      final item = FixedScheduleItem(
+        title: '公开课',
+        date: '2026-07-22',
+        startTime: DateTime(2026, 7, 22, 20).millisecondsSinceEpoch,
+      );
+
+      expect(
+        item.phaseAt(DateTime(2026, 7, 22, 21)),
+        FixedSchedulePhase.ongoing,
+      );
+      expect(
+        item.phaseAt(DateTime(2026, 7, 23)),
+        FixedSchedulePhase.ended,
+      );
+      expect(
+        DateTime.fromMillisecondsSinceEpoch(item.effectiveActivityEndTime!),
+        DateTime(2026, 7, 23),
+      );
+    });
+
+    test('local changes stay newer than a future pulled timestamp', () {
+      final future = DateTime.now().add(const Duration(days: 1));
+      final item = FixedScheduleItem(
+        title: '时钟偏移日程',
+        date: '2026-07-22',
+        updatedAt: future.millisecondsSinceEpoch,
+        version: 3,
+      );
+
+      item.markAsChanged();
+
+      expect(item.updatedAt, future.millisecondsSinceEpoch + 1);
+      expect(item.version, 4);
+    });
   });
 }

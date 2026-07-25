@@ -1009,7 +1009,8 @@ class FixedScheduleItem {
     }
     final nowMs = now.millisecondsSinceEpoch;
     if (nowMs < startTime!) return FixedSchedulePhase.upcoming;
-    if (endTime == null || nowMs < endTime!) {
+    final effectiveEnd = effectiveActivityEndTime;
+    if (effectiveEnd != null && nowMs < effectiveEnd) {
       return FixedSchedulePhase.ongoing;
     }
     return FixedSchedulePhase.ended;

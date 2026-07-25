@@ -104,6 +104,27 @@ void main() {
       expect(result.activity?.subtitle, 'A101');
     });
 
+    test('结束时间待定的固定日程在当天可进入进行中状态', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'open-ended-1',
+        title: '公开讲座',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: const [],
+        planBlocks: const [],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.activity?.detail, '结束时间待定');
+      expect(result.nextBoundary, DateTime(2026, 7, 16));
+    });
+
     test('忽略全天和跨日待办，并返回下一处时间边界', () {
       final crossDay = TodoItem(
         title: '跨日任务',
@@ -241,6 +262,30 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('固定日程的多个提醒会进入统一调度列表', () {
+      final start = now.add(const Duration(hours: 2));
+      final item = FixedScheduleItem(
+        id: 'exam-reminder',
+        title: '高数考试',
+        date: '2026-07-15',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: start.add(const Duration(hours: 2)).millisecondsSinceEpoch,
+        location: 'A101',
+        reminderMinutes: const [60, 15],
+      );
+
+      final reminders = ReminderScheduleService.buildFixedScheduleReminders(
+        fixedSchedules: [item],
+        now: now,
+        limit: limit,
+      );
+
+      expect(reminders, hasLength(2));
+      expect(reminders.map((item) => item['type']).toSet(), {'fixed_schedule'});
+      expect(reminders.first['fixedScheduleId'], 'exam-reminder');
+      expect(reminders.first['text'], contains('A101'));
     });
   });
 
