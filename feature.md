@@ -26,8 +26,12 @@ not a release promise.
 
 - Product-level todo semantics in `docs/features/todo-semantics.md` are defined,
   but the P1 implementation is not complete. Current code has introduced
-  `TodoTimeMode` and capture-intent classification/confirmation; generic fixed
-  schedule persistence, skip-state and remaining wording/migrations are still
+  `TodoTimeMode`, capture-intent classification/confirmation, and a generic
+  fixed-schedule slice with creation, display, conflict detection, calendar
+  export, backup support, guarded recurrence materialization, team ownership, a
+  dedicated oplog, and capability-gated Alibaba debug/release sync. Deployment
+  verification, fixed-schedule reminder scheduling, range-based series editing,
+  relation editing, skip-state, and the remaining wording/migrations are still
   in flight.
 - iOS has a Flutter host but its integration depth is behind the actively
   maintained Android, Windows and macOS surfaces.

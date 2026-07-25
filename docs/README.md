@@ -6,8 +6,8 @@ on 2026-07-20. Dependency/build output Markdown is intentionally excluded.
 ## Current references
 
 - `PROJECT_ARCHITECTURE.md` — code, storage, backend and platform map.
-- `features/todo-semantics.md` — approved product semantics; explicitly tracks
-  the remaining P1 implementation gap.
+- `features/todo-semantics.md` — approved product semantics; tracks the remaining
+  P1 gaps and the capability-gated generic fixed-schedule sync boundary.
 - `features/plan-blocks.md` — plan-block model and current behavior.
 - `features/captcha-verification.md` — Turnstile paths by platform.
 - `features/mac-support.md` — macOS integrations.
