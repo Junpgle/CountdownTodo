@@ -297,7 +297,7 @@ class NotificationService {
     final DateTime now = DateTime.now();
     final List<TodoItem> todayAllDayTodos = todos.where((t) {
       if (t.dueDate == null) return false;
-      final todoType = _detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!_isSameDay(localDueDate, now)) return false;
@@ -337,47 +337,6 @@ class NotificationService {
     }
   }
 
-  static String _detectTodoType(String title) {
-    final lowerTitle = title.toLowerCase();
-    if (lowerTitle.contains('快递') ||
-        lowerTitle.contains('取件') ||
-        lowerTitle.contains('顺丰') ||
-        lowerTitle.contains('京东') ||
-        lowerTitle.contains('菜鸟') ||
-        lowerTitle.contains('中通') ||
-        lowerTitle.contains('圆通') ||
-        lowerTitle.contains('韵达') ||
-        lowerTitle.contains('申通')) {
-      return 'delivery';
-    } else if (lowerTitle.contains('奶茶') ||
-        lowerTitle.contains('咖啡') ||
-        lowerTitle.contains('古茗') ||
-        lowerTitle.contains('茶百道') ||
-        lowerTitle.contains('蜜雪冰城') ||
-        lowerTitle.contains('瑞幸') ||
-        lowerTitle.contains('星巴克') ||
-        lowerTitle.contains('库迪') ||
-        lowerTitle.contains('coco') ||
-        lowerTitle.contains('一点点')) {
-      return 'cafe';
-    } else if (lowerTitle.contains('海底捞') ||
-        lowerTitle.contains('太二') ||
-        lowerTitle.contains('外婆家') ||
-        lowerTitle.contains('西贝') ||
-        lowerTitle.contains('必胜客') ||
-        lowerTitle.contains('堂食') ||
-        lowerTitle.contains('餐饮')) {
-      return 'restaurant';
-    } else if (lowerTitle.contains('取餐') ||
-        lowerTitle.contains('外卖') ||
-        lowerTitle.contains('肯德基') ||
-        lowerTitle.contains('麦当劳') ||
-        lowerTitle.contains('KFC')) {
-      return 'food';
-    }
-    return 'default';
-  }
-
   static bool _isAllDayTodo(TodoItem todo) {
     return todo.isDateOnly;
   }
@@ -394,7 +353,7 @@ class NotificationService {
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
 
-    final todoType = _detectTodoType(todo.title);
+    final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
     final isSpecialTodo = todoType != 'default' ||
         ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
     final displayTitle = isSpecialTodo

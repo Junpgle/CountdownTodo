@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
+import 'item_semantics_service.dart';
 import 'notification_service.dart';
 
 /// 保活提醒调度服务
@@ -27,48 +28,6 @@ class ReminderScheduleService {
 
   // 提前多少分钟提醒
   static const int _todoAdvanceMinutes = 5;
-
-  /// 检测待办类型
-  static String _detectTodoType(String title) {
-    final lowerTitle = title.toLowerCase();
-    if (lowerTitle.contains('快递') ||
-        lowerTitle.contains('取件') ||
-        lowerTitle.contains('顺丰') ||
-        lowerTitle.contains('京东') ||
-        lowerTitle.contains('菜鸟') ||
-        lowerTitle.contains('中通') ||
-        lowerTitle.contains('圆通') ||
-        lowerTitle.contains('韵达') ||
-        lowerTitle.contains('申通')) {
-      return 'delivery';
-    } else if (lowerTitle.contains('奶茶') ||
-        lowerTitle.contains('咖啡') ||
-        lowerTitle.contains('古茗') ||
-        lowerTitle.contains('茶百道') ||
-        lowerTitle.contains('蜜雪冰城') ||
-        lowerTitle.contains('瑞幸') ||
-        lowerTitle.contains('星巴克') ||
-        lowerTitle.contains('库迪') ||
-        lowerTitle.contains('coco') ||
-        lowerTitle.contains('一点点')) {
-      return 'cafe';
-    } else if (lowerTitle.contains('取餐') ||
-        lowerTitle.contains('外卖') ||
-        lowerTitle.contains('肯德基') ||
-        lowerTitle.contains('麦当劳') ||
-        lowerTitle.contains('KFC')) {
-      return 'food';
-    } else if (lowerTitle.contains('海底捞') ||
-        lowerTitle.contains('太二') ||
-        lowerTitle.contains('外婆家') ||
-        lowerTitle.contains('西贝') ||
-        lowerTitle.contains('必胜客') ||
-        lowerTitle.contains('堂食') ||
-        lowerTitle.contains('餐饮')) {
-      return 'restaurant';
-    }
-    return 'default';
-  }
 
   /// 获取特殊待办的类型标签
   static String _getSpecialTodoLabel(String todoType) {
@@ -117,7 +76,7 @@ class ReminderScheduleService {
       final t = todos[i];
       if (t.isDeleted || t.isDone) continue;
 
-      final todoType = _detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       final isSpecialTodo = todoType != 'default';
 
       // 确定参考时间点（优先开始时间，其次截止时间）

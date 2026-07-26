@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 import '../storage_service.dart';
 import '../models.dart';
 import 'course_service.dart';
+import 'item_semantics_service.dart';
 import 'pomodoro_service.dart';
 
 /// Data structure for island slot content
@@ -57,48 +58,8 @@ class IslandSlotProvider {
   IslandSlotProvider._();
 
   /// Detect special todo type from title keywords
-  static String detectTodoType(String title) {
-    final lower = title.toLowerCase();
-    if (lower.contains('快递') ||
-        lower.contains('取件') ||
-        lower.contains('顺丰') ||
-        lower.contains('京东') ||
-        lower.contains('菜鸟') ||
-        lower.contains('中通') ||
-        lower.contains('圆通') ||
-        lower.contains('韵达') ||
-        lower.contains('申通') ||
-        lower.contains('极兔') ||
-        lower.contains('德邦')) {
-      return 'delivery';
-    } else if (lower.contains('奶茶') ||
-        lower.contains('咖啡') ||
-        lower.contains('古茗') ||
-        lower.contains('茶百道') ||
-        lower.contains('蜜雪冰城') ||
-        lower.contains('瑞幸') ||
-        lower.contains('星巴克') ||
-        lower.contains('库迪') ||
-        lower.contains('coco') ||
-        lower.contains('一点点')) {
-      return 'cafe';
-    } else if (lower.contains('取餐') ||
-        lower.contains('外卖') ||
-        lower.contains('肯德基') ||
-        lower.contains('麦当劳') ||
-        lower.contains('kfc')) {
-      return 'food';
-    } else if (lower.contains('海底捞') ||
-        lower.contains('太二') ||
-        lower.contains('外婆家') ||
-        lower.contains('西贝') ||
-        lower.contains('必胜客') ||
-        lower.contains('堂食') ||
-        lower.contains('餐饮')) {
-      return 'restaurant';
-    }
-    return 'default';
-  }
+  static String detectTodoType(String title) =>
+      ItemSemanticsService.specialTodoTypeForTitle(title);
 
   /// Get slot data for a specific type
   static Future<IslandSlotData> getSlotData(String type,

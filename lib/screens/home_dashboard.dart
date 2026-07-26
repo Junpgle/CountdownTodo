@@ -39,6 +39,7 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
+import '../services/item_semantics_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
 import '../utils/local_image_provider.dart';
@@ -2612,52 +2613,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     _activeCourseNotificationKey = activeCourseKey;
 
     // ── 待办提醒 ────────────────────────────────────────────────
-    String detectTodoType(String title) {
-      final lowerTitle = title.toLowerCase();
-      if (lowerTitle.contains('快递') ||
-          lowerTitle.contains('取件') ||
-          lowerTitle.contains('顺丰') ||
-          lowerTitle.contains('京东') ||
-          lowerTitle.contains('菜鸟') ||
-          lowerTitle.contains('中通') ||
-          lowerTitle.contains('圆通') ||
-          lowerTitle.contains('韵达') ||
-          lowerTitle.contains('申通')) {
-        return 'delivery';
-      } else if (lowerTitle.contains('奶茶') ||
-          lowerTitle.contains('咖啡') ||
-          lowerTitle.contains('古茗') ||
-          lowerTitle.contains('茶百道') ||
-          lowerTitle.contains('蜜雪冰城') ||
-          lowerTitle.contains('瑞幸') ||
-          lowerTitle.contains('星巴克') ||
-          lowerTitle.contains('库迪') ||
-          lowerTitle.contains('coco') ||
-          lowerTitle.contains('一点点')) {
-        return 'cafe';
-      } else if (lowerTitle.contains('取餐') ||
-          lowerTitle.contains('外卖') ||
-          lowerTitle.contains('肯德基') ||
-          lowerTitle.contains('麦当劳') ||
-          lowerTitle.contains('KFC')) {
-        return 'food';
-      } else if (lowerTitle.contains('海底捞') ||
-          lowerTitle.contains('太二') ||
-          lowerTitle.contains('外婆家') ||
-          lowerTitle.contains('西贝') ||
-          lowerTitle.contains('必胜客') ||
-          lowerTitle.contains('堂食') ||
-          lowerTitle.contains('餐饮')) {
-        return 'restaurant';
-      }
-      return 'default';
-    }
-
     // 1. 特殊待办 (快递/外卖等): 今天所有的都显示
     final specialTodosToday = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType == 'default') return false;
       return _isSameDay(t.dueDate!.toLocal(), now);
     }).toList();
@@ -2680,7 +2640,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
 
       return TodoNotificationPolicy.isInsideLiveWindow(t, now);
@@ -2706,7 +2666,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final allDayTodos = _todos.where((t) {
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!_isSameDay(localDueDate, now)) return false;
@@ -3011,40 +2971,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     const int normalTodoNotifId = 12345;
 
     // 检测是否为特殊待办
-    bool isSpecialTodo(String title) {
-      final lowerTitle = title.toLowerCase();
-      return lowerTitle.contains('快递') ||
-          lowerTitle.contains('取件') ||
-          lowerTitle.contains('顺丰') ||
-          lowerTitle.contains('京东') ||
-          lowerTitle.contains('菜鸟') ||
-          lowerTitle.contains('中通') ||
-          lowerTitle.contains('圆通') ||
-          lowerTitle.contains('韵达') ||
-          lowerTitle.contains('申通') ||
-          lowerTitle.contains('奶茶') ||
-          lowerTitle.contains('咖啡') ||
-          lowerTitle.contains('古茗') ||
-          lowerTitle.contains('茶百道') ||
-          lowerTitle.contains('蜜雪冰城') ||
-          lowerTitle.contains('瑞幸') ||
-          lowerTitle.contains('星巴克') ||
-          lowerTitle.contains('库迪') ||
-          lowerTitle.contains('coco') ||
-          lowerTitle.contains('一点点') ||
-          lowerTitle.contains('取餐') ||
-          lowerTitle.contains('外卖') ||
-          lowerTitle.contains('肯德基') ||
-          lowerTitle.contains('麦当劳') ||
-          lowerTitle.contains('KFC') ||
-          lowerTitle.contains('海底捞') ||
-          lowerTitle.contains('太二') ||
-          lowerTitle.contains('外婆家') ||
-          lowerTitle.contains('西贝') ||
-          lowerTitle.contains('必胜客') ||
-          lowerTitle.contains('堂食') ||
-          lowerTitle.contains('餐饮');
-    }
+    bool isSpecialTodo(String title) =>
+        ItemSemanticsService.specialTodoTypeForTitle(title) != 'default';
 
     TodoItem? currentTodo;
 

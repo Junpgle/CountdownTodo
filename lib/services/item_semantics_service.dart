@@ -76,6 +76,63 @@ class ItemSemanticsService {
     '跑步',
   ];
 
+  /// 识别需要用特殊待办样式展示的标题。
+  ///
+  /// “京东”本身也可能指京东健康等非物流业务，因此不单独作为
+  /// 取件信号；“京东快递”或“京东取件”仍会由明确关键词命中。
+  static String specialTodoTypeForTitle(String title) {
+    final normalized = title.trim().toLowerCase();
+    if (_containsAny(normalized, const [
+      '快递',
+      '取件',
+      '顺丰',
+      '菜鸟',
+      '中通',
+      '圆通',
+      '韵达',
+      '申通',
+      '极兔',
+      '德邦',
+    ])) {
+      return 'delivery';
+    }
+    if (_containsAny(normalized, const [
+      '奶茶',
+      '咖啡',
+      '古茗',
+      '茶百道',
+      '蜜雪冰城',
+      '瑞幸',
+      '星巴克',
+      '库迪',
+      'coco',
+      '一点点',
+    ])) {
+      return 'cafe';
+    }
+    if (_containsAny(normalized, const [
+      '取餐',
+      '外卖',
+      '肯德基',
+      '麦当劳',
+      'kfc',
+    ])) {
+      return 'food';
+    }
+    if (_containsAny(normalized, const [
+      '海底捞',
+      '太二',
+      '外婆家',
+      '西贝',
+      '必胜客',
+      '堂食',
+      '餐饮',
+    ])) {
+      return 'restaurant';
+    }
+    return 'default';
+  }
+
   static TodoDomainKind domainKindForText(String text) {
     final normalized = text.trim().toLowerCase();
     return _containsAny(normalized, _pickupKeywords)
