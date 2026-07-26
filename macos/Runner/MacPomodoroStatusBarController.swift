@@ -2279,10 +2279,12 @@ struct MacIslandSwiftUIView: View {
     }
 
     private func timeRangeText(startMs: Int64, endMs: Int64) -> String {
-        guard startMs > 0, endMs > 0 else { return "时间未设置" }
+        guard startMs > 0 else { return "时间未设置" }
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         let start = formatter.string(from: Date(timeIntervalSince1970: Double(startMs) / 1000))
+        // 新版待办使用单一截止时刻，不伪造为 12:00–12:00 的时间段。
+        guard endMs > startMs else { return start }
         let end = formatter.string(from: Date(timeIntervalSince1970: Double(endMs) / 1000))
         return "\(start)–\(end)"
     }
