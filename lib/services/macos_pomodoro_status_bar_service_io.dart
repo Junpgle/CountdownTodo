@@ -734,13 +734,15 @@ class MacPomodoroStatusBarService {
   }) async {
     final activity = resolution.activity;
     final nextActivity = resolution.nextActivity;
-    if (activity == null && nextActivity == null) {
+    final todayTodos = resolution.todayTodos;
+    if (activity == null && nextActivity == null && todayTodos.isEmpty) {
       await _channel.invokeMethod('clearOngoingActivity');
     } else {
       final payload = activity?.toMap() ?? <String, dynamic>{};
       if (nextActivity != null) {
         payload['nextActivity'] = nextActivity.toMap();
       }
+      payload['todayTodos'] = todayTodos.map((todo) => todo.toMap()).toList();
       await _channel.invokeMethod('updateOngoingActivity', payload);
     }
 

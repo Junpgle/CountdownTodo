@@ -266,6 +266,76 @@ void main() {
       expect(result.nextActivity?.title, '项目例会');
     });
 
+    test('今日待办汇总只包含当天未完成事项并按时间排序', () {
+      final group = TodoGroup(id: 'work', name: '工作');
+      final overdue = TodoItem(
+        id: 'overdue',
+        title: '回复邮件',
+        groupId: group.id,
+        createdDate: DateTime(2026, 7, 15, 9).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 9),
+      );
+      final allDay = TodoItem(
+        id: 'all-day',
+        title: '提交周报',
+        isAllDay: true,
+        createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 23, 59),
+      );
+      final done = TodoItem(
+        title: '已完成事项',
+        isDone: true,
+        dueDate: DateTime(2026, 7, 15, 12),
+      );
+      final tomorrow = TodoItem(
+        title: '明日事项',
+        dueDate: DateTime(2026, 7, 16, 9),
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [allDay, tomorrow, done, overdue],
+        todoGroups: [group],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.nextActivity?.id, 'all-day');
+      expect(result.todayTodos.map((todo) => todo.id), ['overdue']);
+      expect(result.todayTodos.first.groupName, '工作');
+      expect(result.nextBoundary, DateTime(2026, 7, 15, 23, 59));
+    });
+
+    test('今日待办汇总会排除下一规划块关联的待办', () {
+      final todo = TodoItem(
+        id: 'planned-todo',
+        title: '整理发布说明',
+        dueDate: DateTime(2026, 7, 15, 18),
+      );
+      final other = TodoItem(
+        id: 'other-todo',
+        title: '回复消息',
+        dueDate: DateTime(2026, 7, 15, 20),
+      );
+      final plan = TodoPlanBlock(
+        id: 'next-plan',
+        todoId: todo.id,
+        titleSnapshot: todo.title,
+        startTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo, other],
+        planBlocks: [plan],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.nextActivity?.id, plan.id);
+      expect(result.todayTodos.map((item) => item.id), ['other-todo']);
+    });
+
     test('开始时刻包含、结束时刻排除', () {
       final todo = TodoItem(
         title: '边界任务',

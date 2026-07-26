@@ -45,15 +45,41 @@ class OngoingActivity {
       };
 }
 
+class TodayTodoSummary {
+  const TodayTodoSummary({
+    required this.id,
+    required this.title,
+    required this.dueMs,
+    required this.isDateOnly,
+    this.groupName = '',
+  });
+
+  final String id;
+  final String title;
+  final int dueMs;
+  final bool isDateOnly;
+  final String groupName;
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'dueMs': dueMs,
+        'isDateOnly': isDateOnly,
+        if (groupName.isNotEmpty) 'groupName': groupName,
+      };
+}
+
 class OngoingActivityResolution {
   const OngoingActivityResolution({
     this.activity,
     this.nextActivity,
+    this.todayTodos = const [],
     this.nextBoundary,
   });
 
   final OngoingActivity? activity;
   final OngoingActivity? nextActivity;
+  final List<TodayTodoSummary> todayTodos;
   final DateTime? nextBoundary;
 }
 
@@ -99,6 +125,33 @@ class OngoingActivityService {
     final todoById = {for (final todo in todos) todo.id: todo};
     final groupById = {for (final group in todoGroups) group.id: group};
     final activePlanTodoIds = <String>{};
+    final todayTodos = todos
+        .where((todo) {
+          if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
+            return false;
+          }
+          return _isSameDay(todo.dueDate!.toLocal(), localNow);
+        })
+        .map((todo) => TodayTodoSummary(
+              id: todo.id,
+              title: _firstNonEmpty([todo.title, '未命名待办']),
+              dueMs: todo.dueDate!.millisecondsSinceEpoch,
+              isDateOnly: todo.isDateOnly,
+              groupName: groupById[todo.groupId]?.name ?? '',
+            ))
+        .toList()
+      ..sort((a, b) {
+        final dueOrder = a.dueMs.compareTo(b.dueMs);
+        if (dueOrder != 0) return dueOrder;
+        return a.title.compareTo(b.title);
+      });
+    if (todayTodos.isNotEmpty) {
+      boundaries.add(DateTime(
+        localNow.year,
+        localNow.month,
+        localNow.day + 1,
+      ).millisecondsSinceEpoch);
+    }
 
     for (final item in fixedSchedules) {
       if (item.isDeleted ||
@@ -248,10 +301,22 @@ class OngoingActivityService {
       if (kindOrder != 0) return kindOrder;
       return a.endMs.compareTo(b.endMs);
     });
+    final nextActivity = nextCandidates.isEmpty ? null : nextCandidates.first;
+    final nextTodoId = switch (nextActivity?.kind) {
+      OngoingActivityKind.todo => nextActivity!.relatedTodoId.isEmpty
+          ? nextActivity.id
+          : nextActivity.relatedTodoId,
+      OngoingActivityKind.planBlock => nextActivity!.relatedTodoId,
+      _ => '',
+    };
+    final remainingTodayTodos = nextTodoId.isEmpty
+        ? todayTodos
+        : todayTodos.where((todo) => todo.id != nextTodoId).toList();
 
     return OngoingActivityResolution(
       activity: candidates.isEmpty ? null : candidates.first,
-      nextActivity: nextCandidates.isEmpty ? null : nextCandidates.first,
+      nextActivity: nextActivity,
+      todayTodos: remainingTodayTodos,
       nextBoundary: boundaries.isEmpty
           ? null
           : DateTime.fromMillisecondsSinceEpoch(boundaries.first),

@@ -31,6 +31,14 @@ private struct MacLyricLine: Identifiable, Equatable {
     }
 }
 
+private struct MacIslandTodoSummary: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let dueMs: Int64
+    let isDateOnly: Bool
+    let groupName: String
+}
+
 private struct MacNowPlayingSnapshot {
     var trackIdentifier = ""
     var title = ""
@@ -1073,6 +1081,8 @@ class IslandStateModel: ObservableObject {
     @Published var nextActivitySubtitle = ""
     @Published var nextActivityStartMs: Int64 = 0
     @Published var nextActivityEndMs: Int64 = 0
+    @Published fileprivate var todayTodos: [MacIslandTodoSummary] = []
+    @Published var todayTodosExpanded = false
     @Published var reminderTimeText = ""
     @Published var reminderDetailText = ""
     @Published var reminderNextTitle = ""
@@ -1102,6 +1112,7 @@ class IslandStateModel: ObservableObject {
     @Published var revealHeight: CGFloat = 0
 
     var onExpansionChanged: ((Bool, Bool) -> Void)?
+    var onTodayTodosExpansionChanged: ((Bool) -> Void)?
     var onTogglePause: (() -> Void)?
     var onStop: (() -> Void)?
     var onOpenApp: (() -> Void)?
@@ -1975,7 +1986,9 @@ struct MacIslandSwiftUIView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white)
                             Text(model.nextActivityTitle.isEmpty
-                                 ? "现在没有需要立即处理的内容"
+                                 ? (model.todayTodos.isEmpty
+                                    ? "现在没有需要立即处理的内容"
+                                    : "今日待办仍在等你处理")
                                  : "下一项安排已为你准备好")
                                 .font(.system(size: 11))
                                 .foregroundColor(.white.opacity(0.5))
@@ -2032,6 +2045,8 @@ struct MacIslandSwiftUIView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    todayTodosCard
 
                     overviewCards
 
@@ -2180,6 +2195,111 @@ struct MacIslandSwiftUIView: View {
                 }
             }
         }
+    }
+
+    private var todayTodosCard: some View {
+        VStack(spacing: 0) {
+            Button(action: {
+                guard !model.todayTodos.isEmpty else { return }
+                let expanded = !model.todayTodosExpanded
+                // 列表本身立即切换布局，由宿主面板保持顶部锚定并逐帧增加
+                // revealHeight。若在这里使用 SwiftUI 布局动画，整个 VStack
+                // 会从中心重新插值，看起来像整座岛再次展开。
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    model.todayTodosExpanded = expanded
+                }
+                model.onTodayTodosExpansionChanged?(expanded)
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(model.todayTodos.isEmpty ? .green : .orange)
+                        .frame(width: 20)
+
+                    Text("今日还有 \(model.todayTodos.count) 项待办")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.white)
+
+                    Spacer()
+
+                    Text(model.todayTodos.isEmpty
+                         ? "已完成"
+                         : (model.todayTodosExpanded ? "收起" : "展开"))
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.white.opacity(0.42))
+
+                    if !model.todayTodos.isEmpty {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.45))
+                            .rotationEffect(.degrees(model.todayTodosExpanded ? 180 : 0))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if model.todayTodosExpanded {
+                Divider()
+                    .overlay(Color.white.opacity(0.08))
+
+                ScrollView(.vertical, showsIndicators: model.todayTodos.count > 4) {
+                    VStack(spacing: 0) {
+                        ForEach(model.todayTodos) { todo in
+                            Button(action: {
+                                model.onOpenEntity?("todo", todo.id)
+                            }) {
+                                HStack(spacing: 9) {
+                                    Image(systemName: "circle")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.orange.opacity(0.85))
+                                        .frame(width: 16)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(todo.title)
+                                            .font(.system(size: 11.5, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.88))
+                                            .lineLimit(1)
+                                        if !todo.groupName.isEmpty {
+                                            Text(todo.groupName)
+                                                .font(.system(size: 9.5, weight: .medium))
+                                                .foregroundColor(.white.opacity(0.38))
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer(minLength: 8)
+
+                                    Text(todayTodoTimeText(todo))
+                                        .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                                        .foregroundColor(.white.opacity(0.45))
+                                }
+                                .padding(.horizontal, 12)
+                                .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(height: min(CGFloat(model.todayTodos.count) * 40, 160))
+            }
+        }
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(11)
+    }
+
+    private func todayTodoTimeText(_ todo: MacIslandTodoSummary) -> String {
+        if todo.isDateOnly { return "全天" }
+        let due = Date(timeIntervalSince1970: Double(todo.dueMs) / 1000)
+        if due <= Date() { return "已到期" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: due)
     }
 
     private var activityTimeRangeText: String {
@@ -2501,6 +2621,7 @@ class MacPomodoroStatusBarController {
     private var nextActivitySubtitle = ""
     private var nextActivityStartMs: Int64 = 0
     private var nextActivityEndMs: Int64 = 0
+    private var todayTodos: [MacIslandTodoSummary] = []
     private var overviewLoaded = false
     private var todayFocusBaseSeconds: Int64 = 0
     private var todayFocusBaseCount = 0
@@ -2789,6 +2910,19 @@ class MacPomodoroStatusBarController {
         nextActivitySubtitle = next?["subtitle"] as? String ?? ""
         nextActivityStartMs = int64Value(next?["startMs"])
         nextActivityEndMs = int64Value(next?["endMs"])
+        todayTodos = (args["todayTodos"] as? [Any] ?? []).compactMap { value in
+            guard let todo = value as? [String: Any] else { return nil }
+            let id = todo["id"] as? String ?? ""
+            let title = todo["title"] as? String ?? ""
+            guard !id.isEmpty, !title.isEmpty else { return nil }
+            return MacIslandTodoSummary(
+                id: id,
+                title: title,
+                dueMs: int64Value(todo["dueMs"]),
+                isDateOnly: todo["isDateOnly"] as? Bool ?? false,
+                groupName: todo["groupName"] as? String ?? ""
+            )
+        }
         DispatchQueue.main.async { [weak self] in
             self?.refreshDisplay()
             self?.scheduleNextUpdate()
@@ -2811,6 +2945,7 @@ class MacPomodoroStatusBarController {
         nextActivitySubtitle = ""
         nextActivityStartMs = 0
         nextActivityEndMs = 0
+        todayTodos = []
         DispatchQueue.main.async { [weak self] in
             self?.refreshDisplay()
             self?.scheduleNextUpdate()
@@ -2963,6 +3098,14 @@ class MacPomodoroStatusBarController {
         view.nextActivitySubtitle = nextActivitySubtitle
         view.nextActivityStartMs = nextActivityStartMs
         view.nextActivityEndMs = nextActivityEndMs
+        view.todayTodos = todayTodos
+        if (!expanded || todayTodos.isEmpty) && view.todayTodosExpanded {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                view.todayTodosExpanded = false
+            }
+        }
         view.overviewLoaded = overviewLoaded
         view.todayFocusBaseSeconds = todayFocusBaseSeconds
         view.todayFocusBaseCount = todayFocusBaseCount
@@ -3074,6 +3217,12 @@ class MacPomodoroStatusBarController {
                 contentHeight = 162
                 if !view.nextActivityTitle.isEmpty {
                     contentHeight += 70
+                }
+                // 折叠标题 44pt + 与前一项的 12pt 间距；展开列表最多
+                // 显示四行，其余内容在卡片内滚动。
+                contentHeight += 56
+                if view.todayTodosExpanded {
+                    contentHeight += 1 + min(CGFloat(view.todayTodos.count) * 40, 160)
                 }
             }
 
@@ -3261,6 +3410,9 @@ class MacPomodoroStatusBarController {
                 self.flutterChannel?.invokeMethod("requestIslandOverview", arguments: nil)
             }
             self.refreshDisplay()
+        }
+        view.onTodayTodosExpansionChanged = { [weak self] _ in
+            self?.refreshDisplay()
         }
         view.onTogglePause = { [weak self] in
             guard let self = self, !self.isRemote else { return }
