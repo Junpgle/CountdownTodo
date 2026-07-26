@@ -639,6 +639,7 @@ class MacPomodoroStatusBarService {
     required List<TodoGroup> todoGroups,
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
+    required List<FixedScheduleItem> fixedSchedules,
   }) async {
     if (!Platform.isMacOS || !_initialized) return;
 
@@ -659,6 +660,7 @@ class MacPomodoroStatusBarService {
         todoGroups: todoGroups,
         planBlocks: planBlocks,
         courses: courses,
+        fixedSchedules: fixedSchedules,
       );
       if (!_isActivitySyncCurrent(generation)) return;
       await _publishActivityResolution(resolution, generation: generation);
@@ -670,7 +672,7 @@ class MacPomodoroStatusBarService {
     }
   }
 
-  /// 同步当前课程、计划块或明确时段待办，并在下一处起止边界自动重算。
+  /// 同步当前日程、课程、计划块或待办，并在下一处时间边界自动重算。
   static Future<void> syncOngoingActivity() async {
     if (!Platform.isMacOS || !_initialized) return;
     _activityRestoreDeferred = false;

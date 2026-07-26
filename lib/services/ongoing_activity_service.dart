@@ -57,7 +57,8 @@ class OngoingActivityResolution {
   final DateTime? nextBoundary;
 }
 
-/// 统一解析当前正在发生的固定日程、课程、规划块和旧版时间段待办。
+/// 统一解析当前正在发生的固定日程、课程、规划块和旧版时间段待办，
+/// 并选择下一项有明确时间的日程或待办。
 class OngoingActivityService {
   OngoingActivityService._();
 
@@ -188,10 +189,32 @@ class OngoingActivityService {
       }
       final startMs = todo.createdDate;
       final endMs = todo.dueDate?.millisecondsSinceEpoch;
-      if (startMs == null || endMs == null || endMs <= startMs) continue;
+      if (endMs == null) continue;
+
+      // 新版待办只表达完成日期或截止时刻，不再把待办本体当作执行时段。
+      // 它们不能进入“正在进行”，但仍应参与空闲态的“下一项”选择。
+      // 日期待办使用当天结束时刻，截止待办使用其截止时刻。
+      if (todo.isDateOnly || startMs == null || endMs <= startMs) {
+        if (endMs > nowMs) {
+          final deadline = OngoingActivity(
+            id: todo.id,
+            kind: OngoingActivityKind.todo,
+            title: _firstNonEmpty([todo.title, '未命名待办']),
+            subtitle: todo.remark ?? '',
+            relatedTodoId: todo.id,
+            groupName: groupById[todo.groupId]?.name ?? '',
+            startMs: endMs,
+            endMs: endMs,
+          );
+          nextCandidates.add(deadline);
+          boundaries.add(endMs);
+        }
+        continue;
+      }
+
       final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-      if (todo.isAllDayTask || !_isSameDay(start, end)) continue;
+      if (!_isSameDay(start, end)) continue;
       _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
       _classifyCandidate(
         OngoingActivity(

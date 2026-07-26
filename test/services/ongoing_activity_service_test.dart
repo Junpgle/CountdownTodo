@@ -125,7 +125,7 @@ void main() {
       expect(result.nextBoundary, DateTime(2026, 7, 16));
     });
 
-    test('忽略全天和跨日待办，并返回下一处时间边界', () {
+    test('忽略跨日执行时段，并返回下一处时间边界', () {
       final crossDay = TodoItem(
         title: '跨日任务',
         createdDate: DateTime(2026, 7, 14, 22).millisecondsSinceEpoch,
@@ -191,7 +191,7 @@ void main() {
       expect(result.nextBoundary, isNull);
     });
 
-    test('新截止待办不会被当成正在进行的时间段', () {
+    test('新截止待办不会被当成正在进行，但会成为下一项', () {
       final due = DateTime(2026, 7, 15, 12);
       final todo = TodoItem(
         title: '中午前交材料',
@@ -207,8 +207,63 @@ void main() {
       );
 
       expect(result.activity, isNull);
-      expect(result.nextActivity, isNull);
-      expect(result.nextBoundary, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.todo);
+      expect(result.nextActivity?.title, '中午前交材料');
+      expect(result.nextActivity?.startMs, due.millisecondsSinceEpoch);
+      expect(result.nextActivity?.endMs, due.millisecondsSinceEpoch);
+      expect(result.nextBoundary, due);
+    });
+
+    test('日期待办使用当天结束时刻参与下一项选择', () {
+      final todo = TodoItem(
+        title: '提交周报',
+        isAllDay: true,
+        createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 23, 59),
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.todo);
+      expect(result.nextActivity?.title, '提交周报');
+      expect(
+        result.nextActivity?.startMs,
+        DateTime(2026, 7, 15, 23, 59).millisecondsSinceEpoch,
+      );
+    });
+
+    test('下一固定日程会与课程和待办按开始时间统一排序', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'meeting-1',
+        title: '项目例会',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+      );
+      final deadline = DateTime(2026, 7, 15, 11, 30);
+      final todo = TodoItem(
+        title: '发送材料',
+        createdDate: deadline.millisecondsSinceEpoch,
+        dueDate: deadline,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.nextActivity?.title, '项目例会');
     });
 
     test('开始时刻包含、结束时刻排除', () {

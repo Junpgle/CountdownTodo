@@ -231,6 +231,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
+  List<FixedScheduleItem> _fixedSchedules = [];
   bool _pendingReloadRequested = false;
   Timer? _dashboardLoadRetryTimer;
   int _dashboardLoadRetryAttempt = 0;
@@ -3392,6 +3393,8 @@ class _HomeDashboardState extends State<HomeDashboard>
             "Courses", CourseService.getDashboardCourses(widget.username)),
         _loadDataTask(
             "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
+        _loadDataTask("FixedSchedules",
+            StorageService.getFixedSchedules(widget.username)),
       ]);
 
       hadTaskFailure = results.any((result) => result == null);
@@ -3449,8 +3452,13 @@ class _HomeDashboardState extends State<HomeDashboard>
       final List<TodoPlanBlock> allPlanBlocks = results[5] == null
           ? List<TodoPlanBlock>.from(_planBlocks)
           : _safeListResult<TodoPlanBlock>(results[5]);
-      final activityInputsReady =
-          results[0] != null && results[4] != null && results[5] != null;
+      final List<FixedScheduleItem> allFixedSchedules = results[6] == null
+          ? List<FixedScheduleItem>.from(_fixedSchedules)
+          : _safeListResult<FixedScheduleItem>(results[6]);
+      final activityInputsReady = results[0] != null &&
+          results[4] != null &&
+          results[5] != null &&
+          results[6] != null;
 
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
@@ -3461,6 +3469,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         final bool coursesChanged =
             !_isMapEqual(_dashboardCourseData, courseData);
         final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
+        final bool fixedSchedulesChanged =
+            !_isListEqual(_fixedSchedules, allFixedSchedules);
 
         if (todosChanged) {
           _todos = allTodos;
@@ -3487,11 +3497,14 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (plansChanged) {
           _planBlocks = allPlanBlocks;
         }
+        if (fixedSchedulesChanged) {
+          _fixedSchedules = allFixedSchedules;
+        }
 
         if (todosChanged || countdownsChanged) {
           _timelineRevision.value++;
         }
-        if (plansChanged || coursesChanged) {
+        if (plansChanged || coursesChanged || fixedSchedulesChanged) {
           _scheduleRevision.value++;
         }
 
@@ -3501,6 +3514,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             todoGroups: allGroups,
             planBlocks: allPlanBlocks,
             courses: _safeListResult<CourseItem>(courseData['courses']),
+            fixedSchedules: allFixedSchedules,
           ));
         }
 
