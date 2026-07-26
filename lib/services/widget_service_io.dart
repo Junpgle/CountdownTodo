@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
-import '../utils/todo_recurrence_picker.dart';
+import '../utils/todo_widget_visibility.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -144,8 +144,8 @@ class WidgetService {
     final List<TimeLogItem> tlogsRaw = results[3] as List<TimeLogItem>;
     final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
-    final widgetTodos = collapseRecurrenceSeriesForTodoPicker(
-      allTodos.where((todo) => !todo.isDone && !todo.isDeleted),
+    final widgetTodos = selectTodosForWidget(
+      allTodos,
       now: now,
     );
 
@@ -161,6 +161,8 @@ class WidgetService {
               'dueDate': t.dueDate?.millisecondsSinceEpoch,
               'createdDate': t.createdDate,
               'createdAt': t.createdAt,
+              'visibleUntil':
+                  recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
             })
         .toList();
 
@@ -320,6 +322,8 @@ class WidgetService {
         timeText: timeText,
         priority: priority,
         isDone: t.isDone,
+        visibleUntilMs:
+            recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
       );
     }).toList()
       ..sort((a, b) {
@@ -545,6 +549,7 @@ class WidgetService {
       resultData['todo_${i}_done'] = false;
       resultData['todo_${i}_id'] = '';
       resultData['todo_${i}_due'] = '';
+      resultData['todo_${i}_visible_until'] = 0;
     }
     for (int i = 0; i < displayTodos.length; i++) {
       final todo = displayTodos[i];
@@ -561,6 +566,8 @@ class WidgetService {
       resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;
       resultData['todo_${i + 1}_id'] = todo['id'] as String? ?? '';
       resultData['todo_${i + 1}_due'] = _getDueDateLabelFromMs(dueDateMs);
+      resultData['todo_${i + 1}_visible_until'] =
+          todo['visibleUntil'] as int? ?? 0;
     }
 
     // 2. 课程处理（主线程已过滤为未来 14 天内）

@@ -93,12 +93,14 @@ class WidgetTodoItem {
   final String? timeText;
   final int priority;
   final bool isDone;
+  final int? visibleUntilMs;
 
   const WidgetTodoItem({
     required this.title,
     this.timeText,
     this.priority = 0,
     this.isDone = false,
+    this.visibleUntilMs,
   });
 
   Map<String, dynamic> toJson() {
@@ -107,6 +109,7 @@ class WidgetTodoItem {
       'timeText': timeText ?? '',
       'priority': priority,
       'isDone': isDone,
+      'visibleUntilMs': visibleUntilMs,
     };
   }
 
@@ -116,6 +119,7 @@ class WidgetTodoItem {
       timeText: json['timeText'] as String?,
       priority: json['priority'] as int? ?? 0,
       isDone: json['isDone'] as bool? ?? false,
+      visibleUntilMs: (json['visibleUntilMs'] as num?)?.toInt(),
     );
   }
 }

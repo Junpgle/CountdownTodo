@@ -50,8 +50,22 @@ struct WidgetTodoItem: Codable {
     let timeText: String
     let priority: Int
     let isDone: Bool
+    let visibleUntilMs: Int64?
+
+    init(title: String, timeText: String, priority: Int, isDone: Bool, visibleUntilMs: Int64? = nil) {
+        self.title = title
+        self.timeText = timeText
+        self.priority = priority
+        self.isDone = isDone
+        self.visibleUntilMs = visibleUntilMs
+    }
 
     static let empty = WidgetTodoItem(title: "", timeText: "", priority: 0, isDone: false)
+
+    func isVisible(at date: Date) -> Bool {
+        guard let visibleUntilMs, visibleUntilMs > 0 else { return true }
+        return Int64(date.timeIntervalSince1970 * 1000) < visibleUntilMs
+    }
 }
 
 struct WidgetCourseItem: Codable {
@@ -91,7 +105,14 @@ class WidgetDataLoader {
             return .empty
         }
 
-        return snapshot
+        let visibleTodos = snapshot.todos.filter { $0.isVisible(at: Date()) }
+        return WidgetSnapshot(
+            updatedAt: snapshot.updatedAt,
+            countdowns: snapshot.countdowns,
+            todos: visibleTodos,
+            courses: snapshot.courses,
+            focus: snapshot.focus
+        )
     }
 }
 

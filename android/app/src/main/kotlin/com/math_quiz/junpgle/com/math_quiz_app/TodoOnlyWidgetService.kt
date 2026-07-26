@@ -40,7 +40,11 @@ class TodoOnlyRemoteViewsFactory(
         itemsData.clear()
         for (i in 1..50) {
             val title = prefs.getString("todo_$i", "")
-            if (!title.isNullOrEmpty()) {
+            val visibleUntilMs =
+                (prefs.all["todo_${i}_visible_until"] as? Number)?.toLong() ?: 0L
+            val isVisible =
+                visibleUntilMs <= 0L || System.currentTimeMillis() < visibleUntilMs
+            if (!title.isNullOrEmpty() && isVisible) {
                 val bundle = Bundle()
                 bundle.putString("title", title)
                 bundle.putBoolean("isDone", prefs.getBoolean("todo_${i}_done", false))

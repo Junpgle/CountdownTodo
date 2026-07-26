@@ -121,6 +121,7 @@ todo.md
 !/test/models/todo_recurrence_series_test.dart
 !/test/models/todo_time_semantics_test.dart
 !/test/models/fixed_schedule_model_test.dart
+!/test/models/widget_snapshot_test.dart
 !/test/widgets/
 /test/widgets/*
 !/test/widgets/todo_recurrence_progress_test.dart
@@ -129,6 +130,7 @@ todo.md
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
+!/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md
 /feature.md
