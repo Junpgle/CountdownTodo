@@ -9,7 +9,6 @@ import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../services/database_helper.dart';
 import '../screens/home_settings_screen.dart';
-import '../screens/fixed_schedule_editor_screen.dart';
 import '../services/todo_classification_service.dart';
 import '../services/item_semantics_service.dart';
 import '../utils/time_utils.dart';
@@ -25,6 +24,8 @@ import '../utils/page_transitions.dart';
 import 'dart:async';
 
 enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
+
+enum _ManualCaptureKind { todo, fixedSchedule }
 
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
@@ -69,6 +70,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   bool _isAllDay = false;
   String? _selectedGroupId;
   int _reminderMinutes = 5;
+  _ManualCaptureKind _manualCaptureKind = _ManualCaptureKind.todo;
+  late DateTime _scheduleDate;
+  late TimeOfDay _scheduleStartTime;
+  late TimeOfDay _scheduleEndTime;
+  bool _scheduleTimeTbd = false;
+  bool _scheduleEndTimeTbd = false;
 
   int _selectedTabIndex = 0;
   bool _isParsing = false;
@@ -146,6 +153,10 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _scheduleDate = DateTime(now.year, now.month, now.day);
+    _scheduleStartTime = const TimeOfDay(hour: 9, minute: 0);
+    _scheduleEndTime = const TimeOfDay(hour: 10, minute: 0);
     _localTodoGroups = List.from(widget.todoGroups);
     if (_localTodoGroups.isEmpty) {
       _loadTodoGroups();
@@ -309,6 +320,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
 
   void _onTitleChanged() {
     _estimationDebounce?.cancel();
+    if (_manualCaptureKind == _ManualCaptureKind.fixedSchedule) return;
     final text = _titleCtrl.text.trim();
     if (text.length < 2) {
       if (mounted &&
@@ -597,19 +609,128 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
+  void _selectManualCaptureKind(int index) {
+    final next =
+        index == 1 ? _ManualCaptureKind.fixedSchedule : _ManualCaptureKind.todo;
+    if (next == _ManualCaptureKind.fixedSchedule &&
+        widget.onFixedScheduleAdded == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前入口暂不支持保存日程')),
+      );
+      return;
+    }
+    _estimationDebounce?.cancel();
+    setState(() {
+      _manualCaptureKind = next;
+      if (next == _ManualCaptureKind.fixedSchedule) {
+        _estimationResult = null;
+        _suggestedDueDate = null;
+        _classificationSuggestion = null;
+      }
+    });
+  }
+
+  DateTime _scheduleAt(TimeOfDay time) => DateTime(
+        _scheduleDate.year,
+        _scheduleDate.month,
+        _scheduleDate.day,
+        time.hour,
+        time.minute,
+      );
+
+  Future<void> _pickScheduleDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDate: _scheduleDate,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _scheduleDate = picked;
+      if (_recurrenceEndDate != null &&
+          _recurrenceEndDate!.isBefore(_scheduleDate)) {
+        _recurrenceEndDate = _scheduleDate;
+      }
+    });
+  }
+
+  Future<void> _pickScheduleStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _scheduleStartTime,
+    );
+    if (picked != null && mounted) {
+      setState(() => _scheduleStartTime = picked);
+    }
+  }
+
+  Future<void> _pickScheduleEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _scheduleEndTime,
+    );
+    if (picked != null && mounted) {
+      setState(() => _scheduleEndTime = picked);
+    }
+  }
+
+  Future<bool> _saveManualFixedSchedule() async {
+    final start = _scheduleTimeTbd ? null : _scheduleAt(_scheduleStartTime);
+    final end = _scheduleTimeTbd || _scheduleEndTimeTbd
+        ? null
+        : _scheduleAt(_scheduleEndTime);
+    if (start != null && end != null && !end.isAfter(start)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('结束时间必须晚于开始时间')),
+      );
+      return false;
+    }
+
+    final parsed = ParsedTodoResult(
+      title: _titleCtrl.text.trim(),
+      remark: _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim(),
+      isAllDay: _scheduleTimeTbd,
+      startTime: _scheduleTimeTbd ? _scheduleDate : start,
+      endTime: end,
+      timeSemantics: _scheduleTimeTbd
+          ? ParsedTimeSemantics.dateOnly
+          : ParsedTimeSemantics.range,
+      recurrence: _recurrence,
+      customIntervalDays: _customDays,
+      recurrenceEndDate: _recurrenceEndDate,
+      reminderMinutes: _reminderMinutes,
+      originalText: _currentOriginalText,
+    );
+    return _saveFixedScheduleFromText(
+      _currentOriginalText ?? _titleCtrl.text,
+      parsedResult: parsed,
+      source: FixedScheduleSource.manual,
+    );
+  }
+
   Future<void> _addTodo() async {
     if (_titleCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          _manualCaptureKind == _ManualCaptureKind.fixedSchedule
+              ? '请输入日程名称'
+              : '请输入待办内容',
+        ),
+      ));
+      return;
+    }
+    if (_manualCaptureKind == _ManualCaptureKind.fixedSchedule) {
+      final saved = await _saveManualFixedSchedule();
+      if (saved && mounted) Navigator.pop(context);
       return;
     }
     final sourceText = _currentOriginalText ?? _titleCtrl.text;
     final saveTarget = await _confirmCaptureIntent(sourceText);
     if (saveTarget == _CaptureSaveTarget.cancel) return;
     if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
-      await _saveFixedScheduleFromText(sourceText);
-      if (!mounted) return;
-      Navigator.pop(context);
+      final saved = await _saveFixedScheduleFromText(sourceText);
+      if (saved && mounted) Navigator.pop(context);
       return;
     }
 
@@ -710,12 +831,13 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         _CaptureSaveTarget.cancel;
   }
 
-  Future<void> _saveFixedScheduleFromText(
+  Future<bool> _saveFixedScheduleFromText(
     String sourceText, {
     ParsedTodoResult? parsedResult,
+    FixedScheduleSource? source,
   }) async {
     final callback = widget.onFixedScheduleAdded;
-    if (callback == null) return;
+    if (callback == null) return false;
     final parsed = parsedResult ?? TodoParserService.parse(sourceText);
     final dateSource =
         parsed.startTime ?? parsed.endTime ?? _dueDate ?? _createdAt;
@@ -734,20 +856,22 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       start = _dueDate;
     }
 
+    final reminderMinutes = parsed.reminderMinutes ?? _reminderMinutes;
     final item = FixedScheduleItem(
       title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
       date: DateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
-      source: parsedResult == null
-          ? FixedScheduleSource.manual
-          : FixedScheduleSource.ai,
+      source: source ??
+          (parsedResult == null
+              ? FixedScheduleSource.manual
+              : FixedScheduleSource.ai),
       remark: _remarkCtrl.text.trim().isNotEmpty
           ? _remarkCtrl.text.trim()
           : (parsed.remark?.trim().isNotEmpty == true
               ? parsed.remark!.trim()
               : null),
-      reminderMinutes: [parsed.reminderMinutes ?? _reminderMinutes],
+      reminderMinutes: reminderMinutes <= 0 ? const [] : [reminderMinutes],
       timezone: DateTime.now().timeZoneName,
       recurrence: parsed.recurrence,
       recurrenceSeriesId: null,
@@ -765,7 +889,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           force: true,
         );
       }
-      return;
+      return true;
     }
     final recurrenceEnd = parsed.recurrenceEndDate ??
         FixedScheduleRecurrenceService.defaultEndDate(
@@ -786,11 +910,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         customIntervalDays: parsed.customIntervalDays ?? 1,
       );
     } on FixedScheduleRecurrenceLimitException catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString())),
       );
-      return;
+      return false;
     }
     final username = _username ?? await StorageService.getLoginSession();
     if (username != null) {
@@ -809,6 +933,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         force: true,
       );
     }
+    return true;
   }
 
   Future<void> _addBatchTodos() async {
@@ -1025,29 +1150,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         }
       }
     }
-  }
-
-  Future<void> _openFixedScheduleEditor() async {
-    final saveHandler = widget.onFixedScheduleAdded;
-    if (saveHandler == null) return;
-    final username = _username ?? await StorageService.getLoginSession();
-    if (!mounted || username == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('登录状态无效，暂时无法创建固定日程')),
-      );
-      return;
-    }
-
-    await Navigator.of(context).pushReplacement(
-      PageTransitions.material(
-        builder: (_) => FixedScheduleEditorScreen(
-          username: username,
-          initialTeamUuid: _selectedTeamUuid,
-          onSave: saveHandler,
-        ),
-      ),
-    );
   }
 
   /// Re-compute suggested due date when start time changes
@@ -1567,10 +1669,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 width: 200,
                 child: _buildCustomSegmentedControl(
                   labels: const ["待办", "日程"],
-                  selectedIndex: 0,
-                  onChanged: (idx) {
-                    if (idx == 1) _openFixedScheduleEditor();
-                  },
+                  selectedIndex:
+                      _manualCaptureKind == _ManualCaptureKind.todo ? 0 : 1,
+                  onChanged: _selectManualCaptureKind,
                 ),
               ),
             ),
@@ -1594,12 +1695,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.w600),
                       decoration: InputDecoration(
-                        hintText: "准备做些什么？",
+                        hintText: _manualCaptureKind == _ManualCaptureKind.todo
+                            ? "准备做些什么？"
+                            : "要记录什么日程？",
                         border: InputBorder.none,
                         isDense: true,
                       ),
                     ),
-                    _buildAISuggestionCard(),
+                    if (_manualCaptureKind == _ManualCaptureKind.todo)
+                      _buildAISuggestionCard(),
                     const Divider(height: 24),
                     TextField(
                       controller: _remarkCtrl,
@@ -1615,7 +1719,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       ),
                     ),
                     const SizedBox(height: 12),
-                    if (_selectedImagePath == null)
+                    if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                        _selectedImagePath == null)
                       KeyedSubtree(
                         key: _attachmentKey,
                         child: TextButton.icon(
@@ -1631,7 +1736,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           ),
                         ),
                       )
-                    else
+                    else if (_manualCaptureKind == _ManualCaptureKind.todo)
                       Stack(
                         children: [
                           InkWell(
@@ -1681,58 +1786,119 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 ),
                 child: _buildResponsiveGrid(
                   [
-                    SwitchListTile(
-                      title: const Text("某天内完成"),
-                      subtitle: const Text("不指定具体时刻"),
-                      value: _isAllDay,
-                      secondary: KeyedSubtree(
-                          key: _allDayKey,
-                          child: const Icon(Icons.calendar_today)),
-                      onChanged: (val) {
-                        setState(() {
-                          final wasDateOnlyRange = _dueDate != null &&
-                              TodoItem.looksLikeLegacyDateOnlyRange(
-                                  _createdAt, _dueDate!);
-                          _isAllDay = val;
-                          if (_isAllDay) {
-                            _createdAt = DateTime(_createdAt.year,
-                                _createdAt.month, _createdAt.day, 0, 0);
-                            if (_dueDate != null) {
-                              _dueDate = DateTime(_dueDate!.year,
-                                  _dueDate!.month, _dueDate!.day, 23, 59);
-                            } else {
-                              _dueDate = DateTime(_createdAt.year,
-                                  _createdAt.month, _createdAt.day, 23, 59);
+                    if (_manualCaptureKind == _ManualCaptureKind.todo) ...[
+                      SwitchListTile(
+                        title: const Text("某天内完成"),
+                        subtitle: const Text("不指定具体时刻"),
+                        value: _isAllDay,
+                        secondary: KeyedSubtree(
+                            key: _allDayKey,
+                            child: const Icon(Icons.calendar_today)),
+                        onChanged: (val) {
+                          setState(() {
+                            final wasDateOnlyRange = _dueDate != null &&
+                                TodoItem.looksLikeLegacyDateOnlyRange(
+                                    _createdAt, _dueDate!);
+                            _isAllDay = val;
+                            if (_isAllDay) {
+                              _createdAt = DateTime(_createdAt.year,
+                                  _createdAt.month, _createdAt.day, 0, 0);
+                              if (_dueDate != null) {
+                                _dueDate = DateTime(_dueDate!.year,
+                                    _dueDate!.month, _dueDate!.day, 23, 59);
+                              } else {
+                                _dueDate = DateTime(_createdAt.year,
+                                    _createdAt.month, _createdAt.day, 23, 59);
+                              }
+                            } else if (wasDateOnlyRange) {
+                              final now = DateTime.now();
+                              _createdAt = DateTime(
+                                  _createdAt.year,
+                                  _createdAt.month,
+                                  _createdAt.day,
+                                  now.hour,
+                                  now.minute);
+                              _dueDate = null;
                             }
-                          } else if (wasDateOnlyRange) {
-                            final now = DateTime.now();
-                            _createdAt = DateTime(
-                                _createdAt.year,
-                                _createdAt.month,
-                                _createdAt.day,
-                                now.hour,
-                                now.minute);
-                            _dueDate = null;
-                          }
-                        });
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.event),
-                      title: Text(_isAllDay ? "完成日期" : "截止时间"),
-                      subtitle: Text(_isAllDay
-                          ? DateFormat('MM-dd').format(_createdAt)
-                          : (_dueDate == null
-                              ? "未安排"
-                              : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
-                      trailing: _dueDate != null && !_isAllDay
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () => setState(() => _dueDate = null),
-                            )
-                          : const Icon(Icons.chevron_right),
-                      onTap: _isAllDay ? _pickStartTime : _pickEndTime,
-                    ),
+                          });
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.event),
+                        title: Text(_isAllDay ? "完成日期" : "截止时间"),
+                        subtitle: Text(_isAllDay
+                            ? DateFormat('MM-dd').format(_createdAt)
+                            : (_dueDate == null
+                                ? "未安排"
+                                : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
+                        trailing: _dueDate != null && !_isAllDay
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () =>
+                                    setState(() => _dueDate = null),
+                              )
+                            : const Icon(Icons.chevron_right),
+                        onTap: _isAllDay ? _pickStartTime : _pickEndTime,
+                      ),
+                    ] else ...[
+                      ListTile(
+                        key: const ValueKey('fixed-schedule-date'),
+                        leading: const Icon(Icons.calendar_today_rounded),
+                        title: Text(
+                            _recurrence == RecurrenceType.none ? '日期' : '首次日期'),
+                        subtitle: Text(
+                            DateFormat('yyyy-MM-dd').format(_scheduleDate)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('时间待定'),
+                            const SizedBox(width: 6),
+                            Switch(
+                              key: const ValueKey('fixed-schedule-time-tbd'),
+                              value: _scheduleTimeTbd,
+                              onChanged: (value) =>
+                                  setState(() => _scheduleTimeTbd = value),
+                            ),
+                          ],
+                        ),
+                        onTap: _pickScheduleDate,
+                      ),
+                      if (!_scheduleTimeTbd) ...[
+                        ListTile(
+                          key: const ValueKey('fixed-schedule-start-time'),
+                          leading:
+                              const Icon(Icons.play_circle_outline_rounded),
+                          title: const Text('开始时间'),
+                          subtitle: Text(_scheduleStartTime.format(context)),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _pickScheduleStartTime,
+                        ),
+                        ListTile(
+                          key: const ValueKey('fixed-schedule-end-time'),
+                          leading: const Icon(Icons.stop_circle_outlined),
+                          title: const Text('结束时间'),
+                          subtitle: Text(_scheduleEndTimeTbd
+                              ? '待定'
+                              : _scheduleEndTime.format(context)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('待定'),
+                              const SizedBox(width: 6),
+                              Switch(
+                                key: const ValueKey(
+                                    'fixed-schedule-end-time-tbd'),
+                                value: _scheduleEndTimeTbd,
+                                onChanged: (value) =>
+                                    setState(() => _scheduleEndTimeTbd = value),
+                              ),
+                            ],
+                          ),
+                          onTap:
+                              _scheduleEndTimeTbd ? null : _pickScheduleEndTime,
+                        ),
+                      ],
+                    ],
                     ListTile(
                       leading: const Icon(Icons.notifications_outlined),
                       title: const Text("提醒"),
@@ -1863,7 +2029,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ],
             const SizedBox(height: 16),
             // Group and Team
-            if (_localTodoGroups.isNotEmpty || _teams.isNotEmpty) ...[
+            if ((_manualCaptureKind == _ManualCaptureKind.todo &&
+                    _localTodoGroups.isNotEmpty) ||
+                _teams.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.only(left: 4, bottom: 8),
                 child: Text("组织与协作",
@@ -1882,7 +2050,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 ),
                 child: _buildResponsiveGrid(
                   [
-                    if (_localTodoGroups.isNotEmpty)
+                    if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                        _localTodoGroups.isNotEmpty)
                       ListTile(
                         leading:
                             Icon(Icons.folder_outlined, color: colors.primary),
@@ -1958,7 +2127,8 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                           }
                         },
                       ),
-                    if (_selectedTeamUuid != null)
+                    if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                        _selectedTeamUuid != null)
                       ListTile(
                         leading: const Icon(Icons.sync_alt_rounded),
                         title: const Text("完成规则"),

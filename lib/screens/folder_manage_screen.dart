@@ -324,6 +324,10 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
         builder: (ctx) => AddTodoScreen(
           todoGroups: _groups,
           initialGroupId: g.id,
+          onFixedScheduleAdded: (item) => StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          ),
           onTodoAdded: (todo) {
             setState(() {
               _todos.add(todo);
