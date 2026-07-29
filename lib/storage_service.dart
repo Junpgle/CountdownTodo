@@ -13,6 +13,7 @@ import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
 import 'services/sync_capability_service.dart';
+import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
@@ -468,6 +469,29 @@ class StorageService {
     _forceFlushProtectedUuids = uuids;
   }
 
+  static Future<void> _updateOplogRowsByIds(
+    Database db,
+    Set<int> ids,
+    Map<String, Object?> values,
+  ) async {
+    const chunkSize = 500;
+    final orderedIds = ids.toList()..sort();
+    for (var start = 0; start < orderedIds.length; start += chunkSize) {
+      final end = start + chunkSize < orderedIds.length
+          ? start + chunkSize
+          : orderedIds.length;
+      final chunk = orderedIds.sublist(start, end);
+      if (chunk.isEmpty) continue;
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      await db.update(
+        'op_logs',
+        values,
+        where: 'id IN ($placeholders)',
+        whereArgs: chunk,
+      );
+    }
+  }
+
   static void requestSync(String username) {
     if (username.isEmpty) return;
     _queuedSyncUsername = username;
@@ -896,6 +920,31 @@ class StorageService {
     // 🚀 同步写入时，查询 force-flush 保护或有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
     // 优先级：force-flush > pending oplog > normal sync
     Map<String, int> existingCompletionMap = {};
+    if (isSyncSource && dedupeList.isNotEmpty) {
+      // 同步请求返回后到真正落库前，UI 仍可能产生新的完成/取消完成操作。
+      // 在写入边界再读一次 oplog，避免仅依赖请求结束时的内存快照。
+      final allItemIds = dedupeList.map((item) => item.id).toList();
+      const chunkSize = 500;
+      for (var start = 0; start < allItemIds.length; start += chunkSize) {
+        final end = start + chunkSize < allItemIds.length
+            ? start + chunkSize
+            : allItemIds.length;
+        final chunk = allItemIds.sublist(start, end);
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final rows = await db.query(
+          'op_logs',
+          columns: const ['target_uuid'],
+          where:
+              "is_synced = 0 AND target_table = 'todos' AND target_uuid IN ($placeholders)",
+          whereArgs: chunk,
+        );
+        _pendingSyncOplogUuids.addAll(
+          rows
+              .map((row) => row['target_uuid']?.toString() ?? '')
+              .where((uuid) => uuid.isNotEmpty),
+        );
+      }
+    }
     if (isSyncSource &&
         dedupeList.isNotEmpty &&
         (_forceFlushProtectedUuids.isNotEmpty ||
@@ -3605,6 +3654,10 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      final requestOplogSnapshot = pendingOps
+          .map(SyncOplogEntry.fromRow)
+          .whereType<SyncOplogEntry>()
+          .toList(growable: false);
       // 🚀 记录有待同步 oplog 的 待办 UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
       _pendingSyncOplogUuids = pendingOps
           .where((op) => op['target_table'] == 'todos')
@@ -3969,6 +4022,7 @@ class StorageService {
         }
       }
 
+      var inFlightTodoMutationUuids = <String>{};
       if (response['success'] == true) {
         // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
         // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
@@ -3990,44 +4044,56 @@ class StorageService {
           }
         }
 
-        final excludedSyncedOpTables = <String>[
-          'pomodoro_records',
-          'pomodoro_tags',
-          if (!acknowledgeFixedScheduleOps) 'fixed_schedules',
-        ];
-        final excludedTablePlaceholders =
-            List.filled(excludedSyncedOpTables.length, '?').join(',');
-        if (blockingConflictUuids.isEmpty) {
-          await db.update(
-            'op_logs',
-            {'is_synced': 1, 'sync_error': ''},
-            where:
-                'is_synced = 0 AND target_table NOT IN ($excludedTablePlaceholders)',
-            whereArgs: excludedSyncedOpTables,
+        final oplogResolution = SyncOplogPolicy.resolveRequestSnapshot(
+          requestSnapshot: requestOplogSnapshot,
+          blockingConflictUuids: blockingConflictUuids,
+          acknowledgeFixedScheduleOps: acknowledgeFixedScheduleOps,
+        );
+        await _updateOplogRowsByIds(
+          db,
+          oplogResolution.acknowledgedIds,
+          {'is_synced': 1, 'sync_error': ''},
+        );
+        await _updateOplogRowsByIds(
+          db,
+          oplogResolution.blockedIds,
+          {'is_synced': 0, 'sync_error': 'server_conflict'},
+        );
+
+        // 重新读取当前待同步日志。本次请求发出后新增的操作
+        // 没有上传，不能被本次响应确认，也不能被旧的服务端快照覆盖。
+        final currentPendingRows = await db.query(
+          'op_logs',
+          where: 'is_synced = 0',
+          orderBy: 'timestamp ASC',
+        );
+        final currentPendingEntries = currentPendingRows
+            .map(SyncOplogEntry.fromRow)
+            .whereType<SyncOplogEntry>()
+            .toList(growable: false);
+        _pendingSyncOplogUuids =
+            SyncOplogPolicy.todoUuids(currentPendingEntries);
+        inFlightTodoMutationUuids =
+            SyncOplogPolicy.todoUuidsCreatedAfterSnapshot(
+          requestSnapshot: requestOplogSnapshot,
+          currentPending: currentPendingEntries,
+        );
+        if (inFlightTodoMutationUuids.isNotEmpty) {
+          // allLocalTodos 是请求发出前的快照。用当前 SQLite 值回基
+          // 请求期间被修改的待办，使后续合并和全量落库都保留最新用户意图。
+          final latestRows = await DatabaseHelper.instance.getTodoMaps(
+            includeDeleted: true,
+            uuids: inFlightTodoMutationUuids.toList(),
+            includeConflictData: true,
           );
-        } else {
-          final placeholders =
-              List.filled(blockingConflictUuids.length, '?').join(',');
-          await db.update(
-            'op_logs',
-            {'is_synced': 1, 'sync_error': ''},
-            where:
-                'is_synced = 0 AND target_table NOT IN ($excludedTablePlaceholders) AND target_uuid NOT IN ($placeholders)',
-            whereArgs: [
-              ...excludedSyncedOpTables,
-              ...blockingConflictUuids,
-            ],
-          );
-          await db.update(
-            'op_logs',
-            {'is_synced': 0, 'sync_error': 'server_conflict'},
-            where:
-                'is_synced = 0 AND target_table NOT IN ($excludedTablePlaceholders) AND target_uuid IN ($placeholders)',
-            whereArgs: [
-              ...excludedSyncedOpTables,
-              ...blockingConflictUuids,
-            ],
-          );
+          final latestById = <String, TodoItem>{
+            for (final row in latestRows)
+              row['uuid'].toString(): TodoItem.fromJson(row),
+          };
+          for (var i = 0; i < allLocalTodos.length; i++) {
+            final latest = latestById[allLocalTodos[i].id];
+            if (latest != null) allLocalTodos[i] = latest;
+          }
         }
 
         // 🚀 处理独立待办完成情况
@@ -4042,6 +4108,13 @@ class StorageService {
             if (ic is! Map) continue;
             final todoUuid = ic['todo_uuid']?.toString();
             if (todoUuid == null || todoUuid.isEmpty) continue;
+            if (SyncOplogPolicy.shouldProtectTodoMerge(
+              todoUuid,
+              forceFlushUuids: _forceFlushProtectedUuids,
+              inFlightMutationUuids: inFlightTodoMutationUuids,
+            )) {
+              continue;
+            }
             final rawCompleted = ic['is_completed'];
             final isCompleted = rawCompleted == 1 ||
                 rawCompleted == true ||
@@ -4240,10 +4313,15 @@ class StorageService {
             incomingHasConflict: sItem.hasConflict,
           );
 
-          // 🚀 核心保护：force-flush 的待办跳过 merge，防止同步覆盖用户刚做的修改
-          if (_forceFlushProtectedUuids.contains(sItem.id)) {
+          // 请求前强制落库或请求期间新增的本地修改均跳过本次
+          // merge，防止用请求发出前的旧内存/服务端快照覆盖用户意图。
+          if (SyncOplogPolicy.shouldProtectTodoMerge(
+            sItem.id,
+            forceFlushUuids: _forceFlushProtectedUuids,
+            inFlightMutationUuids: inFlightTodoMutationUuids,
+          )) {
             debugPrint(
-                '🛡️ [merge] SKIP UUID=${sItem.id} (force-flush protected)');
+                '🛡️ [merge] SKIP UUID=${sItem.id} (local mutation protected)');
             continue;
           }
 

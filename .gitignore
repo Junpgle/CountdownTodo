@@ -111,6 +111,7 @@ todo.md
 !/test/services/item_semantics_service_test.dart
 !/test/services/schedule_conflict_service_test.dart
 !/test/services/sync_capability_service_test.dart
+!/test/services/sync_oplog_policy_test.dart
 !/test/services/todo_notification_policy_test.dart
 !/test/services/todo_parser_time_semantics_test.dart
 !/test/services/todo_lww_service_test.dart
