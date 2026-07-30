@@ -31,6 +31,8 @@ the working tree on **2026-07-20**.
   Cloud. Native clients connect directly; web uses
   `https://api-cdt.junpgle.me/`.
 - Compatibility backend: Cloudflare Worker in `math-quiz-backend/`.
+- AI interoperability: local MCP server in `mcp-server/`, exposing personal
+  todos to compatible AI hosts while preserving the existing sync oplog.
 
 See [documentation index](docs/README.md),
 [project architecture](docs/PROJECT_ARCHITECTURE.md), and
@@ -47,3 +49,9 @@ flutter run -d <device>
 
 Use only development backend configuration and never commit credentials,
 keystores, certificates, private accounts, or production deployment files.
+
+## MCP integration
+
+The local stdio server in [`mcp-server/`](mcp-server/) lets compatible AI hosts
+query and manage personal todos. See the MCP server README for installation,
+database-path setup, read-only mode and client configuration.

@@ -1,0 +1,23 @@
+{
+  "name": "countdown-todo-mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local MCP server for CountdownTodo",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node src/index.js --check",
+    "test": "node --test test/database.test.js test/mcp.test.js",
+    "lint": "node --check src/config.js && node --check src/database.js && node --check src/server.js && node --check src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  }
+}
