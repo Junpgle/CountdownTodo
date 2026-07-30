@@ -1,10 +1,13 @@
-import 'package:home_widget/home_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
@@ -50,6 +53,7 @@ class WidgetService {
   static const String courseOnlyWidgetName = 'CourseOnlyWidgetProvider';
   static const String countdownOnlyWidgetName = 'CountdownOnlyWidgetProvider';
   static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
+  static const String recurrenceWidgetName = 'RecurrenceWidgetProvider';
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
@@ -256,6 +260,13 @@ class WidgetService {
 
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
+
+    if (Platform.isAndroid) {
+      final recurrenceSeries = buildWidgetRecurrenceSeries(allTodos, now: now);
+      widgetData['recurrence_series_json'] = jsonEncode(
+          recurrenceSeries.map((series) => series.toJson()).toList());
+      widgetData['recurrence_updated_at_ms'] = now.millisecondsSinceEpoch;
+    }
 
     // Android：写入 SharedPreferences 并更新 widget
     if (Platform.isAndroid || Platform.isIOS) {
@@ -477,6 +488,11 @@ class WidgetService {
               .catchError((e) {
 //             debugPrint(
 //                 '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(
+                  qualifiedAndroidName: '$_widgetPackage.$recurrenceWidgetName')
+              .catchError((e) {
             return false;
           }),
         ]);

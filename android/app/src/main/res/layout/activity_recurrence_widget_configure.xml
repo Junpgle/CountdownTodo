@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/widget_bg"
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="24dp"
+    android:paddingBottom="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:includeFontPadding="false"
+        android:text="@string/widget_recurrence_config_title"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:includeFontPadding="false"
+        android:text="@string/widget_recurrence_config_subtitle"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="13sp" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1">
+
+        <ListView
+            android:id="@+id/recurrence_series_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@color/widget_stroke"
+            android:dividerHeight="1dp"
+            android:overScrollMode="never" />
+
+        <LinearLayout
+            android:id="@+id/recurrence_config_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="@string/widget_recurrence_config_empty"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/recurrence_config_open_app"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="@color/widget_text_accent"
+                android:text="@string/widget_recurrence_open_app"
+                android:textColor="@color/white" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <Button
+        android:id="@+id/recurrence_config_cancel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/widget_recurrence_cancel" />
+</LinearLayout>
