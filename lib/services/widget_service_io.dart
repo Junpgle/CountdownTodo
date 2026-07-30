@@ -9,6 +9,7 @@ import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import '../utils/todo_widget_visibility.dart';
+import '../utils/widget_recurrence_series.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -264,12 +265,19 @@ class WidgetService {
     // macOS：构建富数据快照并刷新 WidgetKit
     if (Platform.isMacOS) {
       final macSnapshot = await _buildMacOSSnapshot(
-          widgetTodos, allCourses, countdownsRaw, now, today);
+        widgetTodos,
+        allTodos,
+        allCourses,
+        countdownsRaw,
+        now,
+        today,
+      );
       await _updateMacOSWidget(macSnapshot);
     }
   }
 
   static Future<WidgetSnapshot> _buildMacOSSnapshot(
+    List<TodoItem> actionableTodos,
     List<TodoItem> allTodos,
     List<CourseItem> allCourses,
     List<CountdownItem> countdownsRaw,
@@ -295,7 +303,9 @@ class WidgetService {
       ..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
 
     // 2. 待办：未完成、未删除，按紧急度排序
-    final todoItems = allTodos.where((t) => !t.isDone && !t.isDeleted).map((t) {
+    final todoItems = actionableTodos
+        .where((t) => !t.isDone && !t.isDeleted)
+        .map((t) {
       String? timeText;
       int priority = 0;
       if (t.dueDate != null) {
@@ -417,6 +427,7 @@ class WidgetService {
       todos: todoItems.take(8).toList(),
       courses: courseItems.take(6).toList(),
       focus: focusState,
+      recurrenceSeries: buildWidgetRecurrenceSeries(allTodos, now: now),
     );
   }
 

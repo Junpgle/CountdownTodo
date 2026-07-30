@@ -475,6 +475,62 @@ void main() {
     expect(duplicatePass, isEmpty);
   });
 
+  test('generated recurrence UUID is stable for one series and local day', () {
+    final morning = DateTime(2026, 7, 24, 8).millisecondsSinceEpoch;
+    final evening = DateTime(2026, 7, 24, 22).millisecondsSinceEpoch;
+    final nextDay = DateTime(2026, 7, 25, 8).millisecondsSinceEpoch;
+
+    final morningId = StorageService.recurrenceOccurrenceIdForTest(
+      'series-stable-id',
+      morning,
+    );
+    final eveningId = StorageService.recurrenceOccurrenceIdForTest(
+      'series-stable-id',
+      evening,
+    );
+
+    expect(eveningId, morningId);
+    expect(
+      StorageService.recurrenceOccurrenceIdForTest(
+        'series-stable-id',
+        nextDay,
+      ),
+      isNot(morningId),
+    );
+    expect(
+      StorageService.recurrenceOccurrenceIdForTest(
+        'another-series',
+        morning,
+      ),
+      isNot(morningId),
+    );
+  });
+
+  test('different devices generate the same future occurrence UUIDs', () {
+    TodoItem source() => TodoItem(
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          title: '每日循环',
+          recurrence: RecurrenceType.daily,
+          recurrenceSeriesId: '20ba0262-5d45-4fef-979e-b763a6f9f42e',
+          createdDate: DateTime(2026, 7, 23, 19).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 7, 23, 22),
+          recurrenceEndDate: DateTime(2026, 7, 25),
+        );
+
+    final firstSource = source();
+    final secondSource = source();
+    final first = StorageService.futureRecurrenceOccurrencesForTest(
+      firstSource,
+      [firstSource],
+    );
+    final second = StorageService.futureRecurrenceOccurrencesForTest(
+      secondSource,
+      [secondSource],
+    );
+
+    expect(first.map((todo) => todo.id), second.map((todo) => todo.id));
+  });
+
   test('open-ended recurrence keeps two generated future occurrences', () {
     final source = TodoItem(
       title: '每周循环',
@@ -598,6 +654,7 @@ void main() {
         recurrence: recurrence,
         recurrenceSeriesId: 'series-persisted-dedupe',
         isDone: isDone,
+        version: isDone ? 2 : 1,
         createdDate: DateTime(2026, 7, 15, hour).millisecondsSinceEpoch,
         dueDate: DateTime(2026, 7, 15, hour + 3),
       );
@@ -632,6 +689,75 @@ void main() {
     expect(completedDuplicate.isDeleted, isTrue);
     expect(extraDuplicate.isDeleted, isTrue);
     expect(nextDay.isDeleted, isFalse);
+  });
+
+  test('dedupe resurrects the stable identity and transfers latest state', () {
+    final stableIdentity = TodoItem(
+      id: '00000000-0000-4000-8000-000000000001',
+      title: '旧标题',
+      isDeleted: true,
+      createdAt: 1000,
+      updatedAt: 2000,
+      version: 2,
+      recurrenceSeriesId: 'series-convergent-dedupe',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+    final editedLive = TodoItem(
+      id: '00000000-0000-4000-8000-000000000002',
+      title: '俯卧撑30个',
+      isDone: true,
+      createdAt: 3000,
+      updatedAt: 5000,
+      version: 4,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'series-convergent-dedupe',
+      createdDate: DateTime(2026, 7, 24, 20).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 24, 22),
+    );
+
+    final changed =
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      [stableIdentity, editedLive],
+    );
+
+    expect(changed, isTrue);
+    expect(stableIdentity.isDeleted, isFalse);
+    expect(stableIdentity.title, '俯卧撑30个');
+    expect(stableIdentity.isDone, isTrue);
+    expect(stableIdentity.recurrence, RecurrenceType.daily);
+    expect(editedLive.isDeleted, isTrue);
+    expect(editedLive.recurrence, RecurrenceType.none);
+  });
+
+  test('a newer completion version can intentionally cancel completion', () {
+    final completed = TodoItem(
+      id: '00000000-0000-4000-8000-000000000011',
+      title: '每日循环',
+      isDone: true,
+      createdAt: 1000,
+      updatedAt: 4000,
+      version: 2,
+      recurrenceSeriesId: 'series-completion-lww',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+    final cancelled = TodoItem(
+      id: '00000000-0000-4000-8000-000000000012',
+      title: '每日循环',
+      isDone: false,
+      createdAt: 2000,
+      updatedAt: 5000,
+      version: 3,
+      recurrenceSeriesId: 'series-completion-lww',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+
+    StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      [completed, cancelled],
+    );
+
+    expect(completed.isDeleted, isFalse);
+    expect(completed.isDone, isFalse);
+    expect(cancelled.isDeleted, isTrue);
   });
 
   test('dedupe keeps the more edited occurrence over a newer migrated copy',

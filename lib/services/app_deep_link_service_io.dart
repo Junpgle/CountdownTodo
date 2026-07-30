@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../screens/course_screens.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../storage_service.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
+import '../utils/todo_recurrence_picker.dart';
 
 class AppDeepLinkService {
   static const String scheme = 'countdowntodo';
@@ -81,6 +83,27 @@ class AppDeepLinkService {
     }
 
     _pendingUri = null;
+    final recurrenceSeriesId = _recurrenceSeriesId(uri);
+    if (recurrenceSeriesId != null) {
+      final todos = await StorageService.getTodos(username);
+      final seriesOccurrences = todos
+          .where((todo) =>
+              !todo.isDeleted && todo.recurrenceSeriesId == recurrenceSeriesId)
+          .toList();
+      if (seriesOccurrences.isEmpty) return;
+      final selected = collapseRecurrenceSeriesForTodoPicker(
+        seriesOccurrences,
+        now: DateTime.now(),
+      );
+      if (selected.isEmpty) return;
+      navigator.push(
+        PageTransitions.slideHorizontal(
+          TodoDetailScreen(todo: selected.first),
+        ),
+      );
+      return;
+    }
+
     final target = _TimelineReportTarget.fromUri(uri);
     if (target == null) return;
 
@@ -97,6 +120,15 @@ class AppDeepLinkService {
 
   static bool _looksLikeDeepLink(String value) {
     return value.startsWith('$scheme://') || value.startsWith('$scheme:/');
+  }
+
+  static String? _recurrenceSeriesId(Uri uri) {
+    final isRecurrenceTodo = uri.host == 'todo' &&
+        uri.pathSegments.isNotEmpty &&
+        uri.pathSegments.first == 'recurrence';
+    if (!isRecurrenceTodo) return null;
+    final seriesId = uri.queryParameters['seriesId']?.trim();
+    return seriesId == null || seriesId.isEmpty ? null : seriesId;
   }
 
   static Future<void> _registerWindowsProtocol() async {

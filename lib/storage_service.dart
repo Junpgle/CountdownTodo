@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 import 'models.dart';
 
 import 'services/api_service.dart';
@@ -50,6 +51,13 @@ class StorageService {
 
   static String? _lastRecurrenceCheckDate;
   static final Map<String, bool> _recurrenceCheckCache = {};
+  static final Set<String> _recurrenceDedupeTombstoneIds = {};
+
+  // UUID v5 namespace dedicated to generated recurrence occurrences. The
+  // series ID + local calendar day is the logical identity shared by every
+  // device, so concurrent generation converges on one UUID.
+  static const String _recurrenceOccurrenceNamespace =
+      'f3d51c4a-6d54-5c2f-8be4-1c0b54f4038e';
 
   // ==========================================
   // 📌 固定日程 (Fixed Schedules)
@@ -1009,6 +1017,9 @@ class StorageService {
 
       if (!isSyncSource && hasChanged) {
         final syncPayload = _stripClientOnlyConflictForSync(item.toJson());
+        if (item.isDeleted && _recurrenceDedupeTombstoneIds.contains(item.id)) {
+          syncPayload['_recurrence_delete_reason'] = 'dedupe';
+        }
         // 记录审计日志 (传入已有的 oldData 避免再次查询)
         unawaited(_recordLocalAuditOptimized(
             'todos', item.id, item.toJson(), item.teamUuid, oldData));
@@ -2292,7 +2303,7 @@ class StorageService {
             if (!result.isNew) occurrence.markAsChanged();
             needSave = true;
           }
-          if (result.isNew) needSave = true;
+          if (result.didChange) needSave = true;
           seriesChain.add(occurrence);
           activeOccurrence = occurrence;
         }
@@ -2342,7 +2353,7 @@ class StorageService {
               if (!result.isNew) occurrence.markAsChanged();
               needSave = true;
             }
-            if (result.isNew) needSave = true;
+            if (result.didChange) needSave = true;
             seriesChain.add(occurrence);
           }
         }
@@ -2522,6 +2533,13 @@ class StorageService {
       generatedOccurrences: generated,
     );
   }
+
+  @visibleForTesting
+  static String recurrenceOccurrenceIdForTest(
+    String seriesId,
+    int startMs,
+  ) =>
+      _recurrenceOccurrenceId(seriesId, startMs);
 
   @visibleForTesting
   static bool deduplicatePersistedRecurrenceOccurrencesForTest(
@@ -2742,7 +2760,8 @@ class StorageService {
     }
   }
 
-  static ({TodoItem occurrence, bool isNew}) _getOrCreateRecurrenceOccurrence({
+  static ({TodoItem occurrence, bool isNew, bool didChange})
+      _getOrCreateRecurrenceOccurrence({
     required TodoItem source,
     required int rollByDays,
     required String seriesId,
@@ -2754,27 +2773,62 @@ class StorageService {
     _rollRecurrenceDateByDays(candidate, rollByDays);
     final candidateStart = candidate.createdDate ?? candidate.createdAt;
     final candidateDayKey = _recurrenceLocalDayKey(candidateStart);
+    candidate.id = _recurrenceOccurrenceId(seriesId, candidateStart);
 
+    final matches = <TodoItem>[];
     for (final existing in todos.followedBy(generatedOccurrences)) {
-      if (existing.isDeleted ||
-          existing.recurrenceSeriesId != seriesId ||
+      if (existing.recurrenceSeriesId != seriesId ||
           _recurrenceLocalDayKey(
                 existing.createdDate ?? existing.createdAt,
               ) !=
               candidateDayKey) {
         continue;
       }
-      return (occurrence: existing, isNew: false);
+      matches.add(existing);
+    }
+
+    final liveMatches = matches.where((todo) => !todo.isDeleted).toList();
+    if (liveMatches.isNotEmpty) {
+      liveMatches.sort(_compareRecurrenceOccurrenceIdentity);
+      return (
+        occurrence: liveMatches.first,
+        isNew: false,
+        didChange: false,
+      );
+    }
+
+    final deletedDeterministic =
+        matches.where((todo) => todo.id == candidate.id).firstOrNull;
+    if (deletedDeterministic != null) {
+      _copyRecurrenceOccurrenceData(candidate, deletedDeterministic);
+      deletedDeterministic.isDeleted = false;
+      deletedDeterministic.markAsChanged();
+      _recurrenceDedupeTombstoneIds.remove(deletedDeterministic.id);
+      return (
+        occurrence: deletedDeterministic,
+        isNew: false,
+        didChange: true,
+      );
     }
 
     generatedOccurrences.add(candidate);
-    return (occurrence: candidate, isNew: true);
+    return (occurrence: candidate, isNew: true, didChange: true);
   }
 
   static String _recurrenceLocalDayKey(int startMs) {
     final start =
         DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-    return '${start.year}-${start.month}-${start.day}';
+    final month = start.month.toString().padLeft(2, '0');
+    final day = start.day.toString().padLeft(2, '0');
+    return '${start.year}-$month-$day';
+  }
+
+  static String _recurrenceOccurrenceId(String seriesId, int startMs) {
+    final dayKey = _recurrenceLocalDayKey(startMs);
+    return const Uuid().v5(
+      _recurrenceOccurrenceNamespace,
+      'countdown-todo/recurrence-occurrence/v1/$seriesId/$dayKey',
+    );
   }
 
   static List<TodoItem> _repairMissingPastRecurrenceOccurrences({
@@ -2838,7 +2892,7 @@ class StorageService {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
         );
-        if (!result.isNew) continue;
+        if (!result.didChange) continue;
         result.occurrence.recurrence = RecurrenceType.none;
         repaired.add(result.occurrence);
       }
@@ -2846,13 +2900,12 @@ class StorageService {
     return repaired;
   }
 
-  static bool _deduplicatePersistedRecurrenceOccurrences(
-    List<TodoItem> todos,
-  ) {
+  static bool _deduplicatePersistedRecurrenceOccurrences(List<TodoItem> todos,
+      {Set<String>? changedIds}) {
     final occurrencesBySeriesDay = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId;
-      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      if (seriesId == null || seriesId.isEmpty) continue;
       final startMs = todo.createdDate ?? todo.createdAt;
       final key = '$seriesId|${_recurrenceLocalDayKey(startMs)}';
       occurrencesBySeriesDay.putIfAbsent(key, () => []).add(todo);
@@ -2861,33 +2914,130 @@ class StorageService {
     var changed = false;
     for (final occurrences in occurrencesBySeriesDay.values) {
       if (occurrences.length <= 1) continue;
-      var canonical = occurrences.first;
-      for (final candidate in occurrences.skip(1)) {
-        final candidateActive = candidate.recurrence != RecurrenceType.none;
-        final canonicalActive = canonical.recurrence != RecurrenceType.none;
-        if ((candidateActive && !canonicalActive) ||
-            (candidateActive == canonicalActive &&
-                (candidate.version > canonical.version ||
-                    (candidate.version == canonical.version &&
-                        candidate.updatedAt > canonical.updatedAt)))) {
-          canonical = candidate;
-        }
-      }
+      final liveOccurrences =
+          occurrences.where((todo) => !todo.isDeleted).toList();
+      if (liveOccurrences.isEmpty) continue;
 
-      final anyCompleted = occurrences.any((todo) => todo.isDone);
-      if (anyCompleted && !canonical.isDone) {
-        canonical.isDone = true;
+      // Identity must not depend on mutable LWW fields. Every device will
+      // eventually select the same oldest physical occurrence, even if it
+      // initially saw only a subset of the duplicates.
+      occurrences.sort(_compareRecurrenceOccurrenceIdentity);
+      final canonical = occurrences.first;
+      liveOccurrences.sort((a, b) {
+        final versionOrder = b.version.compareTo(a.version);
+        if (versionOrder != 0) return versionOrder;
+        final updatedAtOrder = b.updatedAt.compareTo(a.updatedAt);
+        if (updatedAtOrder != 0) return updatedAtOrder;
+        return a.id.compareTo(b.id);
+      });
+      final dataWinner = liveOccurrences.first;
+      final completionWinner = dataWinner;
+      final activeOccurrences = liveOccurrences
+          .where((todo) => todo.recurrence != RecurrenceType.none)
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final mergedRecurrence = activeOccurrences.isEmpty
+          ? RecurrenceType.none
+          : activeOccurrences.first.recurrence;
+
+      var canonicalChanged = false;
+      if (!identical(canonical, dataWinner)) {
+        canonicalChanged =
+            _copyRecurrenceOccurrenceData(dataWinner, canonical) ||
+                canonicalChanged;
+      }
+      if (canonical.isDeleted) {
+        canonical.isDeleted = false;
+        canonicalChanged = true;
+      }
+      if (canonical.isDone != completionWinner.isDone) {
+        canonical.isDone = completionWinner.isDone;
+        canonicalChanged = true;
+      }
+      if (canonical.recurrence != mergedRecurrence) {
+        canonical.recurrence = mergedRecurrence;
+        canonicalChanged = true;
+      }
+      if (canonicalChanged) {
+        canonical.version = canonical.version < dataWinner.version
+            ? dataWinner.version
+            : canonical.version;
+        canonical.updatedAt = canonical.updatedAt < dataWinner.updatedAt
+            ? dataWinner.updatedAt
+            : canonical.updatedAt;
         canonical.markAsChanged();
+        _recurrenceDedupeTombstoneIds.remove(canonical.id);
+        changedIds?.add(canonical.id);
         changed = true;
       }
+
       for (final duplicate in occurrences) {
         if (identical(duplicate, canonical)) continue;
+        if (duplicate.isDeleted &&
+            duplicate.recurrence == RecurrenceType.none) {
+          continue;
+        }
         duplicate.isDeleted = true;
         duplicate.recurrence = RecurrenceType.none;
         duplicate.markAsChanged();
+        _recurrenceDedupeTombstoneIds.add(duplicate.id);
+        changedIds?.add(duplicate.id);
         changed = true;
       }
     }
+    return changed;
+  }
+
+  static int _compareRecurrenceOccurrenceIdentity(TodoItem a, TodoItem b) {
+    final createdAtComparison = a.createdAt.compareTo(b.createdAt);
+    if (createdAtComparison != 0) return createdAtComparison;
+    return a.id.compareTo(b.id);
+  }
+
+  static bool _copyRecurrenceOccurrenceData(
+    TodoItem source,
+    TodoItem target,
+  ) {
+    var changed = false;
+
+    void assign<T>(T current, T next, void Function(T) setter) {
+      if (current == next) return;
+      setter(next);
+      changed = true;
+    }
+
+    assign(target.title, source.title, (value) => target.title = value);
+    assign(target.createdDate, source.createdDate,
+        (value) => target.createdDate = value);
+    assign(target.dueDate, source.dueDate, (value) => target.dueDate = value);
+    assign(target.recurrenceSeriesId, source.recurrenceSeriesId,
+        (value) => target.recurrenceSeriesId = value);
+    assign(target.customIntervalDays, source.customIntervalDays,
+        (value) => target.customIntervalDays = value);
+    assign(target.recurrenceEndDate, source.recurrenceEndDate,
+        (value) => target.recurrenceEndDate = value);
+    assign(target.remark, source.remark, (value) => target.remark = value);
+    assign(target.imagePath, source.imagePath,
+        (value) => target.imagePath = value);
+    assign(target.originalText, source.originalText,
+        (value) => target.originalText = value);
+    assign(target.groupId, source.groupId, (value) => target.groupId = value);
+    assign(target.reminderMinutes, source.reminderMinutes,
+        (value) => target.reminderMinutes = value);
+    assign(
+        target.teamUuid, source.teamUuid, (value) => target.teamUuid = value);
+    assign(target.creatorId, source.creatorId,
+        (value) => target.creatorId = value);
+    assign(target.creatorName, source.creatorName,
+        (value) => target.creatorName = value);
+    assign(
+        target.teamName, source.teamName, (value) => target.teamName = value);
+    assign(target.collabType, source.collabType,
+        (value) => target.collabType = value);
+    assign(
+        target.isAllDay, source.isAllDay, (value) => target.isAllDay = value);
+    assign(target.categoryId, source.categoryId,
+        (value) => target.categoryId = value);
     return changed;
   }
 
@@ -3764,6 +3914,10 @@ class StorageService {
             final data = item.toJson();
             data.remove('image_path');
             data.remove('imagePath');
+            if (item.isDeleted &&
+                _recurrenceDedupeTombstoneIds.contains(item.id)) {
+              data['_recurrence_delete_reason'] = 'dedupe';
+            }
             dedupTodos[item.id] = _stripClientOnlyConflictForSync(data);
           }
         }
@@ -3815,6 +3969,10 @@ class StorageService {
           final data = _stripClientOnlyConflictForSync(item.toJson());
           data.remove('image_path');
           data.remove('imagePath');
+          if (item.isDeleted &&
+              _recurrenceDedupeTombstoneIds.contains(item.id)) {
+            data['_recurrence_delete_reason'] = 'dedupe';
+          }
           dedupTodos.putIfAbsent(item.id, () => data);
         }
         for (final item in allLocalGroups) {
@@ -4805,18 +4963,23 @@ class StorageService {
         if (idx == null) return false;
         return !allLocalTodos[idx].hasConflict;
       }).toSet();
-      if (repairedRemoteTodoIds.isNotEmpty) {
-        final deletedBeforeDedupe = {
-          for (final todo in allLocalTodos)
-            if (todo.isDeleted) todo.id,
-        };
-        if (_deduplicatePersistedRecurrenceOccurrences(allLocalTodos)) {
-          repairedRemoteTodoIds.addAll(allLocalTodos
-              .where((todo) =>
-                  todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
-              .map((todo) => todo.id));
+      final receivedRecurringTodos = remoteTodoEntries.any(
+        (entry) => _isRecurringTodoForLww(entry.item),
+      );
+      final recurrenceDedupeChangedIds = <String>{};
+      if (repairedRemoteTodoIds.isNotEmpty || receivedRecurringTodos) {
+        if (_deduplicatePersistedRecurrenceOccurrences(
+          allLocalTodos,
+          changedIds: recurrenceDedupeChangedIds,
+        )) {
+          repairedRemoteTodoIds.addAll(recurrenceDedupeChangedIds);
           hasChanges = true;
         }
+        // A sync-source save intentionally does not clear this cache. Remote
+        // recurring snapshots are different: the just-downloaded tombstones
+        // or occurrences can expose a series-day gap that must be repaired on
+        // the next read instead of waiting until tomorrow.
+        _recurrenceCheckCache.clear();
       }
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
@@ -4858,7 +5021,9 @@ class StorageService {
       // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
       if (repairedRemoteTodoIds.isNotEmpty) {
         final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
-            !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
+            recurrenceDedupeChangedIds.contains(id) ||
+            !_attemptedRecurrenceSeriesRepairUploads.contains(
+                '$username|$id'));
         final repairedItems = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();

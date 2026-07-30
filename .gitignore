@@ -127,6 +127,8 @@ todo.md
 /test/widgets/*
 !/test/widgets/add_todo_screen_test.dart
 !/test/widgets/todo_recurrence_progress_test.dart
+!/test/widgets/todo_recurrence_occurrence_picker_test.dart
+!/test/widgets/todo_recurrence_completion_overview_test.dart
 !/test/widgets/todo_section_series_visibility_test.dart
 !/test/widgets/interconnect_settings_page_test.dart
 !/test/utils/

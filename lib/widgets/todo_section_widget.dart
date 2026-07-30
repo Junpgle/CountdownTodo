@@ -20,6 +20,8 @@ import '../screens/add_todo_screen.dart';
 import 'home_sections.dart';
 import 'todo_group_widget.dart';
 import 'todo_recurrence_progress.dart';
+import 'todo_recurrence_occurrence_picker.dart';
+import 'todo_recurrence_completion_overview.dart';
 import '../utils/local_image_provider.dart';
 import '../utils/page_transitions.dart';
 import '../screens/folder_manage_screen.dart';
@@ -41,6 +43,12 @@ enum _TodoFolderDisplayMode {
 enum _RecurrenceOccurrenceAction {
   toggleCompletion,
   edit,
+}
+
+enum _OccurrenceSwitchAction {
+  cancel,
+  discard,
+  save,
 }
 
 class TodoSectionWidget extends StatefulWidget {
@@ -4220,6 +4228,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   final GlobalKey _focusKey = GlobalKey();
   final GlobalKey _dataKey = GlobalKey();
   bool _showCoachMarks = false;
+  late TodoItem _editingTodo;
 
   Future<void> _checkCoachMarks() async {
     if (_showCoachMarks || !mounted) return;
@@ -4286,6 +4295,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
   @override
   void initState() {
     super.initState();
+    _editingTodo = widget.todo;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -4305,7 +4315,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         _checkCoachMarks();
       }
     });
-    final t = widget.todo;
+    final t = _editingTodo;
     _titleCtrl = TextEditingController(text: t.title);
     _remarkCtrl = TextEditingController(text: t.remark ?? '');
     _isDone = t.isDone;
@@ -4334,12 +4344,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   Future<void> _loadFocusRecords() async {
     if (!mounted) return;
-    final todoIds = _focusRecordTodoIds(widget.todo, widget.todos);
+    final editingTodoId = _editingTodo.id;
+    final todoIds = _focusRecordTodoIds(_editingTodo, widget.todos);
     final records = (await PomodoroService.getRecords())
         .where((record) => todoIds.contains(record.todoUuid))
         .toList()
       ..sort((a, b) => b.startTime.compareTo(a.startTime));
-    if (!mounted) return;
+    if (!mounted || _editingTodo.id != editingTodoId) return;
     setState(() {
       _focusRecords = records;
       _isLoadingRecords = false;
@@ -4348,11 +4359,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   Future<void> _loadRelatedPlans() async {
     if (!mounted) return;
+    final editingTodoId = _editingTodo.id;
     setState(() => _isLoadingPlans = true);
     final username = await StorageService.getLoginSession() ?? 'default';
     final plans =
-        await StorageService.getPlanBlocksByTodo(username, widget.todo.id);
-    if (!mounted) return;
+        await StorageService.getPlanBlocksByTodo(username, editingTodoId);
+    if (!mounted || _editingTodo.id != editingTodoId) return;
     setState(() {
       _relatedPlanBlocks = plans.where((p) => !p.isDeleted).toList();
       _isLoadingPlans = false;
@@ -4388,16 +4400,16 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (_titleCtrl.text.isEmpty) return;
-    final todo = widget.todo;
+  Future<bool> _persistCurrentTodo({required bool closeAfterSave}) async {
+    if (_titleCtrl.text.isEmpty) return false;
+    final todo = _editingTodo;
     if (_preserveLegacyTiming &&
         _dueDate != null &&
         !_dueDate!.isAfter(_createdDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('结束时间必须晚于开始时间')),
       );
-      return;
+      return false;
     }
     final normalizedTime = TodoItem.normalizeTimeForEdit(
       selectedDate: _createdDate,
@@ -4409,7 +4421,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('重复待办需要先设置首次完成日期')),
       );
-      return;
+      return false;
     }
     final normalizedStart = normalizedTime.start;
     final normalizedDue = normalizedTime.due;
@@ -4520,7 +4532,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     }
 
     await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
-    if (mounted) Navigator.pop(context, true);
+    if (mounted && closeAfterSave) Navigator.pop(context, true);
+    return true;
+  }
+
+  Future<void> _save() async {
+    await _persistCurrentTodo(closeAfterSave: true);
   }
 
   @override
@@ -4568,10 +4585,10 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 ),
               );
               if (confirm == true) {
-                widget.todo.isDeleted = true;
-                widget.todo.hasConflict = false;
-                widget.todo.serverVersionData = null;
-                widget.todo.markAsChanged();
+                _editingTodo.isDeleted = true;
+                _editingTodo.hasConflict = false;
+                _editingTodo.serverVersionData = null;
+                _editingTodo.markAsChanged();
                 await widget.onTodosChanged(List<TodoItem>.from(widget.todos));
                 if (!context.mounted) return;
                 Navigator.pop(context, true);
@@ -5082,15 +5099,15 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ],
           _buildPlanBlockSection(),
           _buildFocusRecordsSection(),
-          if (widget.todo.imagePath != null ||
-              (widget.todo.originalText != null &&
-                  widget.todo.originalText!.isNotEmpty)) ...[
+          if (_editingTodo.imagePath != null ||
+              (_editingTodo.originalText != null &&
+                  _editingTodo.originalText!.isNotEmpty)) ...[
             const Text("原始分析来源",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            if (localImageExists(widget.todo.imagePath))
+            if (localImageExists(_editingTodo.imagePath))
               GestureDetector(
-                  onTap: () => _showFullImage(context, widget.todo.imagePath!),
+                  onTap: () => _showFullImage(context, _editingTodo.imagePath!),
                   child: Container(
                       height: 160,
                       width: double.infinity,
@@ -5099,13 +5116,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: localImageWidget(
-                        widget.todo.imagePath!,
+                        _editingTodo.imagePath!,
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: 160,
                       ))),
-            if (widget.todo.originalText != null &&
-                widget.todo.originalText!.isNotEmpty) ...[
+            if (_editingTodo.originalText != null &&
+                _editingTodo.originalText!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                   width: double.infinity,
@@ -5115,7 +5132,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                           color: Colors.black.withValues(alpha: 0.04))),
-                  child: Text(widget.todo.originalText!,
+                  child: Text(_editingTodo.originalText!,
                       style:
                           const TextStyle(fontSize: 13, color: Colors.grey))),
             ],
@@ -5140,7 +5157,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () => VersionHistorySheet.show(
-                    context, widget.todo.id, 'todos', widget.todo.title),
+                    context, _editingTodo.id, 'todos', _editingTodo.title),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -5179,10 +5196,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
   Widget _buildRelatedRecurrenceSection(ColorScheme colorScheme) {
     final occurrences = _relatedRecurrenceOccurrences(
-      widget.todo,
+      _editingTodo,
       widget.todos,
     );
-    if (occurrences.length <= 1) return const SizedBox.shrink();
+    final isRecurrenceSeries = _editingTodo.recurrence != RecurrenceType.none ||
+        _editingTodo.recurrenceSeriesId?.isNotEmpty == true;
+    if (!isRecurrenceSeries) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
@@ -5216,109 +5235,141 @@ class TodoEditScreenState extends State<TodoEditScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 3),
-          Text(
-            '点击其他期次可直接进入该期待办的编辑页',
-            style: TextStyle(
-              fontSize: 11,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: occurrences.map((occurrence) {
-                final isCurrent = occurrence.id == widget.todo.id;
-                final start = DateTime.fromMillisecondsSinceEpoch(
-                  occurrence.createdDate ?? occurrence.createdAt,
-                  isUtc: true,
-                ).toLocal();
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: InkWell(
-                    key: ValueKey('related_recurrence_${occurrence.id}'),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: isCurrent
-                        ? null
-                        : () => _openRelatedOccurrenceEditor(occurrence),
-                    child: Container(
-                      width: 86,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? colorScheme.primaryContainer
-                            : colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isCurrent
-                              ? colorScheme.primary.withValues(alpha: 0.45)
-                              : colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            occurrence.isDone
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            size: 18,
-                            color: occurrence.isDone
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            DateFormat('M月d日').format(start),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            isCurrent
-                                ? '正在编辑'
-                                : occurrence.isDone
-                                    ? '已完成'
-                                    : '待完成',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+          TodoRecurrenceCompletionOverview(
+            occurrences: occurrences,
+            currentTodoId: _editingTodo.id,
+            currentIsDone: _isDone,
           ),
+          if (occurrences.length > 1) ...[
+            const SizedBox(height: 12),
+            Text(
+              '当前期已居中，点击其他期次可在本页切换编辑',
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TodoRecurrenceOccurrencePicker(
+              occurrences: occurrences,
+              currentTodoId: _editingTodo.id,
+              onSelected: _switchToRelatedOccurrence,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Future<void> _openRelatedOccurrenceEditor(TodoItem occurrence) async {
+  Future<void> _switchToRelatedOccurrence(TodoItem occurrence) async {
+    if (occurrence.id == _editingTodo.id) return;
     FocusScope.of(context).unfocus();
-    final changed = await Navigator.push<bool>(
-      context,
-      PageTransitions.material(
-        builder: (_) => TodoEditScreen(
-          todo: occurrence,
-          todos: widget.todos,
-          onTodosChanged: widget.onTodosChanged,
-          todoGroups: widget.todoGroups,
-          onGroupsChanged: widget.onGroupsChanged,
-          username: widget.username,
+    if (_hasUnsavedChanges) {
+      final action = await showDialog<_OccurrenceSwitchAction>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('切换循环期次'),
+          content: const Text('当前期有尚未保存的修改，要先保存再切换吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _OccurrenceSwitchAction.cancel,
+              ),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _OccurrenceSwitchAction.discard,
+              ),
+              child: const Text('放弃修改'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _OccurrenceSwitchAction.save,
+              ),
+              child: const Text('保存并切换'),
+            ),
+          ],
         ),
-      ),
+      );
+      if (!mounted ||
+          action == null ||
+          action == _OccurrenceSwitchAction.cancel) {
+        return;
+      }
+      if (action == _OccurrenceSwitchAction.save) {
+        final saved = await _persistCurrentTodo(closeAfterSave: false);
+        if (!mounted || !saved) return;
+      }
+    }
+
+    setState(() {
+      _editingTodo = occurrence;
+      _loadEditorFields(occurrence);
+      _syncFolderToTeam = false;
+      _relatedPlanBlocks = [];
+      _focusRecords = [];
+      _isLoadingPlans = true;
+      _isLoadingRecords = true;
+    });
+    _loadRelatedPlans();
+    _loadFocusRecords();
+  }
+
+  void _loadEditorFields(TodoItem todo) {
+    _titleCtrl.text = todo.title;
+    _remarkCtrl.text = todo.remark ?? '';
+    _isDone = todo.isDone;
+    _createdDate = DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+    _originalCreatedDate = _createdDate;
+    _dueDate = todo.dueDate;
+    _recurrence = todo.recurrence;
+    _customDays = todo.customIntervalDays;
+    _customDaysCtrl.text = _customDays?.toString() ?? '';
+    _recurrenceEndDate = todo.recurrenceEndDate;
+    _isAllDay = todo.isDateOnly;
+    _preserveLegacyTiming = todo.hasLegacyTiming;
+    _selectedGroupId = todo.groupId;
+    _reminderMinutes = todo.reminderMinutes ?? 5;
+    _selectedTeamUuid = todo.teamUuid;
+    _collabType = todo.collabType;
+  }
+
+  bool get _hasUnsavedChanges {
+    final normalizedTime = TodoItem.normalizeTimeForEdit(
+      selectedDate: _createdDate,
+      dueDate: _dueDate,
+      isDateOnly: _isAllDay,
+      preserveExistingTiming: _preserveLegacyTiming,
     );
-    if (!mounted || changed != true) return;
-    setState(() {});
+    final todo = _editingTodo;
+    final editedRemark =
+        _remarkCtrl.text.trim().isEmpty ? null : _remarkCtrl.text.trim();
+    final savedRemark =
+        todo.remark?.trim().isEmpty ?? true ? null : todo.remark!.trim();
+    return _titleCtrl.text != todo.title ||
+        _isDone != todo.isDone ||
+        normalizedTime.start?.millisecondsSinceEpoch != todo.createdDate ||
+        normalizedTime.due?.millisecondsSinceEpoch !=
+            todo.dueDate?.millisecondsSinceEpoch ||
+        _recurrence != todo.recurrence ||
+        _customDays != todo.customIntervalDays ||
+        _recurrenceEndDate?.millisecondsSinceEpoch !=
+            todo.recurrenceEndDate?.millisecondsSinceEpoch ||
+        editedRemark != savedRemark ||
+        _selectedGroupId != todo.groupId ||
+        _reminderMinutes != (todo.reminderMinutes ?? 5) ||
+        _selectedTeamUuid != todo.teamUuid ||
+        _collabType != todo.collabType ||
+        _syncFolderToTeam ||
+        _isAllDay != todo.isDateOnly;
   }
 
   static List<TodoItem> _relatedRecurrenceOccurrences(
@@ -5463,12 +5514,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
 
     final totalFocusSeconds = PomodoroService.totalFocusSeconds(_focusRecords);
     final focusedOccurrenceCount = _focusedRecurrencePeriodCount(
-      widget.todo,
+      _editingTodo,
       widget.todos,
       _focusRecords,
     );
     final isRecurrenceSeries =
-        widget.todo.recurrenceSeriesId?.isNotEmpty == true;
+        _editingTodo.recurrenceSeriesId?.isNotEmpty == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
