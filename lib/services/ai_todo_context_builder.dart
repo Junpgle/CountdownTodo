@@ -26,7 +26,7 @@ class AiTodoContextBuilder {
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
 【动作输出规则】
-当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或管理专注记录/番茄钟/倒计时/标签时，回复末尾必须附 [ACTION_START]...[ACTION_END] JSON 数组。
+当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时或标签时，回复末尾必须附 [ACTION_START]...[ACTION_END] JSON 数组。
 每个操作对象必须包含 action 字段；禁止旧标记与 Markdown 代码块。
 具体可用动作与字段约束会按当前问题动态提供。''';
   }
@@ -46,15 +46,37 @@ class AiTodoContextBuilder {
       if (!actions.contains(line)) actions.add(line);
     }
 
-    if (_shouldInjectTodoContext(userMessage)) {
+    final requestsTodoAction = _shouldInjectTodoContext(userMessage) ||
+        _matchesAny(userMessage, _createTodoKeywords) ||
+        _matchesAny(userMessage, _recurrenceKeywords) ||
+        userMessage.contains('待办') ||
+        userMessage.contains('任务');
+    final requestsScheduleAction =
+        _shouldInjectFixedScheduleContext(userMessage) ||
+            _matchesAny(userMessage, _fixedScheduleKeywords);
+    if (requestsTodoAction) {
       add(
-        '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","groupId":"","reminderMinutes":5,"isAllDay":false,"recurrence":"none"}]}',
+        '- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"groupId":null,"reminderMinutes":5,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
       );
       add(
-        '- update_todo / complete_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo: 必须带 todoId',
+        '- update_todo / complete_todo / delete_todo / reschedule_todo / bulk_reschedule / categorize_todo: 必须带真实期次todoId；循环期次可带recurrenceSeriesId校验系列',
+      );
+      add(
+        '- 循环作用域: recurrenceScope="occurrence"只操作该期（默认）；recurrenceScope="future"操作该期及以后。修改循环规则或结束循环必须用future；完成操作始终只针对一期',
       );
       add(
         '- split_todo / merge_todos / plan_todos: 拆分合并需 sourceTodoId/sourceTodoIds，规划需 todos[]。注意：plan_todos仅用于创建全新待办，把已有待办安排到时间必须用create_plan_block',
+      );
+    }
+    if (requestsScheduleAction) {
+      add(
+        '- create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}',
+      );
+      add(
+        '- update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":null,"endTime":null,"location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；startTime=null同时清空结束时间，表示时间待定；修改重复规则必须使用future',
+      );
+      add(
+        '- cancel_schedule / delete_schedule: 必须带scheduleId；默认只操作本期，只有用户明确说本期及以后时才用recurrenceScope="future"',
       );
     }
     if (_matchesAny(userMessage, _planKeywords) ||
@@ -130,16 +152,21 @@ ${actions.join('\n')}
 [ACTION_END]
 
 字段约束（必须）：
-- 仅操作已有对象时必须携带对应ID（todoId / groupId / countdownId / tagId / planBlockId / logId）
+- 仅操作已有对象时必须携带对应ID（todoId / scheduleId / groupId / countdownId / tagId / planBlockId / logId）
 - 时间字段统一使用 yyyy-MM-dd HH:mm（如 startTime / dueDate）
+- 待办时间必须带timeMode：unscheduled无日期、dateOnly某天内完成、deadline具体截止时刻；null表示清空，字段缺省表示不修改
 - 没有日期和时间的待办保持未安排，不得默认今天全天
-- 只有日期没有具体时刻时才使用日期待办语义（isAllDay=true）
+- 只有日期没有具体时刻时才使用dateOnly；isAllDay仅作旧协议兼容
 - 单一时刻默认表示截止点，不得自动扩展为一小时执行区间
 - 取件、取餐、取药默认是可完成的待办，不得仅为触发提醒而伪装成全天事件
-- 考试、课程、会议、面试、预约、航班等外部固定时间属于固定日程；当前动作协议没有通用固定日程写入能力，必须说明限制或请求确认，不得静默创建为待办或规划块
+- 考试、课程、会议、面试、预约、航班等外部决定时间的事项必须使用固定日程动作，不能静默创建为待办或规划块
+- 固定日程date必填；时间待定时startTime/endTime均为null，只有开始时刻时endTime为null，明确区间才同时填写开始和结束
 - 把已有待办安排到用户可调整的执行时段时使用create_plan_block
 - 重复只表示周期机制，不得自动称为习惯
-- 危险操作（删除/完成/停止）仅在用户明确要求时输出''';
+- 新建循环待办必须提供首次发生日期/截止点；recurrenceEndDate是最后一期日期，不是普通待办截止时间
+- 上下文中同一recurrenceSeriesId下的每一条都是可独立寻址的真实期次；待办用todoId，日程用scheduleId，绝不能把seriesId当期次ID
+- 用户没有明确“本期及以后/后续所有周期”时，循环待办和循环日程动作必须使用recurrenceScope="occurrence"
+- 危险操作（删除/取消日程、完成待办、停止）仅在用户明确要求时输出''';
   }
 
   static String buildSystemPrompt({
@@ -150,12 +177,14 @@ ${actions.join('\n')}
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
     List<TodoPlanBlock> planBlocks = const [],
+    List<FixedScheduleItem> fixedSchedules = const [],
     DateTime? now,
   }) {
     final nowValue = now ?? DateTime.now();
     final nowText =
         '${DateFormat('yyyy-MM-dd HH:mm').format(nowValue)} (${_formatTimeZone(nowValue)})';
     final todoList = _formatTodos(todos, todoGroups);
+    final scheduleList = _formatFixedSchedules(fixedSchedules, '', nowValue);
     final basePrompt = promptEnabled && customPrompt.trim().isNotEmpty
         ? customPrompt
         : ChatStorageService.defaultPrompt;
@@ -165,6 +194,9 @@ ${actions.join('\n')}
 
     return '''$resolvedBasePrompt
 
+【用户当前固定日程】
+$scheduleList
+
 【时间规则】
 所有上下文时间均为本地时间，格式为yyyy-MM-dd HH:mm。判断今天、昨天、明天时必须以当前基准时间和括号中的时区为准，不要按UTC重新换算。
 
@@ -172,13 +204,15 @@ ${actions.join('\n')}
 - 待办表示需要完成的结果；没有日期和时间时保持未安排，不能默认今天全天。
 - 只有日期没有具体时刻时表示“某天内完成”；单一时刻表示截止点，不能自动补一小时。
 - 规划块表示用户自行安排、可以调整的执行时段。
-- 考试、课程、会议、面试、预约、航班等外部固定时间属于固定日程，不是待办或规划块。当前协议没有通用固定日程写入动作，遇到创建请求时应说明限制或请求用户确认，不能静默降级。
+- 考试、课程、会议、面试、预约、航班等外部固定时间属于固定日程，不是待办或规划块；创建或修改时必须使用日程动作。
 - 取件、取餐、取药默认属于待办；可领取窗口不占用整个日历时段。只有必须按预约时刻到场时才属于固定日程。
 - 重复是一种周期机制，不等于习惯；不得把每周周报、每月交租等称为习惯。
+- 循环系列由多个可独立寻址的真实期次组成。recurrenceSeriesId只标识系列，不能代替todoId或scheduleId；每个期次必须使用自己的真实ID。
+- 修改默认只作用于当前期次。只有用户明确说“本期及以后/后续所有周期”时才能使用future；修改循环规则或结束循环必须明确future。
 
-【待办管理功能 - 重要规则】
-当用户明确要求创建/修改/完成/删除/延期/分类/规划/拆分/合并待办，或新增/修改/删除专注记录，或开始/停止番茄钟，或新增/修改/完成/删除倒计时，或新增/改名/改色/删除番茄标签时，必须在回复末尾附加JSON操作块。
-操作已有待办必须使用待办ID；操作已有专注记录必须使用专注记录ID；操作已有倒计时必须使用倒计时ID；操作已有番茄标签必须使用标签ID。不确定时先追问。
+【事项管理功能 - 重要规则】
+当用户明确要求管理待办、固定日程、规划块、专注记录、番茄钟、倒计时、分类或标签时，必须在回复末尾附加JSON操作块。
+操作已有对象必须使用上下文中的真实期次ID；固定日程使用scheduleId，循环系列ID不能代替期次ID。不确定时先追问。
 JSON操作块必须且只能使用以下协议：
 1. 必须用 [ACTION_START] 和 [ACTION_END] 包裹。
 2. [ACTION_START] 内必须是合法 JSON 数组；即使只有一个操作，也必须放进数组。
@@ -197,14 +231,17 @@ JSON操作块必须且只能使用以下协议：
 
 支持的动作：
 
-- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}
-- plan_todos: {"action":"plan_todos","todos":[{"title":"标题","remark":"备注","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","isAllDay":false,"recurrence":"none","groupId":"","reminderMinutes":5}]}，仅用于创建全新的待办事项；如果用户要求把已有待办安排到具体时间，必须使用create_plan_block
+- create_todo: {"action":"create_todo","todos":[{"title":"标题","remark":"备注","timeMode":"unscheduled|dateOnly|deadline","dueDate":null,"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null,"groupId":null,"reminderMinutes":5}]}。循环待办必须给首次dueDate；创建后每一期有独立todoId
+- create_schedule: {"action":"create_schedule","schedules":[{"title":"日程名","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[15],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。date必填；时间待定时起止均为null；只有开始时刻时endTime为null
+- update_schedule: {"action":"update_schedule","updates":[{"scheduleId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","date":"YYYY-MM-DD","startTime":"YYYY-MM-DD HH:mm或null","endTime":"YYYY-MM-DD HH:mm或null","location":null,"remark":null,"reminderMinutes":[],"recurrence":"none|daily|weekly|monthly|yearly|weekdays|customDays","customIntervalDays":null,"recurrenceEndDate":null}]}。字段缺省=保持，null=清空；修改重复规则必须使用future
+- cancel_schedule / delete_schedule: 使用scheduleId；默认occurrence，只有明确“本期及以后”才用future；日程没有待办式“完成勾选”
+- plan_todos: 同create_todo字段，仅用于创建全新的待办事项；如果用户要求把已有待办安排到具体执行时间，必须使用create_plan_block
 - create_plan_block: {"action":"create_plan_block","blocks":[{"todoId":"已有待办ID","title":"标题快照","startTime":"YYYY-MM-DD HH:mm","dueDate":"YYYY-MM-DD HH:mm","durationMinutes":60,"remark":"备注","reminderMinutes":5}]}，用于把已有待办安排到具体时间块；用户说"规划今天/明天/本周时间""安排到几点到几点"时优先使用这个动作。重要：规划中提到的每一个已有待办都必须生成对应的plan block，不要只生成一个
 - update_plan_block / reschedule_plan_blocks / delete_plan_block / skip_plan_block / start_plan_block_pomodoro: 必须使用已有规划块ID(planBlockId/blockId/id)，用于修改、重排、删除、跳过或直接开始某个规划块的番茄钟
-- update_todo: {"action":"update_todo","updates":[{"todoId":"ID","title":"新标题","startTime":"...","dueDate":"...","groupId":"...","reminderMinutes":5}]}
-- complete_todo: {"action":"complete_todo","updates":[{"todoId":"ID"}]}
-- delete_todo: {"action":"delete_todo","updates":[{"todoId":"ID"}]}
-- reschedule_todo: {"action":"reschedule_todo","updates":[{"todoId":"ID","startTime":"...","dueDate":"..."}]}
+- update_todo: {"action":"update_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future","title":"新标题","timeMode":"unscheduled|dateOnly|deadline","dueDate":"...","groupId":"...","reminderMinutes":5}]}。字段缺省=保持，字段为null=清空
+- complete_todo: {"action":"complete_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence"}]}，循环完成状态永远属于单期
+- delete_todo: {"action":"delete_todo","updates":[{"todoId":"真实期次ID","recurrenceSeriesId":"可选系列ID","recurrenceScope":"occurrence|future"}]}
+- reschedule_todo: {"action":"reschedule_todo","updates":[{"todoId":"真实期次ID","recurrenceScope":"occurrence|future","timeMode":"dateOnly|deadline|unscheduled","dueDate":"..."}]}
 - bulk_reschedule: 同reschedule_todo，批量改期
 - categorize_todo: {"action":"categorize_todo","updates":[{"todoId":"ID","groupId":"新分类ID"}]}
 - split_todo: {"action":"split_todo","sourceTodoId":"原ID","deleteSource":false,"todos":[...]}
@@ -231,13 +268,14 @@ JSON操作块必须且只能使用以下协议：
 每次回复末尾附3-4个简短建议后续问题（≤15字），格式：[SUGGEST_START]["追问1","追问2","追问3"][SUGGEST_END]
 
 【核心规则】
-1. 意图判定：创建(提醒我/记一下)、规划(制定计划)、拆分(大任务拆小)、合并(多个合一)、修改(改标题/备注/时间)、完成(标记已做)、删除(移除)、改期(推迟/提前)、整理(分类/移动到文件夹)、新增/修改/删除待办分类或文件夹、记录专注、修改专注记录、删除专注记录、开始/停止番茄钟、管理倒计时、管理番茄标签
+1. 意图判定：先区分待办结果、外部固定日程和可调整规划块，再选择创建/修改/取消/完成/删除/改期/分类/拆分/合并等动作
 2. 文件夹归类：只在语义明显关联时分配groupId，不确定时留空，严禁乱分类
-3. 危险操作(删除/完成/合并删源/拆分删源/停止番茄钟/删除专注记录/完成或删除倒计时/删除番茄标签)只在用户明确要求时输出
+3. 危险操作(删除或取消日程、删除或完成待办、合并删源、拆分删源、停止番茄钟、删除专注记录、完成或删除倒计时、删除番茄标签)只在用户明确要求时输出
 4. 禁止对已有分类任务重复categorize_todo
 5. [ACTION_START]/[ACTION_END]标记和[SUGGEST_START]/[SUGGEST_END]标记必须完整
 6. 规划完整性：当用户要求规划时间（今天/明天/本周等），文本中提到的每一个时间段如果对应已有待办，都必须在[ACTION_START]中生成create_plan_block，不能只生成部分。如果文本中规划了5个时间段对应5个已有待办，action中必须有5个blocks
-7. 规划避让：如果上下文提供课程表、已有规划或专注记录，生成create_plan_block时必须避开这些已占用时间；不要把待办规划到课程时间内''';
+7. 规划避让：如果上下文提供固定日程、课程表、已有规划或专注记录，生成create_plan_block时必须避开硬约束和已占用时间
+8. 循环期次：complete永远只完成指定todoId；修改/删除默认occurrence。只有用户明确要求后续所有周期时使用future；结束循环用update_todo设置recurrence="none"、recurrenceScope="future"''';
   }
 
   /// 根据用户消息关键词，返回需要注入的上下文片段。无匹配返回 null。
@@ -251,6 +289,7 @@ JSON操作块必须且只能使用以下协议：
     List<Map<String, dynamic>> todos = const [],
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    List<FixedScheduleItem> fixedSchedules = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -260,6 +299,12 @@ JSON操作块必须且只能使用以下协议：
 
     if (_shouldInjectCourseContext(userMessage) && courses.isNotEmpty) {
       sections.add(_formatCourses(courses, userMessage, nowValue));
+    }
+    if (_shouldInjectFixedScheduleContext(userMessage) &&
+        fixedSchedules.isNotEmpty) {
+      sections.add(
+        _formatFixedSchedules(fixedSchedules, userMessage, nowValue),
+      );
     }
     if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
       sections.add(
@@ -349,6 +394,7 @@ JSON操作块必须且只能使用以下协议：
     List<Map<String, dynamic>> todos = const [],
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    List<FixedScheduleItem> fixedSchedules = const [],
     required List<ConflictInfo> conflicts,
     required List<Team> teams,
     DateTime? now,
@@ -365,6 +411,15 @@ JSON操作块必须且只能使用以下协议：
       } else {
         parts.add('课程今日起');
       }
+    }
+    if (_shouldInjectFixedScheduleContext(userMessage) &&
+        fixedSchedules.isNotEmpty) {
+      final scoped = _scopeFixedSchedulesByTime(
+        fixedSchedules,
+        userMessage: userMessage,
+        now: nowValue,
+      );
+      parts.add('日程${scoped.length}条');
     }
     if (_shouldInjectTodoContext(userMessage) && todos.isNotEmpty) {
       final scoped = _scopeTodosByTime(
@@ -444,6 +499,12 @@ JSON操作块必须且只能使用以下协议：
         _matchesAny(text, _planningTimeKeywords);
   }
 
+  static bool _shouldInjectFixedScheduleContext(String text) {
+    if (_matchesAny(text, _fixedScheduleKeywords)) return true;
+    return _matchesAny(text, _planningKeywords) &&
+        _matchesAny(text, _planningTimeKeywords);
+  }
+
   static bool _shouldInjectTodoContext(String text) {
     final asksList = _matchesAny(text, _todoListQueryKeywords) ||
         _looksLikeTodoListQuery(text);
@@ -514,6 +575,32 @@ JSON操作块必须且只能使用以下协议：
     '选课',
     '调课',
   ];
+  static const _fixedScheduleKeywords = [
+    '日程',
+    '日历',
+    '固定日程',
+    '会议',
+    '例会',
+    '考试',
+    '上课',
+    '课程',
+    '面试',
+    '预约',
+    '门诊',
+    '体检',
+    '手术',
+    '答辩',
+    '讲座',
+    '驾考',
+    '航班',
+    '飞机',
+    '火车',
+    '高铁',
+    '演出',
+    '电影',
+    '比赛',
+    '行程',
+  ];
   static const _planningKeywords = [
     '规划',
     '安排',
@@ -522,7 +609,6 @@ JSON操作块必须且只能使用以下协议：
     '排时间',
     '待办规划',
     '今日计划',
-    '日程',
   ];
   static const _createTodoKeywords = [
     '提醒我',
@@ -531,6 +617,19 @@ JSON操作块必须且只能使用以下协议：
     '新增',
     '创建',
     '添加',
+  ];
+  static const _recurrenceKeywords = [
+    '循环',
+    '重复',
+    '每天',
+    '每周',
+    '每月',
+    '每年',
+    '工作日',
+    '每隔',
+    '后续周期',
+    '以后所有周期',
+    '结束循环',
   ];
   static const _existingTodoKeywords = [
     '修改',
@@ -662,7 +761,7 @@ JSON操作块必须且只能使用以下协议：
 
   static String buildManualCopyPrompt(List<Map<String, String>> messages) {
     final buffer = StringBuffer()
-      ..writeln('请按下面的对话内容扮演待办助手，只回复 assistant 的最终内容。')
+      ..writeln('请按下面的对话内容扮演效率助手，只回复 assistant 的最终内容。')
       ..writeln(
           '必须遵守 system 中的所有规则；如果需要创建、修改、规划或删除数据，必须输出可被应用识别的 [ACTION_START] JSON 操作块。')
       ..writeln('不要解释这些包装文本，不要使用 Markdown 代码块包裹操作 JSON。');
@@ -694,13 +793,19 @@ JSON操作块必须且只能使用以下协议：
       final remark = t['remark'] ?? '';
       final startTime = t['startTime'] ?? '';
       final endTime = t['endTime'] ?? '';
-      final isAllDay = t['isAllDay'] ?? false;
-      final timeMode = isAllDay == true
-          ? '日期内完成'
-          : endTime.toString().isEmpty
-              ? '未安排'
-              : '定时截止';
+      final timeMode = switch (t['timeMode']?.toString()) {
+        'dateOnly' => '日期内完成',
+        'deadline' => '定时截止',
+        _ => '未安排',
+      };
       final recurrence = t['recurrence'] ?? 'none';
+      final recurrenceRule = t['recurrenceRule'] ?? recurrence;
+      final recurrenceSeriesId =
+          t['recurrenceSeriesId']?.toString().trim() ?? '';
+      final recurrenceRole = t['recurrenceRole']?.toString() ?? 'standalone';
+      final customIntervalDays = t['customIntervalDays'];
+      final recurrenceEndDate = t['recurrenceEndDate']?.toString().trim() ?? '';
+      final status = t['isDone'] == true ? '已完成' : '未完成';
       final reminderMinutes = t['reminderMinutes'] ?? 5;
       final gid = t['groupId'] ?? '';
       var folderName = '';
@@ -710,7 +815,10 @@ JSON操作块必须且只能使用以下协议：
             .name;
       }
 
-      return '- [ID: $id] 标题: $title${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 日期锚点: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 截止: $endTime' : ''} | 时间语义: $timeMode | 重复: $recurrence | 提醒: 提前$reminderMinutes分钟';
+      final recurrenceText = recurrenceSeriesId.isEmpty
+          ? ' | 循环: none'
+          : ' | 系列ID: $recurrenceSeriesId | 期次角色: $recurrenceRole | 系列规则: $recurrenceRule${recurrenceRule == 'customDays' ? '(${customIntervalDays ?? 1}天)' : ''}${recurrenceEndDate.isNotEmpty ? ' | 系列结束: $recurrenceEndDate' : ''}${recurrence != recurrenceRule ? ' | 本期存储规则: $recurrence' : ''}';
+      return '- [期次todoId: $id] 标题: $title | 状态: $status${remark.toString().isNotEmpty ? ' | 备注: $remark' : ''}${folderName.isNotEmpty ? ' | 分类: $folderName' : ''}${startTime.toString().isNotEmpty ? ' | 日期锚点: $startTime' : ''}${endTime.toString().isNotEmpty ? ' | 截止: $endTime' : ''} | 时间语义: $timeMode$recurrenceText | 提醒: 提前$reminderMinutes分钟';
     }).join('\n')}';
   }
 
@@ -770,6 +878,67 @@ JSON操作块必须且只能使用以下协议：
       final actualMinutes = b.actualFocusSeconds ~/ 60;
       return '- [ID: ${b.id}] 待办ID: ${b.todoId} | 标题: ${b.titleSnapshot ?? todoTitle(b.todoId)} | 时间: $start-$end | 计划: ${b.plannedMinutes}分钟 | 实际专注: $actualMinutes分钟 | 状态: ${b.status.name} | 提醒: 提前${b.reminderMinutes}分钟';
     }).join('\n')}';
+  }
+
+  static String _formatFixedSchedules(
+    List<FixedScheduleItem> schedules,
+    String userMessage,
+    DateTime now,
+  ) {
+    final scoped = _scopeFixedSchedulesByTime(
+      schedules,
+      userMessage: userMessage,
+      now: now,
+    );
+    if (scoped.isEmpty) return '固定日程: 暂无';
+    final lines = scoped.take(50).map((item) {
+      final time = item.startTime == null
+          ? '时间待定'
+          : item.endTime == null
+              ? '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}（结束待定）'
+              : '${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal())}-${DateFormat('HH:mm').format(DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal())}';
+      final series = item.recurrenceSeriesId?.trim().isNotEmpty == true
+          ? ' | 系列ID: ${item.recurrenceSeriesId} | 重复: ${item.recurrence.name}'
+          : '';
+      final location = item.location?.trim().isNotEmpty == true
+          ? ' | 地点: ${item.location}'
+          : '';
+      final remark =
+          item.remark?.trim().isNotEmpty == true ? ' | 备注: ${item.remark}' : '';
+      return '- [日程ID: ${item.id}] ${item.date} $time ${item.title} | 状态: ${item.status.name}$location$remark$series';
+    }).join('\n');
+    return '固定日程（外部时间硬约束；每条使用自己的日程ID）:\n$lines';
+  }
+
+  static List<FixedScheduleItem> _scopeFixedSchedulesByTime(
+    List<FixedScheduleItem> schedules, {
+    required String userMessage,
+    required DateTime now,
+  }) {
+    final active = schedules.where((item) => !item.isDeleted).toList()
+      ..sort((left, right) {
+        final dateCompare = left.date.compareTo(right.date);
+        if (dateCompare != 0) return dateCompare;
+        return (left.startTime ?? 0).compareTo(right.startTime ?? 0);
+      });
+    final period = _resolveCoursePeriod(userMessage, now);
+    if (period != null) {
+      return active.where((item) {
+        final date = DateTime.tryParse(item.date);
+        return date != null &&
+            !date.isBefore(period.start) &&
+            date.isBefore(period.end);
+      }).toList();
+    }
+    if (userMessage.trim().isEmpty) return active.take(50).toList();
+    final today = DateTime(now.year, now.month, now.day);
+    return active
+        .where((item) {
+          final date = DateTime.tryParse(item.date);
+          return date != null && !date.isBefore(today);
+        })
+        .take(50)
+        .toList();
   }
 
   static String _formatCourses(

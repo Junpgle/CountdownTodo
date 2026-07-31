@@ -1,6 +1,6 @@
 # AI todo agent
 
-Last verified: 2026-07-20.
+Last verified: 2026-07-31.
 
 The chat screen and `LLMService` support configurable LLM providers and convert
 structured assistant output into previewable actions. The transport protocol
@@ -12,6 +12,8 @@ review for destructive or broad actions.
 
 - Todos: create, update, complete, delete, reschedule, bulk operations,
   categorization, planning, split and merge.
+- Fixed schedules: create, update, cancel and delete, including
+  occurrence-only and current-and-future recurrence scopes.
 - Plan blocks: create, update, delete, reschedule, skip and start.
 - Time logs: create, update and delete.
 - Pomodoro: start/stop and tag create/update/delete.
@@ -22,9 +24,14 @@ review for destructive or broad actions.
 names and payload fields. The UI should show parsed actions before execution,
 validate IDs/timestamps/enums, and keep partial failures visible.
 
-## Test gap
+Recurring todos and schedules use real occurrence IDs for mutations. Series IDs
+are validation/grouping metadata and must never be used in place of `todoId` or
+`scheduleId`. Completion is todo-only and always applies to one occurrence;
+schedule cancellation is a separate status transition.
 
-The previously documented dedicated files such as
-`test/services/ai_action_parser_test.dart` are not present in the current tree.
-New protocol or executor changes should add focused parser, validation,
-authorization and rollback/partial-failure tests before claiming full coverage.
+## Test coverage
+
+`test/services/ai_todo_recurrence_alignment_test.dart` covers recurring todo
+scope, fixed-schedule parsing/execution and planning context. New protocol or
+executor changes should continue to add focused parser, validation,
+authorization and rollback/partial-failure tests.

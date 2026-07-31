@@ -40,6 +40,7 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
+import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
 import '../utils/local_image_provider.dart';
@@ -211,7 +212,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   int _selectedTabIndex = 0;
 
-  // 待确认的待办数据（从图片识别来）
+  // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
 
   // ── 跨端专注感知 ──
@@ -322,12 +323,20 @@ class _HomeDashboardState extends State<HomeDashboard>
         pomodoroRecords: pomodoroRecords,
         conflicts: _latestSyncConflicts,
         teams: teams,
+        fixedSchedules: _fixedSchedules,
         categoryReminderDefaults: categoryReminderDefaults,
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
         onTodosBatchAction: (inserted, updated) {
           unawaited(_handleAiTodosBatchAction(inserted, updated));
+        },
+        onFixedSchedulesChanged: (schedules) {
+          if (!mounted) return;
+          setState(() {
+            _fixedSchedules =
+                schedules.where((schedule) => !schedule.isDeleted).toList();
+          });
         },
       );
     } catch (e) {
@@ -348,15 +357,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     List<TodoItem> inserted,
     List<TodoItem> updated,
   ) async {
-    final nextTodos = List<TodoItem>.from(_todos)..addAll(inserted);
-    for (final item in updated) {
-      final idx = nextTodos.indexWhere((t) => t.id == item.id);
-      if (idx >= 0) {
-        nextTodos[idx] = item;
-      } else {
-        nextTodos.add(item);
-      }
-    }
+    final nextTodos = AiTodoActionExecutor.mergeTodoUpdates(
+      _todos,
+      inserted,
+      updated,
+    );
     if (!mounted) return;
     setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
@@ -500,7 +505,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
       );
 
-      // 检查是否有待确认的待办数据（从通知点击进入）
+      // 检查是否有待确认的事项数据（从通知点击进入）
       _checkPendingTodoConfirm();
 
       _checkAutoSync();
@@ -775,7 +780,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
-  /// 检查是否有待确认的待办数据（从通知点击进入）
+  /// 检查是否有待确认的事项数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
     final pendingData = await ExternalShareHandler.getPendingTodoConfirm();
     if (!mounted) return;
@@ -1151,7 +1156,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  /// 打开待确认待办页面
+  /// 打开待确认事项页面
   Future<void> _openPendingTodoConfirm() async {
     if (_pendingTodoConfirm == null) return;
 
@@ -1589,7 +1594,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _localPomodoroTicker = null;
   }
 
-  /// 待确认待办入口卡片（从图片识别来）
+  /// 待确认事项入口卡片（从图片识别来）
   Widget _buildPendingTodoConfirmCard(bool isLight) {
     if (_pendingTodoConfirm == null) return const SizedBox.shrink();
 
@@ -1633,7 +1638,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       statusIcon = Icons.check_circle_outline;
       iconColor = Colors.green;
       title = 'AI识别完成';
-      subtitle = '发现 $todoCount 个待办，点击查看';
+      subtitle = '发现 $todoCount 个事项，点击查看';
     }
 
     return Container(
@@ -2817,7 +2822,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 稍微延迟，让首页先完成渲染
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
-    // 🚀 有待确认待办时不劫持导航，优先让用户处理识别结果
+    // 🚀 有待确认事项时不劫持导航，优先让用户处理识别结果
     if (_pendingTodoConfirm != null) return;
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
@@ -4718,7 +4723,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     },
                   ),
 
-                // 待确认待办入口卡片（从图片识别来）
+                // 待确认事项入口卡片（从图片识别来）
                 _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(

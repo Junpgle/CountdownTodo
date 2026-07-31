@@ -230,7 +230,7 @@ class NotificationService {
   }) async {
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await _showNormalNotification(
-      '图片识别待办中',
+      '图片识别事项中',
       '第$currentAttempt/$maxAttempts次尝试 | $status',
       tag: 'todo-recognize',
     );
@@ -242,7 +242,7 @@ class NotificationService {
     if (!await AppSettingsStorage.isTodoRecognizeNotificationEnabled()) return;
     await _showNormalNotification(
       '图片识别完成',
-      '发现$todoCount个待办事项',
+      '发现$todoCount个事项',
       tag: 'todo-recognize',
     );
   }

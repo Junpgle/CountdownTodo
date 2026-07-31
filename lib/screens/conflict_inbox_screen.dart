@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -623,6 +624,9 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             .where((r) => !r.isDeleted)
             .toList(),
         conflicts: _buildAiConflictContext(),
+        onFixedSchedulesChanged: (_) {
+          unawaited(_loadConflicts());
+        },
         onTodosBatchAction: (inserted, updated) async {
           final allTodos = await StorageService.getTodos(widget.username);
           final merged = AiTodoActionExecutor.mergeTodoUpdates(

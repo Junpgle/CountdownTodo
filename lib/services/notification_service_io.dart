@@ -725,7 +725,7 @@ class NotificationService {
   }
 
   // ==========================================
-  // 📸 图片识别待办通知
+  // 📸 图片识别事项通知
   // ==========================================
 
   // ignore: constant_identifier_names
@@ -744,7 +744,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
-    final title = '🔍 图片识别待办中...';
+    final title = '🔍 图片识别事项中...';
     final body = '第$currentAttempt/$maxAttempts次尝试 | $status';
 
     if (_isDesktopSupported) {
@@ -774,7 +774,7 @@ class NotificationService {
   }
 
   /// 显示图片识别成功通知（实时通知，点击进入确认页面）
-  /// [todoCount] 识别到的待办数量
+  /// [todoCount] 识别到的事项数量（参数名为旧接口兼容保留）
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
@@ -783,7 +783,7 @@ class NotificationService {
     await ensureInitialized();
 
     final title = '✅ 图片识别完成';
-    final body = '发现$todoCount个待办事项，点击查看详情';
+    final body = '发现$todoCount个事项，点击确认类型和详情';
 
     if (_isDesktopSupported) {
       await _plugin.show(

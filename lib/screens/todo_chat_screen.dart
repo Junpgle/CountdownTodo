@@ -23,6 +23,7 @@ import '../screens/settings/llm_config_page.dart';
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import '../services/feature_tip_service.dart';
+import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 
 class TodoChatScreen extends StatefulWidget {
@@ -36,6 +37,7 @@ class TodoChatScreen extends StatefulWidget {
   final List<Team> teams;
   final List<CountdownItem> countdowns;
   final List<PomodoroTag> pomodoroTags;
+  final List<FixedScheduleItem> fixedSchedules;
   final List<AiTodoAction> initialCategorizationActions;
   final Function(TodoItem)? onTodoInserted;
   final Function(List<TodoItem>)? onTodosBatchInserted;
@@ -43,6 +45,7 @@ class TodoChatScreen extends StatefulWidget {
   final Function(List<TodoItem> inserted, List<TodoItem> updated)?
       onTodosBatchAction;
   final Function(List<TodoGroup> groups)? onTodoGroupsChanged;
+  final Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged;
 
   const TodoChatScreen({
     super.key,
@@ -56,12 +59,14 @@ class TodoChatScreen extends StatefulWidget {
     this.teams = const [],
     this.countdowns = const [],
     this.pomodoroTags = const [],
+    this.fixedSchedules = const [],
     this.initialCategorizationActions = const [],
     this.onTodoInserted,
     this.onTodosBatchInserted,
     this.onTodosUpdated,
     this.onTodosBatchAction,
     this.onTodoGroupsChanged,
+    this.onFixedSchedulesChanged,
   });
 
   @override
@@ -107,6 +112,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   bool _showCoachMarks = false;
 
   List<TodoPlanBlock> _planBlocks = [];
+  List<FixedScheduleItem> _fixedSchedules = [];
   Completer<void>? _cancelGeneration;
   bool _classificationSuggestionInjected = false;
 
@@ -145,6 +151,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     _loadDeepThinking();
     _loadCategoryDefaults();
     _loadPlanBlocks();
+    _fixedSchedules = List<FixedScheduleItem>.from(widget.fixedSchedules);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkCoachMarks();
@@ -186,7 +193,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         CoachMarkStep(
           targetKey: _inputKey,
           title: '智能输入区',
-          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动解析时间、地点并帮你创建待办。',
+          description: '你可以用自然语言输入需求（比如“明天上午9点有个组会”），AI 助手会自动判断它应是日程、待办还是规划块。',
         ),
       ],
       onFinish: () {
@@ -267,6 +274,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           todos: widget.todos,
           countdowns: widget.countdowns,
           pomodoroTags: widget.pomodoroTags,
+          fixedSchedules: _fixedSchedules,
           conflicts: widget.conflicts,
           teams: widget.teams,
           now: DateTime.now(),
@@ -316,6 +324,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           prompt.contains('skip_plan_block') ||
           prompt.contains('start_plan_block_pomodoro'),
       '规划块相关',
+    );
+    addIf(
+      prompt.contains('create_schedule') ||
+          prompt.contains('update_schedule') ||
+          prompt.contains('cancel_schedule') ||
+          prompt.contains('delete_schedule'),
+      '日程相关',
     );
     addIf(
       prompt.contains('create_time_log') ||
@@ -706,6 +721,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       todos: widget.todos,
       countdowns: widget.countdowns,
       pomodoroTags: widget.pomodoroTags,
+      fixedSchedules: _fixedSchedules,
       conflicts: widget.conflicts,
       teams: widget.teams,
       now: DateTime.now(),
@@ -733,7 +749,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         .where((m) => m.role == ChatRole.assistant)
         .length;
 
-    return '[已省略 $omittedCount 条历史消息（用户 $userMsgCount 条，助手 $assistantMsgCount 条）。对话已围绕待办事项展开，用户已了解基本功能，继续当前话题即可。]';
+    return '[已省略 $omittedCount 条历史消息（用户 $userMsgCount 条，助手 $assistantMsgCount 条）。对话已围绕事项管理展开，继续当前话题即可。]';
   }
 
   Future<void> _sendMessage() async {
@@ -856,10 +872,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               if (todo['id'] != null)
                 todo['id'].toString(): '${todo['title'] ?? ''}',
           };
+          final existingScheduleTitles = {
+            for (final schedule in _fixedSchedules) schedule.id: schedule.title,
+          };
           final todoActions = AiActionParser.extractTodoActions(
             fullContent,
             originalText: text,
             existingTodoTitles: existingTodoTitles,
+            existingScheduleTitles: existingScheduleTitles,
           );
           final cleanContent = AiActionParser.cleanActionContent(fullContent);
           setState(() {
@@ -899,10 +919,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
           if (todo['id'] != null)
             todo['id'].toString(): '${todo['title'] ?? ''}',
       };
+      final existingScheduleTitles = {
+        for (final schedule in _fixedSchedules) schedule.id: schedule.title,
+      };
       final todoActions = AiActionParser.extractTodoActions(
         fullContent,
         originalText: text,
         existingTodoTitles: existingTodoTitles,
+        existingScheduleTitles: existingScheduleTitles,
       );
       final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
       final cleanContent = AiActionParser.cleanActionContent(fullContent);
@@ -1014,10 +1038,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       for (final todo in widget.todos)
         if (todo['id'] != null) todo['id'].toString(): '${todo['title'] ?? ''}',
     };
+    final existingScheduleTitles = {
+      for (final schedule in _fixedSchedules) schedule.id: schedule.title,
+    };
     final todoActions = AiActionParser.extractTodoActions(
       fullContent,
       originalText: originalText,
       existingTodoTitles: existingTodoTitles,
+      existingScheduleTitles: existingScheduleTitles,
     );
     final inlineSuggestions = AiActionParser.extractSuggestions(fullContent);
     final cleanContent = AiActionParser.cleanActionContent(fullContent);
@@ -1219,7 +1247,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     enabled: enabled,
                     decoration: InputDecoration(
                       hintText:
-                          '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单',
+                          '输入自定义提示词...\n\n可用变量：\n{now} - 当前时间\n{todos} - 待办清单\n固定日程、规划块等上下文会按当前问题自动注入',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1726,7 +1754,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              '模型生成可执行待办后会出现在这里。',
+              '模型生成可执行的待办、日程或其他操作后会出现在这里。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -1833,7 +1861,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               _StaggeredFadeSlide(
                 delay: const Duration(milliseconds: 110),
                 child: Text(
-                  'AI待办助手',
+                  'AI效率助手',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
@@ -1847,7 +1875,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               _StaggeredFadeSlide(
                 delay: const Duration(milliseconds: 170),
                 child: Text(
-                  '可以直接问课程、待办、专注记录，也可以让它帮你生成可执行的任务操作。',
+                  '可以直接问日程、课程、待办、规划块和专注记录，也可以让它生成可执行操作。',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -1929,7 +1957,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   String _getCurrentSessionTitle() {
     final session = _sessions.firstWhere(
       (s) => s.id == _activeSessionId,
-      orElse: () => ChatSession(title: 'AI待办助手'),
+      orElse: () => ChatSession(title: 'AI效率助手'),
     );
     return session.title;
   }
@@ -2504,7 +2532,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     if (widget.courses.isNotEmpty) {
       suggestions.add('明天的课程表是什么？');
       suggestions.add('这周我还有多少节课？');
-      suggestions.add('帮我把课程同步到待办');
+      suggestions.add('按课程空档规划待办');
     }
 
     // 3. 基于待办状态
@@ -2613,6 +2641,40 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     return '未设置时间';
   }
 
+  String _formatScheduleActionTime(AiTodoAction action) {
+    final existing = _fixedSchedules
+        .where((item) => item.id == action.scheduleId)
+        .firstOrNull;
+    final dateValue =
+        action.hasDate ? action.date : action.date ?? existing?.date;
+    final startValue = action.hasStartTime
+        ? action.startTime
+        : action.startTime ??
+            (existing?.startTime == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(existing!.startTime!)
+                    .toIso8601String());
+    final endValue = action.hasDueDate
+        ? action.dueDate
+        : action.dueDate ??
+            (existing?.endTime == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(existing!.endTime!)
+                    .toIso8601String());
+    final date = dateValue?.trim();
+    final start = DateTime.tryParse(startValue ?? '');
+    final end = DateTime.tryParse(endValue ?? '');
+    final day = date?.isNotEmpty == true
+        ? date!
+        : start == null
+            ? '日期待定'
+            : DateFormat('yyyy-MM-dd').format(start);
+    if (start == null) return '$day 时间待定';
+    final startText = DateFormat('HH:mm').format(start);
+    if (end == null) return '$day $startText（结束待定）';
+    return '$day $startText-${DateFormat('HH:mm').format(end)}';
+  }
+
   String _getTodoCurrentFolderName(String? todoId) {
     if (todoId == null) return '未知';
     final matches = widget.todos.where((t) => t['id'] == todoId);
@@ -2646,11 +2708,13 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         .toList();
     if (activeActions.isEmpty) return const SizedBox.shrink();
     final hasExistingMutations =
-        activeActions.any((t) => t.mutatesExistingTodo);
+        activeActions.any((t) => t.mutatesExistingItem);
     final hasPomodoroActions = activeActions.any((t) => t.isPomodoroAction);
     final hasTimeLogActions = activeActions.any((t) => t.isTimeLogAction);
     final hasCountdownActions = activeActions.any((t) => t.isCountdownAction);
     final hasTagActions = activeActions.any((t) => t.isPomodoroTagAction);
+    final hasScheduleActions =
+        activeActions.any((t) => t.isFixedScheduleAction);
 
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -2688,15 +2752,17 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     Text(
                       hasPomodoroActions
                           ? '建议操作番茄钟'
-                          : hasTimeLogActions
-                              ? '建议整理专注记录'
-                              : hasCountdownActions
-                                  ? '建议整理倒计时'
-                                  : hasTagActions
-                                      ? '建议整理番茄标签'
-                                      : hasExistingMutations
-                                          ? '建议整理待办'
-                                          : '建议添加待办',
+                          : hasScheduleActions
+                              ? '建议管理日程'
+                              : hasTimeLogActions
+                                  ? '建议整理专注记录'
+                                  : hasCountdownActions
+                                      ? '建议整理倒计时'
+                                      : hasTagActions
+                                          ? '建议整理番茄标签'
+                                          : hasExistingMutations
+                                              ? '建议整理待办'
+                                              : '建议添加待办',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
@@ -2715,8 +2781,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                 final dueDate = todo.dueDate;
                 final isAllDay = todo.isAllDay;
                 final recurrence = todo.recurrence;
-                final timeStr =
-                    _formatTodoTimeRange(startTime, dueDate, isAllDay);
+                final timeStr = todo.isFixedScheduleAction
+                    ? _formatScheduleActionTime(todo)
+                    : _formatTodoTimeRange(startTime, dueDate, isAllDay);
 
                 return Container(
                   margin:
@@ -2756,7 +2823,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                                     _buildActionBadge(todo),
                                     Expanded(
                                       child: Text(
-                                        todo.title ?? '未命名待办',
+                                        todo.title ??
+                                            (todo.isFixedScheduleAction
+                                                ? '未命名日程'
+                                                : '未命名待办'),
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -2767,7 +2837,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                                     ),
                                   ],
                                 ),
-                                if (todo.mutatesExistingTodo)
+                                if (todo.mutatesExistingItem)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2),
                                     child: Text(
@@ -2858,6 +2928,36 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                               Expanded(
                                 child: Text(
                                   todo.remark!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (todo.isFixedScheduleAction &&
+                          todo.location?.isNotEmpty == true)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28, top: 4),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 13,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.4),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  todo.location!,
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Theme.of(context)
@@ -3070,6 +3170,22 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         color = Colors.red;
         label = '删除';
         break;
+      case AiTodoActionType.createFixedSchedule:
+        color = Colors.blue;
+        label = '新日程';
+        break;
+      case AiTodoActionType.updateFixedSchedule:
+        color = Colors.orange;
+        label = '改日程';
+        break;
+      case AiTodoActionType.cancelFixedSchedule:
+        color = Colors.orange;
+        label = '取消日程';
+        break;
+      case AiTodoActionType.deleteFixedSchedule:
+        color = Colors.red;
+        label = '删日程';
+        break;
       case AiTodoActionType.rescheduleTodo:
         color = Colors.purple;
         label = '改期';
@@ -3272,16 +3388,41 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     final remarkCtrl = TextEditingController(text: action.remark ?? '');
     final startCtrl = TextEditingController(text: action.startTime ?? '');
     final dueCtrl = TextEditingController(text: action.dueDate ?? '');
-    final idCtrl = TextEditingController(text: action.todoId ?? '');
+    final idCtrl = TextEditingController(
+      text: action.isFixedScheduleAction
+          ? action.scheduleId ?? ''
+          : action.todoId ?? '',
+    );
+    final dateCtrl = TextEditingController(text: action.date ?? '');
+    final locationCtrl = TextEditingController(text: action.location ?? '');
     final durationCtrl =
         TextEditingController(text: action.durationMinutes?.toString() ?? '');
-    final reminderCtrl =
-        TextEditingController(text: action.reminderMinutes?.toString() ?? '');
+    final reminderCtrl = TextEditingController(
+      text: action.isFixedScheduleAction
+          ? action.reminderMinutesList.join(',')
+          : action.reminderMinutes?.toString() ?? '',
+    );
     final colorCtrl = TextEditingController(text: action.color ?? '');
     final statusCtrl = TextEditingController(text: action.status ?? '');
     final tagCtrl = TextEditingController(text: action.tagUuids.join(','));
     var recurrence = action.recurrence;
     var isAllDay = action.isAllDay;
+    var timeMode = action.timeMode ??
+        (isAllDay
+            ? TodoTimeMode.dateOnly.name
+            : action.dueDate == null
+                ? TodoTimeMode.unscheduled.name
+                : TodoTimeMode.deadline.name);
+    var recurrenceScope = action.recurrenceScope;
+    final initialRecurrence = recurrence;
+    final initialIsAllDay = isAllDay;
+    final initialTimeMode = timeMode;
+    final initialRemarkText = remarkCtrl.text;
+    final initialDateText = dateCtrl.text;
+    final initialLocationText = locationCtrl.text;
+    final initialStartText = startCtrl.text;
+    final initialDueText = dueCtrl.text;
+    final initialReminderText = reminderCtrl.text;
 
     await showDialog<void>(
       context: context,
@@ -3300,15 +3441,20 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (action.mutatesExistingTodo ||
+                  if (action.mutatesExistingItem ||
                       action.isTimeLogAction ||
                       action.isCountdownAction ||
                       action.isTodoGroupAction ||
-                      action.isPomodoroTagAction)
+                      action.isPomodoroTagAction ||
+                      action.isFixedScheduleAction)
                     _editField(idCtrl, _idFieldLabel(action)),
                   if (_usesTitle(action))
                     _editField(titleCtrl, _titleLabel(action)),
                   if (_usesRemark(action)) _editField(remarkCtrl, '备注'),
+                  if (action.isFixedScheduleAction)
+                    _editField(dateCtrl, '日程日期', hint: 'YYYY-MM-DD'),
+                  if (action.isFixedScheduleAction)
+                    _editField(locationCtrl, '地点'),
                   if (_usesStartTime(action))
                     _editField(startCtrl, _startTimeLabel(action),
                         hint: 'YYYY-MM-DD HH:mm'),
@@ -3327,15 +3473,25 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                     _editField(statusCtrl, '状态',
                         hint: 'completed 或 interrupted'),
                   if (_usesTags(action)) _editField(tagCtrl, '番茄标签ID（逗号分隔）'),
-                  if (action.isTodoAction) ...[
+                  if (action.isTodoAction || action.isFixedScheduleAction) ...[
                     const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('全天'),
-                      value: isAllDay,
-                      onChanged: (value) =>
-                          setDialogState(() => isAllDay = value),
-                    ),
+                    if (action.isTodoAction)
+                      DropdownButtonFormField<String>(
+                        initialValue: timeMode,
+                        decoration: const InputDecoration(labelText: '待办时间语义'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'unscheduled', child: Text('未安排')),
+                          DropdownMenuItem(
+                              value: 'dateOnly', child: Text('日期内完成')),
+                          DropdownMenuItem(
+                              value: 'deadline', child: Text('截止时刻')),
+                        ],
+                        onChanged: (value) => setDialogState(() {
+                          timeMode = value ?? TodoTimeMode.unscheduled.name;
+                          isAllDay = timeMode == TodoTimeMode.dateOnly.name;
+                        }),
+                      ),
                     DropdownButtonFormField<String>(
                       initialValue: recurrence,
                       decoration: const InputDecoration(labelText: '循环'),
@@ -3350,6 +3506,23 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       onChanged: (value) =>
                           setDialogState(() => recurrence = value ?? 'none'),
                     ),
+                    if (action.mutatesExistingItem ||
+                        (action.isFixedScheduleAction &&
+                            action.type !=
+                                AiTodoActionType.createFixedSchedule))
+                      DropdownButtonFormField<String>(
+                        initialValue: recurrenceScope,
+                        decoration: const InputDecoration(labelText: '循环作用范围'),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'occurrence', child: Text('仅本期')),
+                          DropdownMenuItem(
+                              value: 'future', child: Text('本期及以后')),
+                        ],
+                        onChanged: (value) => setDialogState(
+                          () => recurrenceScope = value ?? 'occurrence',
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -3363,13 +3536,27 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
             FilledButton(
               onPressed: () {
                 setState(() {
-                  action.todoId = _nullIfBlank(idCtrl.text);
+                  if (action.isFixedScheduleAction) {
+                    action.scheduleId = _nullIfBlank(idCtrl.text);
+                  } else {
+                    action.todoId = _nullIfBlank(idCtrl.text);
+                  }
                   action.title = _nullIfBlank(titleCtrl.text);
                   action.remark = _nullIfBlank(remarkCtrl.text);
+                  action.date = _nullIfBlank(dateCtrl.text);
+                  action.location = _nullIfBlank(locationCtrl.text);
                   action.startTime = _nullIfBlank(startCtrl.text);
                   action.dueDate = _nullIfBlank(dueCtrl.text);
                   action.durationMinutes = int.tryParse(durationCtrl.text);
-                  action.reminderMinutes = int.tryParse(reminderCtrl.text);
+                  if (action.isFixedScheduleAction) {
+                    action.reminderMinutesList = reminderCtrl.text
+                        .split(',')
+                        .map((value) => int.tryParse(value.trim()))
+                        .whereType<int>()
+                        .toList();
+                  } else {
+                    action.reminderMinutes = int.tryParse(reminderCtrl.text);
+                  }
                   action.color = _nullIfBlank(colorCtrl.text);
                   action.status = _nullIfBlank(statusCtrl.text);
                   action.tagUuids = tagCtrl.text
@@ -3379,6 +3566,34 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
                       .toList();
                   action.recurrence = recurrence;
                   action.isAllDay = isAllDay;
+                  action.timeMode = timeMode;
+                  action.recurrenceScope = recurrenceScope;
+                  action.hasRemark =
+                      action.hasRemark || remarkCtrl.text != initialRemarkText;
+                  action.hasDate =
+                      action.hasDate || dateCtrl.text != initialDateText;
+                  action.hasLocation = action.hasLocation ||
+                      locationCtrl.text != initialLocationText;
+                  action.hasStartTime =
+                      action.hasStartTime || startCtrl.text != initialStartText;
+                  action.hasDueDate =
+                      action.hasDueDate || dueCtrl.text != initialDueText;
+                  if (action.isFixedScheduleAction) {
+                    action.hasReminderMinutesList =
+                        action.hasReminderMinutesList ||
+                            reminderCtrl.text != initialReminderText;
+                  } else {
+                    action.hasReminderMinutes = action.hasReminderMinutes ||
+                        reminderCtrl.text != initialReminderText;
+                  }
+                  action.hasTimeMode = action.hasTimeMode ||
+                      timeMode != initialTimeMode ||
+                      isAllDay != initialIsAllDay;
+                  action.hasIsAllDay = action.hasIsAllDay ||
+                      isAllDay != initialIsAllDay ||
+                      timeMode != initialTimeMode;
+                  action.hasRecurrence =
+                      action.hasRecurrence || recurrence != initialRecurrence;
                 });
                 _saveHistorySilently();
                 Navigator.pop(ctx);
@@ -3420,6 +3635,8 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   bool _usesTitle(AiTodoAction action) =>
       action.type != AiTodoActionType.completeTodo &&
       action.type != AiTodoActionType.deleteTodo &&
+      action.type != AiTodoActionType.cancelFixedSchedule &&
+      action.type != AiTodoActionType.deleteFixedSchedule &&
       action.type != AiTodoActionType.deleteTimeLog &&
       action.type != AiTodoActionType.stopPomodoro &&
       action.type != AiTodoActionType.completeCountdown &&
@@ -3428,13 +3645,20 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.type != AiTodoActionType.deletePomodoroTag;
 
   bool _usesRemark(AiTodoAction action) =>
-      action.isTodoAction || action.isTimeLogAction || action.isPlanBlockAction;
+      action.isTodoAction ||
+      action.isFixedScheduleAction ||
+      action.isTimeLogAction ||
+      action.isPlanBlockAction;
 
   bool _usesStartTime(AiTodoAction action) =>
-      action.isTodoAction || action.isTimeLogAction || action.isPlanBlockAction;
+      action.isTodoAction ||
+      action.isFixedScheduleAction ||
+      action.isTimeLogAction ||
+      action.isPlanBlockAction;
 
   bool _usesDueTime(AiTodoAction action) =>
       action.isTodoAction ||
+      action.isFixedScheduleAction ||
       action.isTimeLogAction ||
       action.isCountdownAction ||
       action.isPlanBlockAction;
@@ -3445,7 +3669,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.type == AiTodoActionType.startPomodoro;
 
   bool _usesReminder(AiTodoAction action) =>
-      action.isTodoAction || action.isPlanBlockAction;
+      action.isTodoAction ||
+      action.isFixedScheduleAction ||
+      action.isPlanBlockAction;
 
   bool _usesColor(AiTodoAction action) => action.isPomodoroTagAction;
 
@@ -3456,6 +3682,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       action.isTimeLogAction || action.isPomodoroAction;
 
   String _idFieldLabel(AiTodoAction action) {
+    if (action.isFixedScheduleAction) return '日程ID';
     if (action.isTimeLogAction) return '专注记录ID';
     if (action.isCountdownAction) return '倒计时ID';
     if (action.isTodoGroupAction) return '分类ID';
@@ -3464,6 +3691,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _titleLabel(AiTodoAction action) {
+    if (action.isFixedScheduleAction) return '日程标题';
     if (action.isTodoGroupAction) return '分类名称';
     if (action.isPomodoroTagAction) return '标签名称';
     if (action.isCountdownAction) return '倒计时标题';
@@ -3477,6 +3705,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   String _dueTimeLabel(AiTodoAction action) {
+    if (action.isFixedScheduleAction) return '结束时间';
     if (action.isCountdownAction) return '目标时间';
     if (action.isTimeLogAction) return '结束时间';
     return '截止时间';
@@ -3488,6 +3717,14 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         return '标记为已完成';
       case AiTodoActionType.deleteTodo:
         return '移动到已删除';
+      case AiTodoActionType.createFixedSchedule:
+        return '新增固定日程';
+      case AiTodoActionType.updateFixedSchedule:
+        return '更新固定日程';
+      case AiTodoActionType.cancelFixedSchedule:
+        return '取消固定日程';
+      case AiTodoActionType.deleteFixedSchedule:
+        return '删除固定日程';
       case AiTodoActionType.rescheduleTodo:
         return '调整时间安排';
       case AiTodoActionType.bulkRescheduleTodo:
@@ -3555,7 +3792,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   }
 
   Widget _buildChangeSummary(AiTodoAction action) {
-    if (!action.mutatesExistingTodo || !action.isTodoAction) {
+    if (action.isFixedScheduleAction) {
+      return _buildFixedScheduleChangeSummary(action);
+    }
+    if (!action.mutatesExistingItem || !action.isTodoAction) {
       return const SizedBox.shrink();
     }
     final existing = _findExistingTodo(action.todoId);
@@ -3569,7 +3809,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
 
     addRow('标题', '${existing['title'] ?? ''}', action.title ?? '');
     addRow('备注', '${existing['remark'] ?? ''}', action.remark ?? '');
-    if (action.startTime != null || action.dueDate != null) {
+    if (action.hasStartTime ||
+        action.hasDueDate ||
+        action.hasTimeMode ||
+        action.hasIsAllDay) {
       final beforeTime = _formatTodoTimeRange(
         existing['startTime']?.toString(),
         existing['endTime']?.toString(),
@@ -3578,7 +3821,11 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       final afterTime = _formatTodoTimeRange(
         action.startTime ?? existing['startTime']?.toString(),
         action.dueDate ?? existing['endTime']?.toString(),
-        action.isAllDay || existing['isAllDay'] == true,
+        action.timeMode == TodoTimeMode.dateOnly.name ||
+            (action.timeMode == null &&
+                (action.hasIsAllDay
+                    ? action.isAllDay
+                    : existing['isAllDay'] == true)),
       );
       addRow('时间', beforeTime, afterTime);
     }
@@ -3602,6 +3849,9 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     }
     if (action.type == AiTodoActionType.deleteTodo) {
       addRow('删除', existing['isDeleted'] == true ? '已删除' : '未删除', '已删除');
+    }
+    if (existing['recurrenceSeriesId']?.toString().isNotEmpty == true) {
+      rows.add(action.appliesToFutureOccurrences ? '范围: 本期及以后' : '范围: 仅本期');
     }
 
     if (rows.isEmpty) return const SizedBox.shrink();
@@ -3638,6 +3888,87 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     );
   }
 
+  Widget _buildFixedScheduleChangeSummary(AiTodoAction action) {
+    if (action.type == AiTodoActionType.createFixedSchedule) {
+      return const SizedBox.shrink();
+    }
+    final existing = _fixedSchedules
+        .where((item) => item.id == action.scheduleId)
+        .firstOrNull;
+    if (existing == null) return const SizedBox.shrink();
+    final rows = <String>[];
+    if (action.title?.trim().isNotEmpty == true &&
+        action.title!.trim() != existing.title) {
+      rows.add('标题: ${existing.title} -> ${action.title!.trim()}');
+    }
+    if (action.hasDate && action.date != existing.date) {
+      rows.add('日期: ${existing.date} -> ${action.date ?? '待确认'}');
+    }
+    if (action.hasStartTime || action.hasDueDate) {
+      final existingAction = AiTodoAction(
+        type: AiTodoActionType.updateFixedSchedule,
+        date: existing.date,
+        startTime: existing.startTime == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(existing.startTime!)
+                .toIso8601String(),
+        dueDate: existing.endTime == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(existing.endTime!)
+                .toIso8601String(),
+      );
+      final nextAction = AiTodoAction(
+        type: AiTodoActionType.updateFixedSchedule,
+        date: action.hasDate ? action.date : existing.date,
+        startTime:
+            action.hasStartTime ? action.startTime : existingAction.startTime,
+        dueDate: action.hasDueDate ? action.dueDate : existingAction.dueDate,
+      );
+      rows.add(
+        '时间: ${_formatScheduleActionTime(existingAction)} -> ${_formatScheduleActionTime(nextAction)}',
+      );
+    }
+    if (action.hasLocation) {
+      rows.add('地点: ${existing.location ?? '无'} -> ${action.location ?? '无'}');
+    }
+    if (action.type == AiTodoActionType.cancelFixedSchedule) {
+      rows.add('状态: ${existing.status.name} -> cancelled');
+    }
+    if (action.type == AiTodoActionType.deleteFixedSchedule) {
+      rows.add('删除: 未删除 -> 已删除');
+    }
+    if (existing.recurrenceSeriesId?.isNotEmpty == true) {
+      rows.add(action.appliesToFutureOccurrences ? '范围: 本期及以后' : '范围: 仅本期');
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 28, top: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows
+              .map(
+                (row) => Text(
+                  row,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurface.withValues(alpha: 0.65),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
   Map<String, dynamic>? _findExistingTodo(String? todoId) {
     if (todoId == null) return null;
     for (final todo in widget.todos) {
@@ -3656,6 +3987,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
   bool _isDangerousAction(AiTodoAction action) {
     return action.type == AiTodoActionType.deleteTodo ||
         action.type == AiTodoActionType.deleteTimeLog ||
+        action.type == AiTodoActionType.cancelFixedSchedule ||
+        action.type == AiTodoActionType.deleteFixedSchedule ||
+        (action.type == AiTodoActionType.updateFixedSchedule &&
+            action.status == 'cancelled') ||
         action.type == AiTodoActionType.stopPomodoro ||
         action.type == AiTodoActionType.deleteCountdown ||
         action.type == AiTodoActionType.completeCountdown ||
@@ -3673,6 +4008,12 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
     switch (action.type) {
       case AiTodoActionType.deleteTodo:
         return '将删除已有待办，执行前请确认';
+      case AiTodoActionType.cancelFixedSchedule:
+        return '将取消已有日程，执行前请确认';
+      case AiTodoActionType.deleteFixedSchedule:
+        return '将删除已有日程，执行前请确认';
+      case AiTodoActionType.updateFixedSchedule:
+        return action.status == 'cancelled' ? '将取消已有日程，执行前请确认' : '';
       case AiTodoActionType.splitTodo:
         return '拆分后会删除原待办，执行前请确认';
       case AiTodoActionType.mergeTodos:
@@ -3696,6 +4037,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.createTodo:
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
+      case AiTodoActionType.createFixedSchedule:
       case AiTodoActionType.rescheduleTodo:
       case AiTodoActionType.bulkRescheduleTodo:
       case AiTodoActionType.categorizeTodo:
@@ -3740,6 +4082,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       existingTodoGroups: widget.todoGroups,
       existingPomodoroTags: existingTags,
       existingPlanBlocks: _planBlocks,
+      existingFixedSchedules: _fixedSchedules,
       categoryReminderDefaults: _categoryReminderDefaults,
     );
 
@@ -3827,6 +4170,28 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
         ];
       }
 
+      if (result.newFixedSchedules.isNotEmpty ||
+          result.updatedFixedSchedules.isNotEmpty) {
+        await StorageService.saveFixedSchedules(
+          widget.username,
+          [
+            ...result.newFixedSchedules,
+            ...result.updatedFixedSchedules,
+          ],
+          sync: true,
+        );
+        _fixedSchedules = AiTodoActionExecutor.mergeFixedScheduleUpdates(
+          _fixedSchedules,
+          result.newFixedSchedules,
+          result.updatedFixedSchedules,
+        );
+        widget.onFixedSchedulesChanged?.call(_fixedSchedules);
+        await ReminderScheduleService.scheduleFromStorage(
+          widget.username,
+          force: true,
+        );
+      }
+
       for (final action in result.pomodoroActions) {
         await _executePomodoroAction(action);
       }
@@ -3838,7 +4203,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
+                '已执行所选操作 (新待办: ${result.newTodos.length}, 整理待办: ${result.updatedTodos.length}, 日程: ${result.newFixedSchedules.length + result.updatedFixedSchedules.length}, 规划: ${result.newPlanBlocks.length + result.updatedPlanBlocks.length}, 专注记录: ${result.newTimeLogs.length + result.updatedTimeLogs.length}, 倒计时: ${result.newCountdowns.length + result.updatedCountdowns.length}, 分类: ${result.newTodoGroups.length + result.updatedTodoGroups.length}, 标签: ${result.newPomodoroTags.length + result.updatedPomodoroTags.length}, 番茄钟: ${result.pomodoroActions.length})')),
       );
     }
   }
@@ -3938,6 +4303,10 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       case AiTodoActionType.updateTodo:
       case AiTodoActionType.completeTodo:
       case AiTodoActionType.deleteTodo:
+      case AiTodoActionType.createFixedSchedule:
+      case AiTodoActionType.updateFixedSchedule:
+      case AiTodoActionType.cancelFixedSchedule:
+      case AiTodoActionType.deleteFixedSchedule:
       case AiTodoActionType.rescheduleTodo:
       case AiTodoActionType.bulkRescheduleTodo:
       case AiTodoActionType.categorizeTodo:
@@ -4042,7 +4411,7 @@ class _TodoChatScreenState extends State<TodoChatScreen> {
       sections.add('[SMART_CONTEXT]\n${msg.smartContext.trim()}');
     } else {
       sections.add(
-          '[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（课程/专注记录/冲突/团队）。\n注意：系统提示词中始终包含待办、分组、倒计时、番茄标签等基础上下文，因此模型仍可回答相关问题。');
+          '[SMART_CONTEXT]\n本次回复未触发关键词注入额外上下文（日程/课程/专注记录/冲突/团队）。\n待办、日程等对象会在相关意图出现时按需注入。');
     }
 
     return sections.join('\n\n');

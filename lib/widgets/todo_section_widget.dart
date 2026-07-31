@@ -12,6 +12,7 @@ import '../screens/historical_todos_screen.dart';
 import '../services/todo_parser_service.dart';
 import '../services/llm_service.dart';
 import '../services/course_service.dart';
+import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/pomodoro_service.dart';
 import '../screens/course_screens.dart';
@@ -28,6 +29,8 @@ import '../screens/folder_manage_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../services/feature_tip_service.dart';
 import '../services/item_semantics_service.dart';
+import '../services/fixed_schedule_recurrence_service.dart';
+import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
@@ -50,6 +53,8 @@ enum _OccurrenceSwitchAction {
   discard,
   save,
 }
+
+enum _QuickCaptureTarget { todo, fixedSchedule, cancel }
 
 class TodoSectionWidget extends StatefulWidget {
   final List<TodoItem> todos;
@@ -229,48 +234,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       conflicts: widget.conflicts,
       teams: aiContext.teams,
       onTodoGroupsChanged: widget.onGroupsChanged,
+      onFixedSchedulesChanged: (_) => widget.onRefreshRequested(),
       onTodosBatchAction: (inserted, updated) {
-        final List<TodoItem> resultList = List<TodoItem>.from(widget.todos);
-
-        resultList.addAll(inserted);
-
-        for (final update in updated) {
-          final idx = resultList.indexWhere((t) => t.id == update.id);
-          if (idx != -1) {
-            final existing = resultList[idx];
-            resultList[idx] = TodoItem(
-              id: existing.id,
-              title: update.title.isNotEmpty ? update.title : existing.title,
-              isDone: update.isDone,
-              isDeleted: update.isDeleted,
-              version: existing.version,
-              updatedAt: DateTime.now().millisecondsSinceEpoch,
-              createdAt: existing.createdAt,
-              createdDate: update.createdDate ?? existing.createdDate,
-              recurrence: update.recurrence,
-              recurrenceSeriesId: existing.recurrenceSeriesId,
-              customIntervalDays: update.customIntervalDays,
-              recurrenceEndDate: update.recurrenceEndDate,
-              dueDate: update.dueDate,
-              remark: update.remark ?? existing.remark,
-              imagePath: existing.imagePath,
-              originalText: update.originalText ?? existing.originalText,
-              groupId: update.groupId,
-              reminderMinutes: update.reminderMinutes,
-              teamUuid: existing.teamUuid,
-              creatorId: existing.creatorId,
-              creatorName: existing.creatorName,
-              teamName: existing.teamName,
-              collabType: existing.collabType,
-              hasConflict: existing.hasConflict,
-              serverVersionData: existing.serverVersionData,
-              isAllDay: update.isAllDay,
-              categoryId: existing.categoryId,
-            )..markAsChanged();
-          }
-        }
-
-        widget.onTodosChanged(resultList);
+        widget.onTodosChanged(
+          AiTodoActionExecutor.mergeTodoUpdates(
+            widget.todos,
+            inserted,
+            updated,
+          ),
+        );
       },
     );
   }
@@ -315,7 +287,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     );
   }
 
-  /// 显示添加待办对话框并预填充大模型识别的数据
+  /// 显示添加事项对话框并预填充大模型识别的数据
   /// [llmResults] 大模型识别结果列表
   /// [imagePath] 原始图片路径（用于显示缩略图）
   void showAddTodoDialogWithData(
@@ -337,13 +309,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           _selectedSubTeamUuid, currentTeamName);
     } else {
       // 如果没有回调，使用旧的对话框方式
-      _showAddTodoDialogWithData(llmResults, imagePath);
+      _showAddTodoDialogWithData(llmResults, imagePath, originalText);
     }
   }
 
   void _showAddTodoDialogWithData(
     List<Map<String, dynamic>>? llmResults,
     String? imagePath,
+    String? originalText,
   ) {
     TextEditingController titleCtrl = TextEditingController();
     TextEditingController remarkCtrl = TextEditingController();
@@ -364,24 +337,40 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     String? sharedImagePath = imagePath; // 保存分享的图片路径
 
     int selectedTabIndex = 0;
-    String? currentOriginalText; // 📄 保存原始文本内容
+    String? currentOriginalText = originalText; // 📄 保存原始文本内容
 
     // 如果有预填充的大模型数据，解析并设置
     if (llmResults != null && llmResults.isNotEmpty) {
       parsedResults = llmResults.map((result) {
+        final startTime = result['startTime'] != null
+            ? DateTime.tryParse(result['startTime'])
+            : null;
+        final endTime = result['endTime'] != null
+            ? DateTime.tryParse(result['endTime'])
+            : null;
+        final isAllDay = result['isAllDay'] ?? false;
         return ParsedTodoResult(
           title: result['title'] ?? '',
           remark: result['remark'],
-          isAllDay: result['isAllDay'] ?? false,
-          startTime: result['startTime'] != null
-              ? DateTime.tryParse(result['startTime'])
-              : null,
-          endTime: result['endTime'] != null
-              ? DateTime.tryParse(result['endTime'])
-              : null,
+          location: result['location']?.toString(),
+          isAllDay: isAllDay,
+          startTime: startTime,
+          endTime: endTime,
+          timeSemantics: _parseTimeSemantics(
+            result['timeMode'],
+            isAllDay: isAllDay,
+            startTime: startTime,
+            endTime: endTime,
+          ),
           recurrence: _parseRecurrenceType(result['recurrence']),
           customIntervalDays: result['customIntervalDays'],
+          recurrenceEndDate: DateTime.tryParse(
+            (result['recurrenceEndDate'] ?? result['recurrence_end_date'] ?? '')
+                .toString(),
+          ),
           reminderMinutes: result['reminderMinutes'],
+          itemKind: result['itemKind']?.toString(),
+          originalText: originalText,
         );
       }).toList();
 
@@ -392,6 +381,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         final first = parsedResults[0];
         titleCtrl.text = first.title;
         remarkCtrl.text = first.remark ?? "";
+        dueDate = null;
         if (first.startTime != null) {
           createdAt = first.startTime!;
           if (first.isAllDay) {
@@ -418,10 +408,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         isAllDay = first.isAllDay;
         recurrence = first.recurrence;
         customDays = first.customIntervalDays;
+        recurrenceEndDate = first.recurrenceEndDate;
         if (customDays != null) {
           customDaysCtrl.text = customDays.toString();
+        } else {
+          customDaysCtrl.clear();
         }
-        reminderMinutes = first.reminderMinutes ?? 5;
+        reminderMinutes = first.reminderMinutes ??
+            (first.itemKind == 'fixedSchedule' ? 15 : 5);
         currentOriginalText = first.originalText;
       }
     }
@@ -438,7 +432,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   TextField(
                     controller: titleCtrl,
                     decoration: InputDecoration(
-                      labelText: "待办内容",
+                      labelText: "事项内容",
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -847,7 +841,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                   TextField(
                     controller: aiInputCtrl,
                     decoration: InputDecoration(
-                      labelText: "输入待办内容",
+                      labelText: "输入事项内容",
                       hintText: "在此粘贴或输入文字...",
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -866,7 +860,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text("请输入待办内容")),
+                                      const SnackBar(content: Text("请输入事项内容")),
                                     );
                                     return;
                                   }
@@ -931,6 +925,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         title:
                                             result['title'] ?? aiInputCtrl.text,
                                         remark: result['remark'],
+                                        location:
+                                            result['location']?.toString(),
                                         isAllDay: result['isAllDay'] ?? false,
                                         startTime: result['startTime'] != null
                                             ? DateTime.tryParse(
@@ -942,11 +938,33 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 result['endTime'],
                                               )
                                             : null,
+                                        timeSemantics: _parseTimeSemantics(
+                                          result['timeMode'],
+                                          isAllDay: result['isAllDay'] ?? false,
+                                          startTime: result['startTime'] != null
+                                              ? DateTime.tryParse(
+                                                  result['startTime'],
+                                                )
+                                              : null,
+                                          endTime: result['endTime'] != null
+                                              ? DateTime.tryParse(
+                                                  result['endTime'],
+                                                )
+                                              : null,
+                                        ),
                                         recurrence: _parseRecurrenceType(
                                           result['recurrence'],
                                         ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
+                                        recurrenceEndDate: DateTime.tryParse(
+                                          (result['recurrenceEndDate'] ?? '')
+                                              .toString(),
+                                        ),
+                                        reminderMinutes:
+                                            result['reminderMinutes'],
+                                        itemKind:
+                                            result['itemKind']?.toString(),
                                         originalText: aiInputCtrl.text,
                                       );
                                     }).toList();
@@ -963,6 +981,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       setDialogState(() {
                                         titleCtrl.text = first.title;
                                         remarkCtrl.text = first.remark ?? "";
+                                        dueDate = null;
                                         if (first.startTime != null) {
                                           createdAt = first.startTime!;
                                           if (first.isAllDay) {
@@ -990,10 +1009,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         isAllDay = first.isAllDay;
                                         recurrence = first.recurrence;
                                         customDays = first.customIntervalDays;
+                                        recurrenceEndDate =
+                                            first.recurrenceEndDate;
                                         if (customDays != null) {
                                           customDaysCtrl.text =
                                               customDays.toString();
+                                        } else {
+                                          customDaysCtrl.clear();
                                         }
+                                        reminderMinutes = first
+                                                .reminderMinutes ??
+                                            (first.itemKind == 'fixedSchedule'
+                                                ? 15
+                                                : 5);
 
                                         // ★ 解析完成后自动切回"手动输入"标签页供用户检查或修改 ★
                                         selectedTabIndex = 0;
@@ -1005,7 +1033,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         ).showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                              "大模型解析成功，共${parsedResults.length}个待办",
+                                              "大模型解析成功，共${parsedResults.length}个事项",
                                             ),
                                             duration:
                                                 const Duration(seconds: 2),
@@ -1046,7 +1074,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                               : () async {
                                   if (aiInputCtrl.text.trim().isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text("请输入待办内容")),
+                                      const SnackBar(content: Text("请输入事项内容")),
                                     );
                                     return;
                                   }
@@ -1106,6 +1134,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         title:
                                             result['title'] ?? aiInputCtrl.text,
                                         remark: result['remark'],
+                                        location:
+                                            result['location']?.toString(),
                                         isAllDay: result['isAllDay'] ?? false,
                                         startTime: result['startTime'] != null
                                             ? DateTime.tryParse(
@@ -1117,11 +1147,33 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                                 result['endTime'],
                                               )
                                             : null,
+                                        timeSemantics: _parseTimeSemantics(
+                                          result['timeMode'],
+                                          isAllDay: result['isAllDay'] ?? false,
+                                          startTime: result['startTime'] != null
+                                              ? DateTime.tryParse(
+                                                  result['startTime'],
+                                                )
+                                              : null,
+                                          endTime: result['endTime'] != null
+                                              ? DateTime.tryParse(
+                                                  result['endTime'],
+                                                )
+                                              : null,
+                                        ),
                                         recurrence: _parseRecurrenceType(
                                           result['recurrence'],
                                         ),
                                         customIntervalDays:
                                             result['customIntervalDays'],
+                                        recurrenceEndDate: DateTime.tryParse(
+                                          (result['recurrenceEndDate'] ?? '')
+                                              .toString(),
+                                        ),
+                                        reminderMinutes:
+                                            result['reminderMinutes'],
+                                        itemKind:
+                                            result['itemKind']?.toString(),
                                         originalText:
                                             aiInputCtrl.text, // 📄 保存原始输入文字
                                       );
@@ -1169,6 +1221,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                       setDialogState(() {
                                         titleCtrl.text = first.title;
                                         remarkCtrl.text = first.remark ?? "";
+                                        dueDate = null;
                                         if (first.startTime != null) {
                                           createdAt = first.startTime!;
                                           if (first.isAllDay) {
@@ -1196,10 +1249,19 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         isAllDay = first.isAllDay;
                                         recurrence = first.recurrence;
                                         customDays = first.customIntervalDays;
+                                        recurrenceEndDate =
+                                            first.recurrenceEndDate;
                                         if (customDays != null) {
                                           customDaysCtrl.text =
                                               customDays.toString();
+                                        } else {
+                                          customDaysCtrl.clear();
                                         }
+                                        reminderMinutes = first
+                                                .reminderMinutes ??
+                                            (first.itemKind == 'fixedSchedule'
+                                                ? 15
+                                                : 5);
                                         currentOriginalText = aiInputCtrl.text;
                                         selectedTabIndex = 0;
                                       });
@@ -1210,7 +1272,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                         ).showSnackBar(
                                           SnackBar(
                                             content: Text(
-                                              "大模型解析成功，共${parsedResults.length}个待办，请确认或修改后保存",
+                                              "大模型解析成功，共${parsedResults.length}个事项，请确认或修改后保存",
                                             ),
                                             duration: const Duration(
                                               seconds: 2,
@@ -1256,18 +1318,20 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                     const SizedBox(height: 8),
                     _buildParseResultItem(
-                      "待办内容",
+                      '类型',
+                      _quickCaptureKindLabel(
+                        parsedResults[currentParseIndex],
+                      ),
+                    ),
+                    _buildParseResultItem(
+                      '事项内容',
                       parsedResults[currentParseIndex].title,
                     ),
                     _buildParseResultItem(
-                      "完成时间",
-                      parsedResults[currentParseIndex].isAllDay
-                          ? parsedResults[currentParseIndex].startTime != null
-                              ? "${DateFormat('yyyy-MM-dd').format(parsedResults[currentParseIndex].startTime!)} 内完成"
-                              : "日期待确认"
-                          : parsedResults[currentParseIndex].endTime != null
-                              ? "${DateFormat('yyyy-MM-dd HH:mm').format(parsedResults[currentParseIndex].endTime!)} 前完成"
-                              : "未安排",
+                      '时间',
+                      _quickCaptureTimeLabel(
+                        parsedResults[currentParseIndex],
+                      ),
                     ),
                     _buildParseResultItem(
                       "重复",
@@ -1277,7 +1341,9 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                     ),
                     _buildParseResultItem(
                       "备注/地点",
-                      parsedResults[currentParseIndex].remark ?? "-",
+                      _quickCaptureDetailLabel(
+                        parsedResults[currentParseIndex],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -1297,6 +1363,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 (b) => isAllDay = b,
                                 (r) => recurrence = r,
                                 (i) => customDays = i,
+                                (d) => recurrenceEndDate = d,
+                                (minutes) => reminderMinutes = minutes,
                                 customDaysCtrl,
                               );
                             },
@@ -1316,6 +1384,8 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                                 (b) => isAllDay = b,
                                 (r) => recurrence = r,
                                 (i) => customDays = i,
+                                (d) => recurrenceEndDate = d,
+                                (minutes) => reminderMinutes = minutes,
                                 customDaysCtrl,
                               );
                             },
@@ -1359,7 +1429,7 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
           }
 
           return AlertDialog(
-            title: const Text("添加待办"),
+            title: const Text("添加事项"),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
             ),
@@ -1407,10 +1477,52 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
                 ),
                 onPressed: () async {
                   if (titleCtrl.text.isNotEmpty) {
-                    final canSave = await _confirmQuickCaptureIntent(
+                    final currentParsed = parsedResults.isEmpty
+                        ? null
+                        : parsedResults[currentParseIndex];
+                    final saveTarget = await _confirmQuickCaptureIntent(
                       currentOriginalText ?? titleCtrl.text,
+                      declaredKind: currentParsed?.itemKind,
+                      semanticText: currentParsed == null
+                          ? null
+                          : '${currentParsed.title} ${currentParsed.remark ?? ''}',
                     );
-                    if (!canSave || !context.mounted) return;
+                    if (saveTarget == _QuickCaptureTarget.cancel ||
+                        !context.mounted) {
+                      return;
+                    }
+                    if (saveTarget == _QuickCaptureTarget.fixedSchedule) {
+                      final sourceText = currentOriginalText ?? titleCtrl.text;
+                      final hasParsedDate = currentParsed?.startTime != null ||
+                          currentParsed?.endTime != null ||
+                          isAllDay ||
+                          dueDate != null;
+                      final parsedForSchedule = currentParsed == null
+                          ? TodoParserService.parse(sourceText)
+                          : ParsedTodoResult(
+                              title: titleCtrl.text.trim(),
+                              remark: remarkCtrl.text.trim().isEmpty
+                                  ? null
+                                  : remarkCtrl.text.trim(),
+                              location: currentParsed.location,
+                              isAllDay: isAllDay,
+                              startTime: hasParsedDate ? createdAt : null,
+                              endTime: dueDate,
+                              timeSemantics: currentParsed.timeSemantics,
+                              recurrence: recurrence,
+                              customIntervalDays: customDays,
+                              recurrenceEndDate: recurrenceEndDate,
+                              reminderMinutes: reminderMinutes,
+                              itemKind: currentParsed.itemKind,
+                              originalText: sourceText,
+                            );
+                      if (!await _saveQuickFixedSchedule(parsedForSchedule)) {
+                        return;
+                      }
+                      widget.onRefreshRequested();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      return;
+                    }
                     final normalizedTime = TodoItem.normalizeTimeForWrite(
                       selectedDate: createdAt,
                       dueDate: dueDate,
@@ -1455,13 +1567,22 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     );
   }
 
-  Future<bool> _confirmQuickCaptureIntent(String sourceText) async {
-    final intent = ItemSemanticsService.classifyCaptureIntent(sourceText);
-    if (intent == CaptureIntentKind.todo || !mounted) return true;
+  Future<_QuickCaptureTarget> _confirmQuickCaptureIntent(
+    String sourceText, {
+    String? declaredKind,
+    String? semanticText,
+  }) async {
+    final intent = ItemSemanticsService.classifyCaptureIntent(
+      declaredKind == null ? sourceText : semanticText ?? sourceText,
+      declaredKind: declaredKind,
+    );
+    if (intent == CaptureIntentKind.todo || !mounted) {
+      return _QuickCaptureTarget.todo;
+    }
     final (title, message) = switch (intent) {
       CaptureIntentKind.fixedSchedule => (
           '识别为固定日程',
-          '考试、会议或预约属于不可自由移动的固定日程。继续会暂存为待办。',
+          '考试、会议或预约属于不可自由移动的固定日程，可以直接按日程保存。',
         ),
       CaptureIntentKind.planBlock => (
           '识别为规划时段',
@@ -1473,24 +1594,108 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
         ),
       CaptureIntentKind.todo => ('', ''),
     };
-    return await showDialog<bool>(
+    return await showDialog<_QuickCaptureTarget>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
             content: Text(message),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _QuickCaptureTarget.cancel,
+                ),
                 child: const Text('返回调整'),
               ),
+              if (intent == CaptureIntentKind.fixedSchedule)
+                FilledButton.tonal(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _QuickCaptureTarget.fixedSchedule,
+                  ),
+                  child: const Text('保存为固定日程'),
+                ),
               FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _QuickCaptureTarget.todo,
+                ),
                 child: const Text('暂存为待办'),
               ),
             ],
           ),
         ) ??
-        false;
+        _QuickCaptureTarget.cancel;
+  }
+
+  Future<bool> _saveQuickFixedSchedule(ParsedTodoResult parsed) async {
+    final dateSource = parsed.startTime ?? parsed.endTime;
+    if (dateSource == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('固定日程需要先确认日期')),
+        );
+      }
+      return false;
+    }
+    DateTime? start = parsed.startTime;
+    DateTime? end = parsed.endTime;
+    if (parsed.isAllDay) {
+      start = null;
+      end = null;
+    } else if (parsed.timeSemantics == ParsedTimeSemantics.deadline &&
+        end != null) {
+      start = end;
+      end = null;
+    }
+    final item = FixedScheduleItem(
+      title: parsed.title,
+      date: DateFormat('yyyy-MM-dd').format(dateSource),
+      startTime: start?.millisecondsSinceEpoch,
+      endTime: end?.millisecondsSinceEpoch,
+      source: FixedScheduleSource.ai,
+      location: parsed.location,
+      remark: parsed.remark,
+      reminderMinutes: [parsed.reminderMinutes ?? 15],
+      timezone: DateTime.now().timeZoneName,
+      recurrence: parsed.recurrence,
+    );
+    if (item.recurrence != RecurrenceType.none) {
+      item.recurrenceSeriesId = item.id;
+      final recurrenceEnd = parsed.recurrenceEndDate ??
+          FixedScheduleRecurrenceService.defaultEndDate(
+            startDate: dateSource,
+            recurrence: item.recurrence,
+            customIntervalDays: parsed.customIntervalDays ?? 1,
+          );
+      try {
+        final series = FixedScheduleRecurrenceService.rebuildSeries(
+          template: item,
+          existingSeries: const [],
+          recurrence: item.recurrence,
+          recurrenceEndDate: recurrenceEnd,
+          customIntervalDays: parsed.customIntervalDays ?? 1,
+        );
+        await StorageService.saveFixedSchedules(
+          widget.username,
+          series.changes,
+        );
+      } on FixedScheduleRecurrenceLimitException catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.toString())),
+          );
+        }
+        return false;
+      }
+    } else {
+      await StorageService.saveFixedSchedules(widget.username, [item]);
+    }
+    await ReminderScheduleService.scheduleFromStorage(
+      widget.username,
+      force: true,
+    );
+    return true;
   }
 
   /// 显示全屏图片预览
@@ -1586,6 +1791,77 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     }
   }
 
+  ParsedTimeSemantics _parseTimeSemantics(
+    dynamic raw, {
+    required bool isAllDay,
+    required DateTime? startTime,
+    required DateTime? endTime,
+  }) {
+    if (isAllDay) return ParsedTimeSemantics.dateOnly;
+    return ParsedTimeSemantics.values.firstWhere(
+      (value) => value.name == raw?.toString(),
+      orElse: () => startTime != null && endTime != null
+          ? ParsedTimeSemantics.range
+          : ParsedTimeSemantics.unscheduled,
+    );
+  }
+
+  CaptureIntentKind _quickCaptureIntentFor(ParsedTodoResult result) {
+    return ItemSemanticsService.classifyCaptureIntent(
+      result.itemKind == null
+          ? result.originalText ?? result.title
+          : '${result.title} ${result.remark ?? ''}',
+      declaredKind: result.itemKind,
+    );
+  }
+
+  String _quickCaptureKindLabel(ParsedTodoResult result) {
+    return switch (_quickCaptureIntentFor(result)) {
+      CaptureIntentKind.todo => '待办',
+      CaptureIntentKind.fixedSchedule => '固定日程',
+      CaptureIntentKind.planBlock => '规划块',
+      CaptureIntentKind.needsConfirmation => '待确认',
+    };
+  }
+
+  String _quickCaptureTimeLabel(ParsedTodoResult result) {
+    final intent = _quickCaptureIntentFor(result);
+    if (intent == CaptureIntentKind.fixedSchedule) {
+      if (result.isAllDay) {
+        return result.startTime == null
+            ? '日期待确认 · 时间待定'
+            : '${DateFormat('yyyy-MM-dd').format(result.startTime!)} · 时间待定';
+      }
+      if (result.startTime != null && result.endTime != null) {
+        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}';
+      }
+      if (result.startTime != null) {
+        return '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+      }
+      return '日期和时间待确认';
+    }
+    if (intent == CaptureIntentKind.planBlock) {
+      return result.startTime != null && result.endTime != null
+          ? '${DateFormat('yyyy-MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}'
+          : '规划时段待确认';
+    }
+    if (result.isAllDay && result.startTime != null) {
+      return '${DateFormat('yyyy-MM-dd').format(result.startTime!)} 内完成';
+    }
+    if (result.endTime != null) {
+      return '${DateFormat('yyyy-MM-dd HH:mm').format(result.endTime!)} 前完成';
+    }
+    return '未安排';
+  }
+
+  String _quickCaptureDetailLabel(ParsedTodoResult result) {
+    final detail = [result.location, result.remark]
+        .whereType<String>()
+        .where((text) => text.trim().isNotEmpty)
+        .join(' · ');
+    return detail.isEmpty ? '-' : detail;
+  }
+
   void _applyParsedResult(
     ParsedTodoResult result,
     void Function(void Function()) setDialogState,
@@ -1596,11 +1872,14 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
     Function(bool) setIsAllDay,
     Function(RecurrenceType) setRecurrence,
     Function(int?) setCustomDays,
+    Function(DateTime?) setRecurrenceEndDate,
+    Function(int) setReminderMinutes,
     TextEditingController customDaysCtrl,
   ) {
     setDialogState(() {
       titleCtrl.text = result.title;
       remarkCtrl.text = result.remark ?? "";
+      setDueDate(null);
       if (result.startTime != null) {
         setCreatedAt(result.startTime!);
         if (result.isAllDay) {
@@ -1616,10 +1895,15 @@ class TodoSectionWidgetState extends State<TodoSectionWidget>
       }
       setIsAllDay(result.isAllDay);
       setRecurrence(result.recurrence);
+      setCustomDays(result.customIntervalDays);
+      setRecurrenceEndDate(result.recurrenceEndDate);
       if (result.customIntervalDays != null) {
-        setCustomDays(result.customIntervalDays);
         customDaysCtrl.text = result.customIntervalDays.toString();
+      } else {
+        customDaysCtrl.clear();
       }
+      setReminderMinutes(result.reminderMinutes ??
+          (result.itemKind == 'fixedSchedule' ? 15 : 5));
     });
   }
 

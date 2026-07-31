@@ -83,7 +83,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   int _currentParseIndex = 0;
   String? _currentOriginalText;
   String? _selectedImagePath;
-  Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别待办
+  Map<String, dynamic>? _pendingTodoConfirm; // 🚀 待确认的图片识别事项
 
   final GlobalKey _aiTabSwitchKey = GlobalKey();
   final GlobalKey _attachmentKey = GlobalKey();
@@ -104,7 +104,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           CoachMarkStep(
             targetKey: _aiTabSwitchKey,
             title: 'AI 智能识别',
-            description: '除了手动创建外，您还可以切换到 AI 识别，通过文字、语音或截图自动提取待办事项。',
+            description: '除了手动创建外，您还可以切换到 AI 识别，通过文字、语音或截图提取事项，并区分待办、日程和规划块。',
           ),
           CoachMarkStep(
             targetKey: _attachmentKey,
@@ -118,7 +118,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
           CoachMarkStep(
             targetKey: _saveButtonKey,
-            title: '保存待办',
+            title: '保存事项',
             description: '所有的信息都填写完毕后，点击这里就能将其保存到您的计划中了！',
           ),
         ],
@@ -413,6 +413,54 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
   }
 
+  CaptureIntentKind _captureIntentForParsed(ParsedTodoResult result) {
+    return ItemSemanticsService.classifyCaptureIntent(
+      result.itemKind == null
+          ? result.originalText ?? result.title
+          : '${result.title} ${result.remark ?? ''}',
+      declaredKind: result.itemKind,
+    );
+  }
+
+  String _parsedKindLabel(ParsedTodoResult result) {
+    return switch (_captureIntentForParsed(result)) {
+      CaptureIntentKind.todo => '待办',
+      CaptureIntentKind.fixedSchedule => '固定日程',
+      CaptureIntentKind.planBlock => '规划块',
+      CaptureIntentKind.needsConfirmation => '待确认',
+    };
+  }
+
+  String _parsedTimeLabel(ParsedTodoResult result) {
+    final intent = _captureIntentForParsed(result);
+    if (intent == CaptureIntentKind.fixedSchedule) {
+      if (result.isAllDay) {
+        return result.startTime == null
+            ? '日期待确认 · 时间待定'
+            : '${DateFormat('MM-dd').format(result.startTime!)} · 时间待定';
+      }
+      if (result.startTime != null && result.endTime != null) {
+        return '${DateFormat('MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}';
+      }
+      if (result.startTime != null) {
+        return '${DateFormat('MM-dd HH:mm').format(result.startTime!)}开始 · 结束待定';
+      }
+      return '日期和时间待确认';
+    }
+    if (intent == CaptureIntentKind.planBlock) {
+      return result.startTime != null && result.endTime != null
+          ? '${DateFormat('MM-dd HH:mm').format(result.startTime!)}–${DateFormat('HH:mm').format(result.endTime!)}'
+          : '规划时段待确认';
+    }
+    if (result.isAllDay && result.startTime != null) {
+      return '${DateFormat('MM-dd').format(result.startTime!)}内完成';
+    }
+    if (result.endTime != null) {
+      return '${DateFormat('MM-dd HH:mm').format(result.endTime!)}前完成';
+    }
+    return '未安排';
+  }
+
   String _getReminderText(int minutes) {
     switch (minutes) {
       case 0:
@@ -442,6 +490,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     setState(() {
       _titleCtrl.text = result.title;
       _remarkCtrl.text = result.remark ?? "";
+      _dueDate = null;
       if (result.startTime != null) {
         _createdAt = result.startTime!;
         if (result.isAllDay) {
@@ -458,17 +507,21 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       _isAllDay = result.isAllDay;
       _recurrence = result.recurrence;
       _customDays = result.customIntervalDays;
+      _recurrenceEndDate = result.recurrenceEndDate;
       if (_customDays != null) {
         _customDaysCtrl.text = _customDays.toString();
+      } else {
+        _customDaysCtrl.clear();
       }
-      _reminderMinutes = result.reminderMinutes ?? 5;
+      _reminderMinutes = result.reminderMinutes ??
+          (result.itemKind == 'fixedSchedule' ? 15 : 5);
     });
   }
 
   Future<void> _doSmartParse() async {
     if (_aiInputCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+          .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
       return;
     }
     setState(() => _isParsing = true);
@@ -497,7 +550,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       setState(() => _selectedTabIndex = 0);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("解析成功，共${_parsedResults.length}个待办"),
+            content: Text("解析成功，共${_parsedResults.length}个事项"),
             duration: const Duration(seconds: 2)));
       }
     }
@@ -506,7 +559,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   Future<void> _doLLMParse() async {
     if (_aiInputCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("请输入待办内容")));
+          .showSnackBar(const SnackBar(content: Text("请输入事项内容")));
       return;
     }
 
@@ -564,6 +617,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         return ParsedTodoResult(
           title: result['title'] ?? _aiInputCtrl.text,
           remark: result['remark'],
+          location: result['location']?.toString(),
           isAllDay: isAllDay,
           startTime: startTime,
           endTime: endTime,
@@ -580,6 +634,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                 .toString(),
           ),
           reminderMinutes: result['reminderMinutes'],
+          itemKind: result['itemKind']?.toString(),
           originalText: _aiInputCtrl.text,
         );
       }).toList();
@@ -596,7 +651,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         setState(() => _selectedTabIndex = 0);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text("大模型解析成功，共${_parsedResults.length}个待办"),
+              content: Text("大模型解析成功，共${_parsedResults.length}个事项"),
               duration: const Duration(seconds: 2)));
         }
       }
@@ -726,10 +781,42 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       return;
     }
     final sourceText = _currentOriginalText ?? _titleCtrl.text;
-    final saveTarget = await _confirmCaptureIntent(sourceText);
+    final currentParsed =
+        _parsedResults.isEmpty ? null : _parsedResults[_currentParseIndex];
+    final saveTarget = await _confirmCaptureIntent(
+      sourceText,
+      declaredKind: currentParsed?.itemKind,
+      semanticText: '${_titleCtrl.text} ${_remarkCtrl.text}',
+    );
     if (saveTarget == _CaptureSaveTarget.cancel) return;
     if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
-      final saved = await _saveFixedScheduleFromText(sourceText);
+      final hasParsedDate = currentParsed?.startTime != null ||
+          currentParsed?.endTime != null ||
+          _isAllDay ||
+          _dueDate != null;
+      final editedParsed = currentParsed == null
+          ? null
+          : ParsedTodoResult(
+              title: _titleCtrl.text.trim(),
+              remark: _remarkCtrl.text.trim().isEmpty
+                  ? null
+                  : _remarkCtrl.text.trim(),
+              location: currentParsed.location,
+              isAllDay: _isAllDay,
+              startTime: hasParsedDate ? _createdAt : null,
+              endTime: _dueDate,
+              timeSemantics: currentParsed.timeSemantics,
+              recurrence: _recurrence,
+              customIntervalDays: _customDays,
+              recurrenceEndDate: _recurrenceEndDate,
+              reminderMinutes: _reminderMinutes,
+              itemKind: currentParsed.itemKind,
+              originalText: sourceText,
+            );
+      final saved = await _saveFixedScheduleFromText(
+        sourceText,
+        parsedResult: editedParsed,
+      );
       if (saved && mounted) Navigator.pop(context);
       return;
     }
@@ -776,8 +863,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     Navigator.pop(context);
   }
 
-  Future<_CaptureSaveTarget> _confirmCaptureIntent(String sourceText) async {
-    final intent = ItemSemanticsService.classifyCaptureIntent(sourceText);
+  Future<_CaptureSaveTarget> _confirmCaptureIntent(
+    String sourceText, {
+    String? declaredKind,
+    String? semanticText,
+  }) async {
+    final intent = ItemSemanticsService.classifyCaptureIntent(
+      declaredKind == null ? sourceText : semanticText ?? sourceText,
+      declaredKind: declaredKind,
+    );
     if (intent == CaptureIntentKind.todo || !mounted) {
       return _CaptureSaveTarget.todo;
     }
@@ -839,8 +933,15 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final callback = widget.onFixedScheduleAdded;
     if (callback == null) return false;
     final parsed = parsedResult ?? TodoParserService.parse(sourceText);
-    final dateSource =
-        parsed.startTime ?? parsed.endTime ?? _dueDate ?? _createdAt;
+    final dateSource = parsed.startTime ?? parsed.endTime ?? _dueDate;
+    if (dateSource == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('固定日程需要先确认日期')),
+        );
+      }
+      return false;
+    }
     DateTime? start = parsed.startTime;
     DateTime? end = parsed.endTime;
     if (parsed.isAllDay) {
@@ -857,21 +958,27 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     }
 
     final reminderMinutes = parsed.reminderMinutes ?? _reminderMinutes;
+    final resolvedSource = source ??
+        (parsedResult == null
+            ? FixedScheduleSource.manual
+            : FixedScheduleSource.ai);
     final item = FixedScheduleItem(
       title: parsed.title.trim().isEmpty ? _titleCtrl.text : parsed.title,
       date: DateFormat('yyyy-MM-dd').format(dateSource),
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
-      source: source ??
-          (parsedResult == null
-              ? FixedScheduleSource.manual
-              : FixedScheduleSource.ai),
+      source: resolvedSource,
+      location: parsed.location,
       remark: _remarkCtrl.text.trim().isNotEmpty
           ? _remarkCtrl.text.trim()
           : (parsed.remark?.trim().isNotEmpty == true
               ? parsed.remark!.trim()
               : null),
-      reminderMinutes: reminderMinutes <= 0 ? const [] : [reminderMinutes],
+      reminderMinutes: reminderMinutes < 0 ||
+              (resolvedSource == FixedScheduleSource.manual &&
+                  reminderMinutes == 0)
+          ? const []
+          : [reminderMinutes],
       timezone: DateTime.now().timeZoneName,
       recurrence: parsed.recurrence,
       recurrenceSeriesId: null,
@@ -942,7 +1049,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     final todoResults = <ParsedTodoResult>[];
     for (final result in _parsedResults) {
       final sourceText = result.originalText ?? result.title;
-      final saveTarget = await _confirmCaptureIntent(sourceText);
+      final saveTarget = await _confirmCaptureIntent(
+        sourceText,
+        declaredKind: result.itemKind,
+        semanticText: '${result.title} ${result.remark ?? ''}',
+      );
       if (saveTarget == _CaptureSaveTarget.cancel) return;
       if (saveTarget == _CaptureSaveTarget.fixedSchedule) {
         await _saveFixedScheduleFromText(
@@ -2153,7 +2264,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     });
   }
 
-  // ================= 待确认图片识别待办卡片 =================
+  // ================= 待确认图片识别事项卡片 =================
   Widget _buildPendingTodoCard() {
     final imagePath = _pendingTodoConfirm!['imagePath'] as String?;
     final results = _pendingTodoConfirm!['results'] as List<dynamic>?;
@@ -2225,7 +2336,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '发现 $todoCount 个待办，点击查看',
+                        '发现 $todoCount 个事项，点击查看',
                         style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -2252,7 +2363,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         children: [
-          // 🚀 待确认的图片识别待办入口
+          // 🚀 待确认的图片识别事项入口
           if (_pendingTodoConfirm != null) _buildPendingTodoCard(),
           Container(
             padding: const EdgeInsets.all(16),
@@ -2377,13 +2488,17 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                   ),
                   const Divider(),
                   _buildParseResultRow(
-                      "待办", _parsedResults[_currentParseIndex].title),
+                    '类型',
+                    _parsedKindLabel(_parsedResults[_currentParseIndex]),
+                  ),
                   _buildParseResultRow(
-                      "时间",
-                      _parsedResults[_currentParseIndex].startTime != null
-                          ? DateFormat('MM-dd HH:mm').format(
-                              _parsedResults[_currentParseIndex].startTime!)
-                          : "未指定"),
+                    '内容',
+                    _parsedResults[_currentParseIndex].title,
+                  ),
+                  _buildParseResultRow(
+                    '时间',
+                    _parsedTimeLabel(_parsedResults[_currentParseIndex]),
+                  ),
                   _buildParseResultRow(
                       "重复",
                       _getRecurrenceLabel(

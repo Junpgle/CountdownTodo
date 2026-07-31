@@ -14,8 +14,8 @@ Last reviewed: 2026-07-20.
   cloud records and WebSocket device awareness.
 - `calendar_sync_service.dart`: todo/plan-block system calendar mapping.
 - `item_semantics_service.dart`: deterministic capture classification between
-  todos, fixed schedules and plan blocks; fixed-schedule persistence remains a
-  later phase.
+  todos, fixed schedules and plan blocks. Fixed schedules use their own model,
+  persistence, recurrence materialization, reminders and sync path.
 - `notification_service_*` and `todo_notification_policy.dart`: platform
   scheduling and date/deadline policy.
 - `search_service.dart`: global search ranking over database results.

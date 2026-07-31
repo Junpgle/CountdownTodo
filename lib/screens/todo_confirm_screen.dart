@@ -15,6 +15,7 @@ enum _TodoConfirmationAction { addTodo, addFixedSchedule, cancel }
 class ParsedTodoResult {
   final String title;
   final String? remark;
+  final String? location;
   final bool isAllDay;
   final DateTime? startTime;
   final DateTime? endTime;
@@ -25,6 +26,7 @@ class ParsedTodoResult {
   final int? reminderMinutes;
   final String? groupId;
   final int collabType;
+  final String? itemKind;
 
   final String? teamUuid;
   final String? teamName;
@@ -33,6 +35,7 @@ class ParsedTodoResult {
   ParsedTodoResult({
     required this.title,
     this.remark,
+    this.location,
     this.isAllDay = false,
     this.startTime,
     this.endTime,
@@ -43,6 +46,7 @@ class ParsedTodoResult {
     this.reminderMinutes,
     this.groupId,
     this.collabType = 0,
+    this.itemKind,
     this.teamUuid,
     this.teamName,
     this.recurrenceEndDate,
@@ -57,6 +61,7 @@ class ParsedTodoResult {
     return {
       'title': title,
       'remark': remark,
+      'location': location,
       'isAllDay': isAllDay,
       'startTime': normalizedTime.start?.toIso8601String(),
       'endTime': normalizedTime.due?.toIso8601String(),
@@ -67,6 +72,7 @@ class ParsedTodoResult {
       'reminderMinutes': reminderMinutes,
       'groupId': groupId,
       'collab_type': collabType,
+      'itemKind': itemKind,
       'team_uuid': teamUuid,
       'team_name': teamName,
       'recurrence_end_date': recurrenceEndDate?.toIso8601String(),
@@ -143,6 +149,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       return ParsedTodoResult(
         title: result['title'] ?? '',
         remark: result['remark'],
+        location: result['location']?.toString(),
         isAllDay: isAllDay,
         startTime: startTime,
         endTime: endTime,
@@ -158,6 +165,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         reminderMinutes: result['reminderMinutes'],
         groupId: result['groupId'],
         collabType: result['collab_type'] ?? 0,
+        itemKind: result['itemKind']?.toString(),
         teamUuid: widget.initialTeamUuid,
         teamName: widget.initialTeamName,
         recurrenceEndDate: DateTime.tryParse(
@@ -307,7 +315,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: const Text('编辑待办'),
+            title: const Text('编辑事项'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -315,7 +323,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                   TextField(
                     controller: titleCtrl,
                     decoration: InputDecoration(
-                      labelText: '待办内容',
+                      labelText: '事项内容',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -624,6 +632,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                     _allTodos[_currentIndex] = ParsedTodoResult(
                       title: titleCtrl.text,
                       remark: remarkCtrl.text.isEmpty ? null : remarkCtrl.text,
+                      location: todo.location,
                       isAllDay: isAllDay,
                       startTime: createdAt,
                       endTime: dueDate,
@@ -636,6 +645,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       reminderMinutes: reminderMinutes,
                       groupId: selectedGroupId,
                       collabType: collabType,
+                      itemKind: todo.itemKind,
                       teamUuid: todo.teamUuid,
                       teamName: todo.teamName,
                     );
@@ -667,6 +677,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
   Future<_TodoConfirmationAction> _confirmationAction(
     ParsedTodoResult todo,
   ) async {
+    final intent = _captureIntentFor(todo);
     if (todo.recurrence != RecurrenceType.none) {
       final normalizedTime = TodoItem.normalizeTimeForWrite(
         selectedDate: todo.startTime,
@@ -675,15 +686,18 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       );
       if (normalizedTime.start == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('“${todo.title}”是重复待办，请先设置首次完成日期')),
+          SnackBar(
+            content: Text(
+              intent == CaptureIntentKind.fixedSchedule
+                  ? '“${todo.title}”是重复日程，请先设置首次发生日期'
+                  : '“${todo.title}”是重复待办，请先设置首次完成日期',
+            ),
+          ),
         );
         return _TodoConfirmationAction.cancel;
       }
     }
 
-    final intent = ItemSemanticsService.classifyCaptureIntent(
-      todo.originalText ?? todo.title,
-    );
     if (intent == CaptureIntentKind.todo || !mounted) {
       return _TodoConfirmationAction.addTodo;
     }
@@ -739,6 +753,15 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
         _TodoConfirmationAction.cancel;
   }
 
+  CaptureIntentKind _captureIntentFor(ParsedTodoResult todo) {
+    return ItemSemanticsService.classifyCaptureIntent(
+      todo.itemKind == null
+          ? todo.originalText ?? todo.title
+          : '${todo.title} ${todo.remark ?? ''}',
+      declaredKind: todo.itemKind,
+    );
+  }
+
   Future<bool> _saveAsFixedSchedule(ParsedTodoResult todo) async {
     final callback = widget.onFixedScheduleAdded;
     if (callback == null) return false;
@@ -766,6 +789,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
       startTime: start?.millisecondsSinceEpoch,
       endTime: end?.millisecondsSinceEpoch,
       source: FixedScheduleSource.ai,
+      location: todo.location,
       remark: todo.remark,
       reminderMinutes: [todo.reminderMinutes ?? 15],
       timezone: DateTime.now().timeZoneName,
@@ -1035,7 +1059,7 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
           Icon(Icons.inbox, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
-            '没有待办事项',
+            '没有可确认事项',
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 8),
@@ -1072,7 +1096,12 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '待办 ${_currentIndex + 1}/${_allTodos.length}',
+                      '${switch (_captureIntentFor(todo)) {
+                        CaptureIntentKind.fixedSchedule => '日程',
+                        CaptureIntentKind.planBlock => '规划块',
+                        CaptureIntentKind.needsConfirmation => '待确认',
+                        CaptureIntentKind.todo => '待办',
+                      }} ${_currentIndex + 1}/${_allTodos.length}',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -1160,7 +1189,28 @@ class _TodoConfirmScreenState extends State<TodoConfirmScreen> {
     String timeText;
     IconData timeIcon;
 
-    if (todo.isAllDay) {
+    final intent = _captureIntentFor(todo);
+    if (intent == CaptureIntentKind.fixedSchedule) {
+      timeIcon = Icons.event;
+      if (todo.isAllDay) {
+        timeText = todo.startTime == null
+            ? '日期待确认 · 时间待定'
+            : '${DateFormat('yyyy-MM-dd').format(todo.startTime!)} · 时间待定';
+      } else if (todo.startTime != null && todo.endTime != null) {
+        timeText =
+            '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}–${DateFormat('HH:mm').format(todo.endTime!)}';
+      } else if (todo.startTime != null) {
+        timeText =
+            '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}开始 · 结束待定';
+      } else {
+        timeText = '日期和时间待确认';
+      }
+    } else if (intent == CaptureIntentKind.planBlock) {
+      timeIcon = Icons.view_timeline_outlined;
+      timeText = todo.startTime != null && todo.endTime != null
+          ? '${DateFormat('MM-dd HH:mm').format(todo.startTime!)}–${DateFormat('HH:mm').format(todo.endTime!)}'
+          : '规划时段待确认';
+    } else if (todo.isAllDay) {
       timeIcon = Icons.today;
       if (todo.startTime != null) {
         timeText = '${DateFormat('yyyy-MM-dd').format(todo.startTime!)}内完成';

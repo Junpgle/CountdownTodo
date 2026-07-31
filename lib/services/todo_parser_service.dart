@@ -13,6 +13,7 @@ class TodoSegment {
 class ParsedTodoResult {
   String title;
   String? remark;
+  String? location;
   bool isAllDay;
   DateTime? startTime;
   DateTime? endTime;
@@ -24,10 +25,12 @@ class ParsedTodoResult {
   List<TodoSegment> segments; // 新增：保存整句被切割后的分片明细
   String? originalText; // 📄 原始分析文本
   int? reminderMinutes; // 🚀 提醒提前时间
+  String? itemKind; // AI声明的 todo/fixedSchedule/planBlock 语义
 
   ParsedTodoResult({
     required this.title,
     this.remark,
+    this.location,
     this.isAllDay = false,
     this.startTime,
     this.endTime,
@@ -39,6 +42,7 @@ class ParsedTodoResult {
     this.segments = const [],
     this.originalText,
     this.reminderMinutes,
+    this.itemKind,
   });
 
   bool get hasContent => title.isNotEmpty;
@@ -47,6 +51,7 @@ class ParsedTodoResult {
     return {
       'title': title,
       'remark': remark,
+      'location': location,
       'isAllDay': isAllDay,
       'startTime': startTime?.toIso8601String(),
       'endTime': endTime?.toIso8601String(),
@@ -56,6 +61,7 @@ class ParsedTodoResult {
       'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
       'originalText': originalText,
       'reminderMinutes': reminderMinutes,
+      'itemKind': itemKind,
     };
   }
 }

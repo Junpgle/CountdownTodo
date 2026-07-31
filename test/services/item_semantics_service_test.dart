@@ -47,6 +47,30 @@ void main() {
       );
     });
 
+    test('AI declared kind fills gaps without overriding hard local rules', () {
+      expect(
+        ItemSemanticsService.classifyCaptureIntent(
+          '明天下午参加发布活动',
+          declaredKind: 'fixedSchedule',
+        ),
+        CaptureIntentKind.fixedSchedule,
+      );
+      expect(
+        ItemSemanticsService.classifyCaptureIntent(
+          '明天14点到16点高数考试',
+          declaredKind: 'todo',
+        ),
+        CaptureIntentKind.fixedSchedule,
+      );
+      expect(
+        ItemSemanticsService.classifyCaptureIntent(
+          '今晚19点到21点写论文',
+          declaredKind: 'fixedSchedule',
+        ),
+        CaptureIntentKind.planBlock,
+      );
+    });
+
     test('todo remarks can identify a pickup domain', () {
       final todo = TodoItem(title: '顺丰取件', remark: '取件码: 8866');
 

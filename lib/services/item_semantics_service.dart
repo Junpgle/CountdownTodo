@@ -50,6 +50,14 @@ class ItemSemanticsService {
     '电影',
     '比赛',
     '门诊',
+    '体检',
+    '手术',
+    '答辩',
+    '讲座',
+    '驾考',
+    '典礼',
+    '开庭',
+    '签证面谈',
   ];
 
   static const _preparationKeywords = <String>[
@@ -160,7 +168,10 @@ class ItemSemanticsService {
     });
   }
 
-  static CaptureIntentKind classifyCaptureIntent(String text) {
+  static CaptureIntentKind classifyCaptureIntent(
+    String text, {
+    String? declaredKind,
+  }) {
     final normalized = text.trim().toLowerCase();
     if (normalized.isEmpty) return CaptureIntentKind.todo;
 
@@ -172,19 +183,35 @@ class ItemSemanticsService {
     final mustWaitForDelivery = hasTimeRange &&
         (normalized.contains('上门') || normalized.contains('必须在家'));
 
+    late final CaptureIntentKind heuristic;
     if (hasTimeRange && _containsAny(normalized, _selfDirectedWorkKeywords)) {
-      return CaptureIntentKind.planBlock;
+      heuristic = CaptureIntentKind.planBlock;
+    } else if (isPreparation) {
+      heuristic = CaptureIntentKind.todo;
+    } else if (isAppointment || mustWaitForDelivery) {
+      heuristic = CaptureIntentKind.fixedSchedule;
+    } else if (isPickup) {
+      heuristic = CaptureIntentKind.todo;
+    } else if (_containsAny(normalized, _fixedScheduleKeywords)) {
+      heuristic = CaptureIntentKind.fixedSchedule;
+    } else if (hasTimeRange) {
+      heuristic = CaptureIntentKind.needsConfirmation;
+    } else {
+      heuristic = CaptureIntentKind.todo;
     }
-    if (isPreparation) return CaptureIntentKind.todo;
-    if (isAppointment || mustWaitForDelivery) {
-      return CaptureIntentKind.fixedSchedule;
+
+    // 明确的本地规则优先；模型声明只用于补足本地关键词无法覆盖的场景。
+    if (heuristic == CaptureIntentKind.fixedSchedule ||
+        heuristic == CaptureIntentKind.planBlock) {
+      return heuristic;
     }
-    if (isPickup) return CaptureIntentKind.todo;
-    if (_containsAny(normalized, _fixedScheduleKeywords)) {
-      return CaptureIntentKind.fixedSchedule;
-    }
-    if (hasTimeRange) return CaptureIntentKind.needsConfirmation;
-    return CaptureIntentKind.todo;
+    return switch (declaredKind?.trim()) {
+      'fixedSchedule' || 'schedule' => CaptureIntentKind.fixedSchedule,
+      'planBlock' => CaptureIntentKind.planBlock,
+      'needsConfirmation' => CaptureIntentKind.needsConfirmation,
+      'todo' => heuristic,
+      _ => heuristic,
+    };
   }
 
   static bool _containsAny(String text, Iterable<String> keywords) {

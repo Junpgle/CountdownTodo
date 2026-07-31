@@ -5022,8 +5022,7 @@ class StorageService {
       if (repairedRemoteTodoIds.isNotEmpty) {
         final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
             recurrenceDedupeChangedIds.contains(id) ||
-            !_attemptedRecurrenceSeriesRepairUploads.contains(
-                '$username|$id'));
+            !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
         final repairedItems = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
             .toList();
@@ -6266,10 +6265,10 @@ class StorageService {
   }
 
   // ==========================================
-  // 📋 待确认待办数据（用于通知点击后的二次确认）
+  // 📋 待确认事项数据（用于通知点击后的二次确认）
   // ==========================================
 
-  /// 保存待确认的待办数据
+  /// 保存待确认的事项数据（方法名为旧接口兼容保留）
   /// [status] 状态: 'processing'(处理中), 'success'(成功), 'failed'(失败)
   /// [compressedPath] 压缩后的图片路径，用于重试
   /// [currentAttempt] 当前尝试次数
@@ -6298,7 +6297,7 @@ class StorageService {
     await prefs.setString(keyPendingTodoConfirm, data);
   }
 
-  /// 更新待确认待办数据的状态
+  /// 更新待确认事项数据的状态
   static Future<void> updatePendingTodoConfirmStatus({
     required String status,
     int? currentAttempt,
@@ -6322,7 +6321,7 @@ class StorageService {
     await prefs.setString(keyPendingTodoConfirm, data);
   }
 
-  /// 获取待确认的待办数据
+  /// 获取待确认的事项数据
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
     final data = prefs.getString(keyPendingTodoConfirm);
@@ -6334,7 +6333,7 @@ class StorageService {
     }
   }
 
-  /// 清除待确认的待办数据
+  /// 清除待确认的事项数据
   static Future<void> clearPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
     await prefs.remove(keyPendingTodoConfirm);
