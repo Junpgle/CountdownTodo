@@ -18,9 +18,13 @@ import 'services/sync_oplog_policy.dart';
 import 'services/todo_lww_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
+import 'services/storage/habit_storage.dart';
 import 'services/storage/pomodoro_storage.dart';
 import 'services/storage/storage_conflict_cleanup.dart';
 import 'services/storage/user_session_storage.dart';
+import 'features/habits/models/habit_checkin.dart';
+import 'features/habits/models/habit_goal.dart';
+import 'features/habits/models/habit_goal_rule.dart';
 
 class StorageService {
   static final Set<String> recentlyResolvedUuids = {};
@@ -202,6 +206,43 @@ class StorageService {
     item.markAsChanged();
     await saveFixedSchedules(username, [item]);
   }
+
+  // ==========================================
+  // 🎯 习惯中心 (Habits) 兼容门面
+  //
+  // 业务实现位于 lib/features/habits/；此处仅保留门面方法，
+  // 便于旧调用方与未来同步引擎统一接入。
+  // ==========================================
+
+  static Future<List<HabitGoal>> getHabitGoals() =>
+      HabitStorage.getHabitGoals();
+
+  static Future<void> saveHabitGoals(List<HabitGoal> items) =>
+      HabitStorage.saveHabitGoals(items);
+
+  static Future<List<HabitGoalRuleRevision>> getHabitRules({
+    String? habitUuid,
+  }) =>
+      HabitStorage.getRuleRevisions(habitUuid: habitUuid);
+
+  static Future<void> saveHabitRules(
+    List<HabitGoalRuleRevision> items,
+  ) =>
+      HabitStorage.saveRuleRevisions(items);
+
+  static Future<List<HabitCheckIn>> getHabitCheckIns({
+    String? habitUuid,
+    String? fromDate,
+    String? toDate,
+  }) =>
+      HabitStorage.getCheckIns(
+        habitUuid: habitUuid,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+
+  static Future<void> saveHabitCheckIns(List<HabitCheckIn> items) =>
+      HabitStorage.saveCheckIns(items);
 
   // ==========================================
   // 📅 规划块 (Plan Blocks)

@@ -230,6 +230,113 @@ class DatabaseHelper {
     );
   }
 
+  /// 习惯追踪表结构（V36）。
+  ///
+  /// 幂等创建，可在升级、新建和每次打开时安全调用。
+  static Future<void> ensureHabitSchema(Database db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_goals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          icon TEXT,
+          source_type INTEGER NOT NULL DEFAULT 2,
+          source_ids TEXT,
+          current_rule_uuid TEXT,
+          display_mode INTEGER NOT NULL DEFAULT 0,
+          default_focus_minutes INTEGER,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          has_conflict INTEGER DEFAULT 0,
+          conflict_data TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_goal_rule_revisions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          habit_uuid TEXT NOT NULL,
+          effective_from_date TEXT,
+          effective_to_date TEXT,
+          period_type INTEGER NOT NULL DEFAULT 0,
+          weekdays_mask INTEGER NOT NULL DEFAULT 127,
+          custom_interval_days INTEGER,
+          target_value REAL NOT NULL DEFAULT 0,
+          unit TEXT,
+          target_time_minute INTEGER,
+          time_comparison INTEGER NOT NULL DEFAULT 0,
+          time_tolerance_minutes INTEGER NOT NULL DEFAULT 0,
+          day_boundary_minute INTEGER NOT NULL DEFAULT 0,
+          quick_values_json TEXT,
+          reminder_policy_json TEXT,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_checkins (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          habit_uuid TEXT NOT NULL,
+          rule_revision_uuid TEXT,
+          occurred_at INTEGER NOT NULL,
+          logical_date TEXT NOT NULL,
+          timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
+          value REAL NOT NULL DEFAULT 0,
+          note TEXT,
+          source TEXT NOT NULL DEFAULT 'manual',
+          dedupe_key TEXT,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_goals_active '
+        'ON habit_goals(is_deleted, is_archived, sort_order)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_rules_effective '
+        'ON habit_goal_rule_revisions(habit_uuid, effective_from_date)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_checkins_day '
+        'ON habit_checkins(habit_uuid, logical_date, is_deleted)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_checkins_updated '
+        'ON habit_checkins(updated_at)',
+      );
+      await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_checkins_dedupe '
+        'ON habit_checkins(dedupe_key) WHERE dedupe_key IS NOT NULL',
+      );
+      // V37：为已存在的库补充 default_focus_minutes 列（幂等）。
+      try {
+        final goalInfo = await db.rawQuery('PRAGMA table_info(habit_goals)');
+        if (!goalInfo.any((row) => row['name'] == 'default_focus_minutes')) {
+          await db.execute(
+            'ALTER TABLE habit_goals ADD COLUMN default_focus_minutes INTEGER',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时该列已存在。
+      }
+    } catch (e) {
+//       debugPrint('⚠️ Database: 检查/修复 habit 表结构失败: $e');
+    }
+  }
+
   static Future<void> ensureSuggestionFeedbackSchema(Database db) async {
     try {
       await db.execute('''
@@ -297,6 +404,12 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 37) {
+              await ensureHabitSchema(db);
+            }
+            if (oldVersion < 36) {
+              await ensureHabitSchema(db);
+            }
             if (oldVersion < 35) {
               await ensureFixedScheduleSchema(db);
             }
@@ -830,6 +943,7 @@ class DatabaseHelper {
             await ensureSuggestionFeedbackSchema(db);
             await ensureTeamsSchema(db);
             await ensureScreenTimeSchema(db);
+            await ensureHabitSchema(db);
             await ensureMissingIndexes(db);
           },
         );
@@ -1364,7 +1478,10 @@ class DatabaseHelper {
     // 17. 创建团队缓存表
     await ensureTeamsSchema(db);
 
-    // 18. 创建性能索引
+    // 18. 创建习惯追踪表
+    await ensureHabitSchema(db);
+
+    // 19. 创建性能索引
     await ensureMissingIndexes(db);
   }
 

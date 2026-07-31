@@ -11,10 +11,27 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 35;
+  static const int currentVersion = 37;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 37,
+      title: '习惯默认专注时长',
+      changes: [
+        '为习惯目标表新增 default_focus_minutes，记录时长型习惯点击开始专注时的默认时长。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 36,
+      title: '习惯追踪',
+      changes: [
+        '新增习惯目标表，保存习惯身份、来源与展示设置。',
+        '新增习惯规则版本表，按生效时间段保存目标规则。',
+        '新增数量型和时间点型打卡记录表，支持事件级合并与同步。',
+        '增加习惯日期与同步索引，提升日历与增量查询效率。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 35,
       title: '固定日程同步安全',
