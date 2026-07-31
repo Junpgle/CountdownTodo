@@ -35,6 +35,7 @@ import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import '../screens/todo_plan_screen.dart';
+import '../features/habits/repositories/habit_repository.dart';
 
 enum _TodoFolderDisplayMode {
   inline,
@@ -4820,6 +4821,56 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     return true;
   }
 
+  /// 设计文档 4.3：将当前循环待办加入习惯追踪。
+  Future<void> _addToHabitTracking() async {
+    final seriesId = _editingTodo.recurrenceSeriesId ?? _editingTodo.id;
+    final already = await HabitRepository.getActiveGoals();
+    if (!mounted) return;
+    if (already.any((g) => g.sourceIds.contains(seriesId))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该循环待办已加入习惯追踪')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('加入习惯追踪'),
+        content: Text(
+          '将「${_editingTodo.title}」作为完成型习惯追踪？\n'
+          '不会复制待办数据，完成后可在习惯中心查看进度与连续记录。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('加入'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final goal = await HabitRepository.createGoalFromSeries(
+      todo: _editingTodo,
+      username: widget.username,
+    );
+    if (!mounted) return;
+    if (goal == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该循环待办已加入习惯追踪')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已加入习惯追踪：${goal.name}')),
+    );
+  }
+
   Future<void> _save() async {
     await _persistCurrentTodo(closeAfterSave: true);
   }
@@ -4882,6 +4933,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                 color: Colors.redAccent),
             tooltip: '删除待办',
           ),
+          if (_editingTodo.recurrence != RecurrenceType.none) ...[
+            IconButton(
+              onPressed: _addToHabitTracking,
+              icon: const Icon(Icons.repeat_rounded),
+              tooltip: '加入习惯追踪',
+            ),
+          ],
           const SizedBox(width: 8),
           TextButton(
               onPressed: _save,
