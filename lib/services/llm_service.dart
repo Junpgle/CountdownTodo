@@ -697,10 +697,6 @@ class LLMService {
       'temperature': 0.1,
     });
 
-    // 清理不再需要的变量
-    bytes.length; // 保持引用但不使用
-    base64Image.length;
-
     // print('========== LLM 图片识别请求 ==========');
     // print('API: $visionUrl');
     // print('Model: ${config.visionModel}');

@@ -147,7 +147,6 @@ class MacPomodoroStatusBarService {
 
   /// 处理 Swift 端发来的消息
   static Future<dynamic> _handleMethodCall(MethodCall call) async {
-    debugPrint('[MacPomodoroStatusBar] _handleMethodCall: ${call.method}');
     switch (call.method) {
       case 'togglePomodoroPause':
         _actionController.add(MacPomodoroAction.togglePause);
@@ -228,8 +227,6 @@ class MacPomodoroStatusBarService {
     );
     try {
       await _channel.invokeMethod('updateIslandOverview', payload);
-      debugPrint(
-          '[MacIsland] overview updated: focus=${payload['todayFocusBaseSeconds']}s, countdown=${payload['countdownTitle']}');
     } catch (e) {
       debugPrint('[MacIsland] overview native update failed: $e');
     }

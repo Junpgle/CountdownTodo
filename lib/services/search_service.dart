@@ -1108,15 +1108,13 @@ class SearchNavigationHandler {
     final query = data['query'] as String?;
 
     if (action != null) {
-      if (action == 'ai_query' && query != null) {
-        _showAISuggestion(context, query);
-      } else if (action == 'new_todo') {
-        _executeAction(context, action);
-      } else if (action == 'apply_query' && query != null) {
+      if ((action == 'ai_query' || action == 'apply_query') && query != null) {
         // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text("正在搜索: $query"),
             duration: const Duration(seconds: 1)));
+      } else if (action == 'new_todo') {
+        _executeAction(context, action);
       } else if (action == 'navigate') {
         _navigateByRoute(context, route ?? '', data);
       } else if (action == 'filter_overdue') {
@@ -1387,27 +1385,5 @@ class SearchNavigationHandler {
         behavior: SnackBarBehavior.floating,
       ));
     }
-  }
-
-  static void _showAISuggestion(BuildContext context, String query) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.auto_awesome, color: Colors.purple),
-            SizedBox(width: 8),
-            Text("AI 智能分析"),
-          ],
-        ),
-        content: Text(
-            "AI 正在深度分析您的意图：\n\"$query\"\n\n(此处可对接现有的 LLMService 实现智能创建或问答)"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text("了解")),
-        ],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
   }
 }

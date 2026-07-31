@@ -150,7 +150,6 @@ class MainFlutterWindow: NSWindow {
     )
     MacPomodoroStatusBarController.shared.setFlutterChannel(statusBarChannel)
     statusBarChannel.setMethodCallHandler { (call, result) in
-      NSLog("[MainFlutterWindow] statusBarChannel received: %@", call.method)
       switch call.method {
       case "updatePomodoroStatus":
         guard let args = call.arguments as? [String: Any] else {

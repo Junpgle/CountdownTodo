@@ -628,7 +628,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
     return Column(
       children: [
         _tipItem(context, '深度思考',
-            '开启“深度思考”模式（如使用 R1/O1 模型），AI 会展示推理过程，适合处理复杂的日程重排任务。'),
+            '开启“深度思考”模式，AI 会展示推理过程，适合处理复杂的日程重排任务（需使用支持推理的模型）。'),
         _tipItem(
             context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
         _tipItem(context, '课程组件入口', '在课程表组件中长按或点击菜单，可直接发起针对该课程时间段的 AI 规划。'),
