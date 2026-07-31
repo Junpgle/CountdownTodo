@@ -2,7 +2,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
 
-enum OngoingActivityKind { course, planBlock, todo }
+enum OngoingActivityKind { fixedSchedule, course, planBlock, todo }
 
 class OngoingActivity {
   const OngoingActivity({
@@ -30,6 +30,7 @@ class OngoingActivity {
   Map<String, dynamic> toMap() => {
         'id': id,
         'kind': switch (kind) {
+          OngoingActivityKind.fixedSchedule => 'fixed_schedule',
           OngoingActivityKind.course => 'course',
           OngoingActivityKind.planBlock => 'plan_block',
           OngoingActivityKind.todo => 'todo',
@@ -44,19 +45,46 @@ class OngoingActivity {
       };
 }
 
+class TodayTodoSummary {
+  const TodayTodoSummary({
+    required this.id,
+    required this.title,
+    required this.dueMs,
+    required this.isDateOnly,
+    this.groupName = '',
+  });
+
+  final String id;
+  final String title;
+  final int dueMs;
+  final bool isDateOnly;
+  final String groupName;
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'dueMs': dueMs,
+        'isDateOnly': isDateOnly,
+        if (groupName.isNotEmpty) 'groupName': groupName,
+      };
+}
+
 class OngoingActivityResolution {
   const OngoingActivityResolution({
     this.activity,
     this.nextActivity,
+    this.todayTodos = const [],
     this.nextBoundary,
   });
 
   final OngoingActivity? activity;
   final OngoingActivity? nextActivity;
+  final List<TodayTodoSummary> todayTodos;
   final DateTime? nextBoundary;
 }
 
-/// 统一解析当前正在发生的课程、计划块和有明确时段的待办。
+/// 统一解析当前正在发生的固定日程、课程、规划块和旧版时间段待办，
+/// 并选择下一项有明确时间的日程或待办。
 class OngoingActivityService {
   OngoingActivityService._();
 
@@ -69,12 +97,14 @@ class OngoingActivityService {
       StorageService.getPlanBlocks(username),
       CourseService.getAllCourses(username),
       StorageService.getTodoGroups(username),
+      StorageService.getFixedSchedules(username),
     ]);
     return resolve(
       todos: results[0] as List<TodoItem>,
       planBlocks: results[1] as List<TodoPlanBlock>,
       courses: results[2] as List<CourseItem>,
       todoGroups: results[3] as List<TodoGroup>,
+      fixedSchedules: results[4] as List<FixedScheduleItem>,
       now: now,
     );
   }
@@ -84,6 +114,7 @@ class OngoingActivityService {
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
     List<TodoGroup> todoGroups = const [],
+    List<FixedScheduleItem> fixedSchedules = const [],
     DateTime? now,
   }) {
     final localNow = (now ?? DateTime.now()).toLocal();
@@ -94,6 +125,61 @@ class OngoingActivityService {
     final todoById = {for (final todo in todos) todo.id: todo};
     final groupById = {for (final group in todoGroups) group.id: group};
     final activePlanTodoIds = <String>{};
+    final todayTodos = todos
+        .where((todo) {
+          if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
+            return false;
+          }
+          return _isSameDay(todo.dueDate!.toLocal(), localNow);
+        })
+        .map((todo) => TodayTodoSummary(
+              id: todo.id,
+              title: _firstNonEmpty([todo.title, '未命名待办']),
+              dueMs: todo.dueDate!.millisecondsSinceEpoch,
+              isDateOnly: todo.isDateOnly,
+              groupName: groupById[todo.groupId]?.name ?? '',
+            ))
+        .toList()
+      ..sort((a, b) {
+        final dueOrder = a.dueMs.compareTo(b.dueMs);
+        if (dueOrder != 0) return dueOrder;
+        return a.title.compareTo(b.title);
+      });
+    if (todayTodos.isNotEmpty) {
+      boundaries.add(DateTime(
+        localNow.year,
+        localNow.month,
+        localNow.day + 1,
+      ).millisecondsSinceEpoch);
+    }
+
+    for (final item in fixedSchedules) {
+      if (item.isDeleted ||
+          item.status == FixedScheduleStatus.cancelled ||
+          item.status == FixedScheduleStatus.finished) {
+        continue;
+      }
+      final startMs = item.startTime;
+      final endMs = item.effectiveActivityEndTime;
+      if (startMs == null || endMs == null || endMs <= startMs) continue;
+      _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
+      _classifyCandidate(
+        OngoingActivity(
+          id: item.id,
+          kind: OngoingActivityKind.fixedSchedule,
+          title: _firstNonEmpty([item.title, '未命名固定日程']),
+          subtitle: item.location ?? '',
+          detail: item.endTime == null
+              ? _firstNonEmpty([item.remark, '结束时间待定'])
+              : item.remark ?? '',
+          startMs: startMs,
+          endMs: endMs,
+        ),
+        nowMs: nowMs,
+        current: candidates,
+        upcoming: nextCandidates,
+      );
+    }
 
     for (final course in courses) {
       if (course.isDeleted) continue;
@@ -156,10 +242,32 @@ class OngoingActivityService {
       }
       final startMs = todo.createdDate;
       final endMs = todo.dueDate?.millisecondsSinceEpoch;
-      if (startMs == null || endMs == null || endMs <= startMs) continue;
+      if (endMs == null) continue;
+
+      // 新版待办只表达完成日期或截止时刻，不再把待办本体当作执行时段。
+      // 它们不能进入“正在进行”，但仍应参与空闲态的“下一项”选择。
+      // 日期待办使用当天结束时刻，截止待办使用其截止时刻。
+      if (todo.isDateOnly || startMs == null || endMs <= startMs) {
+        if (endMs > nowMs) {
+          final deadline = OngoingActivity(
+            id: todo.id,
+            kind: OngoingActivityKind.todo,
+            title: _firstNonEmpty([todo.title, '未命名待办']),
+            subtitle: todo.remark ?? '',
+            relatedTodoId: todo.id,
+            groupName: groupById[todo.groupId]?.name ?? '',
+            startMs: endMs,
+            endMs: endMs,
+          );
+          nextCandidates.add(deadline);
+          boundaries.add(endMs);
+        }
+        continue;
+      }
+
       final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-      if (todo.isAllDayTask || !_isSameDay(start, end)) continue;
+      if (!_isSameDay(start, end)) continue;
       _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
       _classifyCandidate(
         OngoingActivity(
@@ -193,10 +301,22 @@ class OngoingActivityService {
       if (kindOrder != 0) return kindOrder;
       return a.endMs.compareTo(b.endMs);
     });
+    final nextActivity = nextCandidates.isEmpty ? null : nextCandidates.first;
+    final nextTodoId = switch (nextActivity?.kind) {
+      OngoingActivityKind.todo => nextActivity!.relatedTodoId.isEmpty
+          ? nextActivity.id
+          : nextActivity.relatedTodoId,
+      OngoingActivityKind.planBlock => nextActivity!.relatedTodoId,
+      _ => '',
+    };
+    final remainingTodayTodos = nextTodoId.isEmpty
+        ? todayTodos
+        : todayTodos.where((todo) => todo.id != nextTodoId).toList();
 
     return OngoingActivityResolution(
       activity: candidates.isEmpty ? null : candidates.first,
-      nextActivity: nextCandidates.isEmpty ? null : nextCandidates.first,
+      nextActivity: nextActivity,
+      todayTodos: remainingTodayTodos,
       nextBoundary: boundaries.isEmpty
           ? null
           : DateTime.fromMillisecondsSinceEpoch(boundaries.first),
@@ -267,6 +387,7 @@ class OngoingActivityService {
       status != TodoPlanStatus.skipped;
 
   static int _kindPriority(OngoingActivityKind kind) => switch (kind) {
+        OngoingActivityKind.fixedSchedule => 0,
         OngoingActivityKind.course => 0,
         OngoingActivityKind.planBlock => 1,
         OngoingActivityKind.todo => 2,

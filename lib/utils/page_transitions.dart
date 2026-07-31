@@ -680,8 +680,6 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
   bool _contentVisible = false;
   late final CurvedAnimation _forwardCurve;
   late final CurvedAnimation _backgroundCurve;
-  double _lastT = 0.0;
-  bool _isReversing = false;
 
   @override
   void initState() {
@@ -749,21 +747,8 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
         final contentProgress =
             ((t - contentStart) / (1 - contentStart)).clamp(0.0, 1.0);
         final fadeIn = _AnimSettings.lazyLoad ? contentProgress : 1.0;
-        final contentScale = ui.lerpDouble(0.96, 1.0, contentProgress)!;
         final maskOpacity = ui.lerpDouble(
             0.0, _AnimSettings.backgroundMask, backgroundProgress)!;
-
-        if (t < _lastT - 0.001) {
-          _isReversing = true;
-        } else if (t > _lastT + 0.001) {
-          _isReversing = false;
-        }
-        _lastT = t;
-
-        final route = ModalRoute.of(context);
-        final isReverse = widget.animation.status == AnimationStatus.reverse ||
-            (route != null && route.popGestureInProgress) ||
-            _isReversing;
 
         Widget content = RepaintBoundary(child: widget.child);
 

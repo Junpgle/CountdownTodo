@@ -1,17 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
+import 'package:countdown_todo/services/pomodoro_sync_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 import 'models.dart';
 
 import 'services/api_service.dart';
 import 'services/band_sync_service.dart';
 import 'services/pomodoro_service.dart';
 import 'services/database_helper.dart'; // 🚀 引入 Uni-Sync 新引擎
+import 'services/sync_capability_service.dart';
+import 'services/sync_oplog_policy.dart';
+import 'services/todo_lww_service.dart';
 import 'services/storage/app_settings_storage.dart';
 import 'services/storage/countdown_storage.dart';
 import 'services/storage/pomodoro_storage.dart';
@@ -47,6 +51,157 @@ class StorageService {
 
   static String? _lastRecurrenceCheckDate;
   static final Map<String, bool> _recurrenceCheckCache = {};
+  static final Set<String> _recurrenceDedupeTombstoneIds = {};
+
+  // UUID v5 namespace dedicated to generated recurrence occurrences. The
+  // series ID + local calendar day is the logical identity shared by every
+  // device, so concurrent generation converges on one UUID.
+  static const String _recurrenceOccurrenceNamespace =
+      'f3d51c4a-6d54-5c2f-8be4-1c0b54f4038e';
+
+  // ==========================================
+  // 📌 固定日程 (Fixed Schedules)
+  // ==========================================
+
+  /// 固定日程使用独立 oplog 实体。旧服务端不声明能力时，
+  /// 同步引擎会保留这些 oplog，不会误判为已上传。
+  static Future<void> saveFixedSchedules(
+    String username,
+    List<FixedScheduleItem> items, {
+    bool sync = true,
+    bool isSyncSource = false,
+  }) async {
+    if (items.isEmpty) return;
+    final deduped = <String, FixedScheduleItem>{};
+    for (final item in items) {
+      final existing = deduped[item.id];
+      if (existing == null ||
+          TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: item.updatedAt,
+            incomingVersion: item.version,
+            currentUpdatedAt: existing.updatedAt,
+            currentVersion: existing.version,
+          )) {
+        deduped[item.id] = item;
+      }
+    }
+
+    final db = await DatabaseHelper.instance.database;
+    final ids = deduped.keys.toList();
+    final existingById = <String, Map<String, dynamic>>{};
+    if (ids.isNotEmpty) {
+      final placeholders = List.filled(ids.length, '?').join(',');
+      final existingRows = await db.query(
+        'fixed_schedules',
+        where: 'uuid IN ($placeholders)',
+        whereArgs: ids,
+      );
+      for (final row in existingRows) {
+        existingById[row['uuid'].toString()] = row;
+      }
+    }
+
+    final batch = db.batch();
+    var wroteAny = false;
+    for (final item in deduped.values) {
+      final data = item.toJson();
+      final existing = existingById[item.id];
+      final hasChanged = existing == null ||
+          _hasSubstantialChange(existing, data, [
+            'title',
+            'date',
+            'start_time',
+            'end_time',
+            'status',
+            'source',
+            'location',
+            'remark',
+            'reminder_minutes',
+            'timezone',
+            'recurrence',
+            'custom_interval_days',
+            'recurrence_series_id',
+            'related_todo_ids',
+            'external_source',
+            'external_id',
+            'team_uuid',
+            'owner_user_id',
+            'device_id',
+            'is_deleted',
+            'version',
+            'created_at',
+            'updated_at',
+          ]);
+      if (!hasChanged) continue;
+      wroteAny = true;
+      if (!isSyncSource) {
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': 'fixed_schedules',
+          'target_uuid': item.id,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+      }
+      batch.insert(
+        'fixed_schedules',
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    if (wroteAny) await batch.commit(noResult: true);
+    if (sync && wroteAny) requestSync(username);
+    triggerRefresh();
+  }
+
+  static Future<List<FixedScheduleItem>> getFixedSchedules(
+    String username, {
+    bool includeDeleted = false,
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        'fixed_schedules',
+        where: includeDeleted ? null : 'is_deleted = 0',
+        orderBy: 'date ASC, start_time ASC, updated_at DESC',
+      );
+      return maps.map(FixedScheduleItem.fromJson).toList();
+    } catch (error) {
+      debugPrint('⚠️ FixedSchedules SQL 引擎异常: $error');
+      return const [];
+    }
+  }
+
+  static Future<List<FixedScheduleItem>> getFixedSchedulesByDay(
+    String username,
+    DateTime day,
+  ) async {
+    final date = DateFormat('yyyy-MM-dd').format(day.toLocal());
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        'fixed_schedules',
+        where: 'is_deleted = 0 AND date = ?',
+        whereArgs: [date],
+        orderBy: 'start_time ASC, updated_at DESC',
+      );
+      return maps.map(FixedScheduleItem.fromJson).toList();
+    } catch (error) {
+      debugPrint('⚠️ FixedSchedules SQL 引擎异常: $error');
+      return const [];
+    }
+  }
+
+  static Future<void> deleteFixedSchedule(
+    String username,
+    FixedScheduleItem item,
+  ) async {
+    item.isDeleted = true;
+    item.markAsChanged();
+    await saveFixedSchedules(username, [item]);
+  }
 
   // ==========================================
   // 📅 规划块 (Plan Blocks)
@@ -77,7 +232,6 @@ class StorageService {
     }
 
     final batch = db.batch();
-    int queuedPlanOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final itemData = item.toDbJson();
@@ -114,7 +268,6 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
-        queuedPlanOps++;
       }
 
       if (hasChanged || oldData == null) {
@@ -125,8 +278,6 @@ class StorageService {
 
     if (dedupeList.isNotEmpty) {
       await batch.commit(noResult: true);
-      //debugPrint(
-      //    '🧪 [SyncDiag][savePlanBlocks] username=$username items=${dedupeList.length} queuedOps=$queuedPlanOps sync=$sync isSyncSource=$isSyncSource');
     }
 
     if (sync) requestSync(username);
@@ -178,8 +329,8 @@ class StorageService {
       String username, DateTime day) async {
     final startOfDay =
         DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-    final endOfDay = DateTime(day.year, day.month, day.day + 1)
-        .millisecondsSinceEpoch;
+    final endOfDay =
+        DateTime(day.year, day.month, day.day + 1).millisecondsSinceEpoch;
 
     try {
       final db = await DatabaseHelper.instance.database;
@@ -203,86 +354,81 @@ class StorageService {
   }
 
   // --- 常量定义 ---
-  static const String KEY_USERS = "users_data";
-  static const String KEY_LEADERBOARD = "leaderboard_data";
-  static const String KEY_SETTINGS = "quiz_settings";
-  static const String KEY_CURRENT_USER = "current_login_user";
-  static const String KEY_TODOS = "user_todos";
-  static const String KEY_TODO_GROUPS = "user_todo_groups";
-  static const String KEY_COUNTDOWNS = "user_countdowns";
-  static const String KEY_SCREEN_TIME_CACHE = "screen_time_cache";
-  static const String KEY_LAST_SCREEN_TIME_SYNC = "last_screen_time_sync";
-  static const String KEY_SCREEN_TIME_HISTORY = "screen_time_history";
-  static const String KEY_APP_MAPPINGS = "app_category_mappings";
-  static const String KEY_LAST_MAPPINGS_SYNC = "last_mappings_sync";
-  static const String KEY_AUTH_TOKEN = "auth_session_token";
-  static const String KEY_DEVICE_ID = "app_device_uuid";
-  static const String KEY_SYNC_INTERVAL = "app_sync_interval";
-  static const String KEY_THEME_MODE = "app_theme_mode";
-  static const String KEY_THEME_COLOR_MODE = "app_theme_color_mode";
-  static const String KEY_CUSTOM_THEME_COLOR = "app_custom_theme_color";
-  static const String KEY_LAST_AUTO_SYNC = "last_auto_sync_time";
-  static const String KEY_SEMESTER_PROGRESS_ENABLED =
-      "semester_progress_enabled";
-  static const String KEY_SEMESTER_START = "semester_start_date";
-  static const String KEY_SEMESTER_END = "semester_end_date";
-  static const String KEY_SEMESTERS = "semesters_list"; // 多学期列表
-  static const String KEY_ACTIVE_SEMESTER = "active_semester_id"; // 当前活跃学期
-  static const String KEY_TIME_LOGS = "user_time_logs";
-  static const String KEY_IGNORED_SCHEDULE_CONFLICTS =
+  static const String keyUsers = "users_data";
+  static const String keyLeaderboard = "leaderboard_data";
+  static const String keySettings = "quiz_settings";
+  static const String keyCurrentUser = "current_login_user";
+  static const String keyTodos = "user_todos";
+  static const String keyTodoGroups = "user_todo_groups";
+  static const String keyCountdowns = "user_countdowns";
+  static const String keyScreenTimeCache = "screen_time_cache";
+  static const String keyLastScreenTimeSync = "last_screen_time_sync";
+  static const String keyScreenTimeHistory = "screen_time_history";
+  static const String keyAppMappings = "app_category_mappings";
+  static const String keyLastMappingsSync = "last_mappings_sync";
+  static const String keyAuthToken = "auth_session_token";
+  static const String keyDeviceId = "app_device_uuid";
+  static const String keySyncInterval = "app_sync_interval";
+  static const String keyThemeMode = "app_theme_mode";
+  static const String keyThemeColorMode = "app_theme_color_mode";
+  static const String keyCustomThemeColor = "app_custom_theme_color";
+  static const String keyLastAutoSync = "last_auto_sync_time";
+  static const String keySemesterProgressEnabled = "semester_progress_enabled";
+  static const String keySemesterStart = "semester_start_date";
+  static const String keySemesterEnd = "semester_end_date";
+  static const String keySemesters = "semesters_list"; // 多学期列表
+  static const String keyActiveSemester = "active_semester_id"; // 当前活跃学期
+  static const String keyTimeLogs = "user_time_logs";
+  static const String keyIgnoredScheduleConflicts =
       "ignored_schedule_conflicts";
-  static const String KEY_CONFLICT_DETECTION_ENABLED =
+  static const String keyConflictDetectionEnabled =
       "conflict_detection_enabled";
-  static const String KEY_SERVER_CHOICE = "app_server_choice";
-  static const String KEY_SYSTEM_STARTUP_ENABLED = "system_startup_enabled";
-  static const String KEY_PRIVACY_AGREED = "privacy_policy_agreed";
-  static const String KEY_PRIVACY_DATE = "privacy_policy_date";
-  static const String KEY_PRIVACY_CACHED_VERSION =
-      "privacy_policy_cached_version";
-  static const String KEY_PRIVACY_CACHE_TIME = "privacy_policy_cache_time";
-  static const String PRIVACY_RAW_URL =
+  static const String keyServerChoice = "app_server_choice";
+  static const String keySystemStartupEnabled = "system_startup_enabled";
+  static const String keyPrivacyAgreed = "privacy_policy_agreed";
+  static const String keyPrivacyDate = "privacy_policy_date";
+  static const String keyPrivacyCachedVersion = "privacy_policy_cached_version";
+  static const String keyPrivacyCacheTime = "privacy_policy_cache_time";
+  static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
-  static const Duration PRIVACY_CACHE_DURATION = Duration(hours: 1);
+  static const Duration privacyCacheDuration = Duration(hours: 1);
 
-  static const String KEY_LOCAL_SCREEN_TIME =
-      "local_screen_time_pending_upload";
+  static const String keyLocalScreenTime = "local_screen_time_pending_upload";
 
-  static const String KEY_LLM_RETRY_COUNT = "llm_retry_count";
-  static const String KEY_PENDING_TODO_CONFIRM = "pending_todo_confirm";
-  static const String KEY_WALLPAPER_PROVIDER = "app_wallpaper_provider";
-  static const String KEY_WALLPAPER_IMAGE_FORMAT = "app_wallpaper_image_format";
-  static const String KEY_WALLPAPER_INDEX = "app_wallpaper_index";
-  static const String KEY_WALLPAPER_MKT = "app_wallpaper_mkt";
-  static const String KEY_WALLPAPER_RESOLUTION = "app_wallpaper_resolution";
+  static const String keyLlmRetryCount = "llm_retry_count";
+  static const String keyPendingTodoConfirm = "pending_todo_confirm";
+  static const String keyWallpaperProvider = "app_wallpaper_provider";
+  static const String keyWallpaperImageFormat = "app_wallpaper_image_format";
+  static const String keyWallpaperIndex = "app_wallpaper_index";
+  static const String keyWallpaperMkt = "app_wallpaper_mkt";
+  static const String keyWallpaperResolution = "app_wallpaper_resolution";
   static const String keyWallpaperCacheCleanupTime =
       "app_wallpaper_cache_cleanup_time";
-  static const String KEY_WALLPAPER_CUSTOM_PATH = "app_wallpaper_custom_path";
+  static const String keyWallpaperCustomPath = "app_wallpaper_custom_path";
 
   // Notification settings keys
-  static const String KEY_NOTIFY_LIVE_ENABLED = "notify_live_activity_enabled";
-  static const String KEY_NOTIFY_NORMAL_ENABLED = "notify_normal_enabled";
-  static const String KEY_NOTIFY_COURSE_ENABLED = "notify_course_enabled";
-  static const String KEY_NOTIFY_QUIZ_ENABLED = "notify_quiz_enabled";
-  static const String KEY_NOTIFY_TODO_SUMMARY_ENABLED =
+  static const String keyNotifyLiveEnabled = "notify_live_activity_enabled";
+  static const String keyNotifyNormalEnabled = "notify_normal_enabled";
+  static const String keyNotifyCourseEnabled = "notify_course_enabled";
+  static const String keyNotifyQuizEnabled = "notify_quiz_enabled";
+  static const String keyNotifyTodoSummaryEnabled =
       "notify_todo_summary_enabled";
-  static const String KEY_NOTIFY_APP_UPDATES_ENABLED =
-      "notify_app_updates_enabled";
-  static const String KEY_TODO_FOLDERS_INLINE = "todo_folders_inline";
-  static const String KEY_TODO_FOLDER_DISPLAY_MODE = "todo_folder_display_mode";
-  static const String KEY_NOTIFY_SPECIAL_TODO_ENABLED =
+  static const String keyNotifyAppUpdatesEnabled = "notify_app_updates_enabled";
+  static const String keyTodoFoldersInline = "todo_folders_inline";
+  static const String keyTodoFolderDisplayMode = "todo_folder_display_mode";
+  static const String keyNotifySpecialTodoEnabled =
       "notify_special_todo_enabled";
-  static const String KEY_NOTIFY_POMODORO_ENABLED = "notify_pomodoro_enabled";
-  static const String KEY_NOTIFY_TODO_RECOGNIZE_ENABLED =
+  static const String keyNotifyPomodoroEnabled = "notify_pomodoro_enabled";
+  static const String keyNotifyTodoRecognizeEnabled =
       "notify_todo_recognize_enabled";
-  static const String KEY_NOTIFY_POMODORO_END_ENABLED =
+  static const String keyNotifyPomodoroEndEnabled =
       "notify_pomodoro_end_enabled";
-  static const String KEY_NOTIFY_TODO_LIVE_ENABLED = "notify_todo_live_enabled";
-  static const String KEY_NOTIFY_REMINDER_ENABLED = "notify_reminder_enabled";
-  static const String KEY_COURSE_REMINDER_MINUTES = "course_reminder_minutes";
-  static const String KEY_LAST_COURSE_IMPORT_URL = "last_course_import_url";
-  static const String KEY_CATEGORY_REMINDER_MINUTES =
-      "category_reminder_minutes";
-  static const String KEY_WINDOWS_SCHEDULED_REMINDERS =
+  static const String keyNotifyTodoLiveEnabled = "notify_todo_live_enabled";
+  static const String keyNotifyReminderEnabled = "notify_reminder_enabled";
+  static const String keyCourseReminderMinutes = "course_reminder_minutes";
+  static const String keyLastCourseImportUrl = "last_course_import_url";
+  static const String keyCategoryReminderMinutes = "category_reminder_minutes";
+  static const String keyWindowsScheduledReminders =
       "windows_scheduled_reminders";
 
   static bool _isSyncing = false;
@@ -291,7 +437,6 @@ class StorageService {
       {}; // 🚀 force-flush 保护的 UUID，merge 时跳过
   static final Set<String> _attemptedRecurrenceSeriesRepairUploads = {};
   static bool _isCheckingRecurrence = false; // 🚀 递归锁，防止 getTodos 陷入重复任务检查死循环
-  static final bool _hasInitedFTS = false;
   static ValueNotifier<String> themeNotifier = ValueNotifier('system');
   static ValueNotifier<String> themeColorModeNotifier =
       ValueNotifier('default');
@@ -330,6 +475,29 @@ class StorageService {
 
   static void setForceFlushProtectedUuids(Set<String> uuids) {
     _forceFlushProtectedUuids = uuids;
+  }
+
+  static Future<void> _updateOplogRowsByIds(
+    Database db,
+    Set<int> ids,
+    Map<String, Object?> values,
+  ) async {
+    const chunkSize = 500;
+    final orderedIds = ids.toList()..sort();
+    for (var start = 0; start < orderedIds.length; start += chunkSize) {
+      final end = start + chunkSize < orderedIds.length
+          ? start + chunkSize
+          : orderedIds.length;
+      final chunk = orderedIds.sublist(start, end);
+      if (chunk.isEmpty) continue;
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      await db.update(
+        'op_logs',
+        values,
+        where: 'id IN ($placeholders)',
+        whereArgs: chunk,
+      );
+    }
   }
 
   static void requestSync(String username) {
@@ -433,8 +601,8 @@ class StorageService {
 
   static Future<void> _clearTodoPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${KEY_TODOS}_$username");
-    await prefs.remove(KEY_TODOS);
+    await prefs.remove("${keyTodos}_$username");
+    await prefs.remove(keyTodos);
   }
 
   static String _scopedKey(String baseKey, String? username) {
@@ -491,10 +659,10 @@ class StorageService {
   // ==========================================
   static Future<void> initTheme() async {
     final prefs = await StorageService.prefs;
-    themeNotifier.value = prefs.getString(KEY_THEME_MODE) ?? 'system';
+    themeNotifier.value = prefs.getString(keyThemeMode) ?? 'system';
     themeColorModeNotifier.value =
-        prefs.getString(KEY_THEME_COLOR_MODE) ?? 'default';
-    int? colorVal = prefs.getInt(KEY_CUSTOM_THEME_COLOR);
+        prefs.getString(keyThemeColorMode) ?? 'default';
+    int? colorVal = prefs.getInt(keyCustomThemeColor);
     if (colorVal != null) {
       customThemeColorNotifier.value = Color(colorVal);
     }
@@ -517,12 +685,12 @@ class StorageService {
 
   static Future<void> saveSettings(Map<String, dynamic> settings) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_SETTINGS, jsonEncode(settings));
+    await prefs.setString(keySettings, jsonEncode(settings));
   }
 
   static Future<Map<String, dynamic>> getSettings() async {
     final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_SETTINGS);
+    String? jsonStr = prefs.getString(keySettings);
     if (jsonStr != null) return Map<String, dynamic>.from(jsonDecode(jsonStr));
     return {
       'operators': ['+', '-'],
@@ -537,14 +705,13 @@ class StorageService {
   static Future<void> saveWindowsScheduledReminders(
       List<Map<String, dynamic>> reminders) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(
-        KEY_WINDOWS_SCHEDULED_REMINDERS, jsonEncode(reminders));
+    await prefs.setString(keyWindowsScheduledReminders, jsonEncode(reminders));
   }
 
   static Future<List<Map<String, dynamic>>>
       getWindowsScheduledReminders() async {
     final prefs = await StorageService.prefs;
-    String? jsonStr = prefs.getString(KEY_WINDOWS_SCHEDULED_REMINDERS);
+    String? jsonStr = prefs.getString(keyWindowsScheduledReminders);
     if (jsonStr == null || jsonStr.isEmpty) return [];
     try {
       final List<dynamic> list = jsonDecode(jsonStr);
@@ -642,7 +809,7 @@ class StorageService {
       String username, int score, int duration) async {
     final prefs = await SharedPreferences.getInstance();
     List<dynamic> list = [];
-    String? jsonStr = prefs.getString(KEY_LEADERBOARD);
+    String? jsonStr = prefs.getString(keyLeaderboard);
     if (jsonStr != null) list = jsonDecode(jsonStr);
     list.add({'username': username, 'score': score, 'time': duration});
     list.sort((a, b) {
@@ -650,13 +817,13 @@ class StorageService {
       return a['time'].compareTo(b['time']);
     });
     if (list.length > 10) list = list.sublist(0, 10);
-    await prefs.setString(KEY_LEADERBOARD, jsonEncode(list));
+    await prefs.setString(keyLeaderboard, jsonEncode(list));
     requestSync(username);
   }
 
   static Future<List<Map<String, dynamic>>> getLeaderboard() async {
     final prefs = await SharedPreferences.getInstance();
-    String? jsonStr = prefs.getString(KEY_LEADERBOARD);
+    String? jsonStr = prefs.getString(keyLeaderboard);
     if (jsonStr == null) return [];
     return List<Map<String, dynamic>>.from(jsonDecode(jsonStr));
   }
@@ -725,7 +892,13 @@ class StorageService {
         item.recurrenceSeriesId = item.id;
       }
       final existing = dedupeMap[item.id];
-      if (existing == null || item.updatedAt > existing.updatedAt) {
+      if (existing == null ||
+          TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: item.updatedAt,
+            incomingVersion: item.version,
+            currentUpdatedAt: existing.updatedAt,
+            currentVersion: existing.version,
+          )) {
         dedupeMap[item.id] = item;
       }
     }
@@ -755,6 +928,31 @@ class StorageService {
     // 🚀 同步写入时，查询 force-flush 保护或有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
     // 优先级：force-flush > pending oplog > normal sync
     Map<String, int> existingCompletionMap = {};
+    if (isSyncSource && dedupeList.isNotEmpty) {
+      // 同步请求返回后到真正落库前，UI 仍可能产生新的完成/取消完成操作。
+      // 在写入边界再读一次 oplog，避免仅依赖请求结束时的内存快照。
+      final allItemIds = dedupeList.map((item) => item.id).toList();
+      const chunkSize = 500;
+      for (var start = 0; start < allItemIds.length; start += chunkSize) {
+        final end = start + chunkSize < allItemIds.length
+            ? start + chunkSize
+            : allItemIds.length;
+        final chunk = allItemIds.sublist(start, end);
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final rows = await db.query(
+          'op_logs',
+          columns: const ['target_uuid'],
+          where:
+              "is_synced = 0 AND target_table = 'todos' AND target_uuid IN ($placeholders)",
+          whereArgs: chunk,
+        );
+        _pendingSyncOplogUuids.addAll(
+          rows
+              .map((row) => row['target_uuid']?.toString() ?? '')
+              .where((uuid) => uuid.isNotEmpty),
+        );
+      }
+    }
     if (isSyncSource &&
         dedupeList.isNotEmpty &&
         (_forceFlushProtectedUuids.isNotEmpty ||
@@ -790,7 +988,6 @@ class StorageService {
 
     // 🚀 Batch 极速批量写入
     final batch = db.batch();
-    int queuedTodoOps = 0;
     for (var item in dedupeList) {
       bool hasChanged = true;
       final oldData = existingItemsMap[item.id];
@@ -820,6 +1017,9 @@ class StorageService {
 
       if (!isSyncSource && hasChanged) {
         final syncPayload = _stripClientOnlyConflictForSync(item.toJson());
+        if (item.isDeleted && _recurrenceDedupeTombstoneIds.contains(item.id)) {
+          syncPayload['_recurrence_delete_reason'] = 'dedupe';
+        }
         // 记录审计日志 (传入已有的 oldData 避免再次查询)
         unawaited(_recordLocalAuditOptimized(
             'todos', item.id, item.toJson(), item.teamUuid, oldData));
@@ -833,7 +1033,6 @@ class StorageService {
           'is_synced': 0,
           'sync_error': '',
         });
-        queuedTodoOps++;
         //if (!isSyncSource) {
         //debugPrint(
         //    '🧪 [SyncDiag][oplog] CREATE UUID=${item.id} isDone=${item.isDone} is_completed=${item.isDone ? 1 : 0} collabType=${item.collabType}');
@@ -924,10 +1123,6 @@ class StorageService {
           debugPrint("⚠️ StorageService: 写入本地 todo_completions 状态失败: $e");
         }
       }
-
-      /*debugPrint(
-          '🧪 [SyncDiag][saveTodos] username=$username items=${dedupeList.length} queuedOps=$queuedTodoOps sync=$sync isSyncSource=$isSyncSource');
-    */
     }
 
     if (recomputeScheduleConflicts) {
@@ -938,10 +1133,6 @@ class StorageService {
     Future.microtask(() => _syncTodosToBand(dedupeList));
     triggerRefresh();
   }
-
-  // --- 辅助方法 ---
-  static List<String> _serializeTodos(List<TodoItem> items) =>
-      items.map((e) => jsonEncode(e.toJson())).toList();
 
   static bool _hasSubstantialChange(Map<String, dynamic> before,
       Map<String, dynamic> after, List<String> fields) {
@@ -1146,7 +1337,7 @@ class StorageService {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-      _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+      _scopedKey(keyIgnoredScheduleConflicts, username),
       ignoredKeys.toList()..sort(),
     );
 
@@ -1196,7 +1387,7 @@ class StorageService {
       String username) async {
     final prefs = await SharedPreferences.getInstance();
     return (prefs.getStringList(
-              _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+              _scopedKey(keyIgnoredScheduleConflicts, username),
             ) ??
             const <String>[])
         .toSet();
@@ -1211,7 +1402,7 @@ class StorageService {
     try {
       if (existingData == null) {
         await DatabaseHelper.instance.insertLocalAuditLog(
-          userId: ApiService.currentUserId ?? 0,
+          userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
           opType: 'INSERT',
@@ -1225,7 +1416,7 @@ class StorageService {
 
       // 已经在外部做过实质性变更检测了，此处直接记录
       await DatabaseHelper.instance.insertLocalAuditLog(
-        userId: ApiService.currentUserId ?? 0,
+        userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
         opType: 'UPDATE',
@@ -1250,7 +1441,7 @@ class StorageService {
       if (existing.isEmpty) {
         // 新增操作，直接记录
         await DatabaseHelper.instance.insertLocalAuditLog(
-          userId: ApiService.currentUserId ?? 0,
+          userId: ApiService.currentUserId,
           targetTable: table,
           targetUuid: uuid,
           opType: 'INSERT',
@@ -1356,7 +1547,7 @@ class StorageService {
 
       // 2. 存入本地审计表
       await DatabaseHelper.instance.insertLocalAuditLog(
-        userId: ApiService.currentUserId ?? 0,
+        userId: ApiService.currentUserId,
         targetTable: table,
         targetUuid: uuid,
         opType: 'UPDATE',
@@ -1580,8 +1771,7 @@ class StorageService {
 
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
-    List<String> list =
-        prefs.getStringList("${KEY_COUNTDOWNS}_$username") ?? [];
+    List<String> list = prefs.getStringList("${keyCountdowns}_$username") ?? [];
     list.removeWhere((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
@@ -1590,7 +1780,7 @@ class StorageService {
         return false;
       }
     });
-    await prefs.setStringList("${KEY_COUNTDOWNS}_$username", list);
+    await prefs.setStringList("${keyCountdowns}_$username", list);
 
     // 记录删除操作到 Oplog
     await db.insert('op_logs', {
@@ -1656,17 +1846,17 @@ class StorageService {
       // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
       final String cleanupKey = "cleanup_done_${username}_v4_repair";
       if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
-        await prefs.remove("${KEY_TODOS}_$username");
-        await prefs.remove(KEY_TODOS);
+        await prefs.remove("${keyTodos}_$username");
+        await prefs.remove(keyTodos);
         await prefs.setBool(cleanupKey, true);
         debugPrint("🗑️ Todos 残留数据修复清理完成。");
       }
 
       if (!alreadyMigrated) {
         List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+            prefs.getStringList("${keyTodos}_$username") ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          legacyJsonList = prefs.getStringList(KEY_TODOS) ?? [];
+          legacyJsonList = prefs.getStringList(keyTodos) ?? [];
         }
 
         if (legacyJsonList.isNotEmpty) {
@@ -1682,18 +1872,40 @@ class StorageService {
               sync: false, isSyncSource: true);
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
-          await prefs.remove("${KEY_TODOS}_$username");
-          await prefs.remove(KEY_TODOS);
+          await prefs.remove("${keyTodos}_$username");
+          await prefs.remove(keyTodos);
           debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
         await prefs.setBool(migrationKey, true);
       }
 
-      final List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
+      List<Map<String, dynamic>> maps = await dbHelper.getTodoMaps(
         includeDeleted: includeDeleted,
         limit: limit,
         includeConflictData: true,
       );
+      if (limit != null && maps.isNotEmpty) {
+        final activeSeriesIds = maps
+            .where((map) => (_parseNullableInt(map['recurrence']) ?? 0) != 0)
+            .map((map) => map['recurrence_series_id']?.toString().trim())
+            .whereType<String>()
+            .where((seriesId) => seriesId.isNotEmpty)
+            .toSet();
+        if (activeSeriesIds.isNotEmpty) {
+          final seriesMaps = await dbHelper.getTodoMaps(
+            includeDeleted: includeDeleted,
+            recurrenceSeriesIds: activeSeriesIds,
+            includeConflictData: true,
+          );
+          final mapsById = <String, Map<String, dynamic>>{
+            for (final map in maps) map['uuid'].toString(): map,
+          };
+          for (final map in seriesMaps) {
+            mapsById[map['uuid'].toString()] = map;
+          }
+          maps = mapsById.values.toList();
+        }
+      }
       if (maps.isNotEmpty) {
         List<TodoItem> todos;
         // 🚀 性能优化：当待办数量较多时，使用 Isolate 解析，减少主线程解析耗时导致的 UI 卡顿
@@ -1773,7 +1985,7 @@ class StorageService {
     }
 
     // 🚀 逃生通道：兜底读取 Prefs
-    List<String> list = prefs.getStringList("${KEY_TODOS}_$username") ?? [];
+    List<String> list = prefs.getStringList("${keyTodos}_$username") ?? [];
     List<TodoItem> legacyTodos;
 
     if (list.length > 50) {
@@ -1894,6 +2106,9 @@ class StorageService {
     await db.rawUpdate(
         "UPDATE courses SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
         [now, teamUuid]);
+    await db.rawUpdate(
+        "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
+        [now, teamUuid]);
 
     await db.delete(
       'todo_completions',
@@ -1985,7 +2200,7 @@ class StorageService {
 
     // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(KEY_CURRENT_USER) ?? "";
+    final username = prefs.getString(keyCurrentUser) ?? "";
     if (username.isNotEmpty) {
       Future<void> cleanCache(String key) async {
         List<String> list = prefs.getStringList("${key}_$username") ?? [];
@@ -2004,10 +2219,10 @@ class StorageService {
         }
       }
 
-      await cleanCache(KEY_TODOS);
-      await cleanCache(KEY_TODO_GROUPS);
-      await cleanCache(KEY_COUNTDOWNS);
-      await cleanCache(KEY_TIME_LOGS);
+      await cleanCache(keyTodos);
+      await cleanCache(keyTodoGroups);
+      await cleanCache(keyCountdowns);
+      await cleanCache(keyTimeLogs);
       // 🚀 补充清理：课程表与番茄记录缓存 (Key 映射已在 Service 中定义)
       await cleanCache('course_schedule_json');
       await cleanCache('pomodoro_records');
@@ -2088,7 +2303,7 @@ class StorageService {
             if (!result.isNew) occurrence.markAsChanged();
             needSave = true;
           }
-          if (result.isNew) needSave = true;
+          if (result.didChange) needSave = true;
           seriesChain.add(occurrence);
           activeOccurrence = occurrence;
         }
@@ -2138,7 +2353,7 @@ class StorageService {
               if (!result.isNew) occurrence.markAsChanged();
               needSave = true;
             }
-            if (result.isNew) needSave = true;
+            if (result.didChange) needSave = true;
             seriesChain.add(occurrence);
           }
         }
@@ -2166,7 +2381,7 @@ class StorageService {
             ..addAll(generatedRecurrenceConflictKeys);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList(
-            _scopedKey(KEY_IGNORED_SCHEDULE_CONFLICTS, username),
+            _scopedKey(keyIgnoredScheduleConflicts, username),
             ignoredKeys.toList()..sort(),
           );
         }
@@ -2320,10 +2535,155 @@ class StorageService {
   }
 
   @visibleForTesting
+  static String recurrenceOccurrenceIdForTest(
+    String seriesId,
+    int startMs,
+  ) =>
+      _recurrenceOccurrenceId(seriesId, startMs);
+
+  @visibleForTesting
   static bool deduplicatePersistedRecurrenceOccurrencesForTest(
     List<TodoItem> todos,
   ) =>
       _deduplicatePersistedRecurrenceOccurrences(todos);
+
+  /// 手动将多个循环系列归并到用户指定的主系列。
+  ///
+  /// 所有实例保留原 UUID，因此规划、番茄钟和时间日志的绑定
+  /// 不会丢失。同日重复实例会使用现有规则去重。
+  static Future<int> mergeRecurrenceSeries(
+    String username, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) async {
+    final todos = await getTodos(username, includeDeleted: true);
+    final changedIds = _mergeRecurrenceSeries(
+      todos,
+      targetSeriesId: targetSeriesId,
+      seriesIds: seriesIds,
+    );
+    if (changedIds.isEmpty) return 0;
+
+    final changedItems =
+        todos.where((todo) => changedIds.contains(todo.id)).toList();
+    await saveTodos(
+      username,
+      changedItems,
+      sync: true,
+      recomputeScheduleConflicts: false,
+    );
+    await _refreshTodoScheduleConflicts(username);
+    triggerRefresh();
+    return changedItems.length;
+  }
+
+  @visibleForTesting
+  static Set<String> mergeRecurrenceSeriesForTest(
+    List<TodoItem> todos, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) =>
+      _mergeRecurrenceSeries(
+        todos,
+        targetSeriesId: targetSeriesId,
+        seriesIds: seriesIds,
+      );
+
+  static Set<String> _mergeRecurrenceSeries(
+    List<TodoItem> todos, {
+    required String targetSeriesId,
+    required Set<String> seriesIds,
+  }) {
+    final selectedSeriesIds = <String>{...seriesIds, targetSeriesId}
+      ..removeWhere((seriesId) => seriesId.trim().isEmpty);
+    final participating = todos
+        .where((todo) =>
+            todo.recurrenceSeriesId != null &&
+            selectedSeriesIds.contains(todo.recurrenceSeriesId))
+        .toList();
+    final activeSeriesIds = participating
+        .where((todo) => !todo.isDeleted)
+        .map((todo) => todo.recurrenceSeriesId)
+        .whereType<String>()
+        .toSet();
+    if (activeSeriesIds.length < 2 ||
+        !activeSeriesIds.contains(targetSeriesId)) {
+      return <String>{};
+    }
+
+    TodoItem? canonicalActive;
+    final activeRules = participating
+        .where(
+            (todo) => !todo.isDeleted && todo.recurrence != RecurrenceType.none)
+        .toList()
+      ..sort((a, b) {
+        final startCompare = (b.createdDate ?? b.createdAt)
+            .compareTo(a.createdDate ?? a.createdAt);
+        if (startCompare != 0) return startCompare;
+        return b.version.compareTo(a.version);
+      });
+    for (final todo in activeRules) {
+      if (todo.recurrenceSeriesId == targetSeriesId) {
+        canonicalActive = todo;
+        break;
+      }
+    }
+    canonicalActive ??= activeRules.isEmpty ? null : activeRules.first;
+
+    final versionsBefore = {
+      for (final todo in participating) todo.id: todo.version,
+    };
+    final fieldChangedIds = <String>{};
+
+    // 系列被拆分并多次去重后，完成状态可能只保留在源系列中已经删除的
+    // 重复实例上。合并时按发生日期取完成状态并集，再写回该日仍可见的
+    // 实例；目标系列中早已删除的旧状态不参与，避免覆盖用户后续的取消完成。
+    final completedDays = participating
+        .where((todo) =>
+            todo.isDone &&
+            (!todo.isDeleted || todo.recurrenceSeriesId != targetSeriesId))
+        .map((todo) => _recurrenceLocalDayKey(
+              todo.createdDate ?? todo.createdAt,
+            ))
+        .toSet();
+    for (final todo in participating) {
+      if (todo.isDeleted || todo.isDone) continue;
+      final dayKey = _recurrenceLocalDayKey(
+        todo.createdDate ?? todo.createdAt,
+      );
+      if (!completedDays.contains(dayKey)) continue;
+      todo.isDone = true;
+      fieldChangedIds.add(todo.id);
+    }
+
+    for (final todo in participating) {
+      if (todo.recurrenceSeriesId != targetSeriesId) {
+        todo.recurrenceSeriesId = targetSeriesId;
+        fieldChangedIds.add(todo.id);
+      }
+      if (todo.recurrence != RecurrenceType.none &&
+          todo.id != canonicalActive?.id) {
+        todo.recurrence = RecurrenceType.none;
+        fieldChangedIds.add(todo.id);
+      }
+    }
+
+    _deduplicatePersistedRecurrenceOccurrences(participating);
+    final changedIds = <String>{};
+    for (final todo in participating) {
+      if (todo.version != versionsBefore[todo.id]) {
+        changedIds.add(todo.id);
+      }
+    }
+    for (final todo in participating) {
+      if (!fieldChangedIds.contains(todo.id)) continue;
+      if (todo.version == versionsBefore[todo.id]) {
+        todo.markAsChanged();
+      }
+      changedIds.add(todo.id);
+    }
+    return changedIds;
+  }
 
   static List<int> _futureRecurrenceRollOffsets(
     TodoItem todo,
@@ -2400,7 +2760,8 @@ class StorageService {
     }
   }
 
-  static ({TodoItem occurrence, bool isNew}) _getOrCreateRecurrenceOccurrence({
+  static ({TodoItem occurrence, bool isNew, bool didChange})
+      _getOrCreateRecurrenceOccurrence({
     required TodoItem source,
     required int rollByDays,
     required String seriesId,
@@ -2412,27 +2773,62 @@ class StorageService {
     _rollRecurrenceDateByDays(candidate, rollByDays);
     final candidateStart = candidate.createdDate ?? candidate.createdAt;
     final candidateDayKey = _recurrenceLocalDayKey(candidateStart);
+    candidate.id = _recurrenceOccurrenceId(seriesId, candidateStart);
 
+    final matches = <TodoItem>[];
     for (final existing in todos.followedBy(generatedOccurrences)) {
-      if (existing.isDeleted ||
-          existing.recurrenceSeriesId != seriesId ||
+      if (existing.recurrenceSeriesId != seriesId ||
           _recurrenceLocalDayKey(
                 existing.createdDate ?? existing.createdAt,
               ) !=
               candidateDayKey) {
         continue;
       }
-      return (occurrence: existing, isNew: false);
+      matches.add(existing);
+    }
+
+    final liveMatches = matches.where((todo) => !todo.isDeleted).toList();
+    if (liveMatches.isNotEmpty) {
+      liveMatches.sort(_compareRecurrenceOccurrenceIdentity);
+      return (
+        occurrence: liveMatches.first,
+        isNew: false,
+        didChange: false,
+      );
+    }
+
+    final deletedDeterministic =
+        matches.where((todo) => todo.id == candidate.id).firstOrNull;
+    if (deletedDeterministic != null) {
+      _copyRecurrenceOccurrenceData(candidate, deletedDeterministic);
+      deletedDeterministic.isDeleted = false;
+      deletedDeterministic.markAsChanged();
+      _recurrenceDedupeTombstoneIds.remove(deletedDeterministic.id);
+      return (
+        occurrence: deletedDeterministic,
+        isNew: false,
+        didChange: true,
+      );
     }
 
     generatedOccurrences.add(candidate);
-    return (occurrence: candidate, isNew: true);
+    return (occurrence: candidate, isNew: true, didChange: true);
   }
 
   static String _recurrenceLocalDayKey(int startMs) {
     final start =
         DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true).toLocal();
-    return '${start.year}-${start.month}-${start.day}';
+    final month = start.month.toString().padLeft(2, '0');
+    final day = start.day.toString().padLeft(2, '0');
+    return '${start.year}-$month-$day';
+  }
+
+  static String _recurrenceOccurrenceId(String seriesId, int startMs) {
+    final dayKey = _recurrenceLocalDayKey(startMs);
+    return const Uuid().v5(
+      _recurrenceOccurrenceNamespace,
+      'countdown-todo/recurrence-occurrence/v1/$seriesId/$dayKey',
+    );
   }
 
   static List<TodoItem> _repairMissingPastRecurrenceOccurrences({
@@ -2496,7 +2892,7 @@ class StorageService {
           todos: todos,
           generatedOccurrences: generatedOccurrences,
         );
-        if (!result.isNew) continue;
+        if (!result.didChange) continue;
         result.occurrence.recurrence = RecurrenceType.none;
         repaired.add(result.occurrence);
       }
@@ -2504,13 +2900,12 @@ class StorageService {
     return repaired;
   }
 
-  static bool _deduplicatePersistedRecurrenceOccurrences(
-    List<TodoItem> todos,
-  ) {
+  static bool _deduplicatePersistedRecurrenceOccurrences(List<TodoItem> todos,
+      {Set<String>? changedIds}) {
     final occurrencesBySeriesDay = <String, List<TodoItem>>{};
     for (final todo in todos) {
       final seriesId = todo.recurrenceSeriesId;
-      if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      if (seriesId == null || seriesId.isEmpty) continue;
       final startMs = todo.createdDate ?? todo.createdAt;
       final key = '$seriesId|${_recurrenceLocalDayKey(startMs)}';
       occurrencesBySeriesDay.putIfAbsent(key, () => []).add(todo);
@@ -2519,33 +2914,130 @@ class StorageService {
     var changed = false;
     for (final occurrences in occurrencesBySeriesDay.values) {
       if (occurrences.length <= 1) continue;
-      var canonical = occurrences.first;
-      for (final candidate in occurrences.skip(1)) {
-        final candidateActive = candidate.recurrence != RecurrenceType.none;
-        final canonicalActive = canonical.recurrence != RecurrenceType.none;
-        if ((candidateActive && !canonicalActive) ||
-            (candidateActive == canonicalActive &&
-                (candidate.version > canonical.version ||
-                    (candidate.version == canonical.version &&
-                        candidate.updatedAt > canonical.updatedAt)))) {
-          canonical = candidate;
-        }
-      }
+      final liveOccurrences =
+          occurrences.where((todo) => !todo.isDeleted).toList();
+      if (liveOccurrences.isEmpty) continue;
 
-      final anyCompleted = occurrences.any((todo) => todo.isDone);
-      if (anyCompleted && !canonical.isDone) {
-        canonical.isDone = true;
+      // Identity must not depend on mutable LWW fields. Every device will
+      // eventually select the same oldest physical occurrence, even if it
+      // initially saw only a subset of the duplicates.
+      occurrences.sort(_compareRecurrenceOccurrenceIdentity);
+      final canonical = occurrences.first;
+      liveOccurrences.sort((a, b) {
+        final versionOrder = b.version.compareTo(a.version);
+        if (versionOrder != 0) return versionOrder;
+        final updatedAtOrder = b.updatedAt.compareTo(a.updatedAt);
+        if (updatedAtOrder != 0) return updatedAtOrder;
+        return a.id.compareTo(b.id);
+      });
+      final dataWinner = liveOccurrences.first;
+      final completionWinner = dataWinner;
+      final activeOccurrences = liveOccurrences
+          .where((todo) => todo.recurrence != RecurrenceType.none)
+          .toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final mergedRecurrence = activeOccurrences.isEmpty
+          ? RecurrenceType.none
+          : activeOccurrences.first.recurrence;
+
+      var canonicalChanged = false;
+      if (!identical(canonical, dataWinner)) {
+        canonicalChanged =
+            _copyRecurrenceOccurrenceData(dataWinner, canonical) ||
+                canonicalChanged;
+      }
+      if (canonical.isDeleted) {
+        canonical.isDeleted = false;
+        canonicalChanged = true;
+      }
+      if (canonical.isDone != completionWinner.isDone) {
+        canonical.isDone = completionWinner.isDone;
+        canonicalChanged = true;
+      }
+      if (canonical.recurrence != mergedRecurrence) {
+        canonical.recurrence = mergedRecurrence;
+        canonicalChanged = true;
+      }
+      if (canonicalChanged) {
+        canonical.version = canonical.version < dataWinner.version
+            ? dataWinner.version
+            : canonical.version;
+        canonical.updatedAt = canonical.updatedAt < dataWinner.updatedAt
+            ? dataWinner.updatedAt
+            : canonical.updatedAt;
         canonical.markAsChanged();
+        _recurrenceDedupeTombstoneIds.remove(canonical.id);
+        changedIds?.add(canonical.id);
         changed = true;
       }
+
       for (final duplicate in occurrences) {
         if (identical(duplicate, canonical)) continue;
+        if (duplicate.isDeleted &&
+            duplicate.recurrence == RecurrenceType.none) {
+          continue;
+        }
         duplicate.isDeleted = true;
         duplicate.recurrence = RecurrenceType.none;
         duplicate.markAsChanged();
+        _recurrenceDedupeTombstoneIds.add(duplicate.id);
+        changedIds?.add(duplicate.id);
         changed = true;
       }
     }
+    return changed;
+  }
+
+  static int _compareRecurrenceOccurrenceIdentity(TodoItem a, TodoItem b) {
+    final createdAtComparison = a.createdAt.compareTo(b.createdAt);
+    if (createdAtComparison != 0) return createdAtComparison;
+    return a.id.compareTo(b.id);
+  }
+
+  static bool _copyRecurrenceOccurrenceData(
+    TodoItem source,
+    TodoItem target,
+  ) {
+    var changed = false;
+
+    void assign<T>(T current, T next, void Function(T) setter) {
+      if (current == next) return;
+      setter(next);
+      changed = true;
+    }
+
+    assign(target.title, source.title, (value) => target.title = value);
+    assign(target.createdDate, source.createdDate,
+        (value) => target.createdDate = value);
+    assign(target.dueDate, source.dueDate, (value) => target.dueDate = value);
+    assign(target.recurrenceSeriesId, source.recurrenceSeriesId,
+        (value) => target.recurrenceSeriesId = value);
+    assign(target.customIntervalDays, source.customIntervalDays,
+        (value) => target.customIntervalDays = value);
+    assign(target.recurrenceEndDate, source.recurrenceEndDate,
+        (value) => target.recurrenceEndDate = value);
+    assign(target.remark, source.remark, (value) => target.remark = value);
+    assign(target.imagePath, source.imagePath,
+        (value) => target.imagePath = value);
+    assign(target.originalText, source.originalText,
+        (value) => target.originalText = value);
+    assign(target.groupId, source.groupId, (value) => target.groupId = value);
+    assign(target.reminderMinutes, source.reminderMinutes,
+        (value) => target.reminderMinutes = value);
+    assign(
+        target.teamUuid, source.teamUuid, (value) => target.teamUuid = value);
+    assign(target.creatorId, source.creatorId,
+        (value) => target.creatorId = value);
+    assign(target.creatorName, source.creatorName,
+        (value) => target.creatorName = value);
+    assign(
+        target.teamName, source.teamName, (value) => target.teamName = value);
+    assign(target.collabType, source.collabType,
+        (value) => target.collabType = value);
+    assign(
+        target.isAllDay, source.isAllDay, (value) => target.isAllDay = value);
+    assign(target.categoryId, source.categoryId,
+        (value) => target.categoryId = value);
     return changed;
   }
 
@@ -2721,8 +3213,8 @@ class StorageService {
 
   static Future<void> _clearTodoGroupPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${KEY_TODO_GROUPS}_$username");
-    await prefs.remove(KEY_TODO_GROUPS);
+    await prefs.remove("${keyTodoGroups}_$username");
+    await prefs.remove(keyTodoGroups);
   }
 
   static Future<List<TodoGroup>> getTodoGroups(String username,
@@ -2738,13 +3230,13 @@ class StorageService {
           await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
-            prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+            prefs.getStringList("${keyTodoGroups}_$username") ?? [];
 
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
-          final String markerKey = "${KEY_TODO_GROUPS}_${username}_migrated";
+          final String markerKey = "${keyTodoGroups}_${username}_migrated";
           if (!(prefs.getBool(markerKey) ?? false)) {
-            legacyJsonList = prefs.getStringList(KEY_TODO_GROUPS) ?? [];
+            legacyJsonList = prefs.getStringList(keyTodoGroups) ?? [];
             if (legacyJsonList.isNotEmpty) {
               await prefs.setBool(markerKey, true);
             }
@@ -2795,8 +3287,7 @@ class StorageService {
 
     // 逃生通道
     final prefs = await StorageService.prefs;
-    List<String> list =
-        prefs.getStringList("${KEY_TODO_GROUPS}_$username") ?? [];
+    List<String> list = prefs.getStringList("${keyTodoGroups}_$username") ?? [];
     List<TodoGroup> result = [];
 
     for (var e in list) {
@@ -2873,18 +3364,18 @@ class StorageService {
   // ==========================================
   static Future<void> saveLocalScreenTime(Map<dynamic, dynamic> stats) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final key = _scopedKey(keyLocalScreenTime, username);
     await prefs.setString(key, jsonEncode(stats));
   }
 
   static Future<Map<String, dynamic>?> getLocalScreenTimePackage() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final key = _scopedKey(KEY_LOCAL_SCREEN_TIME, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final key = _scopedKey(keyLocalScreenTime, username);
     String? s = prefs.getString(key);
     // 兼容旧版全局 key 的历史数据
-    s ??= prefs.getString(KEY_LOCAL_SCREEN_TIME);
+    s ??= prefs.getString(keyLocalScreenTime);
     return s != null ? jsonDecode(s) as Map<String, dynamic> : null;
   }
 
@@ -2901,16 +3392,16 @@ class StorageService {
     if (stats.isEmpty) return;
 
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
-    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
-    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final historyKey = _scopedKey(keyScreenTimeHistory, username);
+    final cacheKey = _scopedKey(keyScreenTimeCache, username);
+    final syncKey = _scopedKey(keyLastScreenTimeSync, username);
     final now = DateTime.now();
     final String today = DateFormat('yyyy-MM-dd').format(now);
 
     // 1. 获取已有的历史记录
     String? histStr = prefs.getString(historyKey);
-    histStr ??= prefs.getString(KEY_SCREEN_TIME_HISTORY);
+    histStr ??= prefs.getString(keyScreenTimeHistory);
     Map<String, dynamic> history = {};
     if (histStr != null) {
       try {
@@ -2947,7 +3438,7 @@ class StorageService {
       await prefs.setString(historyKey, jsonEncode(history));
     }
 
-    // 5. 更新“当前视图快照” (KEY_SCREEN_TIME_CACHE)
+    // 5. 更新“当前视图快照” (keyScreenTimeCache)
     // 🚀 核心修复：只有当最新更新日期确实是今天时，才更新首页显示的 Cache
     // 这样如果凌晨同步了旧数据，首页不会被错误覆盖
     await prefs.setString(cacheKey, jsonEncode(stats));
@@ -2983,13 +3474,13 @@ class StorageService {
 
   static Future<List<dynamic>> getScreenTimeCache() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final cacheKey = _scopedKey(KEY_SCREEN_TIME_CACHE, username);
-    final syncKey = _scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final cacheKey = _scopedKey(keyScreenTimeCache, username);
+    final syncKey = _scopedKey(keyLastScreenTimeSync, username);
 
     // 检查缓存是否是今天的
     int? lastSyncMs = prefs.getInt(syncKey);
-    lastSyncMs ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    lastSyncMs ??= prefs.getInt(keyLastScreenTimeSync);
     if (lastSyncMs != null) {
       DateTime lastSyncDate =
           DateTime.fromMillisecondsSinceEpoch(lastSyncMs).toLocal();
@@ -3006,7 +3497,7 @@ class StorageService {
     }
 
     String? jsonStr = prefs.getString(cacheKey);
-    jsonStr ??= prefs.getString(KEY_SCREEN_TIME_CACHE);
+    jsonStr ??= prefs.getString(keyScreenTimeCache);
     if (jsonStr != null) {
       try {
         return jsonDecode(jsonStr);
@@ -3019,8 +3510,8 @@ class StorageService {
 
   static Future<Map<String, List<dynamic>>> getScreenTimeHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    final String historyKey = _scopedKey(KEY_SCREEN_TIME_HISTORY, username);
+    final String? username = prefs.getString(keyCurrentUser);
+    final String historyKey = _scopedKey(keyScreenTimeHistory, username);
     final dbHelper = DatabaseHelper.instance;
 
     try {
@@ -3028,7 +3519,7 @@ class StorageService {
       final String migrationKey = "migrated_screentime_$username";
       if (!(prefs.getBool(migrationKey) ?? false)) {
         String? jsonStr = prefs.getString(historyKey) ??
-            prefs.getString(KEY_SCREEN_TIME_HISTORY);
+            prefs.getString(keyScreenTimeHistory);
         if (jsonStr != null && jsonStr.isNotEmpty) {
           debugPrint("🚀 发现 ScreenTime 历史记录，正在执行 SQL 迁移...");
           try {
@@ -3040,7 +3531,7 @@ class StorageService {
               }
             }
             await prefs.remove(historyKey);
-            await prefs.remove(KEY_SCREEN_TIME_HISTORY);
+            await prefs.remove(keyScreenTimeHistory);
             debugPrint("✅ ScreenTime 迁移完成并已清理 Prefs");
           } catch (e) {
             debugPrint("⚠️ ScreenTime 迁移解析失败: $e");
@@ -3094,8 +3585,8 @@ class StorageService {
       return result;
     } catch (e) {
       debugPrint("⚠️ ScreenTime History SQL 异常: $e");
-      String? jsonStr = prefs.getString(historyKey) ??
-          prefs.getString(KEY_SCREEN_TIME_HISTORY);
+      String? jsonStr =
+          prefs.getString(historyKey) ?? prefs.getString(keyScreenTimeHistory);
       if (jsonStr != null && jsonStr.isNotEmpty) {
         try {
           Map<String, dynamic> raw = jsonDecode(jsonStr);
@@ -3109,17 +3600,16 @@ class StorageService {
 
   static Future<void> updateLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    await prefs.setInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username),
+    final String? username = prefs.getString(keyCurrentUser);
+    await prefs.setInt(_scopedKey(keyLastScreenTimeSync, username),
         DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastScreenTimeSync() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(KEY_CURRENT_USER);
-    int? timestamp =
-        prefs.getInt(_scopedKey(KEY_LAST_SCREEN_TIME_SYNC, username));
-    timestamp ??= prefs.getInt(KEY_LAST_SCREEN_TIME_SYNC);
+    final String? username = prefs.getString(keyCurrentUser);
+    int? timestamp = prefs.getInt(_scopedKey(keyLastScreenTimeSync, username));
+    timestamp ??= prefs.getInt(keyLastScreenTimeSync);
     if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
@@ -3129,7 +3619,7 @@ class StorageService {
 
   static Future<void> syncAppMappings() async {
     final prefs = await SharedPreferences.getInstance();
-    int? lastSync = prefs.getInt(KEY_LAST_MAPPINGS_SYNC);
+    int? lastSync = prefs.getInt(keyLastMappingsSync);
     DateTime now = DateTime.now();
     if (lastSync != null) {
       DateTime lastDate =
@@ -3146,14 +3636,14 @@ class StorageService {
         if (pkg.isNotEmpty) lookupMap[pkg] = cat;
         if (mapped.isNotEmpty) lookupMap[mapped] = cat;
       }
-      await prefs.setString(KEY_APP_MAPPINGS, jsonEncode(lookupMap));
-      await prefs.setInt(KEY_LAST_MAPPINGS_SYNC, now.millisecondsSinceEpoch);
+      await prefs.setString(keyAppMappings, jsonEncode(lookupMap));
+      await prefs.setInt(keyLastMappingsSync, now.millisecondsSinceEpoch);
     }
   }
 
   static Future<Map<String, String>> getAppMappings() async {
     final prefs = await SharedPreferences.getInstance();
-    String? jsonStr = prefs.getString(KEY_APP_MAPPINGS);
+    String? jsonStr = prefs.getString(keyAppMappings);
     if (jsonStr != null) {
       try {
         return Map<String, String>.from(jsonDecode(jsonStr));
@@ -3183,6 +3673,7 @@ class StorageService {
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,
+    bool syncFixedSchedules = true,
   }) async {
     final bool shouldUploadAllLocal = uploadAllLocal || forceFullSync;
     // 1. 状态锁：防止重复进入
@@ -3190,7 +3681,8 @@ class StorageService {
         !syncCountdowns &&
         !syncTimeLogs &&
         !syncPomodoro &&
-        !syncPlanBlocks) {
+        !syncPlanBlocks &&
+        !syncFixedSchedules) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -3213,6 +3705,13 @@ class StorageService {
           await UserSessionStorage.getDeviceFriendlyName();
       final String serverKey =
           ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
+      final fixedScheduleServerScope = base64Url
+          .encode(utf8.encode(ApiService.effectiveBaseUrl))
+          .replaceAll('=', '');
+      final fixedScheduleBootstrapKey =
+          'fixed_schedule_sync_v1_${fixedScheduleServerScope}_$username';
+      final fixedScheduleSyncInitialized =
+          prefs.getBool(fixedScheduleBootstrapKey) == true;
       int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
@@ -3225,6 +3724,7 @@ class StorageService {
       List<Map<String, dynamic>> dirtyCountdowns = [];
       List<Map<String, dynamic>> dirtyTimeLogs = [];
       List<Map<String, dynamic>> dirtyPlanBlocks = [];
+      List<Map<String, dynamic>> dirtyFixedSchedules = [];
       List<TodoItem> allLocalTodos =
           await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
@@ -3234,6 +3734,8 @@ class StorageService {
       List<TimeLogItem> allLocalTimeLogs = await getTimeLogs(username);
       List<TodoPlanBlock> allLocalPlanBlocks =
           await getPlanBlocks(username, includeDeleted: true);
+      List<FixedScheduleItem> allLocalFixedSchedules =
+          await getFixedSchedules(username, includeDeleted: true);
       final autoResolvedMigrationConflicts =
           _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
       if (autoResolvedMigrationConflicts.isNotEmpty) {
@@ -3246,6 +3748,44 @@ class StorageService {
         hasChanges = true;
         debugPrint(
             '🧹 [同步修复] 已自动消解 ${autoResolvedMigrationConflicts.length} 条仅由循环系列迁移产生的版本冲突');
+      }
+      final repairedLocalSeriesIds =
+          await _repairLocalRecurrenceSeriesAliasesFromHistory(
+        db,
+        allLocalTodos,
+      );
+      if (repairedLocalSeriesIds.isNotEmpty) {
+        final versionsBeforeDedupe = {
+          for (final todo in allLocalTodos) todo.id: todo.version,
+        };
+        final deletedBeforeDedupe = {
+          for (final todo in allLocalTodos)
+            if (todo.isDeleted) todo.id,
+        };
+        _deduplicatePersistedRecurrenceOccurrences(allLocalTodos);
+        repairedLocalSeriesIds.addAll(allLocalTodos
+            .where((todo) =>
+                todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
+            .map((todo) => todo.id));
+
+        final repairedItems = allLocalTodos
+            .where((todo) => repairedLocalSeriesIds.contains(todo.id))
+            .toList();
+        for (final todo in repairedItems) {
+          // 去重分支已经提升过版本，只为单纯归并系列的实例补一次变更。
+          if (todo.version == versionsBeforeDedupe[todo.id]) {
+            todo.markAsChanged();
+          }
+        }
+        await saveTodos(
+          username,
+          repairedItems,
+          sync: true,
+          recomputeScheduleConflicts: false,
+        );
+        hasChanges = true;
+        debugPrint(
+            '🧷 [同步修复] 根据本机同步历史将 ${repairedItems.length} 个被拆分的循环实例归回原系列');
       }
       final localTodosById = {for (final item in allLocalTodos) item.id: item};
       final localGroupsById = {
@@ -3264,6 +3804,10 @@ class StorageService {
       // 按时间戳升序排列，这样 Map 的 putIfAbsent/赋值逻辑会自然保留最后一次更新
       final List<Map<String, dynamic>> pendingOps = await db.query('op_logs',
           where: 'is_synced = 0', orderBy: 'timestamp ASC');
+      final requestOplogSnapshot = pendingOps
+          .map(SyncOplogEntry.fromRow)
+          .whereType<SyncOplogEntry>()
+          .toList(growable: false);
       // 🚀 记录有待同步 oplog 的 待办 UUID，防止 saveTodos(isSyncSource=true) 覆盖用户修改
       _pendingSyncOplogUuids = pendingOps
           .where((op) => op['target_table'] == 'todos')
@@ -3282,6 +3826,7 @@ class StorageService {
       final Map<String, Map<String, dynamic>> dedupGroups = {};
       final Map<String, Map<String, dynamic>> dedupCountdowns = {};
       final Map<String, Map<String, dynamic>> dedupPlanBlocks = {};
+      final Map<String, Map<String, dynamic>> dedupFixedSchedules = {};
       final List<int> consumedConflictOpIds = [];
 
       for (var op in pendingOps) {
@@ -3334,6 +3879,8 @@ class StorageService {
           dedupCountdowns[uuid] = data;
         } else if (table == 'todo_plan_blocks' && syncPlanBlocks) {
           dedupPlanBlocks[uuid] = data;
+        } else if (table == 'fixed_schedules' && syncFixedSchedules) {
+          dedupFixedSchedules[uuid] = data;
         }
       }
 
@@ -3354,6 +3901,7 @@ class StorageService {
       dirtyGroups = dedupGroups.values.toList();
       dirtyCountdowns = dedupCountdowns.values.toList();
       dirtyPlanBlocks = dedupPlanBlocks.values.toList();
+      dirtyFixedSchedules = dedupFixedSchedules.values.toList();
 
       // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
       if (syncTodos) {
@@ -3366,6 +3914,10 @@ class StorageService {
             final data = item.toJson();
             data.remove('image_path');
             data.remove('imagePath');
+            if (item.isDeleted &&
+                _recurrenceDedupeTombstoneIds.contains(item.id)) {
+              data['_recurrence_delete_reason'] = 'dedupe';
+            }
             dedupTodos[item.id] = _stripClientOnlyConflictForSync(data);
           }
         }
@@ -3398,6 +3950,17 @@ class StorageService {
         dirtyPlanBlocks = dedupPlanBlocks.values.toList();
       }
 
+      // 首次与支持 fixed_schedules v1 的服务端握手前，全量携带本地固定
+      // 日程，确保“本地纵向切片”时期创建的数据不会因旧水位线而漏传。
+      if (syncFixedSchedules) {
+        for (final item in allLocalFixedSchedules) {
+          if (!fixedScheduleSyncInitialized || item.updatedAt > lastSyncTime) {
+            dedupFixedSchedules[item.id] = item.toJson();
+          }
+        }
+        dirtyFixedSchedules = dedupFixedSchedules.values.toList();
+      }
+
       if (shouldUploadAllLocal) {
         for (final item in allLocalTodos) {
           if (item.hasConflict && _hasVersionConflict(item.serverVersionData)) {
@@ -3406,6 +3969,10 @@ class StorageService {
           final data = _stripClientOnlyConflictForSync(item.toJson());
           data.remove('image_path');
           data.remove('imagePath');
+          if (item.isDeleted &&
+              _recurrenceDedupeTombstoneIds.contains(item.id)) {
+            data['_recurrence_delete_reason'] = 'dedupe';
+          }
           dedupTodos.putIfAbsent(item.id, () => data);
         }
         for (final item in allLocalGroups) {
@@ -3424,10 +3991,16 @@ class StorageService {
             dedupPlanBlocks.putIfAbsent(item.id, () => data);
           }
         }
+        if (syncFixedSchedules) {
+          for (final item in allLocalFixedSchedules) {
+            dedupFixedSchedules.putIfAbsent(item.id, item.toJson);
+          }
+        }
         dirtyTodos = dedupTodos.values.toList();
         dirtyGroups = dedupGroups.values.toList();
         dirtyCountdowns = dedupCountdowns.values.toList();
         dirtyPlanBlocks = dedupPlanBlocks.values.toList();
+        dirtyFixedSchedules = dedupFixedSchedules.values.toList();
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
@@ -3471,22 +4044,6 @@ class StorageService {
       }
 
       // 5. 发起网络同步请求
-      final uploadedTodoUuids =
-          dirtyTodos.map((e) => (e['uuid'] ?? e['id']).toString()).toList();
-      final uploadedDeletedTodoUuids = dirtyTodos
-          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final uploadedPlanUuids = dirtyPlanBlocks
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final uploadedDeletedPlanUuids = dirtyPlanBlocks
-          .where((e) => e['is_deleted'] == 1 || e['isDeleted'] == true)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      /*debugPrint(
-          '🧪 [SyncDiag][Client->Server] deviceId=$deviceId lastSync=$lastSyncTime todos=${dirtyTodos.length} deletedTodos=${uploadedDeletedTodoUuids.length} todoUuids=$uploadedTodoUuids deletedTodoUuids=$uploadedDeletedTodoUuids planBlocks=${dirtyPlanBlocks.length} deletedPlanBlocks=${uploadedDeletedPlanUuids.length} planUuids=$uploadedPlanUuids deletedPlanUuids=$uploadedDeletedPlanUuids');
-*/
       Future<Map<String, dynamic>> sendSyncRequest() {
         return ApiService.postDeltaSync(
           userId: userId,
@@ -3497,58 +4054,38 @@ class StorageService {
           countdownsChanges: dirtyCountdowns,
           timeLogsChanges: dirtyTimeLogs,
           planBlocksChanges: dirtyPlanBlocks,
+          fixedSchedulesChanges: dirtyFixedSchedules,
+          fixedSchedulesFullSync: syncFixedSchedules &&
+              (!fixedScheduleSyncInitialized || forceFullSync),
           screenTime: screenPayload,
           forceFullSync: forceFullSync,
         );
       }
 
       Map<String, dynamic> response = await sendSyncRequest();
-      final serverTodosPreview =
-          (response['server_todos'] as List?) ?? const [];
-      final serverTodoUuids = serverTodosPreview
-          .whereType<Map>()
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverDeletedTodoUuids = serverTodosPreview
-          .whereType<Map>()
-          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverPlanPreview =
-          (response['server_plan_blocks'] as List?) ?? const [];
-      final serverPlanUuids = serverPlanPreview
-          .whereType<Map>()
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      final serverDeletedPlanUuids = serverPlanPreview
-          .whereType<Map>()
-          .where((e) => e['is_deleted'] == true || e['is_deleted'] == 1)
-          .map((e) => (e['uuid'] ?? e['id']).toString())
-          .toList();
-      /*debugPrint(
-          '🧪 [SyncDiag][Server->Client] success=${response['success']} todos=${serverTodosPreview.length} deletedTodos=${serverDeletedTodoUuids.length} todoUuids=$serverTodoUuids deletedTodoUuids=$serverDeletedTodoUuids planBlocks=${serverPlanPreview.length} deletedPlanBlocks=${serverDeletedPlanUuids.length} planUuids=$serverPlanUuids deletedPlanUuids=$serverDeletedPlanUuids');
-*/
       bool hasPendingUpload() =>
           dirtyTodos.isNotEmpty ||
           dirtyGroups.isNotEmpty ||
           dirtyCountdowns.isNotEmpty ||
           dirtyTimeLogs.isNotEmpty ||
           dirtyPlanBlocks.isNotEmpty ||
+          dirtyFixedSchedules.isNotEmpty ||
           screenPayload != null;
 
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
         if (!forceFullSync && !hasPendingUpload()) {
           return false;
         }
-        final remotePayloadEmpty =
-            (syncResponse['server_todos'] as List?)?.isEmpty == true &&
-                (syncResponse['server_todo_groups'] as List?)?.isEmpty ==
-                    true &&
-                (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
-                (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
-                (syncResponse['server_pomodoros'] as List?)?.isEmpty == true &&
-                (syncResponse['server_tags'] as List?)?.isEmpty == true &&
-                (syncResponse['server_plan_blocks'] as List?)?.isEmpty == true;
+        final remotePayloadEmpty = (syncResponse['server_todos'] as List?)
+                    ?.isEmpty ==
+                true &&
+            (syncResponse['server_todo_groups'] as List?)?.isEmpty == true &&
+            (syncResponse['server_countdowns'] as List?)?.isEmpty == true &&
+            (syncResponse['server_time_logs'] as List?)?.isEmpty == true &&
+            (syncResponse['server_pomodoros'] as List?)?.isEmpty == true &&
+            (syncResponse['server_tags'] as List?)?.isEmpty == true &&
+            (syncResponse['server_plan_blocks'] as List?)?.isEmpty == true &&
+            (syncResponse['server_fixed_schedules'] as List?)?.isEmpty == true;
         final syncTimeUnchanged =
             (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
         return syncResponse['success'] == true &&
@@ -3567,6 +4104,16 @@ class StorageService {
           throw Exception('同步被服务端防抖延迟，已保留本地待同步记录');
         }
       }
+
+      final fixedSchedulesSupported =
+          SyncCapabilityService.supportsFixedSchedules(
+        response['sync_capabilities'],
+      );
+      final acknowledgeFixedScheduleOps =
+          SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
+        syncEnabled: syncFixedSchedules,
+        rawCapabilities: response['sync_capabilities'],
+      );
 
       // 🚀 提取当前团队列表，用于孤立检测和合并防御
       final List<dynamic>? joinedTeamUuids = response['joined_team_uuids'];
@@ -3624,8 +4171,16 @@ class StorageService {
             item.updatedAt = cleanupTime;
           }
         }
+        for (final item in allLocalFixedSchedules) {
+          if (item.teamUuid == teamUuid && !item.isDeleted) {
+            item.isDeleted = true;
+            item.version += 1;
+            item.updatedAt = cleanupTime;
+          }
+        }
       }
 
+      var inFlightTodoMutationUuids = <String>{};
       if (response['success'] == true) {
         // 仅标记“未冲突”的本地操作为已同步。阻塞冲突对应的 oplog 必须保留，
         // 否则本地完成/取消完成会被服务端旧状态覆盖后失去再次上传机会。
@@ -3647,37 +4202,56 @@ class StorageService {
           }
         }
 
-        const pomodoroOpTables = ['pomodoro_records', 'pomodoro_tags'];
-        if (blockingConflictUuids.isEmpty) {
-          await db.update(
-            'op_logs',
-            {'is_synced': 1, 'sync_error': ''},
-            where: 'is_synced = 0 AND target_table NOT IN (?, ?)',
-            whereArgs: pomodoroOpTables,
+        final oplogResolution = SyncOplogPolicy.resolveRequestSnapshot(
+          requestSnapshot: requestOplogSnapshot,
+          blockingConflictUuids: blockingConflictUuids,
+          acknowledgeFixedScheduleOps: acknowledgeFixedScheduleOps,
+        );
+        await _updateOplogRowsByIds(
+          db,
+          oplogResolution.acknowledgedIds,
+          {'is_synced': 1, 'sync_error': ''},
+        );
+        await _updateOplogRowsByIds(
+          db,
+          oplogResolution.blockedIds,
+          {'is_synced': 0, 'sync_error': 'server_conflict'},
+        );
+
+        // 重新读取当前待同步日志。本次请求发出后新增的操作
+        // 没有上传，不能被本次响应确认，也不能被旧的服务端快照覆盖。
+        final currentPendingRows = await db.query(
+          'op_logs',
+          where: 'is_synced = 0',
+          orderBy: 'timestamp ASC',
+        );
+        final currentPendingEntries = currentPendingRows
+            .map(SyncOplogEntry.fromRow)
+            .whereType<SyncOplogEntry>()
+            .toList(growable: false);
+        _pendingSyncOplogUuids =
+            SyncOplogPolicy.todoUuids(currentPendingEntries);
+        inFlightTodoMutationUuids =
+            SyncOplogPolicy.todoUuidsCreatedAfterSnapshot(
+          requestSnapshot: requestOplogSnapshot,
+          currentPending: currentPendingEntries,
+        );
+        if (inFlightTodoMutationUuids.isNotEmpty) {
+          // allLocalTodos 是请求发出前的快照。用当前 SQLite 值回基
+          // 请求期间被修改的待办，使后续合并和全量落库都保留最新用户意图。
+          final latestRows = await DatabaseHelper.instance.getTodoMaps(
+            includeDeleted: true,
+            uuids: inFlightTodoMutationUuids.toList(),
+            includeConflictData: true,
           );
-        } else {
-          final placeholders =
-              List.filled(blockingConflictUuids.length, '?').join(',');
-          await db.update(
-            'op_logs',
-            {'is_synced': 1, 'sync_error': ''},
-            where:
-                'is_synced = 0 AND target_table NOT IN (?, ?) AND target_uuid NOT IN ($placeholders)',
-            whereArgs: [
-              ...pomodoroOpTables,
-              ...blockingConflictUuids,
-            ],
-          );
-          await db.update(
-            'op_logs',
-            {'is_synced': 0, 'sync_error': 'server_conflict'},
-            where:
-                'is_synced = 0 AND target_table NOT IN (?, ?) AND target_uuid IN ($placeholders)',
-            whereArgs: [
-              ...pomodoroOpTables,
-              ...blockingConflictUuids,
-            ],
-          );
+          final latestById = <String, TodoItem>{
+            for (final row in latestRows)
+              row['uuid'].toString(): TodoItem.fromJson(row),
+          };
+          for (var i = 0; i < allLocalTodos.length; i++) {
+            final latest = latestById[allLocalTodos[i].id];
+            if (latest != null) allLocalTodos[i] = latest;
+          }
         }
 
         // 🚀 处理独立待办完成情况
@@ -3692,6 +4266,13 @@ class StorageService {
             if (ic is! Map) continue;
             final todoUuid = ic['todo_uuid']?.toString();
             if (todoUuid == null || todoUuid.isEmpty) continue;
+            if (SyncOplogPolicy.shouldProtectTodoMerge(
+              todoUuid,
+              forceFlushUuids: _forceFlushProtectedUuids,
+              inFlightMutationUuids: inFlightTodoMutationUuids,
+            )) {
+              continue;
+            }
             final rawCompleted = ic['is_completed'];
             final isCompleted = rawCompleted == 1 ||
                 rawCompleted == true ||
@@ -3782,6 +4363,9 @@ class StorageService {
             UNION
             SELECT DISTINCT team_uuid FROM courses
             WHERE team_uuid IS NOT NULL AND TRIM(team_uuid) != '' AND is_deleted = 0
+            UNION
+            SELECT DISTINCT team_uuid FROM fixed_schedules
+            WHERE team_uuid IS NOT NULL AND TRIM(team_uuid) != '' AND is_deleted = 0
           ''');
           bool teamChanged = false;
           for (var row in localTeamRows) {
@@ -3820,7 +4404,7 @@ class StorageService {
 
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {
-        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
+        await prefs.remove(_scopedKey(keyLocalScreenTime, username));
         debugPrint("✅ 本机屏幕时间上传成功，已清理待上传缓存");
       }
 
@@ -3876,11 +4460,26 @@ class StorageService {
         if (todosIndexMap.containsKey(sItem.id)) {
           final idx = todosIndexMap[sItem.id]!;
           final local = allLocalTodos[idx];
+          final usesStrictRecurringLww =
+              _isRecurringTodoForLww(local) || _isRecurringTodoForLww(sItem);
+          final serverWinsStrictRecurringLww =
+              TodoLwwService.shouldReplaceRecurringSnapshot(
+            incomingUpdatedAt: sItem.updatedAt,
+            incomingVersion: sItem.version,
+            currentUpdatedAt: local.updatedAt,
+            currentVersion: local.version,
+            incomingHasConflict: sItem.hasConflict,
+          );
 
-          // 🚀 核心保护：force-flush 的待办跳过 merge，防止同步覆盖用户刚做的修改
-          if (_forceFlushProtectedUuids.contains(sItem.id)) {
+          // 请求前强制落库或请求期间新增的本地修改均跳过本次
+          // merge，防止用请求发出前的旧内存/服务端快照覆盖用户意图。
+          if (SyncOplogPolicy.shouldProtectTodoMerge(
+            sItem.id,
+            forceFlushUuids: _forceFlushProtectedUuids,
+            inFlightMutationUuids: inFlightTodoMutationUuids,
+          )) {
             debugPrint(
-                '🛡️ [merge] SKIP UUID=${sItem.id} (force-flush protected)');
+                '🛡️ [merge] SKIP UUID=${sItem.id} (local mutation protected)');
             continue;
           }
 
@@ -3901,7 +4500,8 @@ class StorageService {
               !sItem.isDeleted &&
               local.teamUuid != null &&
               local.teamUuid!.isNotEmpty &&
-              sItem.version <= local.version) {
+              sItem.version <= local.version &&
+              (!usesStrictRecurringLww || !serverWinsStrictRecurringLww)) {
             debugPrint(
                 '🛡️ [防复活] UUID: ${sItem.id} 本地已删除(V:${local.version})，服务端未删除(V:${sItem.version})，拒绝复活');
             continue;
@@ -3926,9 +4526,10 @@ class StorageService {
             debugPrint(
                 '🩺 [合并决策] UUID=${sItem.id} sV=${sItem.version} lV=${local.version} sU=${sItem.updatedAt} lU=${local.updatedAt} sConflict=${sItem.hasConflict} lConflict=${local.hasConflict} versionCond=$mergeVersionCond timeCond=$mergeTimeCond isDeleted=${sItem.isDeleted}');
           }
-          if (sItem.isDeleted ||
-              sItem.version > local.version ||
-              (sItem.updatedAt > local.updatedAt && !sItem.hasConflict)) {
+          final shouldReplaceTodo = usesStrictRecurringLww
+              ? serverWinsStrictRecurringLww
+              : sItem.isDeleted || mergeVersionCond || mergeTimeCond;
+          if (shouldReplaceTodo) {
             _preserveLocalTodoSourceFields(local, sItem);
             allLocalTodos[idx] = sItem;
             if (!sItem.isDeleted && isUpdatedByOtherDevice) {
@@ -3936,7 +4537,9 @@ class StorageService {
             }
             hasChanges = true;
           } else if (sItem.groupId != local.groupId &&
-              sItem.updatedAt >= local.updatedAt) {
+              (usesStrictRecurringLww
+                  ? serverWinsStrictRecurringLww
+                  : sItem.updatedAt >= local.updatedAt)) {
             // Only accept group_id changes if server item is at least as new
             // as local item, preserving LWW semantics for folder assignments.
             allLocalTodos[idx].groupId = sItem.groupId;
@@ -4192,6 +4795,47 @@ class StorageService {
         }
       }
 
+      // 合并通用固定日程。只在服务端显式声明 v1 能力时读取，
+      // 避免旧服务端的空字段被误解为“云端已全部删除”。
+      if (syncFixedSchedules && fixedSchedulesSupported) {
+        final serverFixedSchedules =
+            (response['server_fixed_schedules'] as List?) ?? const [];
+        final fixedSchedulesIndexMap = <String, int>{
+          for (var i = 0; i < allLocalFixedSchedules.length; i++)
+            allLocalFixedSchedules[i].id: i,
+        };
+        for (final raw in serverFixedSchedules) {
+          if (raw is! Map) continue;
+          final serverItem = FixedScheduleItem.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.id) ||
+              isOutsideJoinedTeam(serverItem.teamUuid)) {
+            continue;
+          }
+          final localIndex = fixedSchedulesIndexMap[serverItem.id];
+          if (localIndex == null) {
+            if (!serverItem.isDeleted) {
+              fixedSchedulesIndexMap[serverItem.id] =
+                  allLocalFixedSchedules.length;
+              allLocalFixedSchedules.add(serverItem);
+              hasChanges = true;
+            }
+            continue;
+          }
+          final localItem = allLocalFixedSchedules[localIndex];
+          if (TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: serverItem.updatedAt,
+            incomingVersion: serverItem.version,
+            currentUpdatedAt: localItem.updatedAt,
+            currentVersion: localItem.version,
+          )) {
+            allLocalFixedSchedules[localIndex] = serverItem;
+            hasChanges = true;
+          }
+        }
+      }
+
       // 🚀 关键：将 conflicts 数组中的冲突也标记到本地数据上。
       // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
@@ -4319,18 +4963,23 @@ class StorageService {
         if (idx == null) return false;
         return !allLocalTodos[idx].hasConflict;
       }).toSet();
-      if (repairedRemoteTodoIds.isNotEmpty) {
-        final deletedBeforeDedupe = {
-          for (final todo in allLocalTodos)
-            if (todo.isDeleted) todo.id,
-        };
-        if (_deduplicatePersistedRecurrenceOccurrences(allLocalTodos)) {
-          repairedRemoteTodoIds.addAll(allLocalTodos
-              .where((todo) =>
-                  todo.isDeleted && !deletedBeforeDedupe.contains(todo.id))
-              .map((todo) => todo.id));
+      final receivedRecurringTodos = remoteTodoEntries.any(
+        (entry) => _isRecurringTodoForLww(entry.item),
+      );
+      final recurrenceDedupeChangedIds = <String>{};
+      if (repairedRemoteTodoIds.isNotEmpty || receivedRecurringTodos) {
+        if (_deduplicatePersistedRecurrenceOccurrences(
+          allLocalTodos,
+          changedIds: recurrenceDedupeChangedIds,
+        )) {
+          repairedRemoteTodoIds.addAll(recurrenceDedupeChangedIds);
           hasChanges = true;
         }
+        // A sync-source save intentionally does not clear this cache. Remote
+        // recurring snapshots are different: the just-downloaded tombstones
+        // or occurrences can expose a series-day gap that must be repaired on
+        // the next read instead of waiting until tomorrow.
+        _recurrenceCheckCache.clear();
       }
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
@@ -4356,6 +5005,14 @@ class StorageService {
           await savePlanBlocks(username, allLocalPlanBlocks,
               sync: false, isSyncSource: true);
         }
+        if (syncFixedSchedules && fixedSchedulesSupported) {
+          await saveFixedSchedules(
+            username,
+            allLocalFixedSchedules,
+            sync: false,
+            isSyncSource: true,
+          );
+        }
         _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
         _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
       }
@@ -4364,6 +5021,7 @@ class StorageService {
       // 先完成同步源落库，再提升版本，确保 saveTodos 能生成待上传 oplog。
       if (repairedRemoteTodoIds.isNotEmpty) {
         final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
+            recurrenceDedupeChangedIds.contains(id) ||
             !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
         final repairedItems = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))
@@ -4390,6 +5048,9 @@ class StorageService {
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('last_sync_time_${serverKey}_$username', newSyncTime);
+      if (syncFixedSchedules && fixedSchedulesSupported) {
+        await prefs.setBool(fixedScheduleBootstrapKey, true);
+      }
 
       // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
       if (response['screen_time_results'] != null) {
@@ -4465,11 +5126,7 @@ class StorageService {
       final startMs = todo.createdDate ?? todo.createdAt;
       final endMs = dueDate?.millisecondsSinceEpoch ?? 0;
 
-      // 🚀 核心修复：后台扫描也必须跳过时间范围全天（0:00-23:59）的任务
-      final isAllDayRange =
-          startMs > 0 && endMs > 0 && _isAllDayRange(startMs, endMs);
-
-      if (todo.isDeleted || dueDate == null || todo.isAllDay || isAllDayRange) {
+      if (todo.isDeleted || dueDate == null || todo.isDateOnly) {
         continue;
       }
 
@@ -4598,18 +5255,6 @@ class StorageService {
     return changed;
   }
 
-  static bool _isAllDayRange(int startMs, int endMs) {
-    final duration = endMs - startMs;
-    if (duration >= 23.5 * 3600 * 1000) return true;
-
-    final st = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
-    final et = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-    return st.hour == 0 &&
-        st.minute == 0 &&
-        ((et.hour == 23 && et.minute == 59) ||
-            (et.hour == 0 && et.minute == 0 && et.isAfter(st)));
-  }
-
   static String _scheduleConflictPairKey(
     String aId,
     int aStart,
@@ -4666,6 +5311,10 @@ class StorageService {
         secondSeries.isNotEmpty &&
         firstSeries == secondSeries;
   }
+
+  static bool _isRecurringTodoForLww(TodoItem todo) =>
+      todo.recurrence != RecurrenceType.none ||
+      (todo.recurrenceSeriesId?.trim().isNotEmpty ?? false);
 
   static bool _isSameRecurrenceSeriesPayload(
     TodoItem item,
@@ -4852,6 +5501,27 @@ class StorageService {
     final repairedIds = <String>{};
     final localById = {for (final todo in local) todo.id: todo};
 
+    // 云端可能已被旧设备拆成非空的“子实例自建系列”。
+    // 若该云端系列 ID 在本地明确是另一系列的成员，则本地
+    // 稳定 UUID 关系比云端的错误非空值更可信。
+    for (final todo in incoming) {
+      final remoteSeriesId = todo.recurrenceSeriesId?.trim();
+      final localSeriesId = localById[todo.id]?.recurrenceSeriesId?.trim();
+      if (remoteSeriesId == null ||
+          remoteSeriesId.isEmpty ||
+          localSeriesId == null ||
+          localSeriesId.isEmpty ||
+          remoteSeriesId == localSeriesId) {
+        continue;
+      }
+      final resolvedRemoteSeriesId =
+          _resolveRecurrenceSeriesAlias(remoteSeriesId, localById);
+      if (resolvedRemoteSeriesId == localSeriesId) {
+        todo.recurrenceSeriesId = localSeriesId;
+        repairedIds.add(todo.id);
+      }
+    }
+
     for (final todo in incoming) {
       if (!_isMissingRecurrenceSeriesId(todo)) continue;
       final localSeriesId = localById[todo.id]?.recurrenceSeriesId;
@@ -4949,6 +5619,144 @@ class StorageService {
       if (!changed) break;
     }
 
+    return repairedIds;
+  }
+
+  static String _resolveRecurrenceSeriesAlias(
+    String seriesId,
+    Map<String, TodoItem> todosById,
+  ) {
+    var current = seriesId;
+    final visited = <String>{};
+    while (visited.add(current)) {
+      final next = todosById[current]?.recurrenceSeriesId?.trim();
+      if (next == null || next.isEmpty || next == current) break;
+      current = next;
+    }
+    return current;
+  }
+
+  @visibleForTesting
+  static Set<String> repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+    List<TodoItem> todos,
+    Map<String, List<String>> historicalSeriesByTodoId,
+  ) =>
+      _repairLocalRecurrenceSeriesAliases(
+        todos,
+        historicalSeriesByTodoId,
+      );
+
+  /// 从本机 oplog 中恢复“某个子实例曾经属于哪个系列”。
+  ///
+  /// 只有当实例当前以自己 UUID 作为系列 ID，历史中只存在
+  /// 一个不同的系列 ID，且旧归属记录不少于当前自立记录时才
+  /// 建立别名。不依赖标题或时间猜测。
+  static Future<Set<String>> _repairLocalRecurrenceSeriesAliasesFromHistory(
+    Database db,
+    List<TodoItem> todos,
+  ) async {
+    final relevantIds = todos
+        .where((todo) => todo.recurrenceSeriesId?.isNotEmpty == true)
+        .map((todo) => todo.id)
+        .toList();
+    if (relevantIds.isEmpty) return <String>{};
+
+    final historicalSeriesByTodoId = <String, List<String>>{};
+    const chunkSize = 300;
+    for (var offset = 0; offset < relevantIds.length; offset += chunkSize) {
+      final end = (offset + chunkSize < relevantIds.length)
+          ? offset + chunkSize
+          : relevantIds.length;
+      final chunk = relevantIds.sublist(offset, end);
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await db.query(
+        'op_logs',
+        columns: const ['target_uuid', 'data_json', 'timestamp'],
+        where: 'target_table = ? AND target_uuid IN ($placeholders)',
+        whereArgs: ['todos', ...chunk],
+        orderBy: 'timestamp ASC',
+      );
+      for (final row in rows) {
+        final targetUuid = row['target_uuid']?.toString();
+        final rawData = row['data_json'];
+        if (targetUuid == null || targetUuid.isEmpty || rawData == null) {
+          continue;
+        }
+        try {
+          final decoded = jsonDecode(rawData.toString());
+          if (decoded is! Map) continue;
+          final seriesId =
+              (decoded['recurrence_series_id'] ?? decoded['recurrenceSeriesId'])
+                  ?.toString()
+                  .trim();
+          if (seriesId == null || seriesId.isEmpty) continue;
+          final history = historicalSeriesByTodoId.putIfAbsent(
+            targetUuid,
+            () => <String>[],
+          );
+          history.add(seriesId);
+        } catch (_) {
+          // 单条旧 oplog 损坏不应阻断整体同步。
+        }
+      }
+    }
+    return _repairLocalRecurrenceSeriesAliases(
+      todos,
+      historicalSeriesByTodoId,
+    );
+  }
+
+  static Set<String> _repairLocalRecurrenceSeriesAliases(
+    List<TodoItem> todos,
+    Map<String, List<String>> historicalSeriesByTodoId,
+  ) {
+    final aliases = <String, String>{};
+    for (final todo in todos) {
+      final currentSeriesId = todo.recurrenceSeriesId?.trim();
+      if (currentSeriesId == null ||
+          currentSeriesId.isEmpty ||
+          currentSeriesId != todo.id) {
+        continue;
+      }
+      final history = (historicalSeriesByTodoId[todo.id] ?? const [])
+          .map((seriesId) => seriesId.trim())
+          .where((seriesId) => seriesId.isNotEmpty)
+          .toList();
+      final currentSeriesCount =
+          history.where((seriesId) => seriesId == currentSeriesId).length;
+      final previousSeriesCounts = <String, int>{};
+      for (final seriesId in history) {
+        if (seriesId == currentSeriesId) continue;
+        previousSeriesCounts[seriesId] =
+            (previousSeriesCounts[seriesId] ?? 0) + 1;
+      }
+      if (previousSeriesCounts.length == 1 &&
+          previousSeriesCounts.values.single >= currentSeriesCount) {
+        aliases[currentSeriesId] = previousSeriesCounts.keys.single;
+      }
+    }
+    if (aliases.isEmpty) return <String>{};
+
+    String resolve(String seriesId) {
+      var current = seriesId;
+      final visited = <String>{};
+      while (visited.add(current)) {
+        final next = aliases[current];
+        if (next == null || next.isEmpty || next == current) break;
+        current = next;
+      }
+      return current;
+    }
+
+    final repairedIds = <String>{};
+    for (final todo in todos) {
+      final currentSeriesId = todo.recurrenceSeriesId?.trim();
+      if (currentSeriesId == null || currentSeriesId.isEmpty) continue;
+      final canonicalSeriesId = resolve(currentSeriesId);
+      if (canonicalSeriesId == currentSeriesId) continue;
+      todo.recurrenceSeriesId = canonicalSeriesId;
+      repairedIds.add(todo.id);
+    }
     return repairedIds;
   }
 
@@ -5110,7 +5918,7 @@ class StorageService {
       );
 
       if (success) {
-        await prefs.remove(_scopedKey(KEY_LOCAL_SCREEN_TIME, username));
+        await prefs.remove(_scopedKey(keyLocalScreenTime, username));
         return true;
       } else {
         debugPrint("syncScreenTimeAlone failed");
@@ -5131,15 +5939,15 @@ class StorageService {
 
     // 🚀 全局设置例外列表 (不进行账户隔离的设置)
     const List<String> globalSettings = [
-      KEY_THEME_MODE,
-      KEY_SERVER_CHOICE,
-      KEY_SYSTEM_STARTUP_ENABLED,
-      KEY_DEVICE_ID,
+      keyThemeMode,
+      keyServerChoice,
+      keySystemStartupEnabled,
+      keyDeviceId,
       'update_channel',
     ];
 
     if (!globalSettings.contains(key)) {
-      final String? username = prefs.getString(KEY_CURRENT_USER);
+      final String? username = prefs.getString(keyCurrentUser);
       if (username != null && username.isNotEmpty) {
         finalKey = "${key}_$username";
       }
@@ -5148,43 +5956,43 @@ class StorageService {
     if (value is int) await prefs.setInt(finalKey, value);
     if (value is String) await prefs.setString(finalKey, value);
     if (value is bool) await prefs.setBool(finalKey, value);
-    if (key == KEY_THEME_MODE) themeNotifier.value = value;
+    if (key == keyThemeMode) themeNotifier.value = value;
   }
 
   static Future<int> getSyncInterval() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getInt("${KEY_SYNC_INTERVAL}_$username") ??
-          (prefs.getInt(KEY_SYNC_INTERVAL) ?? 0);
+      return prefs.getInt("${keySyncInterval}_$username") ??
+          (prefs.getInt(keySyncInterval) ?? 0);
     }
-    return prefs.getInt(KEY_SYNC_INTERVAL) ?? 0;
+    return prefs.getInt(keySyncInterval) ?? 0;
   }
 
   static Future<bool> getConflictDetectionEnabled() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getBool("${KEY_CONFLICT_DETECTION_ENABLED}_$username") ??
-          (prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false);
+      return prefs.getBool("${keyConflictDetectionEnabled}_$username") ??
+          (prefs.getBool(keyConflictDetectionEnabled) ?? false);
     }
-    return prefs.getBool(KEY_CONFLICT_DETECTION_ENABLED) ?? false;
+    return prefs.getBool(keyConflictDetectionEnabled) ?? false;
   }
 
   static Future<String> getThemeMode() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_THEME_MODE) ?? 'system';
+    return prefs.getString(keyThemeMode) ?? 'system';
   }
 
   static Future<void> setThemeColorMode(String mode) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_THEME_COLOR_MODE, mode);
+    await prefs.setString(keyThemeColorMode, mode);
     themeColorModeNotifier.value = mode;
   }
 
   static Future<void> setCustomThemeColor(Color color) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_CUSTOM_THEME_COLOR, color.toARGB32());
+    await prefs.setInt(keyCustomThemeColor, color.toARGB32());
     customThemeColorNotifier.value = color;
   }
 
@@ -5194,35 +6002,35 @@ class StorageService {
 
   static Future<void> saveServerChoice(String choice) async {
     final prefs = await StorageService.prefs;
-    await prefs.setString(KEY_SERVER_CHOICE, choice);
+    await prefs.setString(keyServerChoice, choice);
     ApiService.setServerChoice(choice);
   }
 
   static Future<String> getServerChoice() async {
     final prefs = await StorageService.prefs;
-    return prefs.getString(KEY_SERVER_CHOICE) ?? 'aliyun';
+    return prefs.getString(keyServerChoice) ?? 'aliyun';
   }
 
   // ==========================================
   // 首页文字自定义配置
   // ==========================================
-  static const String _KEY_HOME_TEXT_CONFIG = 'home_text_config';
+  static const String _keyHomeTextConfig = 'home_text_config';
 
   static Future<void> saveHomeTextConfig(Map<String, dynamic> config) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final key = username != null && username.isNotEmpty
-        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
-        : _KEY_HOME_TEXT_CONFIG;
+        ? "${_keyHomeTextConfig}_$username"
+        : _keyHomeTextConfig;
     await prefs.setString(key, jsonEncode(config));
   }
 
   static Future<Map<String, dynamic>> getHomeTextConfig() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final key = username != null && username.isNotEmpty
-        ? "${_KEY_HOME_TEXT_CONFIG}_$username"
-        : _KEY_HOME_TEXT_CONFIG;
+        ? "${_keyHomeTextConfig}_$username"
+        : _keyHomeTextConfig;
     final String? jsonStr = prefs.getString(key);
     if (jsonStr != null) {
       return Map<String, dynamic>.from(jsonDecode(jsonStr));
@@ -5232,16 +6040,16 @@ class StorageService {
 
   static Future<bool> getSemesterEnabled() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      return prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
+      return prefs.getBool(keySemesterProgressEnabled) ?? false;
     }
 
     final bool? scoped =
-        prefs.getBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username");
+        prefs.getBool("${keySemesterProgressEnabled}_$username");
     if (scoped == null) {
-      final bool global = prefs.getBool(KEY_SEMESTER_PROGRESS_ENABLED) ?? false;
-      await prefs.setBool("${KEY_SEMESTER_PROGRESS_ENABLED}_$username", global);
+      final bool global = prefs.getBool(keySemesterProgressEnabled) ?? false;
+      await prefs.setBool("${keySemesterProgressEnabled}_$username", global);
       return global;
     }
     return scoped;
@@ -5249,19 +6057,19 @@ class StorageService {
 
   static Future<DateTime?> getSemesterStart() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      String? s = prefs.getString(KEY_SEMESTER_START);
+      String? s = prefs.getString(keySemesterStart);
       return s != null ? DateTime.tryParse(s) : null;
     }
 
-    String? s = prefs.getString("${KEY_SEMESTER_START}_$username");
+    String? s = prefs.getString("${keySemesterStart}_$username");
 
     // 迁移检查：如果用户没有设置过隔离的日期，回退一次全局数据
     if (s == null) {
-      s = prefs.getString(KEY_SEMESTER_START);
+      s = prefs.getString(keySemesterStart);
       if (s != null) {
-        await prefs.setString("${KEY_SEMESTER_START}_$username", s);
+        await prefs.setString("${keySemesterStart}_$username", s);
       }
     }
 
@@ -5270,17 +6078,17 @@ class StorageService {
 
   static Future<DateTime?> getSemesterEnd() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     if (username == null || username.isEmpty) {
-      String? s = prefs.getString(KEY_SEMESTER_END);
+      String? s = prefs.getString(keySemesterEnd);
       return s != null ? DateTime.tryParse(s) : null;
     }
 
-    String? s = prefs.getString("${KEY_SEMESTER_END}_$username");
+    String? s = prefs.getString("${keySemesterEnd}_$username");
     if (s == null) {
-      s = prefs.getString(KEY_SEMESTER_END);
+      s = prefs.getString(keySemesterEnd);
       if (s != null) {
-        await prefs.setString("${KEY_SEMESTER_END}_$username", s);
+        await prefs.setString("${keySemesterEnd}_$username", s);
       }
     }
     return s != null ? DateTime.tryParse(s) : null;
@@ -5293,10 +6101,10 @@ class StorageService {
   /// 获取所有学期列表
   static Future<List<SemesterInfo>> getSemesters() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_SEMESTERS}_$username"
-        : KEY_SEMESTERS;
+        ? "${keySemesters}_$username"
+        : keySemesters;
 
     final String? jsonStr = prefs.getString(key);
     if (jsonStr == null || jsonStr.isEmpty) {
@@ -5328,28 +6136,27 @@ class StorageService {
   /// 保存学期列表
   static Future<void> saveSemesters(List<SemesterInfo> semesters) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_SEMESTERS}_$username"
-        : KEY_SEMESTERS;
+        ? "${keySemesters}_$username"
+        : keySemesters;
 
     final jsonStr = jsonEncode(semesters.map((s) => s.toJson()).toList());
     await prefs.setString(key, jsonStr);
 
     // 同步更新旧的 semesterStart/semesterEnd（兼容）
-    final current =
-        semesters.where((s) => s.isCurrent).toList();
+    final current = semesters.where((s) => s.isCurrent).toList();
     if (current.isNotEmpty) {
       await prefs.setString(
           username != null && username.isNotEmpty
-              ? "${KEY_SEMESTER_START}_$username"
-              : KEY_SEMESTER_START,
+              ? "${keySemesterStart}_$username"
+              : keySemesterStart,
           current.first.startDate.toIso8601String());
       if (current.first.endDate != null) {
         await prefs.setString(
             username != null && username.isNotEmpty
-                ? "${KEY_SEMESTER_END}_$username"
-                : KEY_SEMESTER_END,
+                ? "${keySemesterEnd}_$username"
+                : keySemesterEnd,
             current.first.endDate!.toIso8601String());
       }
     }
@@ -5358,10 +6165,10 @@ class StorageService {
   /// 获取当前活跃学期 ID
   static Future<String> getActiveSemesterId() async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_ACTIVE_SEMESTER}_$username"
-        : KEY_ACTIVE_SEMESTER;
+        ? "${keyActiveSemester}_$username"
+        : keyActiveSemester;
 
     return prefs.getString(key) ?? 'default';
   }
@@ -5369,10 +6176,10 @@ class StorageService {
   /// 设置当前活跃学期 ID
   static Future<void> setActiveSemesterId(String semesterId) async {
     final prefs = await StorageService.prefs;
-    final String? username = prefs.getString(KEY_CURRENT_USER);
+    final String? username = prefs.getString(keyCurrentUser);
     final String key = username != null && username.isNotEmpty
-        ? "${KEY_ACTIVE_SEMESTER}_$username"
-        : KEY_ACTIVE_SEMESTER;
+        ? "${keyActiveSemester}_$username"
+        : keyActiveSemester;
 
     await prefs.setString(key, semesterId);
   }
@@ -5392,8 +6199,8 @@ class StorageService {
   static Future<SemesterInfo?> getSemesterByDate(DateTime date) async {
     final semesters = await getSemesters();
     for (final semester in semesters) {
-      final start = DateTime(
-          semester.startDate.year, semester.startDate.month, semester.startDate.day);
+      final start = DateTime(semester.startDate.year, semester.startDate.month,
+          semester.startDate.day);
       final end = semester.endDate != null
           ? DateTime(semester.endDate!.year, semester.endDate!.month,
               semester.endDate!.day)
@@ -5408,13 +6215,13 @@ class StorageService {
 
   static Future<void> updateLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt("${KEY_LAST_AUTO_SYNC}_$username",
-        DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(
+        "${keyLastAutoSync}_$username", DateTime.now().millisecondsSinceEpoch);
   }
 
   static Future<DateTime?> getLastAutoSyncTime(String username) async {
     final prefs = await StorageService.prefs;
-    int? timestamp = prefs.getInt("${KEY_LAST_AUTO_SYNC}_$username");
+    int? timestamp = prefs.getInt("${keyLastAutoSync}_$username");
     if (timestamp != null) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true)
           .toLocal();
@@ -5448,20 +6255,20 @@ class StorageService {
   /// 获取大模型重试次数，默认3次
   static Future<int> getLLMRetryCount() async {
     final prefs = await StorageService.prefs;
-    return prefs.getInt(KEY_LLM_RETRY_COUNT) ?? 3;
+    return prefs.getInt(keyLlmRetryCount) ?? 3;
   }
 
   /// 设置大模型重试次数
   static Future<void> setLLMRetryCount(int count) async {
     final prefs = await StorageService.prefs;
-    await prefs.setInt(KEY_LLM_RETRY_COUNT, count);
+    await prefs.setInt(keyLlmRetryCount, count);
   }
 
   // ==========================================
-  // 📋 待确认待办数据（用于通知点击后的二次确认）
+  // 📋 待确认事项数据（用于通知点击后的二次确认）
   // ==========================================
 
-  /// 保存待确认的待办数据
+  /// 保存待确认的事项数据（方法名为旧接口兼容保留）
   /// [status] 状态: 'processing'(处理中), 'success'(成功), 'failed'(失败)
   /// [compressedPath] 压缩后的图片路径，用于重试
   /// [currentAttempt] 当前尝试次数
@@ -5487,10 +6294,10 @@ class StorageService {
       'errorMsg': errorMsg,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
-    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+    await prefs.setString(keyPendingTodoConfirm, data);
   }
 
-  /// 更新待确认待办数据的状态
+  /// 更新待确认事项数据的状态
   static Future<void> updatePendingTodoConfirmStatus({
     required String status,
     int? currentAttempt,
@@ -5511,13 +6318,13 @@ class StorageService {
       'results': results ?? existing['results'] ?? [],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
-    await prefs.setString(KEY_PENDING_TODO_CONFIRM, data);
+    await prefs.setString(keyPendingTodoConfirm, data);
   }
 
-  /// 获取待确认的待办数据
+  /// 获取待确认的事项数据
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
-    final data = prefs.getString(KEY_PENDING_TODO_CONFIRM);
+    final data = prefs.getString(keyPendingTodoConfirm);
     if (data == null) return null;
     try {
       return jsonDecode(data) as Map<String, dynamic>;
@@ -5526,10 +6333,10 @@ class StorageService {
     }
   }
 
-  /// 清除待确认的待办数据
+  /// 清除待确认的事项数据
   static Future<void> clearPendingTodoConfirm() async {
     final prefs = await StorageService.prefs;
-    await prefs.remove(KEY_PENDING_TODO_CONFIRM);
+    await prefs.remove(keyPendingTodoConfirm);
   }
 
   // ==========================================
@@ -5862,10 +6669,10 @@ class StorageService {
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();
     final key = table == 'todos'
-        ? '${KEY_TODOS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
+        ? '${keyTodos}_${prefs.getString(keyCurrentUser) ?? 'default'}'
         : table == 'countdowns'
-            ? '${KEY_COUNTDOWNS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}'
-            : '${KEY_TODO_GROUPS}_${prefs.getString(KEY_CURRENT_USER) ?? 'default'}';
+            ? '${keyCountdowns}_${prefs.getString(keyCurrentUser) ?? 'default'}'
+            : '${keyTodoGroups}_${prefs.getString(keyCurrentUser) ?? 'default'}';
     await prefs.remove(key);
 
     triggerRefresh();

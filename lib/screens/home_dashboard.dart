@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +39,8 @@ import '../services/pomodoro_sync_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
+import '../services/item_semantics_service.dart';
+import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
 import '../utils/local_image_provider.dart';
@@ -52,6 +52,7 @@ import 'home_settings_screen.dart';
 import 'feature_guide_screen.dart';
 import 'todo_confirm_screen.dart';
 import 'add_todo_screen.dart';
+import 'fixed_schedule_editor_screen.dart';
 import 'course_screens.dart';
 import 'course_calendar_adjustment_screen.dart';
 import 'time_log_screen.dart';
@@ -211,7 +212,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   int _selectedTabIndex = 0;
 
-  // 待确认的待办数据（从图片识别来）
+  // 待确认的事项数据（从图片识别来）
   Map<String, dynamic>? _pendingTodoConfirm;
 
   // ── 跨端专注感知 ──
@@ -232,6 +233,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   // ── 本地专注状态 ──
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
+  List<FixedScheduleItem> _fixedSchedules = [];
   bool _pendingReloadRequested = false;
   Timer? _dashboardLoadRetryTimer;
   int _dashboardLoadRetryAttempt = 0;
@@ -321,12 +323,20 @@ class _HomeDashboardState extends State<HomeDashboard>
         pomodoroRecords: pomodoroRecords,
         conflicts: _latestSyncConflicts,
         teams: teams,
+        fixedSchedules: _fixedSchedules,
         categoryReminderDefaults: categoryReminderDefaults,
         onTodoGroupsChanged: (groups) {
           unawaited(_handleAiTodoGroupsChanged(groups));
         },
         onTodosBatchAction: (inserted, updated) {
           unawaited(_handleAiTodosBatchAction(inserted, updated));
+        },
+        onFixedSchedulesChanged: (schedules) {
+          if (!mounted) return;
+          setState(() {
+            _fixedSchedules =
+                schedules.where((schedule) => !schedule.isDeleted).toList();
+          });
         },
       );
     } catch (e) {
@@ -347,15 +357,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     List<TodoItem> inserted,
     List<TodoItem> updated,
   ) async {
-    final nextTodos = List<TodoItem>.from(_todos)..addAll(inserted);
-    for (final item in updated) {
-      final idx = nextTodos.indexWhere((t) => t.id == item.id);
-      if (idx >= 0) {
-        nextTodos[idx] = item;
-      } else {
-        nextTodos.add(item);
-      }
-    }
+    final nextTodos = AiTodoActionExecutor.mergeTodoUpdates(
+      _todos,
+      inserted,
+      updated,
+    );
     if (!mounted) return;
     setState(() => _todos = nextTodos);
     await StorageService.saveTodos(widget.username, nextTodos);
@@ -499,7 +505,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
       );
 
-      // 检查是否有待确认的待办数据（从通知点击进入）
+      // 检查是否有待确认的事项数据（从通知点击进入）
       _checkPendingTodoConfirm();
 
       _checkAutoSync();
@@ -533,7 +539,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('current_user_id');
     final token =
-        ApiService.getToken() ?? prefs.getString(StorageService.KEY_AUTH_TOKEN);
+        ApiService.getToken() ?? prefs.getString(StorageService.keyAuthToken);
     if (userId == null || token == null || token.isEmpty) return;
     await BackgroundNotificationService.configureNotificationPoll(
       userId: userId,
@@ -618,6 +624,20 @@ class _HomeDashboardState extends State<HomeDashboard>
         originalText: originalText,
         initialTeamUuid: teamUuid,
         initialTeamName: teamName,
+        onFixedScheduleAdded: (item) async {
+          await StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          );
+          if (!mounted) return;
+          _scheduleRevision.value++;
+          _timelineRevision.value++;
+          await _loadAllData(deferred: true);
+          if (_pendingTodoConfirm != null) {
+            setState(() => _pendingTodoConfirm = null);
+            ExternalShareHandler.clearPendingTodoConfirm();
+          }
+        },
         onConfirm: (confirmedResults) {
           // 用户确认后，直接批量添加待办
           _batchAddTodos(confirmedResults, teamUuid, teamName);
@@ -643,9 +663,28 @@ class _HomeDashboardState extends State<HomeDashboard>
       [String? teamUuid, String? teamName]) async {
     if (todosData.isEmpty) return;
 
+    RecurrenceType parseRecurrence(dynamic value) {
+      if (value is int && value >= 0 && value < RecurrenceType.values.length) {
+        return RecurrenceType.values[value];
+      }
+      final name = value?.toString();
+      return RecurrenceType.values.firstWhere(
+        (type) => type.name == name,
+        orElse: () => RecurrenceType.none,
+      );
+    }
+
+    int? parseInt(dynamic value) {
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '');
+    }
+
     final newTodos = todosData.map((data) {
       DateTime? dueDate;
-      int? createdDate;
+      DateTime? selectedDate;
+      final isDateOnly = data['isAllDay'] == true ||
+          data['is_all_day'] == true ||
+          data['is_all_day'] == 1;
 
       if (data['endTime'] != null) {
         dueDate = DateTime.tryParse(data['endTime']);
@@ -654,16 +693,41 @@ class _HomeDashboardState extends State<HomeDashboard>
       if (data['startTime'] != null) {
         final startTime = DateTime.tryParse(data['startTime']);
         if (startTime != null) {
-          createdDate = startTime.millisecondsSinceEpoch;
+          selectedDate = startTime;
+          if (isDateOnly && dueDate == null) {
+            dueDate = DateTime(
+              startTime.year,
+              startTime.month,
+              startTime.day,
+              23,
+              59,
+            );
+          }
         }
       }
+
+      final normalizedTime = TodoItem.normalizeTimeForWrite(
+        selectedDate: selectedDate,
+        dueDate: dueDate,
+        isDateOnly: isDateOnly,
+      );
 
       return TodoItem(
         title: data['title'] ?? '',
         remark: data['remark'],
-        dueDate: dueDate,
-        createdDate: createdDate,
+        dueDate: normalizedTime.due,
+        createdDate: normalizedTime.start?.millisecondsSinceEpoch,
         createdAt: DateTime.now().millisecondsSinceEpoch,
+        recurrence: parseRecurrence(data['recurrence']),
+        customIntervalDays: parseInt(
+            data['customIntervalDays'] ?? data['custom_interval_days']),
+        recurrenceEndDate:
+            (data['recurrence_end_date'] ?? data['recurrenceEndDate']) != null
+                ? DateTime.tryParse(
+                    (data['recurrence_end_date'] ?? data['recurrenceEndDate'])
+                        .toString(),
+                  )
+                : null,
         // 📸 关联图片路径（兼容确认页与存储层两种字段名）
         imagePath: (data['imagePath'] ?? data['image_path']) as String?,
         // 📄 原始分析文本
@@ -671,6 +735,11 @@ class _HomeDashboardState extends State<HomeDashboard>
             (data['originalText'] ?? data['original_text']) as String?,
         teamUuid: data['team_uuid'] ?? teamUuid, // 🚀 关联团队
         teamName: data['team_name'] ?? teamName, // 🚀 团队名称
+        groupId: data['groupId']?.toString(),
+        reminderMinutes:
+            parseInt(data['reminderMinutes'] ?? data['reminder_minutes']),
+        collabType: parseInt(data['collab_type'] ?? data['collabType']) ?? 0,
+        isAllDay: isDateOnly,
       );
     }).toList();
 
@@ -711,7 +780,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     }
   }
 
-  /// 检查是否有待确认的待办数据（从通知点击进入）
+  /// 检查是否有待确认的事项数据（从通知点击进入）
   Future<void> _checkPendingTodoConfirm() async {
     final pendingData = await ExternalShareHandler.getPendingTodoConfirm();
     if (!mounted) return;
@@ -868,6 +937,23 @@ class _HomeDashboardState extends State<HomeDashboard>
       return;
     }
 
+    if (kind == 'fixed_schedule') {
+      final item = await _findIslandFixedSchedule(id);
+      if (item == null || !mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => FixedScheduleEditorScreen(
+            username: widget.username,
+            item: item,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      _scheduleRevision.value++;
+      _timelineRevision.value++;
+      return;
+    }
+
     _navigateToPomodoro();
   }
 
@@ -976,6 +1062,14 @@ class _HomeDashboardState extends State<HomeDashboard>
     return null;
   }
 
+  Future<FixedScheduleItem?> _findIslandFixedSchedule(String id) async {
+    final items = await StorageService.getFixedSchedules(widget.username);
+    for (final item in items) {
+      if (item.id == id && !item.isDeleted) return item;
+    }
+    return null;
+  }
+
   /// 处理 App Shortcut 导航
   Future<void> _handleShortcut(String shortcutType) async {
     if (!mounted) return;
@@ -1062,7 +1156,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     );
   }
 
-  /// 打开待确认待办页面
+  /// 打开待确认事项页面
   Future<void> _openPendingTodoConfirm() async {
     if (_pendingTodoConfirm == null) return;
 
@@ -1173,7 +1267,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 🚀 获取 auth token 用于 WebSocket 鉴权
     String? authToken = ApiService.getToken();
     if (authToken == null || authToken.isEmpty) {
-      authToken = prefs.getString(StorageService.KEY_AUTH_TOKEN);
+      authToken = prefs.getString(StorageService.keyAuthToken);
       // 同步回 ApiService 以防万一
       if (authToken != null) ApiService.setToken(authToken);
     }
@@ -1500,7 +1594,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     _localPomodoroTicker = null;
   }
 
-  /// 待确认待办入口卡片（从图片识别来）
+  /// 待确认事项入口卡片（从图片识别来）
   Widget _buildPendingTodoConfirmCard(bool isLight) {
     if (_pendingTodoConfirm == null) return const SizedBox.shrink();
 
@@ -1544,7 +1638,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       statusIcon = Icons.check_circle_outline;
       iconColor = Colors.green;
       title = 'AI识别完成';
-      subtitle = '发现 $todoCount 个待办，点击查看';
+      subtitle = '发现 $todoCount 个事项，点击查看';
     }
 
     return Container(
@@ -2428,13 +2522,11 @@ class _HomeDashboardState extends State<HomeDashboard>
         AppPlatform.isWindows || AppPlatform.isMacOS;
     final desktopShownStateKey =
         'desktop_live_notification_shown_${widget.username}';
-    final desktopPrefs = persistDesktopShownState
-        ? await SharedPreferences.getInstance()
-        : null;
-    final desktopShownKeys = desktopPrefs
-            ?.getStringList(desktopShownStateKey)
-            ?.toSet() ??
-        <String>{};
+    final desktopPrefs =
+        persistDesktopShownState ? await SharedPreferences.getInstance() : null;
+    final desktopShownKeys =
+        desktopPrefs?.getStringList(desktopShownStateKey)?.toSet() ??
+            <String>{};
 
     Future<void> markDesktopNotificationShown(String key) async {
       if (desktopPrefs == null || !desktopShownKeys.add(key)) return;
@@ -2526,52 +2618,11 @@ class _HomeDashboardState extends State<HomeDashboard>
     _activeCourseNotificationKey = activeCourseKey;
 
     // ── 待办提醒 ────────────────────────────────────────────────
-    String detectTodoType(String title) {
-      final lowerTitle = title.toLowerCase();
-      if (lowerTitle.contains('快递') ||
-          lowerTitle.contains('取件') ||
-          lowerTitle.contains('顺丰') ||
-          lowerTitle.contains('京东') ||
-          lowerTitle.contains('菜鸟') ||
-          lowerTitle.contains('中通') ||
-          lowerTitle.contains('圆通') ||
-          lowerTitle.contains('韵达') ||
-          lowerTitle.contains('申通')) {
-        return 'delivery';
-      } else if (lowerTitle.contains('奶茶') ||
-          lowerTitle.contains('咖啡') ||
-          lowerTitle.contains('古茗') ||
-          lowerTitle.contains('茶百道') ||
-          lowerTitle.contains('蜜雪冰城') ||
-          lowerTitle.contains('瑞幸') ||
-          lowerTitle.contains('星巴克') ||
-          lowerTitle.contains('库迪') ||
-          lowerTitle.contains('coco') ||
-          lowerTitle.contains('一点点')) {
-        return 'cafe';
-      } else if (lowerTitle.contains('取餐') ||
-          lowerTitle.contains('外卖') ||
-          lowerTitle.contains('肯德基') ||
-          lowerTitle.contains('麦当劳') ||
-          lowerTitle.contains('KFC')) {
-        return 'food';
-      } else if (lowerTitle.contains('海底捞') ||
-          lowerTitle.contains('太二') ||
-          lowerTitle.contains('外婆家') ||
-          lowerTitle.contains('西贝') ||
-          lowerTitle.contains('必胜客') ||
-          lowerTitle.contains('堂食') ||
-          lowerTitle.contains('餐饮')) {
-        return 'restaurant';
-      }
-      return 'default';
-    }
-
     // 1. 特殊待办 (快递/外卖等): 今天所有的都显示
     final specialTodosToday = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType == 'default') return false;
       return _isSameDay(t.dueDate!.toLocal(), now);
     }).toList();
@@ -2594,7 +2645,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final upcomingRegularTodos = _todos.where((t) {
       if (t.isDone || t.isDeleted) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
 
       return TodoNotificationPolicy.isInsideLiveWindow(t, now);
@@ -2620,7 +2671,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     final allDayTodos = _todos.where((t) {
       if (t.isDone) return false;
       if (t.dueDate == null) return false;
-      final todoType = detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!_isSameDay(localDueDate, now)) return false;
@@ -2771,7 +2822,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 稍微延迟，让首页先完成渲染
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
-    // 🚀 有待确认待办时不劫持导航，优先让用户处理识别结果
+    // 🚀 有待确认事项时不劫持导航，优先让用户处理识别结果
     if (_pendingTodoConfirm != null) return;
     final saved = await PomodoroService.loadRunState();
     if (saved == null) return;
@@ -2925,40 +2976,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     const int normalTodoNotifId = 12345;
 
     // 检测是否为特殊待办
-    bool isSpecialTodo(String title) {
-      final lowerTitle = title.toLowerCase();
-      return lowerTitle.contains('快递') ||
-          lowerTitle.contains('取件') ||
-          lowerTitle.contains('顺丰') ||
-          lowerTitle.contains('京东') ||
-          lowerTitle.contains('菜鸟') ||
-          lowerTitle.contains('中通') ||
-          lowerTitle.contains('圆通') ||
-          lowerTitle.contains('韵达') ||
-          lowerTitle.contains('申通') ||
-          lowerTitle.contains('奶茶') ||
-          lowerTitle.contains('咖啡') ||
-          lowerTitle.contains('古茗') ||
-          lowerTitle.contains('茶百道') ||
-          lowerTitle.contains('蜜雪冰城') ||
-          lowerTitle.contains('瑞幸') ||
-          lowerTitle.contains('星巴克') ||
-          lowerTitle.contains('库迪') ||
-          lowerTitle.contains('coco') ||
-          lowerTitle.contains('一点点') ||
-          lowerTitle.contains('取餐') ||
-          lowerTitle.contains('外卖') ||
-          lowerTitle.contains('肯德基') ||
-          lowerTitle.contains('麦当劳') ||
-          lowerTitle.contains('KFC') ||
-          lowerTitle.contains('海底捞') ||
-          lowerTitle.contains('太二') ||
-          lowerTitle.contains('外婆家') ||
-          lowerTitle.contains('西贝') ||
-          lowerTitle.contains('必胜客') ||
-          lowerTitle.contains('堂食') ||
-          lowerTitle.contains('餐饮');
-    }
+    bool isSpecialTodo(String title) =>
+        ItemSemanticsService.specialTodoTypeForTitle(title) != 'default';
 
     TodoItem? currentTodo;
 
@@ -3254,9 +3273,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   /// 🚀 辅助：带超时和错误捕获的任务加载器
   Future<T?> _loadDataTask<T>(String name, Future<T> task) async {
     try {
-      final start = DateTime.now();
       final result = await task.timeout(const Duration(seconds: 5));
-      final duration = DateTime.now().difference(start).inMilliseconds;
       return result;
     } catch (e) {
       // debugPrint("❌ [DashboardLoader] $name 加载超时或异常: $e");
@@ -3309,6 +3326,8 @@ class _HomeDashboardState extends State<HomeDashboard>
             "Courses", CourseService.getDashboardCourses(widget.username)),
         _loadDataTask(
             "PlanBlocks", StorageService.getPlanBlocks(widget.username)),
+        _loadDataTask("FixedSchedules",
+            StorageService.getFixedSchedules(widget.username)),
       ]);
 
       hadTaskFailure = results.any((result) => result == null);
@@ -3366,16 +3385,25 @@ class _HomeDashboardState extends State<HomeDashboard>
       final List<TodoPlanBlock> allPlanBlocks = results[5] == null
           ? List<TodoPlanBlock>.from(_planBlocks)
           : _safeListResult<TodoPlanBlock>(results[5]);
-      final activityInputsReady =
-          results[0] != null && results[4] != null && results[5] != null;
+      final List<FixedScheduleItem> allFixedSchedules = results[6] == null
+          ? List<FixedScheduleItem>.from(_fixedSchedules)
+          : _safeListResult<FixedScheduleItem>(results[6]);
+      final activityInputsReady = results[0] != null &&
+          results[4] != null &&
+          results[5] != null &&
+          results[6] != null;
 
       if (mounted) {
         final bool todosChanged = !_isListEqual(_todos, allTodos);
         final bool groupsChanged = !_isListEqual(_todoGroups, allGroups);
-        final bool countdownsChanged = !_isListEqual(_countdowns, allCountdowns);
+        final bool countdownsChanged =
+            !_isListEqual(_countdowns, allCountdowns);
         final bool mathChanged = !_isMapEqual(_mathStats, mathStats);
-        final bool coursesChanged = !_isMapEqual(_dashboardCourseData, courseData);
+        final bool coursesChanged =
+            !_isMapEqual(_dashboardCourseData, courseData);
         final bool plansChanged = !_isListEqual(_planBlocks, allPlanBlocks);
+        final bool fixedSchedulesChanged =
+            !_isListEqual(_fixedSchedules, allFixedSchedules);
 
         if (todosChanged) {
           _todos = allTodos;
@@ -3402,11 +3430,14 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (plansChanged) {
           _planBlocks = allPlanBlocks;
         }
+        if (fixedSchedulesChanged) {
+          _fixedSchedules = allFixedSchedules;
+        }
 
         if (todosChanged || countdownsChanged) {
           _timelineRevision.value++;
         }
-        if (plansChanged || coursesChanged) {
+        if (plansChanged || coursesChanged || fixedSchedulesChanged) {
           _scheduleRevision.value++;
         }
 
@@ -3416,6 +3447,7 @@ class _HomeDashboardState extends State<HomeDashboard>
             todoGroups: allGroups,
             planBlocks: allPlanBlocks,
             courses: _safeListResult<CourseItem>(courseData['courses']),
+            fixedSchedules: allFixedSchedules,
           ));
         }
 
@@ -3826,11 +3858,6 @@ class _HomeDashboardState extends State<HomeDashboard>
     if (pendingSnapshotBeforeSync != null) {
       _pendingTodosToPersist = null;
       _todoPersistDebounce?.cancel();
-      final changedDesc = pendingSnapshotBeforeSync
-          .where((t) => !t.isDeleted)
-          .map((t) => '${t.id.substring(0, 8)} isDone=${t.isDone}')
-          .join(', ');
-      //debugPrint('🧪 [SyncDiag][forceFlush] 保存 ${pendingSnapshotBeforeSync.length} 条: $changedDesc');
       await StorageService.saveTodos(
           widget.username, pendingSnapshotBeforeSync);
       // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
@@ -3934,7 +3961,8 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (hasChanges) {
           // 同步后数据有变化，刷新 Island 槽位缓存
           FloatWindowService.invalidateSlotCache();
-          _loadAllData(); // _loadAllData 内部会重新 scheduleAll
+          _rescheduleAlarms();
+          _loadAllData();
         }
 
         // 🚀 同步手环版本信息
@@ -4695,7 +4723,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                     },
                   ),
 
-                // 待确认待办入口卡片（从图片识别来）
+                // 待确认事项入口卡片（从图片识别来）
                 _buildPendingTodoConfirmCard(isLight),
 
                 Expanded(
@@ -4716,8 +4744,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     // ... (rest of section definitions)
                                     Widget courseSection =
                                         ValueListenableBuilder<int>(
-                                      valueListenable:
-                                          _scheduleRevision,
+                                      valueListenable: _scheduleRevision,
                                       builder: (context, trigger, _) {
                                         return CourseSectionWidget(
                                           dashboardCourseData:
@@ -4739,8 +4766,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                             addKey: _addCountdownKey,
                                             onDataChanged: () {
                                               _loadAllData();
-                                              _timelineRevision
-                                                  .value++;
+                                              _timelineRevision.value++;
                                             });
                                     Widget todoSection =
                                         ValueListenableBuilder<int>(
@@ -4887,8 +4913,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                     Widget timelineSection = KeyedSubtree(
                                       key: _timelineCardKey,
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _timelineRevision,
+                                        valueListenable: _timelineRevision,
                                         builder: (context, trigger, _) {
                                           return PersonalTimelineSection(
                                             username: widget.username,
@@ -4901,8 +4926,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
                                     Widget pomodoroSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _pomodoroRevision,
+                                        valueListenable: _pomodoroRevision,
                                         builder: (context, trigger, _) {
                                           return KeyedSubtree(
                                             key: _pomodoroCardKey,
@@ -4920,8 +4944,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                   ),
                                                   sourceKey: _pomodoroCardKey,
                                                 );
-                                                _pomodoroRevision
-                                                    .value++;
+                                                _pomodoroRevision.value++;
                                                 _loadAllData();
                                               },
                                             ),
@@ -4932,8 +4955,7 @@ class _HomeDashboardState extends State<HomeDashboard>
 
                                     Widget planBlockSection = RepaintBoundary(
                                       child: ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            _scheduleRevision,
+                                        valueListenable: _scheduleRevision,
                                         builder: (context, trigger, _) {
                                           return PlanBlockTodaySection(
                                             chartKey: _todayPlanChartKey,
@@ -4949,8 +4971,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                                               widget.username),
                                                 ),
                                               );
-                                              _scheduleRevision
-                                                  .value++;
+                                              _scheduleRevision.value++;
                                               _loadAllData();
                                             },
                                           );
@@ -5006,7 +5027,9 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       bool hasActiveTodos = _todos.any((t) {
                                         if (t.isDeleted ||
                                             t.dueDate == null ||
-                                            t.isAllDayTask) return false;
+                                            t.isAllDayTask) {
+                                          return false;
+                                        }
                                         final startMs =
                                             t.createdDate ?? t.createdAt;
                                         return startMs > 0 &&
@@ -5275,6 +5298,17 @@ class _HomeDashboardState extends State<HomeDashboard>
                 todoGroups: _todoGroups,
                 initialTeamUuid: _currentSelectedTeamUuid,
                 initialTeamName: _currentSelectedTeamName,
+                onFixedScheduleAdded: (item) async {
+                  await StorageService.saveFixedSchedules(
+                    widget.username,
+                    [item],
+                  );
+                  if (mounted) {
+                    _scheduleRevision.value++;
+                    _timelineRevision.value++;
+                    await _loadAllData(deferred: true);
+                  }
+                },
                 onTodoAdded: (todo) async {
                   final allTodos =
                       await StorageService.getTodos(widget.username);
@@ -5344,12 +5378,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         timeSalutation: _timeSalutation,
         onSettings: () {
           Future.delayed(const Duration(milliseconds: 350), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: const SettingsPage(),
               sourceKey: _settingsButtonKey,
             );
+            if (!mounted) return;
             _loadSectionPreferences();
             _loadSemesterSettings();
             await _loadHomeTextConfig();
@@ -5364,12 +5399,13 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onTeams: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TeamManagementScreen(username: widget.username),
               sourceKey: _teamsButtonKey,
             );
+            if (!mounted) return;
             final unreadBackgroundNotifications =
                 await BackgroundNotificationService
                     .getUnreadBackgroundNotifications();
@@ -5389,7 +5425,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         hasTeamConflictDot: _hasTeamConflictDot,
         onTimeline: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: PersonalTimelineScreen(username: widget.username),
@@ -5399,7 +5435,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onScreenTime: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TimeLogScreen(username: widget.username),
@@ -5409,7 +5445,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onPlanCenter: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
-            if (!mounted) return;
+            if (!context.mounted) return;
             await PageTransitions.pushFromRect(
               context: context,
               page: TodoPlanScreen(username: widget.username),
@@ -5421,7 +5457,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onGuide: () {
           Future.delayed(const Duration(milliseconds: 350), () {
-            if (!mounted) return;
+            if (!context.mounted) return;
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.material(
                 builder: (context) => FeatureGuideScreen(
@@ -5434,7 +5470,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         },
         onUpdate: () {
           Future.delayed(const Duration(milliseconds: 300), () {
-            if (!mounted) return;
+            if (!context.mounted) return;
             UpdateService.checkUpdateAndPrompt(context, isManual: true);
           });
         },

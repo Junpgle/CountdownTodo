@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' show max;
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:CountDownTodo/services/database_helper.dart';
+import 'package:countdown_todo/services/database_helper.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
@@ -605,7 +604,7 @@ class PomodoroService {
   // ── 私有助手：获取隔离的存储 Key ──────────────────────────
   static Future<String> _getScopedKey(String baseKey) async {
     final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+    final String? username = prefs.getString(StorageService.keyCurrentUser);
     if (username == null || username.isEmpty) return baseKey;
     return "${baseKey}_$username";
   }
@@ -619,7 +618,7 @@ class PomodoroService {
 
     // 迁移检查
     if (s == null) {
-      final String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      final String? username = prefs.getString(StorageService.keyCurrentUser);
       if (username != null && username.isNotEmpty) {
         final markerKey = "${_keySettings}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {
@@ -699,7 +698,7 @@ class PomodoroService {
     if (!(prefs.getBool(migrationKey) ?? false)) {
       String? s = prefs.getString(scopedKey);
       if (s == null) {
-        final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+        final username = prefs.getString(StorageService.keyCurrentUser);
         if (username != null) s = prefs.getString(_keyTags);
       }
 
@@ -868,7 +867,7 @@ class PomodoroService {
 
         // 立即触发同步
         final username = await SharedPreferences.getInstance()
-            .then((p) => p.getString(StorageService.KEY_CURRENT_USER) ?? '');
+            .then((p) => p.getString(StorageService.keyCurrentUser) ?? '');
         if (username.isNotEmpty) {
           StorageService.requestSync(username);
         }
@@ -1036,7 +1035,7 @@ class PomodoroService {
     if (record.planBlockId != null && record.planBlockId!.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
       final username =
-          prefs.getString(StorageService.KEY_CURRENT_USER) ?? 'default';
+          prefs.getString(StorageService.keyCurrentUser) ?? 'default';
       try {
         final blocks =
             await StorageService.getPlanBlocks(username, includeDeleted: true);
@@ -1074,7 +1073,7 @@ class PomodoroService {
 
     // 3. 立即尝试同步
     if (!isSyncSource) {
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.isNotEmpty) {
         StorageService.requestSync(username);
       }
@@ -1464,7 +1463,7 @@ class PomodoroService {
       String? s = prefs.getString(scopedKey);
       // 兜底旧全局 Key
       if (s == null) {
-        final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+        final username = prefs.getString(StorageService.keyCurrentUser);
         if (username != null) s = prefs.getString(_keyRecords);
       }
 

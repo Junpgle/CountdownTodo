@@ -13,9 +13,11 @@ class TodoSegment {
 class ParsedTodoResult {
   String title;
   String? remark;
+  String? location;
   bool isAllDay;
   DateTime? startTime;
   DateTime? endTime;
+  ParsedTimeSemantics timeSemantics;
   RecurrenceType recurrence;
   int? customIntervalDays;
   DateTime? recurrenceEndDate;
@@ -23,13 +25,16 @@ class ParsedTodoResult {
   List<TodoSegment> segments; // 新增：保存整句被切割后的分片明细
   String? originalText; // 📄 原始分析文本
   int? reminderMinutes; // 🚀 提醒提前时间
+  String? itemKind; // AI声明的 todo/fixedSchedule/planBlock 语义
 
   ParsedTodoResult({
     required this.title,
     this.remark,
+    this.location,
     this.isAllDay = false,
     this.startTime,
     this.endTime,
+    this.timeSemantics = ParsedTimeSemantics.unscheduled,
     this.recurrence = RecurrenceType.none,
     this.customIntervalDays,
     this.recurrenceEndDate,
@@ -37,6 +42,7 @@ class ParsedTodoResult {
     this.segments = const [],
     this.originalText,
     this.reminderMinutes,
+    this.itemKind,
   });
 
   bool get hasContent => title.isNotEmpty;
@@ -45,14 +51,17 @@ class ParsedTodoResult {
     return {
       'title': title,
       'remark': remark,
+      'location': location,
       'isAllDay': isAllDay,
       'startTime': startTime?.toIso8601String(),
       'endTime': endTime?.toIso8601String(),
+      'timeMode': timeSemantics.name,
       'recurrence': recurrence.name,
       'customIntervalDays': customIntervalDays,
       'recurrenceEndDate': recurrenceEndDate?.toIso8601String(),
       'originalText': originalText,
       'reminderMinutes': reminderMinutes,
+      'itemKind': itemKind,
     };
   }
 }
@@ -171,9 +180,6 @@ class TodoParserService {
     DateTime? startTime;
     DateTime? endTime;
     bool isAllDay = false;
-
-    // 保存原始文本（如果外部没传）
-    String? currentOriginalText = original;
 
     // 1. 提取地点 / 备注 (Location)
     final atMatch = RegExp(r'@(\S+)').firstMatch(masked);
@@ -376,15 +382,16 @@ class TodoParserService {
         startTime =
             DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
         endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, eH, eM);
-        if (endTime.isBefore(startTime))
+        if (endTime.isBefore(startTime)) {
           endTime = endTime.add(const Duration(days: 1));
+        }
       } else if (singleTimeMatch != null) {
         String? p1 = singleTimeMatch.namedGroup('p1') ?? timePrefixHint;
         int sH = int.parse(singleTimeMatch.namedGroup('sh')!);
         int sM = int.tryParse(singleTimeMatch.namedGroup('sm') ?? '') ?? 0;
         sH = _adjustHour(p1, sH);
-        startTime =
-            DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
+        endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, sH, sM);
+        startTime = DateTime(baseDate.year, baseDate.month, baseDate.day);
       }
     } else if (parsedDate != null) {
       isAllDay = true;
@@ -395,8 +402,6 @@ class TodoParserService {
     if (startTime != null && !isAllDay && endTime == null) {
       if (durationMin != null) {
         endTime = startTime.add(Duration(minutes: durationMin));
-      } else {
-        endTime = startTime.add(const Duration(hours: 1)); // 默认给 1 小时
       }
     }
 
@@ -438,6 +443,13 @@ class TodoParserService {
       isAllDay: isAllDay,
       startTime: startTime,
       endTime: endTime,
+      timeSemantics: isAllDay
+          ? ParsedTimeSemantics.dateOnly
+          : timeRangeMatch != null
+              ? ParsedTimeSemantics.range
+              : singleTimeMatch != null
+                  ? ParsedTimeSemantics.deadline
+                  : ParsedTimeSemantics.unscheduled,
       recurrence: recurrence,
       customIntervalDays: customIntervalDays,
       recurrenceEndDate: recurrenceEndDate,
@@ -472,10 +484,12 @@ class TodoParserService {
   static DateTime _parseRelativeDay(String prefix) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (['明天', '明日', '明早', '明晚'].contains(prefix))
+    if (['明天', '明日', '明早', '明晚'].contains(prefix)) {
       return today.add(const Duration(days: 1));
-    if (['后天', '后日', '后早', '后晚'].contains(prefix))
+    }
+    if (['后天', '后日', '后早', '后晚'].contains(prefix)) {
       return today.add(const Duration(days: 2));
+    }
     return today; // 今天
   }
 

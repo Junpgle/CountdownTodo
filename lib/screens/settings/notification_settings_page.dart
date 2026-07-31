@@ -311,7 +311,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
               ),
               _buildSwitchTile(
                 title: '图片识别通知',
-                subtitle: '图片识别待办的进度、成功、失败通知',
+                subtitle: '图片识别事项的进度、成功、失败通知',
                 icon: Icons.image_search,
                 value: _todoRecognizeEnabled,
                 onChanged: (v) => _toggleSubNotification(

@@ -57,7 +57,6 @@ class _CoachMarkOverlayWidget extends StatefulWidget {
   final VoidCallback onSkip;
 
   const _CoachMarkOverlayWidget({
-    super.key,
     required this.steps,
     required this.onFinish,
     required this.onSkip,
@@ -95,7 +94,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
 
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
 

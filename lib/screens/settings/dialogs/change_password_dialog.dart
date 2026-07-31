@@ -83,11 +83,12 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   setState(() => isSubmitting = true);
                   final res = await ApiService.changePassword(
                       widget.userId, oldPassCtrl.text, newPassCtrl.text);
+                  if (!context.mounted) return;
                   setState(() => isSubmitting = false);
 
-                  if (!mounted) return;
+                  final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  messenger.showSnackBar(SnackBar(
                       content: Text(res['message'] ??
                           (res['success'] ? '修改成功' : '修改失败'))));
 

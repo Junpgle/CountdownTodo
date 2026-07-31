@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:sqflite/sqflite.dart';
 
-import 'package:CountDownTodo/services/database_helper.dart';
+import 'package:countdown_todo/services/database_helper.dart';
 import '../services/api_service.dart';
 import '../services/course_legacy_recovery.dart';
 import '../services/course_calendar_adjustment_service.dart';
@@ -120,8 +118,6 @@ class CourseService {
 
     // 用 date（具体日期）判断冲突，而不是 weekIndex
     // 这样不同学期的课表不会误判为冲突
-    final newDates = newCourses.map((c) => c.date).toSet();
-
     final conflicts = <CourseItem>[];
     for (final newCourse in newCourses) {
       for (final existing in existingCourses) {
@@ -695,11 +691,5 @@ class CourseService {
     } else {
       return {'success': false, 'message': lastMessage};
     }
-  }
-
-  /// ?? Isolate רãα
-  static List<CourseItem> _parseCourseItemsIsolate(
-      List<Map<String, dynamic>> maps) {
-    return maps.map((m) => CourseItem.fromJson(m)).toList();
   }
 }

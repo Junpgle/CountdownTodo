@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -163,8 +162,9 @@ class SplashService {
       final bgBottom = prefetched['bgColorBottom'] as String?;
       final durationMs = prefetched['durationMs'] as int;
       if (bgTop != null) await prefs.setString(_cachedBgColorTop, bgTop);
-      if (bgBottom != null)
+      if (bgBottom != null) {
         await prefs.setString(_cachedBgColorBottom, bgBottom);
+      }
       await prefs.setInt(_cachedDurationMs, durationMs);
       return prefetched;
     }

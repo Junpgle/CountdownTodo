@@ -214,6 +214,8 @@ class MacosMenuBar extends StatelessWidget {
     Navigator.of(context).push(
       PageTransitions.material(
         builder: (_) => AddTodoScreen(
+          onFixedScheduleAdded: (item) =>
+              StorageService.saveFixedSchedules(username, [item]),
           onTodoAdded: (todo) async {
             final allTodos = await StorageService.getTodos(username);
             allTodos.add(todo);
@@ -399,15 +401,15 @@ class MacosMenuBar extends StatelessWidget {
   }
 
   static void _onLightMode() {
-    StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, 'light');
+    StorageService.saveAppSetting(StorageService.keyThemeMode, 'light');
   }
 
   static void _onDarkMode() {
-    StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, 'dark');
+    StorageService.saveAppSetting(StorageService.keyThemeMode, 'dark');
   }
 
   static void _onSystemTheme() {
-    StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, 'system');
+    StorageService.saveAppSetting(StorageService.keyThemeMode, 'system');
   }
 
   // ──────────────────── 窗口菜单 ────────────────────

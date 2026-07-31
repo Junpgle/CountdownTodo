@@ -24,7 +24,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
   String? _content;
   bool _isLoading = true;
 
-  static const String PRIVACY_RAW_URL =
+  static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
   @override
@@ -40,7 +40,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
 
   Future<void> _fetchContent() async {
     try {
-      final response = await http.get(Uri.parse(PRIVACY_RAW_URL));
+      final response = await http.get(Uri.parse(privacyRawUrl));
       if (response.statusCode == 200) {
         if (mounted) {
           setState(() {

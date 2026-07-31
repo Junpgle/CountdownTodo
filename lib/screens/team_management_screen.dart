@@ -2060,52 +2060,6 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     );
   }
 
-  // 🚀 团队协作骨架屏
-  Widget _buildTeamSkeleton(bool isDark) {
-    final baseColor =
-        isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
-
-    return SliverPadding(
-      padding: const EdgeInsets.all(16),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index == 0) {
-              // 快速操作入口骨架
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: Row(
-                  children: [
-                    Expanded(
-                        child: Container(
-                            height: 80,
-                            decoration: BoxDecoration(
-                                color: baseColor,
-                                borderRadius: BorderRadius.circular(24)))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Container(
-                            height: 80,
-                            decoration: BoxDecoration(
-                                color: baseColor,
-                                borderRadius: BorderRadius.circular(24)))),
-                  ],
-                ),
-              );
-            }
-            // 团队卡片骨架
-            return Container(
-              height: 100,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                  color: baseColor, borderRadius: BorderRadius.circular(20)),
-            );
-          },
-          childCount: 5,
-        ),
-      ),
-    );
-  }
 }
 
 // ============== 团队详情看板 (Master-Detail Detail) ==============

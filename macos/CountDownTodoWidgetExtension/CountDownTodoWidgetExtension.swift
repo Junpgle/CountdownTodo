@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 // MARK: - Container Background Extension
 
@@ -26,14 +27,58 @@ struct WidgetSnapshot: Codable {
     let todos: [WidgetTodoItem]
     let courses: [WidgetCourseItem]
     let focus: WidgetFocusState
+    let recurrenceSeries: [WidgetRecurrenceSeriesItem]?
 
     static let empty = WidgetSnapshot(
         updatedAt: "",
         countdowns: [],
         todos: [],
         courses: [],
-        focus: WidgetFocusState.empty
+        focus: WidgetFocusState.empty,
+        recurrenceSeries: []
     )
+}
+
+struct WidgetRecurrenceSeriesItem: Codable, Identifiable {
+    let seriesId: String
+    let title: String
+    let recurrenceType: String
+    let recurrenceText: String
+    let customIntervalDays: Int?
+    let anchorStartMs: Int64
+    let anchorDueMs: Int64?
+    let recurrenceEndMs: Int64?
+    let isActive: Bool
+    let contextText: String
+    let completedCount: Int
+    let overdueCount: Int
+    let elapsedCount: Int
+    let totalCount: Int?
+    let occurrences: [WidgetRecurrenceOccurrenceItem]
+
+    var id: String { seriesId }
+}
+
+struct WidgetRecurrenceOccurrenceItem: Codable, Identifiable {
+    let occurrenceId: String
+    let startAtMs: Int64
+    let dueAtMs: Int64?
+    let isDone: Bool
+    let isDateOnly: Bool
+    let isProjected: Bool
+
+    var id: String {
+        occurrenceId.isEmpty ? "projected-\(startAtMs)" : occurrenceId
+    }
+
+    var startDate: Date {
+        Date(timeIntervalSince1970: TimeInterval(startAtMs) / 1000)
+    }
+
+    var dueDate: Date? {
+        guard let dueAtMs else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(dueAtMs) / 1000)
+    }
 }
 
 struct WidgetCountdownItem: Codable {
@@ -50,8 +95,22 @@ struct WidgetTodoItem: Codable {
     let timeText: String
     let priority: Int
     let isDone: Bool
+    let visibleUntilMs: Int64?
+
+    init(title: String, timeText: String, priority: Int, isDone: Bool, visibleUntilMs: Int64? = nil) {
+        self.title = title
+        self.timeText = timeText
+        self.priority = priority
+        self.isDone = isDone
+        self.visibleUntilMs = visibleUntilMs
+    }
 
     static let empty = WidgetTodoItem(title: "", timeText: "", priority: 0, isDone: false)
+
+    func isVisible(at date: Date) -> Bool {
+        guard let visibleUntilMs, visibleUntilMs > 0 else { return true }
+        return Int64(date.timeIntervalSince1970 * 1000) < visibleUntilMs
+    }
 }
 
 struct WidgetCourseItem: Codable {
@@ -79,10 +138,10 @@ class WidgetDataLoader {
     static let shared = WidgetDataLoader()
     private let appGroupId = "group.com.junpgle.countdowntodo"
     private let key = "widget_snapshot_json"
+    private let snapshotFileName = "widget_snapshot.json"
 
     func loadSnapshot() -> WidgetSnapshot {
-        guard let userDefaults = UserDefaults(suiteName: appGroupId),
-              let jsonString = userDefaults.string(forKey: key) else {
+        guard let jsonString = loadSnapshotJSON() else {
             return .empty
         }
 
@@ -91,7 +150,58 @@ class WidgetDataLoader {
             return .empty
         }
 
-        return snapshot
+        let visibleTodos = snapshot.todos.filter { $0.isVisible(at: Date()) }
+        return WidgetSnapshot(
+            updatedAt: snapshot.updatedAt,
+            countdowns: snapshot.countdowns,
+            todos: visibleTodos,
+            courses: snapshot.courses,
+            focus: snapshot.focus,
+            recurrenceSeries: snapshot.recurrenceSeries
+        )
+    }
+
+    private func loadSnapshotJSON() -> String? {
+        // App Group UserDefaults is the normal signed-app path. Local debug
+        // builds can be ad-hoc signed without a usable App Group entitlement,
+        // so keep the file written by the macOS host as a read-only fallback.
+        if let userDefaults = UserDefaults(suiteName: appGroupId),
+           let jsonString = userDefaults.string(forKey: key),
+           !jsonString.isEmpty {
+            return jsonString
+        }
+
+        var candidates: [URL] = []
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupId
+        ) {
+            candidates.append(containerURL.appendingPathComponent(snapshotFileName))
+        }
+
+        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+        candidates.append(
+            homeDirectory
+                .appendingPathComponent("Library/Group Containers")
+                .appendingPathComponent(appGroupId)
+                .appendingPathComponent(snapshotFileName)
+        )
+
+        for url in candidates {
+            if let jsonString = try? String(contentsOf: url, encoding: .utf8),
+               !jsonString.isEmpty {
+                return jsonString
+            }
+        }
+        return nil
+    }
+
+    func loadRecurrenceSeries(id: String) -> WidgetRecurrenceSeriesItem? {
+        loadSnapshot().recurrenceSeries?.first { $0.seriesId == id }
+    }
+
+    func loadRecurrenceCatalog(activeOnly: Bool = false) -> [WidgetRecurrenceSeriesItem] {
+        let catalog = loadSnapshot().recurrenceSeries ?? []
+        return activeOnly ? catalog.filter(\.isActive) : catalog
     }
 }
 
@@ -120,6 +230,149 @@ struct SimpleEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot
     let isPlaceholder: Bool
+}
+
+// MARK: - Configurable Recurrence Widget Data
+
+@available(macOS 14.2, *)
+struct RecurrenceTodoEntity: AppEntity, Identifiable {
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "循环待办")
+    static var defaultQuery = RecurrenceTodoEntityQuery()
+
+    let id: String
+    let title: String
+    let subtitle: String
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(
+            title: "\(title)",
+            subtitle: "\(subtitle)"
+        )
+    }
+
+    init(series: WidgetRecurrenceSeriesItem, now: Date = Date()) {
+        id = series.seriesId
+        title = series.title
+        let nextText = series.nextOccurrenceText(at: now)
+        let suffix = series.contextText.isEmpty ? "" : " · \(series.contextText)"
+        subtitle = "\(series.recurrenceText) · \(nextText)\(suffix)"
+    }
+}
+
+@available(macOS 14.2, *)
+struct RecurrenceTodoEntityQuery: EntityStringQuery {
+    func entities(for identifiers: [String]) async throws -> [RecurrenceTodoEntity] {
+        let catalog = WidgetDataLoader.shared.loadRecurrenceCatalog()
+        let byId = Dictionary(uniqueKeysWithValues: catalog.map { ($0.seriesId, $0) })
+        return identifiers.compactMap { identifier in
+            byId[identifier].map { RecurrenceTodoEntity(series: $0) }
+        }
+    }
+
+    func suggestedEntities() async throws -> [RecurrenceTodoEntity] {
+        WidgetDataLoader.shared
+            .loadRecurrenceCatalog(activeOnly: true)
+            .map { RecurrenceTodoEntity(series: $0) }
+    }
+
+    func entities(matching string: String) async throws -> [RecurrenceTodoEntity] {
+        let needle = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return WidgetDataLoader.shared
+            .loadRecurrenceCatalog(activeOnly: true)
+            .filter { series in
+                needle.isEmpty ||
+                    series.title.localizedCaseInsensitiveContains(needle) ||
+                    series.recurrenceText.localizedCaseInsensitiveContains(needle) ||
+                    series.contextText.localizedCaseInsensitiveContains(needle)
+            }
+            .map { RecurrenceTodoEntity(series: $0) }
+    }
+}
+
+@available(macOS 14.2, *)
+struct SelectRecurrenceTodoIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "选择循环待办"
+    static var description = IntentDescription("选择一个循环系列固定显示在桌面。")
+    static var parameterSummary: some ParameterSummary {
+        Summary("显示 \(\.$recurrenceTodo)")
+    }
+
+    @Parameter(title: "循环待办")
+    var recurrenceTodo: RecurrenceTodoEntity?
+}
+
+@available(macOS 14.2, *)
+struct RecurrenceWidgetEntry: TimelineEntry {
+    let date: Date
+    let series: WidgetRecurrenceSeriesItem?
+    let configuredSeriesId: String?
+    let configuredTitle: String?
+    let snapshotUpdatedAt: String
+    let isPlaceholder: Bool
+}
+
+@available(macOS 14.2, *)
+struct RecurrenceWidgetProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> RecurrenceWidgetEntry {
+        RecurrenceWidgetEntry(
+            date: Date(),
+            series: .preview,
+            configuredSeriesId: WidgetRecurrenceSeriesItem.preview.seriesId,
+            configuredTitle: WidgetRecurrenceSeriesItem.preview.title,
+            snapshotUpdatedAt: "",
+            isPlaceholder: true
+        )
+    }
+
+    func snapshot(
+        for configuration: SelectRecurrenceTodoIntent,
+        in context: Context
+    ) async -> RecurrenceWidgetEntry {
+        makeEntry(configuration: configuration, isPreview: context.isPreview)
+    }
+
+    func timeline(
+        for configuration: SelectRecurrenceTodoIntent,
+        in context: Context
+    ) async -> Timeline<RecurrenceWidgetEntry> {
+        let entry = makeEntry(configuration: configuration, isPreview: false)
+        let nextUpdate = Calendar.current.date(
+            byAdding: .minute,
+            value: 15,
+            to: Date()
+        ) ?? Date().addingTimeInterval(900)
+        return Timeline(entries: [entry], policy: .after(nextUpdate))
+    }
+
+    private func makeEntry(
+        configuration: SelectRecurrenceTodoIntent,
+        isPreview: Bool
+    ) -> RecurrenceWidgetEntry {
+        let configured = configuration.recurrenceTodo
+        if isPreview && configured == nil {
+            return RecurrenceWidgetEntry(
+                date: Date(),
+                series: .preview,
+                configuredSeriesId: WidgetRecurrenceSeriesItem.preview.seriesId,
+                configuredTitle: WidgetRecurrenceSeriesItem.preview.title,
+                snapshotUpdatedAt: "",
+                isPlaceholder: true
+            )
+        }
+
+        let snapshot = WidgetDataLoader.shared.loadSnapshot()
+        let series = configured.flatMap { selected in
+            snapshot.recurrenceSeries?.first { $0.seriesId == selected.id }
+        }
+        return RecurrenceWidgetEntry(
+            date: Date(),
+            series: series,
+            configuredSeriesId: configured?.id,
+            configuredTitle: configured?.title,
+            snapshotUpdatedAt: snapshot.updatedAt,
+            isPlaceholder: false
+        )
+    }
 }
 
 // MARK: - Helper Extensions
@@ -177,6 +430,241 @@ extension WidgetFocusState {
         let m = remainingSeconds / 60
         return "\(m) 分钟"
     }
+}
+
+enum RecurrenceOccurrenceState {
+    case completed
+    case overdue
+    case pending
+    case future
+
+    var label: String {
+        switch self {
+        case .completed: return "本期已完成"
+        case .overdue: return "本期已逾期"
+        case .pending: return "本期待完成"
+        case .future: return "等待下一期"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .completed: return "checkmark.circle.fill"
+        case .overdue: return "exclamationmark.circle.fill"
+        case .pending: return "circle.inset.filled"
+        case .future: return "circle"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .completed: return .green
+        case .overdue: return .red
+        case .pending: return .accentColor
+        case .future: return .secondary
+        }
+    }
+}
+
+struct RecurrenceWidgetPresentation {
+    let occurrence: WidgetRecurrenceOccurrenceItem
+    let state: RecurrenceOccurrenceState
+    let scheduleText: String
+    let nodes: [WidgetRecurrenceOccurrenceItem]
+}
+
+extension WidgetRecurrenceSeriesItem {
+    static let preview = WidgetRecurrenceSeriesItem(
+        seriesId: "preview-daily-water",
+        title: "每日喝水 2000ml",
+        recurrenceType: "daily",
+        recurrenceText: "每天",
+        customIntervalDays: nil,
+        anchorStartMs: Int64(Date().timeIntervalSince1970 * 1000),
+        anchorDueMs: Int64(
+            Calendar.current.date(bySettingHour: 22, minute: 0, second: 0, of: Date())!
+                .timeIntervalSince1970 * 1000
+        ),
+        recurrenceEndMs: nil,
+        isActive: true,
+        contextText: "生活",
+        completedCount: 12,
+        overdueCount: 1,
+        elapsedCount: 14,
+        totalCount: nil,
+        occurrences: previewOccurrences
+    )
+
+    private static var previewOccurrences: [WidgetRecurrenceOccurrenceItem] {
+        let calendar = Calendar.current
+        return (-3...3).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: Date()),
+                  let start = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day),
+                  let due = calendar.date(bySettingHour: 22, minute: 0, second: 0, of: day) else {
+                return nil
+            }
+            return WidgetRecurrenceOccurrenceItem(
+                occurrenceId: "preview-\(offset)",
+                startAtMs: Int64(start.timeIntervalSince1970 * 1000),
+                dueAtMs: Int64(due.timeIntervalSince1970 * 1000),
+                isDone: offset < -1,
+                isDateOnly: false,
+                isProjected: offset > 0
+            )
+        }
+    }
+
+    var deepLinkURL: URL? {
+        var components = URLComponents()
+        components.scheme = "countdowntodo"
+        components.host = "todo"
+        components.path = "/recurrence"
+        components.queryItems = [URLQueryItem(name: "seriesId", value: seriesId)]
+        return components.url
+    }
+
+    func nextOccurrenceText(at date: Date) -> String {
+        guard let occurrence = orderedOccurrences.first(where: {
+            !Calendar.current.startOfDay(for: $0.startDate)
+                .isBefore(Calendar.current.startOfDay(for: date))
+        }) else {
+            return isActive ? "等待下一期" : "循环已结束"
+        }
+        return shortScheduleText(for: occurrence, at: date, includePrefix: true)
+    }
+
+    func presentation(at date: Date) -> RecurrenceWidgetPresentation? {
+        let ordered = orderedOccurrences
+        guard !ordered.isEmpty else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: date)
+
+        let exactToday = ordered.first {
+            calendar.isDate($0.startDate, inSameDayAs: date)
+        }
+        let recentIncomplete = ordered.last { occurrence in
+            guard !occurrence.isDone else { return false }
+            let startDay = calendar.startOfDay(for: occurrence.startDate)
+            guard startDay < today,
+                  let visibleUntil = calendar.date(byAdding: .day, value: 2, to: startDay) else {
+                return false
+            }
+            return date < visibleUntil
+        }
+        let upcoming = ordered.first {
+            calendar.startOfDay(for: $0.startDate) > today
+        }
+        let selected = exactToday ?? recentIncomplete ?? upcoming ?? ordered.last!
+        let selectedState = state(of: selected, at: date)
+        let selectedIndex = ordered.firstIndex { $0.id == selected.id } ?? 0
+        let scheduleOccurrence: WidgetRecurrenceOccurrenceItem
+        let scheduleHasNextPrefix: Bool
+        if selectedState == .completed,
+           let next = ordered.dropFirst(selectedIndex + 1).first {
+            scheduleOccurrence = next
+            scheduleHasNextPrefix = true
+        } else {
+            scheduleOccurrence = selected
+            scheduleHasNextPrefix = selectedState == .future
+        }
+        let lowerBound = max(0, min(selectedIndex - 3, ordered.count - 7))
+        let upperBound = min(ordered.count, lowerBound + 7)
+
+        return RecurrenceWidgetPresentation(
+            occurrence: selected,
+            state: isActive ? selectedState : .future,
+            scheduleText: shortScheduleText(
+                for: scheduleOccurrence,
+                at: date,
+                includePrefix: scheduleHasNextPrefix
+            ),
+            nodes: Array(ordered[lowerBound..<upperBound])
+        )
+    }
+
+    func state(
+        of occurrence: WidgetRecurrenceOccurrenceItem,
+        at date: Date
+    ) -> RecurrenceOccurrenceState {
+        if occurrence.isDone { return .completed }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: date)
+        let occurrenceDay = calendar.startOfDay(for: occurrence.startDate)
+        if occurrenceDay > today { return .future }
+
+        let effectiveDue: Date
+        if occurrence.isDateOnly {
+            effectiveDue = calendar.date(byAdding: .day, value: 1, to: occurrenceDay) ?? occurrence.startDate
+        } else if let dueDate = occurrence.dueDate {
+            effectiveDue = dueDate
+        } else {
+            effectiveDue = calendar.date(byAdding: .day, value: 1, to: occurrenceDay) ?? occurrence.startDate
+        }
+        return date >= effectiveDue ? .overdue : .pending
+    }
+
+    func nodeLabel(for occurrence: WidgetRecurrenceOccurrenceItem, at date: Date) -> String {
+        if Calendar.current.isDate(occurrence.startDate, inSameDayAs: date) {
+            return "今天"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: occurrence.startDate)
+    }
+
+    private var orderedOccurrences: [WidgetRecurrenceOccurrenceItem] {
+        let calendar = Calendar.current
+        var byDay: [Date: WidgetRecurrenceOccurrenceItem] = [:]
+        for occurrence in occurrences.sorted(by: { $0.startAtMs < $1.startAtMs }) {
+            let day = calendar.startOfDay(for: occurrence.startDate)
+            if let existing = byDay[day], !existing.isProjected {
+                continue
+            }
+            byDay[day] = occurrence
+        }
+        return byDay.values.sorted { $0.startAtMs < $1.startAtMs }
+    }
+
+    private func shortScheduleText(
+        for occurrence: WidgetRecurrenceOccurrenceItem,
+        at date: Date,
+        includePrefix: Bool
+    ) -> String {
+        let calendar = Calendar.current
+        let displayDate = occurrence.dueDate ?? occurrence.startDate
+        let prefix = includePrefix ? "下一期 " : ""
+        if occurrence.isDateOnly {
+            if calendar.isDate(displayDate, inSameDayAs: date) {
+                return "\(prefix)今天内完成"
+            }
+            return "\(prefix)\(relativeDayText(for: displayDate, at: date))内完成"
+        }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        let time = timeFormatter.string(from: displayDate)
+        if calendar.isDate(displayDate, inSameDayAs: date) {
+            return "\(prefix)今天 \(time)"
+        }
+        return "\(prefix)\(relativeDayText(for: displayDate, at: date)) \(time)"
+    }
+
+    private func relativeDayText(for target: Date, at date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInTomorrow(target) { return "明天" }
+        let formatter = DateFormatter()
+        if abs(target.timeIntervalSince(date)) < 7 * 24 * 60 * 60 {
+            formatter.locale = Locale(identifier: "zh_CN")
+            formatter.dateFormat = "EEEE"
+        } else {
+            formatter.dateFormat = "M/d"
+        }
+        return formatter.string(from: target)
+    }
+}
+
+private extension Date {
+    func isBefore(_ other: Date) -> Bool { self < other }
 }
 
 // MARK: - Overview Widget
@@ -1058,16 +1546,318 @@ struct FocusWidgetEntryView: View {
     }
 }
 
+// MARK: - Configurable Recurrence Widget
+
+@available(macOS 14.2, *)
+struct CountDownTodoRecurrenceWidget: Widget {
+    let kind: String = "CountDownTodoRecurrenceWidget"
+
+    var body: some WidgetConfiguration {
+        AppIntentConfiguration(
+            kind: kind,
+            intent: SelectRecurrenceTodoIntent.self,
+            provider: RecurrenceWidgetProvider()
+        ) { entry in
+            RecurrenceWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("循环待办")
+        .description("选择一个循环待办，持续查看本期状态与完成进度")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+@available(macOS 14.2, *)
+struct RecurrenceWidgetEntryView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: RecurrenceWidgetEntry
+
+    var body: some View {
+        Group {
+            if let series = entry.series {
+                seriesContent(series)
+            } else if entry.configuredSeriesId == nil {
+                configurationEmptyState
+            } else {
+                unavailableState
+            }
+        }
+        .widgetContainerBackground {
+            Color.clear
+        }
+        .widgetURL(entry.series?.deepLinkURL)
+    }
+
+    @ViewBuilder
+    private func seriesContent(_ series: WidgetRecurrenceSeriesItem) -> some View {
+        if !series.isActive {
+            endedState(series)
+        } else if let presentation = series.presentation(at: entry.date) {
+            switch family {
+            case .systemMedium:
+                mediumContent(series, presentation: presentation)
+            default:
+                smallContent(series, presentation: presentation)
+            }
+        } else {
+            unavailableState
+        }
+    }
+
+    private func smallContent(
+        _ series: WidgetRecurrenceSeriesItem,
+        presentation: RecurrenceWidgetPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            recurrenceHeader(series)
+
+            Spacer(minLength: 1)
+
+            Text(series.title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .lineLimit(2)
+                .minimumScaleFactor(0.84)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Label(
+                    presentation.state.label,
+                    systemImage: presentation.state.symbolName
+                )
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(presentation.state.color)
+
+                Text(presentation.scheduleText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 1)
+
+            Text(summaryText(series))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .padding()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(series.title)，\(presentation.state.label)，\(presentation.scheduleText)，\(summaryText(series))"
+        )
+    }
+
+    private func mediumContent(
+        _ series: WidgetRecurrenceSeriesItem,
+        presentation: RecurrenceWidgetPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            recurrenceHeader(series)
+
+            Text(series.title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+
+            HStack(spacing: 10) {
+                Label(
+                    presentation.state.label,
+                    systemImage: presentation.state.symbolName
+                )
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(presentation.state.color)
+
+                Text(presentation.scheduleText)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(summaryText(series))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            recurrenceTimeline(series, presentation: presentation)
+
+            Spacer(minLength: 0)
+        }
+        .padding()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(series.title)，\(presentation.state.label)，\(presentation.scheduleText)，\(summaryText(series))"
+        )
+    }
+
+    private func recurrenceHeader(_ series: WidgetRecurrenceSeriesItem) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "repeat.circle.fill")
+                .foregroundColor(.accentColor)
+            Text("循环待办")
+                .font(.caption)
+                .fontWeight(.semibold)
+            Spacer()
+            if isSnapshotStale {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .help("数据可能不是最新")
+            }
+            Text(series.recurrenceText)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private func recurrenceTimeline(
+        _ series: WidgetRecurrenceSeriesItem,
+        presentation: RecurrenceWidgetPresentation
+    ) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(presentation.nodes.enumerated()), id: \.element.id) { index, occurrence in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.22))
+                        .frame(height: 1)
+                }
+                recurrenceNode(
+                    series,
+                    occurrence: occurrence,
+                    isSelected: occurrence.id == presentation.occurrence.id
+                )
+            }
+        }
+    }
+
+    private func recurrenceNode(
+        _ series: WidgetRecurrenceSeriesItem,
+        occurrence: WidgetRecurrenceOccurrenceItem,
+        isSelected: Bool
+    ) -> some View {
+        let state = series.state(of: occurrence, at: entry.date)
+        return VStack(spacing: 3) {
+            ZStack {
+                if isSelected {
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.35), lineWidth: 3)
+                        .frame(width: 21, height: 21)
+                }
+                Image(systemName: state.symbolName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(state.color)
+            }
+            .frame(height: 22)
+
+            Text(series.nodeLabel(for: occurrence, at: entry.date))
+                .font(.system(size: 8.5, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .primary : .secondary)
+                .lineLimit(1)
+        }
+        .frame(width: 36)
+        .accessibilityLabel(
+            "\(series.nodeLabel(for: occurrence, at: entry.date))，\(state.label)"
+        )
+    }
+
+    private var configurationEmptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "repeat.circle")
+                .font(.title2)
+                .foregroundColor(.accentColor)
+            Text("选择循环待办")
+                .font(.headline)
+            Text("右键编辑小组件并选择要提醒的循环系列")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var unavailableState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle")
+                .font(.title2)
+                .foregroundColor(.secondary)
+            Text(entry.configuredTitle ?? "待办不可用")
+                .font(.headline)
+                .lineLimit(2)
+            Text("该循环可能已删除或无法访问，请重新选择")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func endedState(_ series: WidgetRecurrenceSeriesItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            recurrenceHeader(series)
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark.circle")
+                .font(.title2)
+                .foregroundColor(.secondary)
+            Text(series.title)
+                .font(.headline)
+                .lineLimit(2)
+            Text("循环已结束")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text("\(summaryText(series)) · 右键可重新选择")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding()
+    }
+
+    private func summaryText(_ series: WidgetRecurrenceSeriesItem) -> String {
+        let completion: String
+        if let totalCount = series.totalCount {
+            completion = "已完成 \(series.completedCount)/\(totalCount) 期"
+        } else {
+            completion = "已完成 \(series.completedCount) 期"
+        }
+        if series.overdueCount > 0 {
+            return "\(completion) · 逾期 \(series.overdueCount) 期"
+        }
+        return completion
+    }
+
+    private var isSnapshotStale: Bool {
+        guard !entry.snapshotUpdatedAt.isEmpty else { return false }
+        let preciseFormatter = ISO8601DateFormatter()
+        preciseFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let updatedAt = preciseFormatter.date(from: entry.snapshotUpdatedAt) ??
+            ISO8601DateFormatter().date(from: entry.snapshotUpdatedAt)
+        guard let updatedAt else { return false }
+        return entry.date.timeIntervalSince(updatedAt) > 24 * 60 * 60
+    }
+}
+
 // MARK: - Widget Bundle
 
+@available(macOS 14.2, *)
 @main
 struct CountDownTodoWidgetBundle: WidgetBundle {
     var body: some Widget {
+        // macOS currently publishes at most five descriptors from a WidgetBundle.
+        // The overview already includes focus state, so the standalone focus
+        // entry yields its gallery slot to the configurable recurrence widget.
         CountDownTodoOverviewWidget()
         CountDownTodoCountdownWidget()
         CountDownTodoTodoWidget()
         CountDownTodoCourseWidget()
-        CountDownTodoFocusWidget()
+        CountDownTodoRecurrenceWidget()
     }
 }
 
@@ -1090,7 +1880,8 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
             courses: [
                 WidgetCourseItem(title: "计算机组成原理实验", timeText: "19:00 - 21:30", location: "电气楼513", statusText: "下一节课"),
             ],
-            focus: WidgetFocusState(isRunning: false, currentTitle: "", todayMinutes: 80, sessionMinutes: 0, remainingSeconds: 0)
+            focus: WidgetFocusState(isRunning: false, currentTitle: "", todayMinutes: 80, sessionMinutes: 0, remainingSeconds: 0),
+            recurrenceSeries: [WidgetRecurrenceSeriesItem.preview]
         )
         let entry = SimpleEntry(date: Date(), snapshot: sampleSnapshot, isPlaceholder: false)
 
@@ -1101,6 +1892,32 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
                 .previewContext(WidgetPreviewContext(family: .systemMedium))
             OverviewWidgetEntryView(entry: entry)
                 .previewContext(WidgetPreviewContext(family: .systemLarge))
+            if #available(macOS 14.2, *) {
+                RecurrenceWidgetEntryView(
+                    entry: RecurrenceWidgetEntry(
+                        date: Date(),
+                        series: .preview,
+                        configuredSeriesId: WidgetRecurrenceSeriesItem.preview.seriesId,
+                        configuredTitle: WidgetRecurrenceSeriesItem.preview.title,
+                        snapshotUpdatedAt: "2026-07-30T09:00:00.000+08:00",
+                        isPlaceholder: false
+                    )
+                )
+                .previewContext(WidgetPreviewContext(family: .systemSmall))
+                .previewDisplayName("循环待办 · 小号")
+                RecurrenceWidgetEntryView(
+                    entry: RecurrenceWidgetEntry(
+                        date: Date(),
+                        series: .preview,
+                        configuredSeriesId: WidgetRecurrenceSeriesItem.preview.seriesId,
+                        configuredTitle: WidgetRecurrenceSeriesItem.preview.title,
+                        snapshotUpdatedAt: "2026-07-30T09:00:00.000+08:00",
+                        isPlaceholder: false
+                    )
+                )
+                .previewContext(WidgetPreviewContext(family: .systemMedium))
+                .previewDisplayName("循环待办 · 中号")
+            }
         }
     }
 }

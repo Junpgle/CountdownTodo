@@ -578,32 +578,22 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
             todo.createdDate ?? todo.createdAt,
             isUtc: true)
         .toLocal();
-    final bool isAllDay = todo.dueDate != null &&
-        start.hour == 0 &&
-        start.minute == 0 &&
-        todo.dueDate!.hour == 23 &&
-        todo.dueDate!.minute == 59;
+    final isDateOnly = todo.isDateOnly;
 
     // Build time string: "MM/dd HH:mm → MM/dd HH:mm" or "MM/dd → MM/dd" for all-day
     String timeStr = "";
     if (todo.dueDate != null) {
-      if (isAllDay) {
-        timeStr =
-            "${DateFormat('MM/dd').format(start)} → ${DateFormat('MM/dd').format(todo.dueDate!)}";
+      if (isDateOnly) {
+        timeStr = '${DateFormat('MM/dd').format(todo.dueDate!)}内完成';
       } else {
-        timeStr =
-            "${DateFormat('MM/dd HH:mm').format(start)} → ${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}";
+        timeStr = '${DateFormat('MM/dd HH:mm').format(todo.dueDate!)}前完成';
       }
     } else {
-      timeStr = "开始 ${DateFormat('MM/dd HH:mm').format(start)}";
+      timeStr = '未安排';
     }
 
     final now = DateTime.now();
     final isPast = todo.dueDate != null && todo.dueDate!.isBefore(now);
-    final isFuture = todo.dueDate != null &&
-        !isPast &&
-        !DateTime(todo.dueDate!.year, todo.dueDate!.month, todo.dueDate!.day)
-            .isAtSameMomentAs(DateTime(now.year, now.month, now.day));
 
     // ── 徽章计算 (与主列表同步) ──
     String badge = "";

@@ -48,7 +48,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   Future<void> _setConflictDetectionEnabled(bool enabled) async {
     setState(() => _conflictDetectionEnabled = enabled);
     await StorageService.saveAppSetting(
-        StorageService.KEY_CONFLICT_DETECTION_ENABLED, enabled);
+        StorageService.keyConflictDetectionEnabled, enabled);
     if (!enabled && widget.username.isNotEmpty && widget.username != '加载中...') {
       await StorageService.clearLocalTodoScheduleConflicts(widget.username);
     }
@@ -200,7 +200,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
         onSelected: (selected) {
           setState(() => _syncInterval = selected);
           StorageService.saveAppSetting(
-              StorageService.KEY_SYNC_INTERVAL, selected);
+              StorageService.keySyncInterval, selected);
         },
       ),
     );

@@ -49,6 +49,7 @@ class MacPomodoroStatusBarService {
     required List<TodoGroup> todoGroups,
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
+    required List<FixedScheduleItem> fixedSchedules,
   }) async {}
 
   static Future<void> scheduleIslandReminders(

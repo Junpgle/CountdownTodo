@@ -924,9 +924,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _salutationSlots.length,
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (newIndex > oldIndex) newIndex--;
                     final item = _salutationSlots.removeAt(oldIndex);
                     _salutationSlots.insert(newIndex, item);
                   });
@@ -1106,9 +1105,8 @@ class _HomeTextConfigPageState extends State<HomeTextConfigPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _timeSlots.length,
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (newIndex > oldIndex) newIndex--;
                     final item = _timeSlots.removeAt(oldIndex);
                     _timeSlots.insert(newIndex, item);
                   });

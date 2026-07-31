@@ -20,7 +20,6 @@ import '../../../services/window_focus_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_color_utils.dart';
 import '../../../utils/app_platform.dart';
-import '../../../utils/time_utils.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 import '../unified_tag_manager_screen.dart';
 import '../widgets/immersive_timer.dart';
@@ -78,10 +77,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   List<PomodoroTag> _allTags = []; // 所有标签（包括归档）
   List<PomodoroTag> _tags = []; // 未归档标签（用于显示）
   List<String> _selectedTagUuids = [];
-  // Backwards-compatibility: older code referred to `_selectedUuids`.
-  // Keep a getter/setter so any remaining call sites still work.
-  List<String> get _selectedUuids => _selectedTagUuids;
-  set _selectedUuids(List<String> v) => _selectedTagUuids = v;
 
   // ── Timer ──
   Timer? _ticker;
@@ -115,7 +110,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Timer? _remoteTicker;
   List<String> _remoteTagNames = [];
 
-  bool _wsConnected = false;
   SyncConnectionState _syncConnState =
       SyncConnectionState.disconnected; // 🚀 新增：跟踪连接状态
   bool _hasShownUpdate = false;
@@ -245,7 +239,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     _islandSub?.cancel();
     _bandSub?.cancel();
     _macStatusBarSub?.cancel();
-    _wsConnected = false;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -312,14 +305,20 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       try {
         final info = await PackageInfo.fromPlatform();
         _appVersion = info.version;
-      } catch (e) {}
+      } catch (e) {
+        debugPrint('[PomodoroWorkbench] 读取应用版本失败: $e');
+      }
 
       if (saved != null && saved.phase != PomodoroPhase.idle) {
         try {
           try {
             await _recoverState(saved).timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (_) {}
-        } catch (e) {}
+          } on TimeoutException catch (e) {
+            debugPrint('[PomodoroWorkbench] 恢复计时状态超时: $e');
+          }
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 恢复计时状态失败: $e');
+        }
       } else {
         try {
           SharedPreferences? prefs;
@@ -327,6 +326,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             prefs = await SharedPreferences.getInstance()
                 .timeout(const Duration(seconds: 5));
           } catch (e) {
+            debugPrint('[PomodoroWorkbench] 读取本地绑定状态失败: $e');
             prefs = null;
           }
           if (prefs != null) {
@@ -366,7 +366,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               _syncService.setLocalFocusing(false);
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 恢复本地绑定信息失败: $e');
+        }
       }
 
       if (mounted) {
@@ -378,8 +380,12 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       try {
         try {
           await _connectCrossDevice().timeout(const Duration(seconds: 5));
-        } on TimeoutException catch (_) {}
-      } catch (e) {}
+        } on TimeoutException catch (e) {
+          debugPrint('[PomodoroWorkbench] 连接跨设备服务超时: $e');
+        }
+      } catch (e) {
+        debugPrint('[PomodoroWorkbench] 连接跨设备服务失败: $e');
+      }
 
       if (mounted && _userId.isNotEmpty && _deviceId.isNotEmpty) {
         try {
@@ -387,13 +393,18 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             await _syncService
                 .forceReconnect(_userId, 'flutter_$_deviceId')
                 .timeout(const Duration(seconds: 5));
-          } on TimeoutException catch (_) {}
-        } catch (e) {}
+          } on TimeoutException catch (e) {
+            debugPrint('[PomodoroWorkbench] 强制重连同步服务超时: $e');
+          }
+        } catch (e) {
+          debugPrint('[PomodoroWorkbench] 强制重连同步服务失败: $e');
+        }
       }
     } finally {
       _isInitProcessing = false;
       initWatchdog.cancel();
       final elapsed = DateTime.now().difference(initStart).inMilliseconds;
+      debugPrint('[PomodoroWorkbench] 初始化耗时 ${elapsed}ms');
     }
   }
 
@@ -412,7 +423,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (!mounted) return;
       setState(() {
         _syncConnState = state;
-        _wsConnected = state == SyncConnectionState.connected;
       });
       // debugPrint('[工作台] 同步通道连接状态变更: $state');
     });
@@ -437,8 +447,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
     await _syncService.forceReconnect(_userId, 'flutter_$_deviceId',
         authToken: authToken, appVersion: _appVersion);
-
-    if (mounted) setState(() => _wsConnected = true);
   }
 
   void _handleCrossDeviceSignal(CrossDevicePomodoroState signal) async {
@@ -893,7 +901,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       if (mounted) {
         setState(() {
           _phase = saved.phase;
-          _currentSessionUuid = saved.sessionUuid ?? const Uuid().v4();
+          _currentSessionUuid = saved.sessionUuid;
           _targetEndMs = saved.targetEndMs;
           _remainingSeconds = remaining;
           _currentCycle = saved.currentCycle;
@@ -904,9 +912,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
           _sessionStartMs = saved.sessionStartMs;
-          _isPaused = saved.isPaused ?? false;
-          _pausedAtMs = saved.pausedAtMs ?? 0;
-          _accumulatedMs = saved.accumulatedMs ?? 0;
+          _isPaused = saved.isPaused;
+          _pausedAtMs = saved.pausedAtMs;
+          _accumulatedMs = saved.accumulatedMs;
           _pauseStartMs = saved.pauseStartMs;
           _currentNote = saved.note ?? '';
           _pauseIntervals
@@ -1018,7 +1026,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       });
       await _clearRunStateSilently();
       await _askCompletionAndRecord(
-        sessionUuid: saved.sessionUuid ?? const Uuid().v4(),
+        sessionUuid: saved.sessionUuid,
         durationSeconds: saved.focusSeconds,
         startMs: saved.sessionStartMs,
         endMs: saved.targetEndMs,
@@ -1976,7 +1984,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   void _showTagsDialog() async {
-    final updated = await Navigator.push<List<PomodoroTag>>(
+    await Navigator.push<List<PomodoroTag>>(
         context,
         MaterialPageRoute(
           builder: (_) => UnifiedTagManagerScreen(
@@ -2175,7 +2183,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   Widget? _buildTodoPickerSubtitle(TodoItem todo) {
     final labels = <String>[
-      if (todo.recurrenceSeriesId?.isNotEmpty == true) '循环任务',
+      if (todo.recurrenceSeriesId?.isNotEmpty == true) '重复待办',
       if (todo.remark?.isNotEmpty == true) todo.remark!,
     ];
     if (labels.isEmpty) return null;
@@ -2492,7 +2500,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const Spacer(),
                 _buildIdleMiddle(),
                 const SizedBox(height: 32),
-                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+                _buildActions(
+                    isIdle, isFocusing, isRemoteWatching, contentColor),
                 const Spacer(),
               ] else ...[
                 const Spacer(),
@@ -2511,7 +2520,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                 const SizedBox(height: 12),
                 _buildNoteButton(contentColor),
                 const SizedBox(height: 32),
-                _buildActions(isIdle, isFocusing, isRemoteWatching, contentColor),
+                _buildActions(
+                    isIdle, isFocusing, isRemoteWatching, contentColor),
                 const Spacer(),
               ],
             ],
@@ -2904,6 +2914,7 @@ class _SimpleTag extends StatelessWidget {
   final String name;
   final Color color;
   const _SimpleTag({required this.name, required this.color});
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),

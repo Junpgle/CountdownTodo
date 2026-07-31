@@ -16,4 +16,15 @@
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowDisablePreview">true</item>
     </style>
+
+    <style name="RecurrenceWidgetTimelineNode">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+        <item name="android:textSize">9sp</item>
+    </style>
 </resources>

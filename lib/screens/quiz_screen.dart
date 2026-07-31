@@ -72,7 +72,7 @@ class _QuizScreenState extends State<QuizScreen>
     // 如果有存档，且存档的用户是当前用户，则恢复
     if (_currentSession != null &&
         _currentSession!.username == widget.username) {
-      print("恢复上次的答题进度");
+      debugPrint("恢复上次的答题进度");
       setState(() {
         questions = _currentSession!.questions;
         currentIndex = _currentSession!.currentIndex;
@@ -370,13 +370,6 @@ class _QuizScreenState extends State<QuizScreen>
         ],
       ),
     );
-  }
-
-  // 手动放弃考试（如果需要的话，可以在 AppBar 加个按钮调用这个）
-  void _quitTest() {
-    _currentSession = null;
-    NotificationService.cancelQuizNotification();
-    Navigator.pop(context);
   }
 
   Widget _buildQuestionCard(Question q, int index) {

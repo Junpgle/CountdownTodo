@@ -60,7 +60,7 @@ class PomodoroControlService {
     String? activePlanBlockId = planBlockId;
     if (activePlanBlockId == null && boundTodo != null) {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      final username = prefs.getString(StorageService.keyCurrentUser);
       if (username != null) {
         final nowDt = DateTime.fromMillisecondsSinceEpoch(now);
         final blocks = await StorageService.getPlanBlocksByDay(username, nowDt);
@@ -240,9 +240,6 @@ class PomodoroControlService {
     await NotificationService.cancelReminder(40002);
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final actualSeconds = PomodoroRunState.computeActualSeconds(
-        state.sessionStartMs, state.accumulatedMs,
-        endMs: now);
 
     await PomodoroService.addRecord(PomodoroRecord.fromRunState(
       state: state,

@@ -80,11 +80,8 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
             Flexible(
               child: ReorderableListView(
                 shrinkWrap: true,
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (oldIndex < newIndex) {
-                      newIndex -= 1;
-                    }
                     final item = _items.removeAt(oldIndex);
                     _items.insert(newIndex, item);
                   });
@@ -120,6 +117,7 @@ class _IslandPriorityDialogState extends State<IslandPriorityDialog> {
         FilledButton(
           onPressed: () async {
             await _savePriority();
+            if (!context.mounted) return;
             Navigator.of(context).pop(true);
           },
           child: const Text('保存'),

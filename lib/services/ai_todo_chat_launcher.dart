@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import '../screens/todo_chat_screen.dart';
+import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'todo_classification_service.dart';
 import 'pomodoro_service.dart';
@@ -23,11 +24,13 @@ class AiTodoChatLauncher {
     List<Team> teams = const [],
     List<CountdownItem> countdowns = const [],
     List<PomodoroTag> pomodoroTags = const [],
+    List<FixedScheduleItem>? fixedSchedules,
     Map<String, int> categoryReminderDefaults = const {},
     GlobalKey? sourceKey,
     void Function(List<TodoItem> inserted, List<TodoItem> updated)?
         onTodosBatchAction,
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
+    void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
   }) async {
     final initialCategorizationActions =
         await TodoClassificationService.buildCategorizeActions(
@@ -35,6 +38,12 @@ class AiTodoChatLauncher {
       groups: todoGroups,
       categoryReminderDefaults: categoryReminderDefaults,
     );
+    final resolvedFixedSchedules = fixedSchedules ??
+        await StorageService.getFixedSchedules(
+          username,
+          includeDeleted: true,
+        );
+    if (!context.mounted) return;
     final page = TodoChatScreen(
       username: username,
       todos: toChatTodoMaps(todos),
@@ -46,9 +55,11 @@ class AiTodoChatLauncher {
       teams: teams,
       countdowns: countdowns,
       pomodoroTags: pomodoroTags,
+      fixedSchedules: resolvedFixedSchedules,
       initialCategorizationActions: initialCategorizationActions,
       onTodosBatchAction: onTodosBatchAction,
       onTodoGroupsChanged: onTodoGroupsChanged,
+      onFixedSchedulesChanged: onFixedSchedulesChanged,
     );
     if (sourceKey != null) {
       return PageTransitions.pushFromRect(
@@ -76,24 +87,65 @@ class AiTodoChatLauncher {
   }
 
   static List<Map<String, dynamic>> toChatTodoMaps(List<TodoItem> todos) {
-    return todos
-        .where((t) => !t.isDeleted)
-        .map(
-          (t) => <String, dynamic>{
-            'id': t.id,
-            'title': t.title,
-            'remark': t.remark ?? '',
-            'startTime': _formatEpochMillis(t.createdDate),
-            'endTime': _formatDateTime(t.dueDate),
-            'isAllDay': t.isAllDayTask,
-            'isDone': t.isDone,
-            'isDeleted': t.isDeleted,
-            'recurrence': t.recurrence.name,
-            'groupId': t.groupId ?? '',
-            'reminderMinutes': t.reminderMinutes,
-          },
-        )
-        .toList();
+    final recurrenceRuleBySeries = <String, TodoItem>{};
+    for (final todo in todos.where((todo) => !todo.isDeleted)) {
+      final seriesId = todo.recurrenceSeriesId?.trim();
+      if (seriesId == null || seriesId.isEmpty) continue;
+      final existing = recurrenceRuleBySeries[seriesId];
+      if (existing == null ||
+          (todo.recurrence != RecurrenceType.none &&
+              existing.recurrence == RecurrenceType.none) ||
+          (todo.recurrence == existing.recurrence &&
+              (todo.createdDate ?? todo.createdAt) >
+                  (existing.createdDate ?? existing.createdAt))) {
+        recurrenceRuleBySeries[seriesId] = todo;
+      }
+    }
+
+    return todos.where((t) => !t.isDeleted).map((t) {
+      final seriesId = t.recurrenceSeriesId?.trim();
+      final rule = seriesId == null || seriesId.isEmpty
+          ? t
+          : recurrenceRuleBySeries[seriesId] ?? t;
+      return <String, dynamic>{
+        'id': t.id,
+        'title': t.title,
+        'remark': t.remark ?? '',
+        'startTime': _formatEpochMillis(t.createdDate),
+        'endTime': _formatDateTime(t.dueDate),
+        'timeMode': t.timeMode.name,
+        'isAllDay': t.isAllDayTask,
+        'isDone': t.isDone,
+        'isDeleted': t.isDeleted,
+        'recurrence': t.recurrence.name,
+        'recurrenceRule': rule.recurrence.name,
+        'recurrenceSeriesId': seriesId ?? '',
+        'recurrenceRole': seriesId == null || seriesId.isEmpty
+            ? 'standalone'
+            : t.id == rule.id
+                ? 'activeRule'
+                : 'occurrence',
+        'customIntervalDays': rule.customIntervalDays,
+        'recurrenceEndDate': _formatDateTime(rule.recurrenceEndDate),
+        'groupId': t.groupId ?? '',
+        'reminderMinutes': t.reminderMinutes,
+        // 执行器需要这些字段来生成完整快照，避免 AI 修改后丢失
+        // 新版待办的协作、系列及本地元数据。
+        'version': t.version,
+        'updatedAt': t.updatedAt,
+        'createdAt': t.createdAt,
+        'imagePath': t.imagePath,
+        'originalText': t.originalText,
+        'teamUuid': t.teamUuid,
+        'creatorId': t.creatorId,
+        'creatorName': t.creatorName,
+        'teamName': t.teamName,
+        'collabType': t.collabType,
+        'hasConflict': t.hasConflict,
+        'serverVersionData': t.serverVersionData,
+        'categoryId': t.categoryId,
+      };
+    }).toList();
   }
 
   static String _formatEpochMillis(int? value) {

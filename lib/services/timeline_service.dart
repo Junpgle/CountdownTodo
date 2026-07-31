@@ -44,9 +44,19 @@ class TimelineService {
         whereArgs: [startOfDayMs, endOfDayMs],
       );
       for (var row in createdTodos) {
+        final uuid = row['uuid']?.toString() ?? '';
+        final recurrenceSeriesId =
+            row['recurrence_series_id']?.toString().trim();
+        // A recurrence series is created once. Its generated occurrences are
+        // schedule materialization, rather than user-created new todos.
+        if (recurrenceSeriesId != null &&
+            recurrenceSeriesId.isNotEmpty &&
+            recurrenceSeriesId != uuid) {
+          continue;
+        }
         final title = row['content'] as String? ?? '';
         events.add(TimelineEvent(
-          id: 'todo_create_${row['uuid']}',
+          id: 'todo_create_$uuid',
           timestamp:
               DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
           type: TimelineEventType.todoCreated,
@@ -64,12 +74,17 @@ class TimelineService {
       for (var row in completedTodos) {
         final title = row['content'] as String? ?? '';
         final updatedAt = row['updated_at'] as int;
+        final recurrenceSeriesId =
+            row['recurrence_series_id']?.toString().trim();
         events.add(TimelineEvent(
           id: 'todo_complete_${row['uuid']}',
           timestamp: DateTime.fromMillisecondsSinceEpoch(updatedAt),
           type: TimelineEventType.todoCompleted,
           title: '完成待办',
           subtitle: title,
+          extraData: {
+            'is_recurrence': recurrenceSeriesId?.isNotEmpty == true,
+          },
         ));
       }
 
@@ -104,7 +119,9 @@ class TimelineService {
       );
       for (var row in poms) {
         final startTime = row['start_time'] as int;
-        final actualDur = row['actual_duration'] as int? ?? 0;
+        final actualDur = (row['actual_duration'] as num?)?.toInt() ??
+            (row['planned_duration'] as num?)?.toInt() ??
+            0;
         final status = row['status'] as String?;
         final title = row['todo_title'] as String? ?? '无题专注';
 
@@ -121,12 +138,64 @@ class TimelineService {
           events.add(TimelineEvent(
             id: 'pomo_end_${row['uuid']}',
             timestamp: DateTime.fromMillisecondsSinceEpoch(
-                startTime + actualDur * 1000),
+              (row['end_time'] as num?)?.toInt() ??
+                  startTime + actualDur * 1000,
+            ),
             type: TimelineEventType.pomodoroEnd,
             title: status == 'completed' ? '收获专注果实' : '专注中断',
             subtitle: '$title (${actualDur ~/ 60}分钟)',
           ));
         }
+      }
+
+      // 5. 时间日志
+      final timeLogs = await db.query(
+        'time_logs',
+        where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        whereArgs: [startOfDayMs, endOfDayMs],
+      );
+      for (final row in timeLogs) {
+        final startTime = (row['start_time'] as num?)?.toInt() ?? 0;
+        final endTime = (row['end_time'] as num?)?.toInt() ?? startTime;
+        final durationMinutes =
+            ((endTime - startTime).clamp(0, 1 << 62) ~/ 60000);
+        final title = row['title']?.toString().trim();
+        events.add(TimelineEvent(
+          id: 'time_log_${row['uuid']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+          type: TimelineEventType.timeLog,
+          title: '记录实际投入',
+          subtitle:
+              '${title == null || title.isEmpty ? '未命名日志' : title} ($durationMinutes分钟)',
+        ));
+      }
+
+      // 6. 任务规划块
+      final planBlocks = await db.rawQuery(
+        'SELECT p.*, t.content AS todo_title FROM todo_plan_blocks p '
+        'LEFT JOIN todos t ON t.uuid = p.todo_uuid '
+        'WHERE p.is_deleted = 0 AND p.start_time >= ? AND p.start_time < ?',
+        [startOfDayMs, endOfDayMs],
+      );
+      for (final row in planBlocks) {
+        final startTime = (row['start_time'] as num?)?.toInt() ?? 0;
+        final plannedMinutes = (row['planned_minutes'] as num?)?.toInt() ?? 0;
+        final statusIndex = (row['status'] as num?)?.toInt() ?? 0;
+        final status = TodoPlanStatus
+            .values[statusIndex.clamp(0, TodoPlanStatus.values.length - 1)];
+        final title = row['title_snapshot']?.toString().trim();
+        final todoTitle = row['todo_title']?.toString().trim();
+        final displayTitle = title?.isNotEmpty == true
+            ? title!
+            : (todoTitle?.isNotEmpty == true ? todoTitle! : '未命名规划');
+        events.add(TimelineEvent(
+          id: 'plan_block_${row['uuid']}',
+          timestamp: DateTime.fromMillisecondsSinceEpoch(startTime),
+          type: TimelineEventType.planBlock,
+          title: '进入规划时段',
+          subtitle:
+              '$displayTitle ($plannedMinutes分钟 · ${_planStatusLabel(status)})',
+        ));
       }
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
@@ -134,6 +203,26 @@ class TimelineService {
 
     events.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return events;
+  }
+
+  String _planStatusLabel(TodoPlanStatus status) {
+    switch (status) {
+      case TodoPlanStatus.finished:
+        return '已达成';
+      case TodoPlanStatus.delayed:
+        return '已顺延';
+      case TodoPlanStatus.cancelled:
+        return '已取消';
+      case TodoPlanStatus.focusing:
+        return '专注中';
+      case TodoPlanStatus.missed:
+        return '漏做';
+      case TodoPlanStatus.skipped:
+        return '已跳过';
+      case TodoPlanStatus.planned:
+      case TodoPlanStatus.reminded:
+        return '已规划';
+    }
   }
 
   Future<TimelineSummary> getTodaySummary(String username) async {
@@ -206,6 +295,25 @@ class TimelineService {
           pomodoroDetailStats.first['interrupted'] as int? ?? 0;
       final double interruptionRate =
           totalPomos > 0 ? interruptedPomos / totalPomos : 0.0;
+      final pomodoroDurationRows = await db.rawQuery(
+        'SELECT COALESCE(SUM(COALESCE(actual_duration, planned_duration, 0)), 0) as total '
+        'FROM pomodoro_records '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        [startMs, endMs],
+      );
+      final pomodoroFocusSeconds =
+          (pomodoroDurationRows.first['total'] as num? ?? 0).toInt();
+
+      final timeLogStats = await db.rawQuery(
+        'SELECT COUNT(*) as total, '
+        'COALESCE(SUM(MAX(0, end_time - start_time)), 0) as duration_ms '
+        'FROM time_logs '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?',
+        [startMs, endMs],
+      );
+      final timeLogCount = (timeLogStats.first['total'] as num? ?? 0).toInt();
+      final timeLogSeconds =
+          (timeLogStats.first['duration_ms'] as num? ?? 0).toInt() ~/ 1000;
 
       // 4b. Task Quality (Overdue vs Early)
       final taskQualityStats = await db.rawQuery(
@@ -218,11 +326,19 @@ class TimelineService {
       final int earlyCount = taskQualityStats.first['early'] as int? ?? 0;
 
       final pomoTop = await db.rawQuery(
-        'SELECT uuid, todo_title, actual_duration, start_time FROM pomodoro_records '
+        'SELECT * FROM ('
+        'SELECT uuid, COALESCE(todo_title, \'无题专注\') as todo_title, '
+        'COALESCE(actual_duration, planned_duration, 0) as actual_duration, '
+        'start_time, \'pomodoro\' as source FROM pomodoro_records '
         'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? AND '
         '(status = \'completed\' OR (status = \'interrupted\' AND actual_duration >= planned_duration * 0.9)) '
-        'ORDER BY actual_duration DESC LIMIT 5',
-        [startMs, endMs],
+        'UNION ALL '
+        'SELECT uuid, COALESCE(title, \'未命名日志\') as todo_title, '
+        'MAX(0, end_time - start_time) / 1000 as actual_duration, '
+        'start_time, \'time_log\' as source FROM time_logs '
+        'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
+        ') ORDER BY actual_duration DESC LIMIT 5',
+        [startMs, endMs, startMs, endMs],
       );
       hasPomo = pomoTop.isNotEmpty;
       pomoStats = hasPomo ? pomoTop.first : null;
@@ -243,7 +359,7 @@ class TimelineService {
       // 6. Highlights - Daily Trend for Sparkline
       final trendRows = await db.rawQuery(
         'SELECT day, SUM(dur) as total_dur FROM ('
-        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, actual_duration as dur FROM pomodoro_records '
+        'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, COALESCE(actual_duration, planned_duration, 0) as dur FROM pomodoro_records '
         'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
         'UNION ALL '
         'SELECT strftime(\'%Y-%m-%d\', datetime(start_time / 1000, \'unixepoch\', \'localtime\')) as day, (end_time - start_time) / 1000 as dur FROM time_logs '
@@ -319,7 +435,7 @@ class TimelineService {
       // 8. Focus Depth & Avg
       final pomoAll = await db.rawQuery(
         'SELECT dur FROM ('
-        'SELECT actual_duration as dur FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
+        'SELECT COALESCE(actual_duration, planned_duration, 0) as dur FROM pomodoro_records WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
         'UNION ALL '
         'SELECT (end_time - start_time) / 1000 as dur FROM time_logs WHERE is_deleted = 0 AND start_time >= ? AND start_time < ?'
         ')',
@@ -328,7 +444,7 @@ class TimelineService {
       int totalSecs = 0;
       int deepWork = 0;
       for (var row in pomoAll) {
-        final dur = row['dur'] as int;
+        final dur = (row['dur'] as num? ?? 0).toInt();
         totalSecs += dur;
         if (dur >= 60 * 60) deepWork++;
       }
@@ -698,9 +814,21 @@ class TimelineService {
         'SELECT created_at as ts FROM todos WHERE created_at >= ? AND created_at < ? AND is_deleted = 0 '
         'UNION ALL SELECT start_time as ts FROM pomodoro_records WHERE start_time >= ? AND start_time < ? AND is_deleted = 0 '
         'UNION ALL SELECT start_time as ts FROM time_logs WHERE start_time >= ? AND start_time < ? AND is_deleted = 0 '
+        'UNION ALL SELECT start_time as ts FROM todo_plan_blocks WHERE start_time >= ? AND start_time < ? AND is_deleted = 0 '
         'UNION ALL SELECT timestamp as ts FROM search_history WHERE timestamp >= ? AND timestamp < ?'
         ')',
-        [startMs, endMs, startMs, endMs, startMs, endMs, startMs, endMs],
+        [
+          startMs,
+          endMs,
+          startMs,
+          endMs,
+          startMs,
+          endMs,
+          startMs,
+          endMs,
+          startMs,
+          endMs,
+        ],
       );
 
       DateTime? actualStart;
@@ -720,9 +848,9 @@ class TimelineService {
       // 11b. Active days in the current calendar month
       final now = DateTime.now();
       final monthStart = DateTime(now.year, now.month, 1);
-      final monthEnd = monthStart.add(const Duration(days: 32));
-      final monthEndSafe =
-          monthEnd.isAfter(now) ? now.add(const Duration(days: 1)) : monthEnd;
+      final monthEnd = DateTime(now.year, now.month + 1, 1);
+      final tomorrow = DateTime(now.year, now.month, now.day + 1);
+      final monthEndSafe = tomorrow.isBefore(monthEnd) ? tomorrow : monthEnd;
       final monthStartMs = monthStart.millisecondsSinceEpoch;
       final monthEndMs = monthEndSafe.millisecondsSinceEpoch;
       final monthRows = await db.rawQuery(
@@ -752,7 +880,7 @@ class TimelineService {
       // 11c. Weekend focus minutes (Saturday + Sunday)
       final weekendRows = await db.rawQuery(
         'SELECT COALESCE(SUM(dur), 0) as total FROM ('
-        'SELECT actual_duration as dur FROM pomodoro_records '
+        'SELECT COALESCE(actual_duration, planned_duration, 0) as dur FROM pomodoro_records '
         'WHERE is_deleted = 0 AND start_time >= ? AND start_time < ? '
         "AND strftime('%w', datetime(start_time / 1000, 'unixepoch', 'localtime')) IN ('0', '6') "
         'UNION ALL '
@@ -786,13 +914,17 @@ class TimelineService {
         monthlyActiveDays: monthlyActiveDays,
         weekendFocusMinutes: weekendFocusMinutes,
         totalFocusMinutes: totalSecs ~/ 60,
+        pomodoroRecordCount: totalPomos,
+        timeLogCount: timeLogCount,
+        pomodoroFocusMinutes: pomodoroFocusSeconds ~/ 60,
+        timeLogMinutes: timeLogSeconds ~/ 60,
         countdownCreatedCount: cdStats.first['created'] as int? ?? 0,
         countdownEditedCount: 0,
         countdownCompletedCount: cdStats.first['completed'] as int? ?? 0,
         attendedCourses: [],
         pomodoroCount: pomoAll.length,
         longestPomodoroMinutes: topPomo != null
-            ? (topPomo['actual_duration'] as int? ?? 0) ~/ 60
+            ? (topPomo['actual_duration'] as num? ?? 0).toInt() ~/ 60
             : 0,
         longestPomodoroTitle:
             topPomo != null ? (topPomo['todo_title'] as String? ?? '无题') : null,
@@ -937,6 +1069,10 @@ class TimelineSummary {
   final int monthlyActiveDays;
   final int weekendFocusMinutes;
   final int totalFocusMinutes;
+  final int pomodoroRecordCount;
+  final int timeLogCount;
+  final int pomodoroFocusMinutes;
+  final int timeLogMinutes;
   final int countdownCreatedCount;
   final int countdownEditedCount;
   final int countdownCompletedCount;
@@ -981,6 +1117,10 @@ class TimelineSummary {
     this.monthlyActiveDays = 0,
     this.weekendFocusMinutes = 0,
     this.totalFocusMinutes = 0,
+    this.pomodoroRecordCount = 0,
+    this.timeLogCount = 0,
+    this.pomodoroFocusMinutes = 0,
+    this.timeLogMinutes = 0,
     required this.countdownCreatedCount,
     required this.countdownEditedCount,
     required this.countdownCompletedCount,
@@ -1024,6 +1164,8 @@ class TimelineSummary {
   final int interruptionCount;
   final double interruptionRate;
   final int earlyCompletionCount;
+
+  int get focusSessionCount => pomodoroRecordCount + timeLogCount;
 
   String get topSubject {
     if (subjectDistribution.isEmpty) return '全能型';

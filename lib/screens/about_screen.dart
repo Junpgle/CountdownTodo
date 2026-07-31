@@ -13,6 +13,7 @@ import '../update_service.dart';
 import 'dart:async';
 import '../services/local_migration_service.dart';
 import '../services/database_helper.dart';
+import '../services/database_schema_history.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -25,7 +26,6 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   String _version = '加载中...';
-  String _buildNumber = '';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
   bool _versionExpanded = false;
@@ -39,6 +39,8 @@ class _AboutScreenState extends State<AboutScreen> {
   String _deviceArch = '加载中...';
   String _deviceModel = '';
   String _osVersion = '';
+  int? _databaseVersion;
+  bool _databaseVersionLoadFailed = false;
 
   // 🚀 Uni-Sync 4.0 迁移状态
   bool _needsMigration = false;
@@ -51,7 +53,7 @@ class _AboutScreenState extends State<AboutScreen> {
   StreamSubscription? _migrationSub;
   List<Map<String, dynamic>> _syncFailures = [];
 
-  static const String PRIVACY_RAW_URL =
+  static const String privacyRawUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/PRIVACY_POLICY.md';
 
   @override
@@ -61,6 +63,7 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadChangelog();
     _fetchPrivacyPolicy();
     _loadDeviceInfo();
+    _loadDatabaseVersion();
     _checkMigration();
     _loadSyncFailures();
   }
@@ -156,9 +159,46 @@ class _AboutScreenState extends State<AboutScreen> {
     if (mounted) {
       setState(() {
         _version = info.version;
-        _buildNumber = info.buildNumber;
       });
     }
+  }
+
+  Future<void> _loadDatabaseVersion() async {
+    if (_databaseVersionLoadFailed && mounted) {
+      setState(() {
+        _databaseVersion = null;
+        _databaseVersionLoadFailed = false;
+      });
+    }
+
+    try {
+      final database = await DatabaseHelper.instance.database;
+      final versionRows = await database.rawQuery('PRAGMA user_version');
+      if (versionRows.isEmpty || versionRows.first.values.first is! num) {
+        throw const FormatException('无法读取数据库架构版本');
+      }
+      final version = (versionRows.first.values.first as num).toInt();
+      if (mounted) {
+        setState(() => _databaseVersion = version);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _databaseVersionLoadFailed = true);
+      }
+    }
+  }
+
+  Future<void> _showDatabaseChangelog() {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.9,
+        child: _DatabaseChangelogSheet(currentVersion: _databaseVersion),
+      ),
+    );
   }
 
   Future<void> _loadChangelog() async {
@@ -203,7 +243,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _fetchPrivacyPolicy() async {
     try {
-      final response = await http.get(Uri.parse(PRIVACY_RAW_URL));
+      final response = await http.get(Uri.parse(privacyRawUrl));
       if (response.statusCode == 200) {
         final content = response.body;
         String? date;
@@ -428,6 +468,8 @@ class _AboutScreenState extends State<AboutScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Column(
                     children: [
+                      _buildDatabaseCard(context),
+                      const SizedBox(height: 16),
                       _buildCleanupCard(context),
                       const SizedBox(height: 16),
                       _buildChangelogCard(context),
@@ -542,6 +584,8 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           const SizedBox(height: 16),
           _buildDeviceCard(context),
+          const SizedBox(height: 16),
+          _buildDatabaseCard(context),
           const SizedBox(height: 16),
           _buildCleanupCard(context),
           const SizedBox(height: 16),
@@ -829,6 +873,82 @@ class _AboutScreenState extends State<AboutScreen> {
               subtitle: const Text('剔除重复课程数据，优化数据库体积'),
               trailing: const Icon(Icons.chevron_right),
               onTap: _runDeduplication,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDatabaseCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final version = _databaseVersion;
+    final versionSubtitle = _databaseVersionLoadFailed
+        ? '读取失败，可重试或直接查看架构日志'
+        : version == null
+            ? '正在读取本地 SQLite 架构版本…'
+            : version == DatabaseSchemaHistory.currentVersion
+                ? '本地 SQLite 架构已是最新版本'
+                : '最新版本为 V${DatabaseSchemaHistory.currentVersion}';
+
+    final Widget versionTrailing;
+    if (_databaseVersionLoadFailed) {
+      versionTrailing = IconButton(
+        onPressed: _loadDatabaseVersion,
+        icon: const Icon(Icons.refresh_rounded),
+        tooltip: '重新读取',
+      );
+    } else if (version == null) {
+      versionTrailing = const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else {
+      versionTrailing = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          'V$version',
+          style: TextStyle(
+            color: colorScheme.onPrimaryContainer,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(
+                Icons.storage_rounded,
+                color: colorScheme.primary,
+              ),
+              title: const Text('当前数据库版本'),
+              subtitle: Text(versionSubtitle),
+              trailing: versionTrailing,
+            ),
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: Icon(
+                Icons.manage_history_rounded,
+                color: colorScheme.primary,
+              ),
+              title: const Text('数据库更新日志'),
+              subtitle: Text(
+                '查看 V1 至 V${DatabaseSchemaHistory.currentVersion} 的架构变更',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showDatabaseChangelog,
             ),
           ],
         ),
@@ -1189,6 +1309,184 @@ class _LinkItem {
     required this.subtitle,
     required this.onTap,
   });
+}
+
+class _DatabaseChangelogSheet extends StatelessWidget {
+  final int? currentVersion;
+
+  const _DatabaseChangelogSheet({required this.currentVersion});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final currentLabel = currentVersion == null ? '未读取' : 'V$currentVersion';
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 8, 16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.storage_rounded,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '数据库更新日志',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '当前 $currentLabel · 最新 V${DatabaseSchemaHistory.currentVersion}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+                tooltip: '关闭',
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '以下记录仅包含本地 SQLite 架构变更，不包含应用功能更新。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: DatabaseSchemaHistory.changes.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final entry = DatabaseSchemaHistory.changes[index];
+              final isCurrent = entry.version == currentVersion;
+
+              return Card(
+                elevation: 0,
+                margin: EdgeInsets.zero,
+                color: isCurrent
+                    ? colorScheme.primaryContainer.withValues(alpha: 0.45)
+                    : colorScheme.surfaceContainerLow,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isCurrent
+                        ? colorScheme.primary.withValues(alpha: 0.35)
+                        : colorScheme.outlineVariant.withValues(alpha: 0.45),
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Theme(
+                  data: theme.copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    key: PageStorageKey('database-version-${entry.version}'),
+                    initiallyExpanded: isCurrent,
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    title: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'V${entry.version}',
+                            style: TextStyle(
+                              color: colorScheme.onSecondaryContainer,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (isCurrent) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '当前',
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(entry.title),
+                    ),
+                    children: entry.changes
+                        .map(
+                          (change) => Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 7),
+                                  child: Icon(
+                                    Icons.circle,
+                                    size: 5,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    change,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class PrivacyPolicyPage extends StatelessWidget {

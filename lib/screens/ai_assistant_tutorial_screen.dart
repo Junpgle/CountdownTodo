@@ -41,8 +41,15 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
         context,
         icon: Icons.auto_fix_high_rounded,
         title: '待办规划',
-        detail: '根据目标自动生成待办，或将已有待办精准排入“规划块”中，构建日程。',
+        detail: '根据目标生成待办，或将已有待办精准排入可调整的“规划块”。',
         color: colorScheme.primary,
+      ),
+      _capabilityItem(
+        context,
+        icon: Icons.event_available_rounded,
+        title: '日程管理',
+        detail: '创建、修改、取消固定日程，并与待办截止点和规划块保持清晰边界。',
+        color: colorScheme.secondary,
       ),
       _capabilityItem(
         context,
@@ -80,7 +87,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
         context,
         step: '02',
         title: '预览操作清单',
-        detail: 'AI 会生成 [ACTION] 动作块，在界面下方或侧边栏显示预览。',
+        detail: 'AI 会生成 [ACTION_START]…[ACTION_END] 动作块，并在界面下方或侧边栏显示预览。',
       ),
       _howToItem(
         context,
@@ -543,10 +550,10 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
       child: Column(
         children: [
           _planningRow(context, Icons.event_note_rounded, '自动避让',
-              'AI 规划时会自动避开课程表中的已有课程。'),
+              'AI 规划时会自动避开固定日程、课程和已有规划块。'),
           const SizedBox(height: 12),
-          _planningRow(
-              context, Icons.sync_rounded, '多端同步', '规划块支持远端与本地同步，确保日程在所有设备一致。'),
+          _planningRow(context, Icons.sync_rounded, '多端同步',
+              '规划块支持远端与本地同步，确保规划记录在所有设备一致。'),
           const SizedBox(height: 12),
           _planningRow(context, Icons.auto_graph_rounded, '进度追踪',
               'AI 可根据番茄钟实际专注时长自动更新规划进度。'),
@@ -621,7 +628,7 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
     return Column(
       children: [
         _tipItem(context, '深度思考',
-            '开启“深度思考”模式（如使用 R1/O1 模型），AI 会展示推理过程，适合处理复杂的日程重排任务。'),
+            '开启“深度思考”模式，AI 会展示推理过程，适合处理复杂的日程重排任务（需使用支持推理的模型）。'),
         _tipItem(
             context, '提示词自定义', '在顶部菜单中进入“提示词设置”，你可以定制 AI 的语气或强制其遵循特定的工作流建议。'),
         _tipItem(context, '课程组件入口', '在课程表组件中长按或点击菜单，可直接发起针对该课程时间段的 AI 规划。'),
@@ -686,6 +693,14 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
             style: TextStyle(fontSize: 14, height: 1.6),
           ),
           const SizedBox(height: 20),
+          _contextDetailItem(
+            context,
+            Icons.event_rounded,
+            '固定日程',
+            '日程、会议、考试、预约、行程...',
+            '注入外部决定时间的硬约束及真实日程ID，用于查询、修改并避开时间冲突。',
+          ),
+          _divider(context),
           _contextDetailItem(
             context,
             Icons.school_rounded,

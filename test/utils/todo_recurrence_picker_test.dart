@@ -1,5 +1,5 @@
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/utils/todo_recurrence_picker.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/utils/todo_recurrence_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

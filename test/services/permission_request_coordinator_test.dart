@@ -1,11 +1,16 @@
 import 'dart:async';
 
-import 'package:CountDownTodo/services/permission_request_coordinator.dart';
+import 'package:countdown_todo/services/permission_request_coordinator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('returns the requested status, invokes callback and hides banner',
       (tester) async {
     late BuildContext context;

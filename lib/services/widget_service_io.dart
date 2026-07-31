@@ -1,14 +1,18 @@
-import 'package:home_widget/home_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
-import '../utils/todo_recurrence_picker.dart';
+import '../utils/todo_widget_visibility.dart';
+import '../utils/widget_recurrence_series.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -19,7 +23,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
     final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (id != null) {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.isNotEmpty) {
         List<TodoItem> todos = await StorageService.getTodos(username);
         bool changed = false;
@@ -49,6 +53,7 @@ class WidgetService {
   static const String courseOnlyWidgetName = 'CourseOnlyWidgetProvider';
   static const String countdownOnlyWidgetName = 'CountdownOnlyWidgetProvider';
   static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
+  static const String recurrenceWidgetName = 'RecurrenceWidgetProvider';
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
@@ -83,7 +88,7 @@ class WidgetService {
     _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+        final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
         if (username.isEmpty) return;
         final todos = await StorageService.getTodos(username);
         await WidgetService.updateAllWidgetData(username, todos);
@@ -95,7 +100,7 @@ class WidgetService {
     // 立即触发一次更新
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.isNotEmpty) {
         final todos = await StorageService.getTodos(username);
         await updateAllWidgetData(username, todos);
@@ -113,12 +118,13 @@ class WidgetService {
     final diffDays = dueDay.difference(today).inDays;
     if (diffDays < 0) {
       return '已逾期';
-    } else if (diffDays == 0)
+    } else if (diffDays == 0) {
       return '今天 ${dueDate.hour.toString().padLeft(2, '0')}:${dueDate.minute.toString().padLeft(2, '0')}';
-    else if (diffDays == 1)
+    } else if (diffDays == 1) {
       return '明天';
-    else
+    } else {
       return '$diffDays天后';
+    }
   }
 
   static Future<void> updateAllWidgetData(
@@ -143,8 +149,8 @@ class WidgetService {
     final List<TimeLogItem> tlogsRaw = results[3] as List<TimeLogItem>;
     final List<PomodoroRecord> pomsRaw = results[4] as List<PomodoroRecord>;
     final List<PomodoroTag> allTags = results[5] as List<PomodoroTag>;
-    final widgetTodos = collapseRecurrenceSeriesForTodoPicker(
-      allTodos.where((todo) => !todo.isDone && !todo.isDeleted),
+    final widgetTodos = selectTodosForWidget(
+      allTodos,
       now: now,
     );
 
@@ -160,6 +166,8 @@ class WidgetService {
               'dueDate': t.dueDate?.millisecondsSinceEpoch,
               'createdDate': t.createdDate,
               'createdAt': t.createdAt,
+              'visibleUntil':
+                  recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
             })
         .toList();
 
@@ -253,6 +261,13 @@ class WidgetService {
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
 
+    if (Platform.isAndroid) {
+      final recurrenceSeries = buildWidgetRecurrenceSeries(allTodos, now: now);
+      widgetData['recurrence_series_json'] = jsonEncode(
+          recurrenceSeries.map((series) => series.toJson()).toList());
+      widgetData['recurrence_updated_at_ms'] = now.millisecondsSinceEpoch;
+    }
+
     // Android：写入 SharedPreferences 并更新 widget
     if (Platform.isAndroid || Platform.isIOS) {
       await _updateAndroidWidgets(widgetData);
@@ -261,12 +276,19 @@ class WidgetService {
     // macOS：构建富数据快照并刷新 WidgetKit
     if (Platform.isMacOS) {
       final macSnapshot = await _buildMacOSSnapshot(
-          widgetTodos, allCourses, countdownsRaw, now, today);
+        widgetTodos,
+        allTodos,
+        allCourses,
+        countdownsRaw,
+        now,
+        today,
+      );
       await _updateMacOSWidget(macSnapshot);
     }
   }
 
   static Future<WidgetSnapshot> _buildMacOSSnapshot(
+    List<TodoItem> actionableTodos,
     List<TodoItem> allTodos,
     List<CourseItem> allCourses,
     List<CountdownItem> countdownsRaw,
@@ -292,7 +314,9 @@ class WidgetService {
       ..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
 
     // 2. 待办：未完成、未删除，按紧急度排序
-    final todoItems = allTodos.where((t) => !t.isDone && !t.isDeleted).map((t) {
+    final todoItems = actionableTodos
+        .where((t) => !t.isDone && !t.isDeleted)
+        .map((t) {
       String? timeText;
       int priority = 0;
       if (t.dueDate != null) {
@@ -319,6 +343,8 @@ class WidgetService {
         timeText: timeText,
         priority: priority,
         isDone: t.isDone,
+        visibleUntilMs:
+            recurringTodoWidgetVisibleUntil(t)?.millisecondsSinceEpoch,
       );
     }).toList()
       ..sort((a, b) {
@@ -412,6 +438,7 @@ class WidgetService {
       todos: todoItems.take(8).toList(),
       courses: courseItems.take(6).toList(),
       focus: focusState,
+      recurrenceSeries: buildWidgetRecurrenceSeries(allTodos, now: now),
     );
   }
 
@@ -461,6 +488,11 @@ class WidgetService {
               .catchError((e) {
 //             debugPrint(
 //                 '⚠️ [WidgetService] Failed to update $focusOnlyWidgetName: $e');
+            return false;
+          }),
+          HomeWidget.updateWidget(
+                  qualifiedAndroidName: '$_widgetPackage.$recurrenceWidgetName')
+              .catchError((e) {
             return false;
           }),
         ]);
@@ -544,14 +576,16 @@ class WidgetService {
       resultData['todo_${i}_done'] = false;
       resultData['todo_${i}_id'] = '';
       resultData['todo_${i}_due'] = '';
+      resultData['todo_${i}_visible_until'] = 0;
     }
     for (int i = 0; i < displayTodos.length; i++) {
       final todo = displayTodos[i];
       final dueDateMs = todo['dueDate'] as int?;
       String title = todo['title'] as String? ?? '';
       DateTime? dueDate;
-      if (dueDateMs != null)
+      if (dueDateMs != null) {
         dueDate = DateTime.fromMillisecondsSinceEpoch(dueDateMs);
+      }
       final isDueToday = dueDate == null ||
           !DateTime(dueDate.year, dueDate.month, dueDate.day).isAfter(today);
       if (isDueToday) title = '<b>$title</b>';
@@ -559,6 +593,8 @@ class WidgetService {
       resultData['todo_${i + 1}_done'] = todo['isDone'] as bool? ?? false;
       resultData['todo_${i + 1}_id'] = todo['id'] as String? ?? '';
       resultData['todo_${i + 1}_due'] = _getDueDateLabelFromMs(dueDateMs);
+      resultData['todo_${i + 1}_visible_until'] =
+          todo['visibleUntil'] as int? ?? 0;
     }
 
     // 2. 课程处理（主线程已过滤为未来 14 天内）
@@ -716,7 +752,7 @@ class WidgetService {
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
     await updateAllWidgetData(username, todos);
   }
 }

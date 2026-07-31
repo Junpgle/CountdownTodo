@@ -121,30 +121,6 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
     }
   }
 
-  Future<void> _handleSyncRequest(String type) async {
-    _logs.add('开始处理同步请求: $type');
-    try {
-      switch (type) {
-        case 'todo':
-          await _syncTodos();
-          break;
-        case 'course':
-          await _syncCourses();
-          break;
-        case 'countdown':
-          await _syncCountdowns();
-          break;
-        case 'pomodoro':
-          await _syncPomodoro();
-          break;
-        default:
-          _logs.add('未知同步请求: $type');
-      }
-    } catch (e) {
-      _logs.add('同步异常: $e');
-    }
-  }
-
   Future<void> _autoRequestPermission() async {
     // 等待一下让设备连接完成
     await Future.delayed(const Duration(milliseconds: 500));
@@ -326,11 +302,10 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
                             onPressed: () async {
                               _logs.add('手动检查手环更新...');
                               await UpdateService.syncBandVersionInfo();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('已向手环推送最新版本信息')),
-                                );
-                              }
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已向手环推送最新版本信息')),
+                              );
                             },
                             icon: const Icon(Icons.system_update_alt_rounded,
                                 size: 18),
@@ -750,7 +725,7 @@ class _BandSyncScreenState extends State<BandSyncScreen> {
 
   Future<String?> _getUsername() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(StorageService.KEY_CURRENT_USER);
+    return prefs.getString(StorageService.keyCurrentUser);
   }
 
   /// 处理手环发回的消息（todo状态变更等）

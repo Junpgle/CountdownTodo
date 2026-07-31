@@ -11,6 +11,7 @@ import '../storage_service.dart';
 import 'storage/app_settings_storage.dart';
 import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
+import 'item_semantics_service.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -84,7 +85,7 @@ class NotificationService {
   }
 
   // Dedupe keys for Windows all-day todo notifications: "todoId@yyyy-MM-dd"
-  static final Set<String> _windowsAllDayTodoNotifiedKeys = <String>{};
+  static final Set<String> _windowsTodoNotificationKeys = <String>{};
 
   static const NotificationDetails _desktopNotificationDetails =
       NotificationDetails(
@@ -296,7 +297,7 @@ class NotificationService {
     final DateTime now = DateTime.now();
     final List<TodoItem> todayAllDayTodos = todos.where((t) {
       if (t.dueDate == null) return false;
-      final todoType = _detectTodoType(t.title);
+      final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
       if (!_isSameDay(localDueDate, now)) return false;
@@ -336,89 +337,42 @@ class NotificationService {
     }
   }
 
-  static String _detectTodoType(String title) {
-    final lowerTitle = title.toLowerCase();
-    if (lowerTitle.contains('快递') ||
-        lowerTitle.contains('取件') ||
-        lowerTitle.contains('顺丰') ||
-        lowerTitle.contains('京东') ||
-        lowerTitle.contains('菜鸟') ||
-        lowerTitle.contains('中通') ||
-        lowerTitle.contains('圆通') ||
-        lowerTitle.contains('韵达') ||
-        lowerTitle.contains('申通')) {
-      return 'delivery';
-    } else if (lowerTitle.contains('奶茶') ||
-        lowerTitle.contains('咖啡') ||
-        lowerTitle.contains('古茗') ||
-        lowerTitle.contains('茶百道') ||
-        lowerTitle.contains('蜜雪冰城') ||
-        lowerTitle.contains('瑞幸') ||
-        lowerTitle.contains('星巴克') ||
-        lowerTitle.contains('库迪') ||
-        lowerTitle.contains('coco') ||
-        lowerTitle.contains('一点点')) {
-      return 'cafe';
-    } else if (lowerTitle.contains('海底捞') ||
-        lowerTitle.contains('太二') ||
-        lowerTitle.contains('外婆家') ||
-        lowerTitle.contains('西贝') ||
-        lowerTitle.contains('必胜客') ||
-        lowerTitle.contains('堂食') ||
-        lowerTitle.contains('餐饮')) {
-      return 'restaurant';
-    } else if (lowerTitle.contains('取餐') ||
-        lowerTitle.contains('外卖') ||
-        lowerTitle.contains('肯德基') ||
-        lowerTitle.contains('麦当劳') ||
-        lowerTitle.contains('KFC')) {
-      return 'food';
-    }
-    return 'default';
-  }
-
   static bool _isAllDayTodo(TodoItem todo) {
-    if (todo.dueDate == null) return false;
-
-    final DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
-    final DateTime dueDate = todo.dueDate!.toLocal();
-
-    return _isAllDayRange(startDate, dueDate);
+    return todo.isDateOnly;
   }
 
-  static bool _isAllDayRange(DateTime startDate, DateTime dueDate) {
-    if (!_isSameDay(startDate, dueDate)) {
-      final endsAtNextMidnight = startDate.hour == 0 &&
-          startDate.minute == 0 &&
-          dueDate.hour == 0 &&
-          dueDate.minute == 0 &&
-          dueDate.isAfter(startDate);
-      return endsAtNextMidnight;
-    }
-
-    return startDate.hour == 0 &&
-        startDate.minute == 0 &&
-        ((dueDate.hour == 23 && dueDate.minute == 59) ||
-            (dueDate.hour == 0 &&
-                dueDate.minute == 0 &&
-                dueDate.isAfter(startDate)));
-  }
-
-  static String _windowsAllDayTodoKey(TodoItem todo) {
+  static String _windowsTodoNotificationKey(
+    TodoItem todo, {
+    required bool isSpecialTodo,
+  }) {
+    if (isSpecialTodo) return '${todo.id}@pickup-v${todo.version}';
     final dayStr = DateFormat('yyyy-MM-dd').format(todo.dueDate!.toLocal());
     return '${todo.id}@$dayStr';
   }
 
   static Future<void> showUpcomingTodoNotification(TodoItem todo) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
-    if (todo.dueDate == null) return;
-    if (!_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) return;
 
-    final todoType = _detectTodoType(todo.title);
-    final isSpecialTodo = todoType != 'default';
+    final todoType = ItemSemanticsService.specialTodoTypeForTitle(todo.title);
+    final isSpecialTodo = todoType != 'default' ||
+        ItemSemanticsService.domainKindForTodo(todo) == TodoDomainKind.pickup;
+    final displayTitle = isSpecialTodo
+        ? ItemSemanticsService.maskPickupSensitiveText(
+            todo.title,
+            forcePickupContext: true,
+          )
+        : todo.title;
+    final displayRemark = isSpecialTodo
+        ? ItemSemanticsService.maskPickupSensitiveText(
+            todo.remark ?? '',
+            forcePickupContext: true,
+          )
+        : todo.remark ?? '';
+    if (todo.dueDate == null && !isSpecialTodo) return;
+    if (todo.dueDate != null &&
+        !_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) {
+      return;
+    }
     final isAllDayTodo = _isAllDayTodo(todo);
 
     // Keep the safety check at the notification boundary as well as in the
@@ -436,14 +390,15 @@ class NotificationService {
       if (!await AppSettingsStorage.isTodoSummaryNotificationEnabled()) return;
     }
 
-    DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
-            todo.createdDate ?? todo.createdAt,
-            isUtc: true)
-        .toLocal();
-    final dueDate = todo.dueDate!.toLocal();
-    String timeStr = isAllDayTodo
-        ? '全天'
-        : "${DateFormat('HH:mm').format(startDate)} - ${DateFormat('HH:mm').format(dueDate)}";
+    final dueDate = todo.dueDate?.toLocal();
+    final String timeStr;
+    if (isSpecialTodo && dueDate == null) {
+      timeStr = '待领取';
+    } else if (isAllDayTodo) {
+      timeStr = '当天内完成';
+    } else {
+      timeStr = '${DateFormat('HH:mm').format(dueDate!)}前完成';
+    }
     final notifId = todo.id.hashCode;
 
 //     debugPrint(
@@ -453,21 +408,27 @@ class NotificationService {
       if (isAllDayTodo) {
         final todaySuffix =
             '@${DateFormat('yyyy-MM-dd').format(DateTime.now())}';
-        _windowsAllDayTodoNotifiedKeys
-            .removeWhere((key) => !key.endsWith(todaySuffix));
+        _windowsTodoNotificationKeys.removeWhere(
+          (key) => !key.contains('@pickup-v') && !key.endsWith(todaySuffix),
+        );
+      }
 
-        final dedupeKey = _windowsAllDayTodoKey(todo);
-        if (_windowsAllDayTodoNotifiedKeys.contains(dedupeKey)) {
+      if (isAllDayTodo || isSpecialTodo) {
+        final dedupeKey = _windowsTodoNotificationKey(
+          todo,
+          isSpecialTodo: isSpecialTodo,
+        );
+        if (_windowsTodoNotificationKeys.contains(dedupeKey)) {
 //           debugPrint('⏭️ 跳过重复的桌面端全天待办通知: $dedupeKey');
           return;
         }
-        _windowsAllDayTodoNotifiedKeys.add(dedupeKey);
+        _windowsTodoNotificationKeys.add(dedupeKey);
       }
 
       await _plugin.show(
         id: todo.id.hashCode,
-        title: '🔔 待办提醒: ${todo.title}',
-        body: '$timeStr\n${todo.remark ?? ''}',
+        title: '🔔 待办提醒: $displayTitle',
+        body: '$timeStr\n$displayRemark',
         notificationDetails: _desktopNotificationDetails,
       );
       return;
@@ -476,13 +437,13 @@ class NotificationService {
     try {
       await _channel.invokeMethod('showOngoingNotification', {
         'type': isSpecialTodo ? 'special_todo' : 'upcoming_todo',
-        'todoTitle': todo.title,
-        'todoRemark': todo.remark ?? '',
+        'todoTitle': displayTitle,
+        'todoRemark': displayRemark,
         'timeStr': timeStr,
         'todoType': todoType,
         'notificationId': notifId,
-        'imagePath': todo.imagePath,
-        'originalText': todo.originalText, // 📄 原始分析文本
+        'imagePath': isSpecialTodo ? null : todo.imagePath,
+        'originalText': isSpecialTodo ? null : todo.originalText,
       });
 //       debugPrint(
 //           "✅ 通知发送成功: type=${isSpecialTodo ? 'special_todo' : 'upcoming_todo'}, title=${todo.title}, notifId=$notifId");
@@ -686,6 +647,8 @@ class NotificationService {
           if (r['teacher'] != null) 'teacher': r['teacher'],
           if (r['originalText'] != null) 'originalText': r['originalText'],
           if (r['planBlockId'] != null) 'planBlockId': r['planBlockId'],
+          if (r['fixedScheduleId'] != null)
+            'fixedScheduleId': r['fixedScheduleId'],
           if (r['todoId'] != null) 'todoId': r['todoId'],
           if (imagePath != null && imagePath.isNotEmpty)
             'analysisImagePath': imagePath,
@@ -762,7 +725,7 @@ class NotificationService {
   }
 
   // ==========================================
-  // 📸 图片识别待办通知
+  // 📸 图片识别事项通知
   // ==========================================
 
   // ignore: constant_identifier_names
@@ -781,7 +744,7 @@ class NotificationService {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
     await ensureInitialized();
 
-    final title = '🔍 图片识别待办中...';
+    final title = '🔍 图片识别事项中...';
     final body = '第$currentAttempt/$maxAttempts次尝试 | $status';
 
     if (_isDesktopSupported) {
@@ -811,7 +774,7 @@ class NotificationService {
   }
 
   /// 显示图片识别成功通知（实时通知，点击进入确认页面）
-  /// [todoCount] 识别到的待办数量
+  /// [todoCount] 识别到的事项数量（参数名为旧接口兼容保留）
   static Future<void> showTodoRecognizeSuccess({
     required int todoCount,
   }) async {
@@ -820,7 +783,7 @@ class NotificationService {
     await ensureInitialized();
 
     final title = '✅ 图片识别完成';
-    final body = '发现$todoCount个待办事项，点击查看详情';
+    final body = '发现$todoCount个事项，点击确认类型和详情';
 
     if (_isDesktopSupported) {
       await _plugin.show(

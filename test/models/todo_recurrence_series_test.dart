@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/storage_service.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/storage_service.dart';
 
 void main() {
   test('TodoItem preserves recurrence series id through JSON', () {
@@ -239,6 +239,119 @@ void main() {
     expect(orphan.recurrenceSeriesId, 'original-series');
   });
 
+  test('non-empty cloud split aliases are restored from local UUID lineage',
+      () {
+    final original = TodoItem(
+      id: 'original-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+    );
+    final localAliasAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final localOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+    final remoteAliasAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final remoteOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+
+    final repaired =
+        StorageService.repairMissingRemoteRecurrenceSeriesIdsForTest(
+      [remoteAliasAnchor, remoteOccurrence],
+      [original, localAliasAnchor, localOccurrence],
+    );
+
+    expect(repaired, containsAll({'child-anchor', 'occurrence-15'}));
+    expect(remoteAliasAnchor.recurrenceSeriesId, 'original-series');
+    expect(remoteOccurrence.recurrenceSeriesId, 'original-series');
+  });
+
+  test('local oplog history rejoins a child that became its own series', () {
+    final original = TodoItem(
+      id: 'original-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'original-series',
+      createdDate: DateTime(2026, 7, 13, 19).millisecondsSinceEpoch,
+    );
+    final splitAnchor = TodoItem(
+      id: 'child-anchor',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 14, 19).millisecondsSinceEpoch,
+    );
+    final splitOccurrence = TodoItem(
+      id: 'occurrence-15',
+      title: '每日复习',
+      recurrenceSeriesId: 'child-anchor',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+    );
+    final unrelated = TodoItem(
+      id: 'unrelated-series',
+      title: '同名但独立',
+      recurrenceSeriesId: 'unrelated-series',
+      createdDate: DateTime(2026, 7, 14, 8).millisecondsSinceEpoch,
+    );
+
+    final repaired =
+        StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+      [original, splitAnchor, splitOccurrence, unrelated],
+      {
+        'child-anchor': [
+          'original-series',
+          'original-series',
+          'child-anchor',
+        ],
+        'unrelated-series': ['unrelated-series'],
+      },
+    );
+
+    expect(repaired, {'child-anchor', 'occurrence-15'});
+    expect(splitAnchor.recurrenceSeriesId, 'original-series');
+    expect(splitOccurrence.recurrenceSeriesId, 'original-series');
+    expect(unrelated.recurrenceSeriesId, 'unrelated-series');
+  });
+
+  test('a long-established self series is not reverted by one old alias', () {
+    final established = TodoItem(
+      id: 'established-series',
+      title: '每日复习',
+      recurrenceSeriesId: 'established-series',
+    );
+
+    final repaired =
+        StorageService.repairLocalRecurrenceSeriesAliasesFromHistoryForTest(
+      [established],
+      {
+        'established-series': [
+          'ancient-alias',
+          'established-series',
+          'established-series',
+          'established-series',
+        ],
+      },
+    );
+
+    expect(repaired, isEmpty);
+    expect(established.recurrenceSeriesId, 'established-series');
+  });
+
   test('identical migration snapshot is cleared as a stale version conflict',
       () {
     final todo = TodoItem(
@@ -360,6 +473,62 @@ void main() {
       [source, ...generated],
     );
     expect(duplicatePass, isEmpty);
+  });
+
+  test('generated recurrence UUID is stable for one series and local day', () {
+    final morning = DateTime(2026, 7, 24, 8).millisecondsSinceEpoch;
+    final evening = DateTime(2026, 7, 24, 22).millisecondsSinceEpoch;
+    final nextDay = DateTime(2026, 7, 25, 8).millisecondsSinceEpoch;
+
+    final morningId = StorageService.recurrenceOccurrenceIdForTest(
+      'series-stable-id',
+      morning,
+    );
+    final eveningId = StorageService.recurrenceOccurrenceIdForTest(
+      'series-stable-id',
+      evening,
+    );
+
+    expect(eveningId, morningId);
+    expect(
+      StorageService.recurrenceOccurrenceIdForTest(
+        'series-stable-id',
+        nextDay,
+      ),
+      isNot(morningId),
+    );
+    expect(
+      StorageService.recurrenceOccurrenceIdForTest(
+        'another-series',
+        morning,
+      ),
+      isNot(morningId),
+    );
+  });
+
+  test('different devices generate the same future occurrence UUIDs', () {
+    TodoItem source() => TodoItem(
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          title: '每日循环',
+          recurrence: RecurrenceType.daily,
+          recurrenceSeriesId: '20ba0262-5d45-4fef-979e-b763a6f9f42e',
+          createdDate: DateTime(2026, 7, 23, 19).millisecondsSinceEpoch,
+          dueDate: DateTime(2026, 7, 23, 22),
+          recurrenceEndDate: DateTime(2026, 7, 25),
+        );
+
+    final firstSource = source();
+    final secondSource = source();
+    final first = StorageService.futureRecurrenceOccurrencesForTest(
+      firstSource,
+      [firstSource],
+    );
+    final second = StorageService.futureRecurrenceOccurrencesForTest(
+      secondSource,
+      [secondSource],
+    );
+
+    expect(first.map((todo) => todo.id), second.map((todo) => todo.id));
   });
 
   test('open-ended recurrence keeps two generated future occurrences', () {
@@ -485,6 +654,7 @@ void main() {
         recurrence: recurrence,
         recurrenceSeriesId: 'series-persisted-dedupe',
         isDone: isDone,
+        version: isDone ? 2 : 1,
         createdDate: DateTime(2026, 7, 15, hour).millisecondsSinceEpoch,
         dueDate: DateTime(2026, 7, 15, hour + 3),
       );
@@ -521,6 +691,75 @@ void main() {
     expect(nextDay.isDeleted, isFalse);
   });
 
+  test('dedupe resurrects the stable identity and transfers latest state', () {
+    final stableIdentity = TodoItem(
+      id: '00000000-0000-4000-8000-000000000001',
+      title: '旧标题',
+      isDeleted: true,
+      createdAt: 1000,
+      updatedAt: 2000,
+      version: 2,
+      recurrenceSeriesId: 'series-convergent-dedupe',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+    final editedLive = TodoItem(
+      id: '00000000-0000-4000-8000-000000000002',
+      title: '俯卧撑30个',
+      isDone: true,
+      createdAt: 3000,
+      updatedAt: 5000,
+      version: 4,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'series-convergent-dedupe',
+      createdDate: DateTime(2026, 7, 24, 20).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 24, 22),
+    );
+
+    final changed =
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      [stableIdentity, editedLive],
+    );
+
+    expect(changed, isTrue);
+    expect(stableIdentity.isDeleted, isFalse);
+    expect(stableIdentity.title, '俯卧撑30个');
+    expect(stableIdentity.isDone, isTrue);
+    expect(stableIdentity.recurrence, RecurrenceType.daily);
+    expect(editedLive.isDeleted, isTrue);
+    expect(editedLive.recurrence, RecurrenceType.none);
+  });
+
+  test('a newer completion version can intentionally cancel completion', () {
+    final completed = TodoItem(
+      id: '00000000-0000-4000-8000-000000000011',
+      title: '每日循环',
+      isDone: true,
+      createdAt: 1000,
+      updatedAt: 4000,
+      version: 2,
+      recurrenceSeriesId: 'series-completion-lww',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+    final cancelled = TodoItem(
+      id: '00000000-0000-4000-8000-000000000012',
+      title: '每日循环',
+      isDone: false,
+      createdAt: 2000,
+      updatedAt: 5000,
+      version: 3,
+      recurrenceSeriesId: 'series-completion-lww',
+      createdDate: DateTime(2026, 7, 24, 19).millisecondsSinceEpoch,
+    );
+
+    StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      [completed, cancelled],
+    );
+
+    expect(completed.isDeleted, isFalse);
+    expect(completed.isDone, isFalse);
+    expect(cancelled.isDeleted, isTrue);
+  });
+
   test('dedupe keeps the more edited occurrence over a newer migrated copy',
       () {
     final edited = TodoItem(
@@ -551,6 +790,74 @@ void main() {
     expect(edited.isDeleted, isFalse);
     expect(edited.dueDate, DateTime(2026, 7, 16, 22, 30));
     expect(migratedCopy.isDeleted, isTrue);
+  });
+
+  test('manual merge keeps the chosen series and deduplicates occurrences', () {
+    final mainHistory = TodoItem(
+      id: 'main-history',
+      title: '每日复习',
+      isDone: true,
+      recurrenceSeriesId: 'main-series',
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+    );
+    final mainActive = TodoItem(
+      id: 'main-active',
+      title: '每日复习',
+      version: 5,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'main-series',
+      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+    );
+    final splitDuplicate = TodoItem(
+      id: 'split-duplicate',
+      title: '每日复习',
+      isDone: true,
+      isDeleted: true,
+      version: 3,
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'split-series',
+      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+    );
+    final splitFuture = TodoItem(
+      id: 'split-future',
+      title: '每日复习',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'split-series',
+      createdDate: DateTime(2026, 7, 19, 19).millisecondsSinceEpoch,
+    );
+    final unrelated = TodoItem(
+      id: 'unrelated',
+      title: '其他循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'unrelated-series',
+    );
+
+    final changedIds = StorageService.mergeRecurrenceSeriesForTest(
+      [
+        mainHistory,
+        mainActive,
+        splitDuplicate,
+        splitFuture,
+        unrelated,
+      ],
+      targetSeriesId: 'main-series',
+      seriesIds: {'main-series', 'split-series'},
+    );
+
+    expect(splitDuplicate.recurrenceSeriesId, 'main-series');
+    expect(splitFuture.recurrenceSeriesId, 'main-series');
+    expect(splitDuplicate.isDeleted, isTrue);
+    // 即使完成状态只留在源系列已删除的重复实例上，
+    // 也应归并到同一日仍可见的主系列实例。
+    expect(mainActive.isDone, isTrue);
+    expect(mainActive.recurrence, RecurrenceType.daily);
+    expect(splitFuture.recurrence, RecurrenceType.none);
+    expect(unrelated.recurrenceSeriesId, 'unrelated-series');
+    expect(unrelated.recurrence, RecurrenceType.daily);
+    expect(
+      changedIds,
+      containsAll({'main-active', 'split-duplicate', 'split-future'}),
+    );
   });
 
   test('same recurrence series does not report schedule conflict', () {
@@ -599,5 +906,29 @@ void main() {
     expect(changed, isTrue);
     expect(first.hasConflict, isTrue);
     expect(second.hasConflict, isTrue);
+  });
+
+  test('new deadline anchors do not report schedule conflict', () {
+    final firstDue = DateTime(2026, 7, 15, 11);
+    final secondDue = DateTime(2026, 7, 15, 12);
+    final first = TodoItem(
+      title: '任务 A',
+      createdDate: firstDue.millisecondsSinceEpoch,
+      dueDate: firstDue,
+    );
+    final second = TodoItem(
+      title: '任务 B',
+      createdDate: secondDue.millisecondsSinceEpoch,
+      dueDate: secondDue,
+    );
+
+    final changed = StorageService.recomputeLocalTodoScheduleConflictsForTest([
+      first,
+      second,
+    ]);
+
+    expect(changed, isFalse);
+    expect(first.hasConflict, isFalse);
+    expect(second.hasConflict, isFalse);
   });
 }

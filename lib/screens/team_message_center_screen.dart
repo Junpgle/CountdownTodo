@@ -8,14 +8,13 @@ class TeamMessageCenterScreen extends StatefulWidget {
   const TeamMessageCenterScreen({super.key, required this.managedTeams});
 
   @override
-  _TeamMessageCenterScreenState createState() =>
+  State<TeamMessageCenterScreen> createState() =>
       _TeamMessageCenterScreenState();
 }
 
 class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
   bool _isLoading = true;
   List<dynamic> _messages = [];
-  final Set<String> _handledJoinRequestKeys = <String>{};
   final Set<String> _processingJoinRequestKeys = <String>{};
   int _loadGeneration = 0;
 
@@ -317,6 +316,7 @@ class _TeamMessageCenterScreenState extends State<TeamMessageCenterScreen> {
 
     final res = await ApiService.processJoinRequest(
         msg['team_uuid'], msg['user_id'], action);
+    if (!mounted) return;
 
     if (res['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../utils/theme_color_tokens.dart';
-
 class AppDetailHeader extends StatelessWidget {
   final IconData icon;
   final String title;

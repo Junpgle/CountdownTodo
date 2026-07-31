@@ -147,7 +147,6 @@ class MacPomodoroStatusBarService {
 
   /// 处理 Swift 端发来的消息
   static Future<dynamic> _handleMethodCall(MethodCall call) async {
-    debugPrint('[MacPomodoroStatusBar] _handleMethodCall: ${call.method}');
     switch (call.method) {
       case 'togglePomodoroPause':
         _actionController.add(MacPomodoroAction.togglePause);
@@ -208,7 +207,7 @@ class MacPomodoroStatusBarService {
     var todayRecords = <PomodoroRecord>[];
     try {
       final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.trim().isNotEmpty) {
         countdowns = await StorageService.getCountdowns(username);
       }
@@ -228,8 +227,6 @@ class MacPomodoroStatusBarService {
     );
     try {
       await _channel.invokeMethod('updateIslandOverview', payload);
-      debugPrint(
-          '[MacIsland] overview updated: focus=${payload['todayFocusBaseSeconds']}s, countdown=${payload['countdownTitle']}');
     } catch (e) {
       debugPrint('[MacIsland] overview native update failed: $e');
     }
@@ -639,6 +636,7 @@ class MacPomodoroStatusBarService {
     required List<TodoGroup> todoGroups,
     required List<TodoPlanBlock> planBlocks,
     required List<CourseItem> courses,
+    required List<FixedScheduleItem> fixedSchedules,
   }) async {
     if (!Platform.isMacOS || !_initialized) return;
 
@@ -659,6 +657,7 @@ class MacPomodoroStatusBarService {
         todoGroups: todoGroups,
         planBlocks: planBlocks,
         courses: courses,
+        fixedSchedules: fixedSchedules,
       );
       if (!_isActivitySyncCurrent(generation)) return;
       await _publishActivityResolution(resolution, generation: generation);
@@ -670,7 +669,7 @@ class MacPomodoroStatusBarService {
     }
   }
 
-  /// 同步当前课程、计划块或明确时段待办，并在下一处起止边界自动重算。
+  /// 同步当前日程、课程、计划块或待办，并在下一处时间边界自动重算。
   static Future<void> syncOngoingActivity() async {
     if (!Platform.isMacOS || !_initialized) return;
     _activityRestoreDeferred = false;
@@ -697,7 +696,7 @@ class MacPomodoroStatusBarService {
         return;
       }
 
-      final username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
       if (username.trim().isEmpty) {
         await _channel.invokeMethod('clearOngoingActivity');
         if (_isActivitySyncCurrent(generation)) {
@@ -732,13 +731,15 @@ class MacPomodoroStatusBarService {
   }) async {
     final activity = resolution.activity;
     final nextActivity = resolution.nextActivity;
-    if (activity == null && nextActivity == null) {
+    final todayTodos = resolution.todayTodos;
+    if (activity == null && nextActivity == null && todayTodos.isEmpty) {
       await _channel.invokeMethod('clearOngoingActivity');
     } else {
       final payload = activity?.toMap() ?? <String, dynamic>{};
       if (nextActivity != null) {
         payload['nextActivity'] = nextActivity.toMap();
       }
+      payload['todayTodos'] = todayTodos.map((todo) => todo.toMap()).toList();
       await _channel.invokeMethod('updateOngoingActivity', payload);
     }
 

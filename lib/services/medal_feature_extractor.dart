@@ -276,10 +276,12 @@ class MedalFeatureExtractor {
         (affinity['breadth']! + (s.searchCount / 20).clamp(0.0, 1.0)) / 2;
     final efficiency = affinity['efficiency']!;
 
-    if (focusCompletion >= breadthSearch && focusCompletion >= efficiency)
+    if (focusCompletion >= breadthSearch && focusCompletion >= efficiency) {
       return 'achiever';
-    if (breadthSearch >= focusCompletion && breadthSearch >= efficiency)
+    }
+    if (breadthSearch >= focusCompletion && breadthSearch >= efficiency) {
       return 'explorer';
+    }
     return 'optimizer';
   }
 

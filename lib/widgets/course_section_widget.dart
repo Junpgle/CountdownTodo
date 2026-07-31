@@ -4,6 +4,7 @@ import '../models.dart';
 import 'home_sections.dart';
 
 import '../screens/course_screens.dart';
+import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/todo_plan_screen.dart';
 import '../services/course_service.dart';
 import '../storage_service.dart';
@@ -122,32 +123,44 @@ class CourseSectionWidget extends StatelessWidget {
   }
 }
 
-enum _TodayScheduleItemType { course, plan, todo }
+enum _TodayScheduleItemType { course, fixedSchedule, plan, todo }
 
 class _TodayScheduleItem {
   const _TodayScheduleItem.course(this.course)
       : block = null,
         todo = null,
+        fixedSchedule = null,
         type = _TodayScheduleItemType.course;
+
+  const _TodayScheduleItem.fixedSchedule(this.fixedSchedule)
+      : course = null,
+        block = null,
+        todo = null,
+        type = _TodayScheduleItemType.fixedSchedule;
 
   const _TodayScheduleItem.plan(this.block)
       : course = null,
         todo = null,
+        fixedSchedule = null,
         type = _TodayScheduleItemType.plan;
 
   const _TodayScheduleItem.todo(this.todo)
       : course = null,
         block = null,
+        fixedSchedule = null,
         type = _TodayScheduleItemType.todo;
 
   final _TodayScheduleItemType type;
   final CourseItem? course;
+  final FixedScheduleItem? fixedSchedule;
   final TodoPlanBlock? block;
   final TodoItem? todo;
 
   int get startMs {
     final plan = block;
     if (plan != null) return plan.startTime;
+    final schedule = fixedSchedule;
+    if (schedule != null) return schedule.startTime ?? _dateStartMs(schedule);
     final todoValue = todo;
     if (todoValue != null) return _todoStartMs(todoValue);
     final courseValue = course!;
@@ -157,6 +170,8 @@ class _TodayScheduleItem {
   int get endMs {
     final plan = block;
     if (plan != null) return plan.endTime;
+    final schedule = fixedSchedule;
+    if (schedule != null) return schedule.endTime ?? 0;
     final todoValue = todo;
     if (todoValue != null) {
       return todoValue.dueDate?.millisecondsSinceEpoch ?? 0;
@@ -166,6 +181,9 @@ class _TodayScheduleItem {
   }
 
   static int _todoStartMs(TodoItem todo) => todo.createdDate ?? todo.createdAt;
+
+  static int _dateStartMs(FixedScheduleItem item) =>
+      DateTime.tryParse(item.date)?.toLocal().millisecondsSinceEpoch ?? 0;
 
   static int _courseTimeMs(CourseItem course, int hhmm) {
     final date = DateTime.tryParse(course.date);
@@ -203,6 +221,8 @@ class _TodayScheduleList extends StatefulWidget {
 class _TodayScheduleListState extends State<_TodayScheduleList> {
   List<TodoPlanBlock> _blocks = [];
   List<TodoPlanBlock> _tomorrowBlocks = [];
+  List<FixedScheduleItem> _todayFixedSchedules = [];
+  List<FixedScheduleItem> _tomorrowFixedSchedules = [];
   List<CourseItem> _todayCourses = [];
   List<CourseItem> _tomorrowCourses = [];
   bool _loading = true;
@@ -232,11 +252,18 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         widget.username,
         now.add(const Duration(days: 1)),
       ),
+      StorageService.getFixedSchedulesByDay(widget.username, now),
+      StorageService.getFixedSchedulesByDay(
+        widget.username,
+        now.add(const Duration(days: 1)),
+      ),
       CourseService.getAllCourses(widget.username),
     ]);
     final blocks = results[0] as List<TodoPlanBlock>;
     final tomorrowBlocks = results[1] as List<TodoPlanBlock>;
-    final allCourses = results[2] as List<CourseItem>;
+    final todayFixedSchedules = results[2] as List<FixedScheduleItem>;
+    final tomorrowFixedSchedules = results[3] as List<FixedScheduleItem>;
+    final allCourses = results[4] as List<CourseItem>;
     final today = DateFormat('yyyy-MM-dd').format(now);
     final tomorrow =
         DateFormat('yyyy-MM-dd').format(now.add(const Duration(days: 1)));
@@ -260,6 +287,14 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     setState(() {
       _blocks = blocks.where((b) => !b.isDeleted).toList();
       _tomorrowBlocks = tomorrowBlocks.where((b) => !b.isDeleted).toList();
+      _todayFixedSchedules = todayFixedSchedules
+          .where((item) =>
+              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .toList();
+      _tomorrowFixedSchedules = tomorrowFixedSchedules
+          .where((item) =>
+              !item.isDeleted && item.status != FixedScheduleStatus.cancelled)
+          .toList();
       _todayCourses = allCourses
           .where((course) => !course.isDeleted && course.date == today)
           .toList()
@@ -279,6 +314,45 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         builder: (_) => TodoPlanScreen(username: widget.username),
       ),
     );
+  }
+
+  Future<void> _openScheduleActions() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.event_available_rounded),
+              title: const Text('新增固定日程'),
+              subtitle: const Text('考试、会议、面试、预约等不可自由移动的事项'),
+              onTap: () => Navigator.pop(sheetContext, 'fixed'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.view_week_outlined),
+              title: const Text('打开规划界面'),
+              subtitle: const Text('安排可以调整的待办执行时间'),
+              onTap: () => Navigator.pop(sheetContext, 'plan'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'plan') {
+      _openTodoPlanScreen();
+    } else if (action == 'fixed') {
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => FixedScheduleEditorScreen(
+            username: widget.username,
+          ),
+        ),
+      );
+      if (mounted) await _loadBlocks();
+    }
   }
 
   @override
@@ -314,6 +388,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     );
     final todayItems = <_TodayScheduleItem>[
       ...todayCourses.map(_TodayScheduleItem.course),
+      ..._todayFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
       ..._blocks.map(_TodayScheduleItem.plan),
       ...todayTimedTodos.map(_TodayScheduleItem.todo),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
@@ -325,6 +400,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         .toList();
     final tomorrowItems = <_TodayScheduleItem>[
       ..._tomorrowCourses.map(_TodayScheduleItem.course),
+      ..._tomorrowFixedSchedules.map(_TodayScheduleItem.fixedSchedule),
       ..._tomorrowBlocks.map(_TodayScheduleItem.plan),
       ...tomorrowTimedTodos.map(_TodayScheduleItem.todo),
     ]..sort((a, b) => a.startMs.compareTo(b.startMs));
@@ -339,7 +415,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
       content = const _TodayScheduleSkeleton();
     } else if (items.isEmpty && endedItems.isEmpty) {
       content = EmptyState(
-        text: '今日和明日暂无课程、待办与规划',
+        text: '今日和明日暂无课程、固定日程与规划',
         isLight: widget.isLight,
       );
     } else {
@@ -382,9 +458,9 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         SectionHeader(
           title: scheduleTitle,
           icon: Icons.class_outlined,
-          onAction: _openTodoPlanScreen,
-          actionIcon: Icons.event_note_outlined,
-          actionTooltip: '打开规划界面',
+          onAction: _openScheduleActions,
+          actionIcon: Icons.add_circle_outline_rounded,
+          actionTooltip: '新增日程或打开规划',
           actionKey: widget.actionKey,
           isLight: widget.isLight,
         ),
@@ -400,6 +476,24 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
         course: course,
         isLight: widget.isLight,
         onTap: (cardKey) => widget.onCourseTap(course, cardKey),
+      );
+    }
+    final fixedSchedule = item.fixedSchedule;
+    if (fixedSchedule != null) {
+      return _FixedScheduleCompactCard(
+        item: fixedSchedule,
+        isLight: widget.isLight,
+        onTap: () async {
+          await Navigator.of(context).push(
+            PageTransitions.material(
+              builder: (_) => FixedScheduleEditorScreen(
+                username: widget.username,
+                item: fixedSchedule,
+              ),
+            ),
+          );
+          if (mounted) await _loadBlocks();
+        },
       );
     }
     final todo = item.todo;
@@ -542,6 +636,154 @@ class _TodayScheduleSkeleton extends StatelessWidget {
           decoration: BoxDecoration(
             color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedScheduleCompactCard extends StatelessWidget {
+  const _FixedScheduleCompactCard({
+    required this.item,
+    required this.isLight,
+    required this.onTap,
+  });
+
+  final FixedScheduleItem item;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  String _timeLabel() {
+    if (item.startTime == null) return '时间待定';
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(item.startTime!).toLocal();
+    if (item.endTime == null) {
+      return '${DateFormat('HH:mm').format(start)} · 结束待定';
+    }
+    final end = DateTime.fromMillisecondsSinceEpoch(item.endTime!).toLocal();
+    return '${DateFormat('HH:mm').format(start)}–${DateFormat('HH:mm').format(end)}';
+  }
+
+  String _recurrenceLabel() => switch (item.recurrence) {
+        RecurrenceType.none => '',
+        RecurrenceType.daily => '每天重复',
+        RecurrenceType.weekly => '每周重复',
+        RecurrenceType.monthly => '每月重复',
+        RecurrenceType.yearly => '每年重复',
+        RecurrenceType.weekdays => '工作日重复',
+        RecurrenceType.customDays => '自定义重复',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final supportingText = [
+      if (_recurrenceLabel().isNotEmpty) _recurrenceLabel(),
+      if (item.teamUuid?.trim().isNotEmpty == true) '团队日程',
+      if (item.location?.trim().isNotEmpty == true) item.location!.trim(),
+      if (item.remark?.trim().isNotEmpty == true) item.remark!.trim(),
+    ].join(' · ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: isLight ? 0.97 : 0.75),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colors.primary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 38,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: colors.primary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    _timeLabel(),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: colors.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w600,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.primaryContainer,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '固定',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: colors.onPrimaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (supportingText.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          supportingText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ),
           ),
         ),
       ),

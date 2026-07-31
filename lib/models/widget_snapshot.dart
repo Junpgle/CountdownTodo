@@ -6,6 +6,7 @@ class WidgetSnapshot {
   final List<WidgetTodoItem> todos;
   final List<WidgetCourseItem> courses;
   final WidgetFocusState focus;
+  final List<WidgetRecurrenceSeriesItem> recurrenceSeries;
 
   const WidgetSnapshot({
     required this.updatedAt,
@@ -13,6 +14,7 @@ class WidgetSnapshot {
     this.todos = const [],
     this.courses = const [],
     this.focus = const WidgetFocusState(),
+    this.recurrenceSeries = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -22,6 +24,7 @@ class WidgetSnapshot {
       'todos': todos.map((e) => e.toJson()).toList(),
       'courses': courses.map((e) => e.toJson()).toList(),
       'focus': focus.toJson(),
+      'recurrenceSeries': recurrenceSeries.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -46,6 +49,12 @@ class WidgetSnapshot {
       focus: json['focus'] != null
           ? WidgetFocusState.fromJson(json['focus'] as Map<String, dynamic>)
           : const WidgetFocusState(),
+      recurrenceSeries: (json['recurrenceSeries'] as List<dynamic>?)
+              ?.map((e) => WidgetRecurrenceSeriesItem.fromJson(
+                    e as Map<String, dynamic>,
+                  ))
+              .toList() ??
+          [],
     );
   }
 
@@ -53,6 +62,129 @@ class WidgetSnapshot {
 
   static WidgetSnapshot empty() {
     return WidgetSnapshot(updatedAt: DateTime.now());
+  }
+}
+
+class WidgetRecurrenceSeriesItem {
+  final String seriesId;
+  final String title;
+  final String recurrenceType;
+  final String recurrenceText;
+  final int? customIntervalDays;
+  final int anchorStartMs;
+  final int? anchorDueMs;
+  final int? recurrenceEndMs;
+  final bool isActive;
+  final String? contextText;
+  final int completedCount;
+  final int overdueCount;
+  final int elapsedCount;
+  final int? totalCount;
+  final List<WidgetRecurrenceOccurrenceItem> occurrences;
+
+  const WidgetRecurrenceSeriesItem({
+    required this.seriesId,
+    required this.title,
+    required this.recurrenceType,
+    required this.recurrenceText,
+    required this.anchorStartMs,
+    this.anchorDueMs,
+    this.recurrenceEndMs,
+    this.customIntervalDays,
+    this.isActive = true,
+    this.contextText,
+    this.completedCount = 0,
+    this.overdueCount = 0,
+    this.elapsedCount = 0,
+    this.totalCount,
+    this.occurrences = const [],
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'seriesId': seriesId,
+      'title': title,
+      'recurrenceType': recurrenceType,
+      'recurrenceText': recurrenceText,
+      'customIntervalDays': customIntervalDays,
+      'anchorStartMs': anchorStartMs,
+      'anchorDueMs': anchorDueMs,
+      'recurrenceEndMs': recurrenceEndMs,
+      'isActive': isActive,
+      'contextText': contextText ?? '',
+      'completedCount': completedCount,
+      'overdueCount': overdueCount,
+      'elapsedCount': elapsedCount,
+      'totalCount': totalCount,
+      'occurrences': occurrences.map((e) => e.toJson()).toList(),
+    };
+  }
+
+  factory WidgetRecurrenceSeriesItem.fromJson(Map<String, dynamic> json) {
+    return WidgetRecurrenceSeriesItem(
+      seriesId: json['seriesId'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      recurrenceType: json['recurrenceType'] as String? ?? 'none',
+      recurrenceText: json['recurrenceText'] as String? ?? '循环待办',
+      customIntervalDays: (json['customIntervalDays'] as num?)?.toInt(),
+      anchorStartMs: (json['anchorStartMs'] as num?)?.toInt() ?? 0,
+      anchorDueMs: (json['anchorDueMs'] as num?)?.toInt(),
+      recurrenceEndMs: (json['recurrenceEndMs'] as num?)?.toInt(),
+      isActive: json['isActive'] as bool? ?? true,
+      contextText: json['contextText'] as String?,
+      completedCount: (json['completedCount'] as num?)?.toInt() ?? 0,
+      overdueCount: (json['overdueCount'] as num?)?.toInt() ?? 0,
+      elapsedCount: (json['elapsedCount'] as num?)?.toInt() ?? 0,
+      totalCount: (json['totalCount'] as num?)?.toInt(),
+      occurrences: (json['occurrences'] as List<dynamic>?)
+              ?.map((e) => WidgetRecurrenceOccurrenceItem.fromJson(
+                    e as Map<String, dynamic>,
+                  ))
+              .toList() ??
+          [],
+    );
+  }
+}
+
+class WidgetRecurrenceOccurrenceItem {
+  final String occurrenceId;
+  final int startAtMs;
+  final int? dueAtMs;
+  final bool isDone;
+  final bool isDateOnly;
+  final bool isProjected;
+
+  const WidgetRecurrenceOccurrenceItem({
+    required this.occurrenceId,
+    required this.startAtMs,
+    this.dueAtMs,
+    this.isDone = false,
+    this.isDateOnly = false,
+    this.isProjected = false,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'occurrenceId': occurrenceId,
+      'startAtMs': startAtMs,
+      'dueAtMs': dueAtMs,
+      'isDone': isDone,
+      'isDateOnly': isDateOnly,
+      'isProjected': isProjected,
+    };
+  }
+
+  factory WidgetRecurrenceOccurrenceItem.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return WidgetRecurrenceOccurrenceItem(
+      occurrenceId: json['occurrenceId'] as String? ?? '',
+      startAtMs: (json['startAtMs'] as num?)?.toInt() ?? 0,
+      dueAtMs: (json['dueAtMs'] as num?)?.toInt(),
+      isDone: json['isDone'] as bool? ?? false,
+      isDateOnly: json['isDateOnly'] as bool? ?? false,
+      isProjected: json['isProjected'] as bool? ?? false,
+    );
   }
 }
 
@@ -93,12 +225,14 @@ class WidgetTodoItem {
   final String? timeText;
   final int priority;
   final bool isDone;
+  final int? visibleUntilMs;
 
   const WidgetTodoItem({
     required this.title,
     this.timeText,
     this.priority = 0,
     this.isDone = false,
+    this.visibleUntilMs,
   });
 
   Map<String, dynamic> toJson() {
@@ -107,6 +241,7 @@ class WidgetTodoItem {
       'timeText': timeText ?? '',
       'priority': priority,
       'isDone': isDone,
+      'visibleUntilMs': visibleUntilMs,
     };
   }
 
@@ -116,6 +251,7 @@ class WidgetTodoItem {
       timeText: json['timeText'] as String?,
       priority: json['priority'] as int? ?? 0,
       isDone: json['isDone'] as bool? ?? false,
+      visibleUntilMs: (json['visibleUntilMs'] as num?)?.toInt(),
     );
   }
 }

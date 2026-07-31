@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/storage_service.dart';
-import 'package:CountDownTodo/services/api_service.dart';
-import 'package:CountDownTodo/screens/historical_countdowns_screen.dart';
-import 'package:CountDownTodo/screens/app_board_screen.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/storage_service.dart';
+import 'package:countdown_todo/services/api_service.dart';
+import 'package:countdown_todo/screens/historical_countdowns_screen.dart';
+import 'package:countdown_todo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
@@ -177,7 +177,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   List<CountdownItem> updatedList =
                       List.from(widget.countdowns);
                   if (isEditing) {
-                    final idx = updatedList.indexWhere((c) => c.id == item!.id);
+                    final idx = updatedList.indexWhere((c) => c.id == item.id);
                     if (idx != -1) {
                       updatedList[idx] = CountdownItem(
                         id: item.id,
@@ -208,13 +208,13 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   }
                   await StorageService.saveCountdowns(
                       widget.username, updatedList);
-                  final syncUuid =
-                      isEditing ? item!.teamUuid : selectedTeamUuid;
+                  if (!mounted || !ctx.mounted) return;
+                  final syncUuid = isEditing ? item.teamUuid : selectedTeamUuid;
                   if (syncUuid != null) {
                     PomodoroSyncService.instance.sendTeamUpdateSignal(syncUuid);
                   }
                   widget.onDataChanged();
-                  if (mounted) Navigator.pop(ctx);
+                  Navigator.pop(ctx);
                 }
               },
               child: Text(isEditing ? "保存" : "添加"),
@@ -247,8 +247,9 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
             onPressed: () async {
               await StorageService.deleteCountdownGlobally(
                   widget.username, itemToDelete.id);
+              if (!mounted || !ctx.mounted) return;
               widget.onDataChanged();
-              if (mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text("删除"),
           ),

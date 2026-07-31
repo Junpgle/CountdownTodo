@@ -1,9 +1,9 @@
-import 'package:CountDownTodo/models.dart';
-import 'package:CountDownTodo/services/macos_pomodoro_status_bar_service_io.dart';
-import 'package:CountDownTodo/services/ongoing_activity_service.dart';
-import 'package:CountDownTodo/services/pomodoro_service.dart';
-import 'package:CountDownTodo/services/pomodoro_sync_service.dart';
-import 'package:CountDownTodo/services/reminder_schedule_service.dart';
+import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/services/macos_pomodoro_status_bar_service_io.dart';
+import 'package:countdown_todo/services/ongoing_activity_service.dart';
+import 'package:countdown_todo/services/pomodoro_service.dart';
+import 'package:countdown_todo/services/pomodoro_sync_service.dart';
+import 'package:countdown_todo/services/reminder_schedule_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -74,7 +74,58 @@ void main() {
       expect(result.activity?.title, '写方案');
     });
 
-    test('忽略全天和跨日待办，并返回下一处时间边界', () {
+    test('固定日程作为硬约束优先于同时进行的规划块', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'exam-1',
+        title: '高数考试',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+        location: 'A101',
+      );
+      final plan = TodoPlanBlock(
+        id: 'plan-1',
+        todoId: 'todo-1',
+        titleSnapshot: '复习',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: const [],
+        planBlocks: [plan],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.activity?.title, '高数考试');
+      expect(result.activity?.subtitle, 'A101');
+    });
+
+    test('结束时间待定的固定日程在当天可进入进行中状态', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'open-ended-1',
+        title: '公开讲座',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 10).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: const [],
+        planBlocks: const [],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.activity?.detail, '结束时间待定');
+      expect(result.nextBoundary, DateTime(2026, 7, 16));
+    });
+
+    test('忽略跨日执行时段，并返回下一处时间边界', () {
       final crossDay = TodoItem(
         title: '跨日任务',
         createdDate: DateTime(2026, 7, 14, 22).millisecondsSinceEpoch,
@@ -140,6 +191,151 @@ void main() {
       expect(result.nextBoundary, isNull);
     });
 
+    test('新截止待办不会被当成正在进行，但会成为下一项', () {
+      final due = DateTime(2026, 7, 15, 12);
+      final todo = TodoItem(
+        title: '中午前交材料',
+        createdDate: due.millisecondsSinceEpoch,
+        dueDate: due,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.todo);
+      expect(result.nextActivity?.title, '中午前交材料');
+      expect(result.nextActivity?.startMs, due.millisecondsSinceEpoch);
+      expect(result.nextActivity?.endMs, due.millisecondsSinceEpoch);
+      expect(result.nextBoundary, due);
+    });
+
+    test('日期待办使用当天结束时刻参与下一项选择', () {
+      final todo = TodoItem(
+        title: '提交周报',
+        isAllDay: true,
+        createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 23, 59),
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.todo);
+      expect(result.nextActivity?.title, '提交周报');
+      expect(
+        result.nextActivity?.startMs,
+        DateTime(2026, 7, 15, 23, 59).millisecondsSinceEpoch,
+      );
+    });
+
+    test('下一固定日程会与课程和待办按开始时间统一排序', () {
+      final fixedSchedule = FixedScheduleItem(
+        id: 'meeting-1',
+        title: '项目例会',
+        date: '2026-07-15',
+        startTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+      );
+      final deadline = DateTime(2026, 7, 15, 11, 30);
+      final todo = TodoItem(
+        title: '发送材料',
+        createdDate: deadline.millisecondsSinceEpoch,
+        dueDate: deadline,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo],
+        planBlocks: const [],
+        courses: const [],
+        fixedSchedules: [fixedSchedule],
+        now: now,
+      );
+
+      expect(result.activity, isNull);
+      expect(result.nextActivity?.kind, OngoingActivityKind.fixedSchedule);
+      expect(result.nextActivity?.title, '项目例会');
+    });
+
+    test('今日待办汇总只包含当天未完成事项并按时间排序', () {
+      final group = TodoGroup(id: 'work', name: '工作');
+      final overdue = TodoItem(
+        id: 'overdue',
+        title: '回复邮件',
+        groupId: group.id,
+        createdDate: DateTime(2026, 7, 15, 9).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 9),
+      );
+      final allDay = TodoItem(
+        id: 'all-day',
+        title: '提交周报',
+        isAllDay: true,
+        createdDate: DateTime(2026, 7, 15).millisecondsSinceEpoch,
+        dueDate: DateTime(2026, 7, 15, 23, 59),
+      );
+      final done = TodoItem(
+        title: '已完成事项',
+        isDone: true,
+        dueDate: DateTime(2026, 7, 15, 12),
+      );
+      final tomorrow = TodoItem(
+        title: '明日事项',
+        dueDate: DateTime(2026, 7, 16, 9),
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [allDay, tomorrow, done, overdue],
+        todoGroups: [group],
+        planBlocks: const [],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.nextActivity?.id, 'all-day');
+      expect(result.todayTodos.map((todo) => todo.id), ['overdue']);
+      expect(result.todayTodos.first.groupName, '工作');
+      expect(result.nextBoundary, DateTime(2026, 7, 15, 23, 59));
+    });
+
+    test('今日待办汇总会排除下一规划块关联的待办', () {
+      final todo = TodoItem(
+        id: 'planned-todo',
+        title: '整理发布说明',
+        dueDate: DateTime(2026, 7, 15, 18),
+      );
+      final other = TodoItem(
+        id: 'other-todo',
+        title: '回复消息',
+        dueDate: DateTime(2026, 7, 15, 20),
+      );
+      final plan = TodoPlanBlock(
+        id: 'next-plan',
+        todoId: todo.id,
+        titleSnapshot: todo.title,
+        startTime: DateTime(2026, 7, 15, 11).millisecondsSinceEpoch,
+        endTime: DateTime(2026, 7, 15, 12).millisecondsSinceEpoch,
+      );
+
+      final result = OngoingActivityService.resolve(
+        todos: [todo, other],
+        planBlocks: [plan],
+        courses: const [],
+        now: now,
+      );
+
+      expect(result.nextActivity?.id, plan.id);
+      expect(result.todayTodos.map((item) => item.id), ['other-todo']);
+    });
+
     test('开始时刻包含、结束时刻排除', () {
       final todo = TodoItem(
         title: '边界任务',
@@ -191,6 +387,30 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('固定日程的多个提醒会进入统一调度列表', () {
+      final start = now.add(const Duration(hours: 2));
+      final item = FixedScheduleItem(
+        id: 'exam-reminder',
+        title: '高数考试',
+        date: '2026-07-15',
+        startTime: start.millisecondsSinceEpoch,
+        endTime: start.add(const Duration(hours: 2)).millisecondsSinceEpoch,
+        location: 'A101',
+        reminderMinutes: const [60, 15],
+      );
+
+      final reminders = ReminderScheduleService.buildFixedScheduleReminders(
+        fixedSchedules: [item],
+        now: now,
+        limit: limit,
+      );
+
+      expect(reminders, hasLength(2));
+      expect(reminders.map((item) => item['type']).toSet(), {'fixed_schedule'});
+      expect(reminders.first['fixedScheduleId'], 'exam-reminder');
+      expect(reminders.first['text'], contains('A101'));
     });
   });
 

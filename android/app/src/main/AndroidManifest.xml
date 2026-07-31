@@ -170,6 +170,15 @@
         <!-- 🚀 新增：四个独立桌面小部件 -->
         <!-- ========================================== -->
 
+        <activity
+            android:name=".RecurrenceWidgetConfigureActivity"
+            android:exported="true"
+            android:theme="@style/NormalTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- 待办小部件 -->
         <receiver
             android:name=".TodoOnlyWidgetProvider"
@@ -234,6 +243,19 @@
         <service
             android:name=".FocusOnlyWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- 循环待办小部件：每个实例可单独选择一个循环系列 -->
+        <receiver
+            android:name=".RecurrenceWidgetProvider"
+            android:label="@string/widget_label_recurrence"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_recurrence_info" />
+        </receiver>
 
     </application>
 </manifest>

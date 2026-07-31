@@ -16,4 +16,6 @@
     <color name="focus_active_bg">#EFF6FF</color>
     <color name="focus_timer_color">#2563EB</color>
     <color name="focus_tag_text">#10B981</color>
+    <color name="widget_recurrence_completed">#16A34A</color>
+    <color name="widget_recurrence_overdue">#DC2626</color>
 </resources>

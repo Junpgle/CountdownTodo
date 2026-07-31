@@ -116,9 +116,7 @@ class LanSyncService {
 
   bool get isRunning => false;
   bool get isSyncing => false;
-  bool _discoverAllDevices = false;
-  bool get discoverAllDevices => _discoverAllDevices;
-  set discoverAllDevices(bool value) => _discoverAllDevices = value;
+  bool discoverAllDevices = false;
 
   List<LanDevice> get devices => const [];
   String? get currentUserId => null;

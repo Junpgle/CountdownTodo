@@ -578,6 +578,8 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     switch (type) {
       case CalendarSyncEntryType.todo:
         return Icons.check_circle_outline;
+      case CalendarSyncEntryType.fixedSchedule:
+        return Icons.event_busy_outlined;
       case CalendarSyncEntryType.course:
         return Icons.school_outlined;
       case CalendarSyncEntryType.countdown:
@@ -591,12 +593,14 @@ class _CalendarSyncPageState extends State<CalendarSyncPage> {
     switch (type) {
       case CalendarSyncEntryType.todo:
         return Theme.of(context).colorScheme.primary;
+      case CalendarSyncEntryType.fixedSchedule:
+        return Theme.of(context).colorScheme.tertiary;
       case CalendarSyncEntryType.course:
-        return Colors.indigo;
+        return Theme.of(context).colorScheme.secondary;
       case CalendarSyncEntryType.countdown:
-        return Colors.orange;
+        return Theme.of(context).colorScheme.error;
       case CalendarSyncEntryType.planBlock:
-        return Colors.teal;
+        return Theme.of(context).colorScheme.primary;
     }
   }
 

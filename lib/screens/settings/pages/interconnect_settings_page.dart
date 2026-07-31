@@ -8,6 +8,8 @@ import '../calendar_sync_page.dart';
 import '../batch_tag_page.dart';
 import 'data_export_page.dart';
 import 'data_import_page.dart';
+import 'mcp_introduction_page.dart';
+import 'recurrence_series_merge_page.dart';
 
 class InterconnectSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -27,9 +29,11 @@ class InterconnectSettingsPage extends StatefulWidget {
 class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   final Map<String, GlobalKey> _itemKeys = {
     'lan_sync': GlobalKey(),
+    'mcp': GlobalKey(),
     'band_sync': GlobalKey(),
     'calendar_sync': GlobalKey(),
     'batch_tag': GlobalKey(),
+    'recurrence_merge': GlobalKey(),
     'data_export': GlobalKey(),
     'data_import': GlobalKey(),
   };
@@ -148,6 +152,21 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
   Widget build(BuildContext context) {
     final isWeb = AppPlatform.isWeb;
     final featureCards = <Widget>[
+      _buildFeatureCard(
+        id: 'mcp',
+        icon: Icons.hub_outlined,
+        title: 'MCP 接入',
+        subtitle: '让外部 AI 助手连接并管理个人待办',
+        onTap: () {
+          Navigator.push(
+            context,
+            PageTransitions.slideHorizontal(
+              McpIntroductionPage(isEmbedded: widget.isEmbedded),
+              settings: const RouteSettings(name: 'MCP 接入说明'),
+            ),
+          );
+        },
+      ),
       if (!isWeb) ...[
         _buildFeatureCard(
           id: 'lan_sync',
@@ -225,6 +244,24 @@ class _InterconnectSettingsPageState extends State<InterconnectSettingsPage> {
                 isEmbedded: widget.isEmbedded,
               ),
               settings: const RouteSettings(name: '批量添加标签'),
+            ),
+          );
+        },
+      ),
+      _buildFeatureCard(
+        id: 'recurrence_merge',
+        icon: Icons.merge_type_rounded,
+        title: '重复待办合并',
+        subtitle: '手动选择并归并被拆开的循环系列',
+        onTap: () {
+          Navigator.push(
+            context,
+            PageTransitions.slideHorizontal(
+              RecurrenceSeriesMergePage(
+                username: widget.username,
+                isEmbedded: widget.isEmbedded,
+              ),
+              settings: const RouteSettings(name: '合并重复待办'),
             ),
           );
         },

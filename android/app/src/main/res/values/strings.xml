@@ -26,6 +26,7 @@
     <string name="widget_label_course_only">CountdownTodo - 课程课表</string>
     <string name="widget_label_countdown_only">CountdownTodo - 倒数日</string>
     <string name="widget_label_focus_only">CountdownTodo - 专注计时</string>
+    <string name="widget_label_recurrence">CountdownTodo - 循环待办</string>
 
     <!-- Desktop Widgets Descriptions -->
     <string name="widget_desc_todo">包含待办、课程、倒数及专注计时的多功能组合快捷小部件。</string>
@@ -33,5 +34,16 @@
     <string name="widget_desc_course_only">优雅简洁的课表视图，清晰展示今日课程名称、地点与上课时间。</string>
     <string name="widget_desc_countdown_only">醒目的桌面倒数纪念日卡片，重点高亮展示天数与目标标题。</string>
     <string name="widget_desc_focus_only">沉浸式的番茄钟专注计时与今日专注日志记录卡片。</string>
+    <string name="widget_desc_recurrence">选择一个循环待办固定在桌面，持续查看本期状态、下次排期与完成记录。</string>
+
+    <string name="widget_recurrence_select_prompt">选择一个循环待办固定在桌面</string>
+    <string name="widget_recurrence_missing_selection">原循环待办已不可用，请重新选择</string>
+    <string name="widget_recurrence_no_data">暂无可展示的循环待办</string>
+    <string name="widget_recurrence_tap_to_choose">点按选择</string>
+    <string name="widget_recurrence_config_title">选择循环待办</string>
+    <string name="widget_recurrence_config_subtitle">这个桌面小组件会持续展示你选择的循环系列。</string>
+    <string name="widget_recurrence_config_empty">还没有可选择的循环待办。\n请先打开 App 创建或同步循环待办。</string>
+    <string name="widget_recurrence_open_app">打开 App</string>
+    <string name="widget_recurrence_cancel">取消</string>
 
 </resources>

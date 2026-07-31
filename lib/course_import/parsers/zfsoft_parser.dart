@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:html/parser.dart' as parser;
 import 'package:html/dom.dart';
 import 'package:intl/intl.dart';
@@ -93,7 +94,7 @@ class ZfSoftScheduleParser {
       if (timeSegments.isEmpty) continue;
 
       // 🚀 日志验证：打印每个课程节点收集到的原始时间段
-      print('[$title] timeSegments: $timeSegments');
+      debugPrint('[$title] timeSegments: $timeSegments');
 
       for (String timeStr in timeSegments) {
         // 解析节次 (如 1-2节)
@@ -113,7 +114,7 @@ class ZfSoftScheduleParser {
         List<int> weeks = _parseZfWeeks(timeStr);
 
         // 🚀 日志验证：打印解析出的最终周次列表
-        print('[$title] timeStr=$timeStr weeks=$weeks');
+        debugPrint('[$title] timeStr=$timeStr weeks=$weeks');
 
         for (int week in weeks) {
           DateTime courseDate = semesterMonday

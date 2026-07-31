@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import '../../models.dart';
 
 class HfutScheduleParser {
@@ -146,8 +147,9 @@ class HfutScheduleParser {
         int endPx = topPx + heightPx - 50;
         int endUnitFallback =
             topToUnit[endPx] ?? _nearestUnit(topToUnit, endPx);
-        if (endUnitFallback < startUnitFallback)
+        if (endUnitFallback < startUnitFallback) {
           endUnitFallback = startUnitFallback;
+        }
 
         final contentMatch = RegExp(
           r'<div class="card-content">(.*?)</div>\s*<button',
@@ -272,7 +274,9 @@ class HfutScheduleParser {
         while (j < text.length && depth > 0) {
           if (text[j] == '(' || text[j] == '（') {
             depth++;
-          } else if (text[j] == ')' || text[j] == '）') depth--;
+          } else if (text[j] == ')' || text[j] == '）') {
+            depth--;
+          }
           j++;
         }
         final content = text.substring(i + 1, j - 1);
@@ -297,7 +301,9 @@ class HfutScheduleParser {
         while (j < text.length && depth > 0) {
           if (text[j] == '(' || text[j] == '（') {
             depth++;
-          } else if (text[j] == ')' || text[j] == '）') depth--;
+          } else if (text[j] == ')' || text[j] == '）') {
+            depth--;
+          }
           j++;
         }
         final content = text.substring(i + 1, j - 1);
@@ -471,16 +477,21 @@ class HfutScheduleParser {
       String roomName = weekIdx >= 1 ? args[weekIdx - 1] : '未知教室';
       String courseName = weekIdx >= 3 ? args[weekIdx - 3] : '未知课程';
 
-      if (roomName == 'null' || roomName.isEmpty || roomName.contains('.join'))
+      if (roomName == 'null' || roomName.isEmpty || roomName.contains('.join')) {
         roomName = '未知教室';
+      }
       if (courseName == 'null' ||
           courseName.isEmpty ||
-          courseName.contains('.join')) courseName = '未知课程';
+          courseName.contains('.join')) {
+        courseName = '未知课程';
+      }
       if (teacherName == '未知教师' && weekIdx >= 5) {
         String fallbackTeacher = args[weekIdx - 5];
         if (fallbackTeacher != 'null' &&
             fallbackTeacher.isNotEmpty &&
-            !fallbackTeacher.contains('.join')) teacherName = fallbackTeacher;
+            !fallbackTeacher.contains('.join')) {
+          teacherName = fallbackTeacher;
+        }
       }
       courseName = courseName.replaceFirst(RegExp(r'^\(.*?\)\s*'), '').trim();
       if (courseName.isEmpty && weekIdx >= 3) courseName = args[weekIdx - 3];
@@ -491,8 +502,9 @@ class HfutScheduleParser {
       final roomMatch = roomRegex.firstMatch(assignmentsStr);
       if (roomMatch != null) {
         String parsedRoom = roomMatch.group(1) ?? roomMatch.group(2) ?? '';
-        if (parsedRoom.isNotEmpty && parsedRoom != 'null')
+        if (parsedRoom.isNotEmpty && parsedRoom != 'null') {
           roomName = parsedRoom;
+        }
       }
 
       final activityRegex = RegExp(r'activities\s*\[(\d+)\]\s*\[(\d+)\]');
@@ -501,8 +513,9 @@ class HfutScheduleParser {
       for (var m in actMatches) {
         int day = int.tryParse(m.group(1) ?? '') ?? 0;
         int unit = int.tryParse(m.group(2) ?? '') ?? 0;
-        if (day > 0 && unit > 0)
+        if (day > 0 && unit > 0) {
           dayToUnits.putIfAbsent(day, () => []).add(unit);
+        }
       }
 
       for (var entry in dayToUnits.entries) {
@@ -565,7 +578,7 @@ class HfutScheduleParser {
     final lessonList = data['lessonList'] as List? ?? [];
     final scheduleList = data['scheduleList'] as List? ?? [];
 
-    print(
+    debugPrint(
         '[HfutParser] Parsing JSON: ${lessonList.length} lessons, ${scheduleList.length} schedules');
 
     // 【修改点】使用 String 作为 Key，防止 `int` 和 `String` 的隐式类型崩溃异常
@@ -589,15 +602,15 @@ class HfutScheduleParser {
         }
         if (teachers.isNotEmpty) {
           teacherMap[lessonId] = teachers.join(', ');
-          print(
+          debugPrint(
               '[HfutParser] Lesson $lessonId teachers found: ${teacherMap[lessonId]}');
         } else {
-          print(
+          debugPrint(
               '[HfutParser] Lesson $lessonId NO teachers in teacherAssignmentList');
           // Try another fallback for teacher name inside lesson item
           if (item['teacherNames'] != null) {
             teacherMap[lessonId] = item['teacherNames'].toString();
-            print(
+            debugPrint(
                 '[HfutParser] Using fallback teacherNames: ${teacherMap[lessonId]}');
           } else if (item['teachers'] != null && item['teachers'] is List) {
             String names = (item['teachers'] as List)
@@ -606,7 +619,7 @@ class HfutScheduleParser {
                 .join(', ');
             if (names.isNotEmpty) {
               teacherMap[lessonId] = names;
-              print('[HfutParser] Using fallback teachers list: $names');
+              debugPrint('[HfutParser] Using fallback teachers list: $names');
             }
           }
         }
@@ -638,11 +651,12 @@ class HfutScheduleParser {
               teacherMap[lessonId] ??
               '未知教师';
           if (teacherName == '未知教师' || teacherName.isEmpty) {
-            print(
+            debugPrint(
                 '[HfutParser] Warning: Missing teacher for schedule of lesson $lessonId');
           }
-          if (teacherName.isEmpty || teacherName == 'null')
+          if (teacherName.isEmpty || teacherName == 'null') {
             teacherName = '未知教师';
+          }
 
           courses.add(CourseItem(
             courseName: lessonInfo['courseName']?.toString().trim() ?? '未知课程',
@@ -671,26 +685,29 @@ class HfutScheduleParser {
     try {
       final data = jsonDecode(input);
       if (data is Map) {
-        if (data['result'] != null && data['result']['lessonList'] != null)
+        if (data['result'] != null && data['result']['lessonList'] != null) {
           return {
             'lessonList': data['result']['lessonList'],
             'scheduleList': data['result']['scheduleList'] ?? []
           };
-        if (data['lessonList'] != null)
+        }
+        if (data['lessonList'] != null) {
           return {
             'lessonList': data['lessonList'],
             'scheduleList': data['scheduleList'] ?? []
           };
+        }
       }
     } catch (_) {}
     try {
       final lessonListStr = _extractArray(input, 'lessonList');
       final scheduleListStr = _extractArray(input, 'scheduleList');
-      if (lessonListStr != null && scheduleListStr != null)
+      if (lessonListStr != null && scheduleListStr != null) {
         return {
           'lessonList': jsonDecode(lessonListStr),
           'scheduleList': jsonDecode(scheduleListStr)
         };
+      }
     } catch (_) {}
     return null;
   }

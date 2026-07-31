@@ -89,12 +89,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+    _username = prefs.getString(StorageService.keyCurrentUser) ?? '';
 
     String theme = await StorageService.getThemeMode();
     String themeColorMode =
-        prefs.getString(StorageService.KEY_THEME_COLOR_MODE) ?? 'default';
-    int? customColorVal = prefs.getInt(StorageService.KEY_CUSTOM_THEME_COLOR);
+        prefs.getString(StorageService.keyThemeColorMode) ?? 'default';
+    int? customColorVal = prefs.getInt(StorageService.keyCustomThemeColor);
     String wallpaperProvider = await StorageService.getWallpaperProvider();
     Map<String, dynamic> homeTextConfig =
         await StorageService.getHomeTextConfig();
@@ -188,14 +188,13 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
 
     if (confirmed != true || !mounted) return;
 
-    final downloadContext = context;
     setState(() {
       _isForceDownloading = true;
       _forceDownloadProgress = 0.0;
     });
 
     await UpdateService.forceDownloadLatest(
-      downloadContext,
+      context,
       onProgress: (progress) {
         if (mounted) setState(() => _forceDownloadProgress = progress);
       },
@@ -904,7 +903,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     return GestureDetector(
       onTap: () {
         setState(() => _themeMode = value);
-        StorageService.saveAppSetting(StorageService.KEY_THEME_MODE, value);
+        StorageService.saveAppSetting(StorageService.keyThemeMode, value);
         StorageService.themeNotifier.value = value;
       },
       child: Column(

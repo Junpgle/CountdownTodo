@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../models.dart';
 import '../models/ai_todo_action.dart';
 import 'pomodoro_service.dart';
@@ -126,8 +128,10 @@ class TodoClassificationService {
     int limit = 6,
   }) async {
     if (groups.where((g) => !g.isDeleted).isEmpty) return const [];
-    // Prioritize unclassified todos (no groupId)
-    final sortedTodos = [...todos]..sort((a, b) {
+    // 循环系列只生成一条整理建议。优先选择持有循环规则的当前锚点，
+    // 执行时再通过 future 作用域同步到已经生成的后续期次。
+    final sortedTodos = _seriesRepresentatives(todos)
+      ..sort((a, b) {
         final aEmpty = (a.groupId == null || a.groupId!.isEmpty) ? 0 : 1;
         final bEmpty = (b.groupId == null || b.groupId!.isEmpty) ? 0 : 1;
         return aEmpty.compareTo(bEmpty);
@@ -157,6 +161,10 @@ class TodoClassificationService {
           title: todo.title,
           groupId: suggestion.groupId,
           reminderMinutes: suggestion.reminderMinutes,
+          recurrenceSeriesId: todo.recurrenceSeriesId,
+          recurrenceScope: todo.recurrenceSeriesId?.isNotEmpty == true
+              ? 'future'
+              : 'occurrence',
           metadata: {
             'groupName': suggestion.groupName,
             'classificationConfidence': suggestion.confidence,
@@ -171,6 +179,30 @@ class TodoClassificationService {
     }
     return actions;
   }
+
+  static List<TodoItem> _seriesRepresentatives(List<TodoItem> todos) {
+    final representativeByKey = <String, TodoItem>{};
+    for (final todo in todos) {
+      final seriesId = todo.recurrenceSeriesId?.trim();
+      final key = seriesId == null || seriesId.isEmpty
+          ? 'todo:${todo.id}'
+          : 'series:$seriesId';
+      final existing = representativeByKey[key];
+      if (existing == null ||
+          (todo.recurrence != RecurrenceType.none &&
+              existing.recurrence == RecurrenceType.none) ||
+          (todo.recurrence == existing.recurrence &&
+              (todo.createdDate ?? todo.createdAt) <
+                  (existing.createdDate ?? existing.createdAt))) {
+        representativeByKey[key] = todo;
+      }
+    }
+    return representativeByKey.values.toList();
+  }
+
+  @visibleForTesting
+  static List<TodoItem> seriesRepresentativesForTest(List<TodoItem> todos) =>
+      _seriesRepresentatives(todos);
 
   static Future<List<String>> recommendPomodoroTagUuidsForTodo({
     required TodoItem todo,

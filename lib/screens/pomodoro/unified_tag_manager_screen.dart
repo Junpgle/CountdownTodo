@@ -175,7 +175,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
                     final username =
-                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                        prefs.getString(StorageService.keyCurrentUser) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
@@ -205,7 +205,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
                   onTap: () async {
                     final prefs = await SharedPreferences.getInstance();
                     final username =
-                        prefs.getString(StorageService.KEY_CURRENT_USER) ?? '';
+                        prefs.getString(StorageService.keyCurrentUser) ?? '';
                     if (!context.mounted) return;
                     Navigator.push(
                       context,
@@ -373,9 +373,8 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       itemCount: _tags.length,
-      onReorder: (oldIndex, newIndex) {
+      onReorderItem: (oldIndex, newIndex) {
         setState(() {
-          if (oldIndex < newIndex) newIndex -= 1;
           final tag = _tags.removeAt(oldIndex);
           _tags.insert(newIndex, tag);
         });

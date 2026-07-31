@@ -334,11 +334,13 @@ class _ScreenTimeCardState extends State<ScreenTimeCard>
         String d = item['device_name'] ?? "未知设备";
         if (d.contains("Phone")) {
           d = "手机";
-        } else if (d.contains("Tablet"))
+        } else if (d.contains("Tablet")) {
           d = "平板";
-        else if (d.contains("Windows") ||
+        } else if (d.contains("Windows") ||
             d.contains("PC") ||
-            d.contains("LAPT")) d = "电脑";
+            d.contains("LAPT")) {
+          d = "电脑";
+        }
         deviceMap[d] = (deviceMap[d] ?? 0) + (item['duration'] as int);
       }
 
@@ -509,7 +511,6 @@ class PieChartPainter extends CustomPainter {
 
   // 缓存 TextPainter，避免每帧重复创建
   late final List<TextPainter> _labelPainters;
-  late final List<String> _labels;
 
   PieChartPainter({
     required this.data,
@@ -532,7 +533,6 @@ class PieChartPainter extends CustomPainter {
             Colors.redAccent.shade200,
           ];
     final labelsList = data.keys.toList();
-    _labels = labelsList;
     _labelPainters = List.generate(labelsList.length, (i) {
       String displayLabel = labelsList[i];
       if (displayLabel.length > 6) {

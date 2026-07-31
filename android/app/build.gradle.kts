@@ -45,7 +45,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.math_quiz.junpgle.com.math_quiz_app"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     signingConfigs {

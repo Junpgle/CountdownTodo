@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
-import 'package:CountDownTodo/services/notification_service.dart';
+import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
@@ -247,11 +247,11 @@ class _AnnouncementCarouselDialogState
 }
 
 class UpdateService {
-  static const String MANIFEST_URL =
+  static const String manifestUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json';
-  static const String FALLBACK_MANIFEST_URL =
+  static const String fallbackManifestUrl =
       'https://api-cdt.junpgle.me/api/manifest';
-  static const String CHANGELOG_ARCHIVE_URL =
+  static const String changelogArchiveUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json';
   static const String _manifestCacheKey = 'update_manifest_cache_json';
   static const String _manifestCacheTimeKey = 'update_manifest_cache_time';
@@ -262,8 +262,8 @@ class UpdateService {
   static const String _updateDialogSnoozeTodayKey =
       'update_dialog_snooze_today';
   static const String _updateSourceKey = 'update_source_preference';
-  static const String UPDATE_SOURCE_GITHUB = 'github';
-  static const String UPDATE_SOURCE_SERVER = 'server';
+  static const String updateSourceGithub = 'github';
+  static const String updateSourceServer = 'server';
 
   static Future<AppManifest?>? _manifestRefreshFuture;
   static bool _isDialogShowing = false;
@@ -279,7 +279,7 @@ class UpdateService {
 
   static Future<String> getUpdateSource() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_updateSourceKey) ?? UPDATE_SOURCE_GITHUB;
+    return prefs.getString(_updateSourceKey) ?? updateSourceGithub;
   }
 
   static Future<void> setUpdateSource(String source) async {
@@ -491,22 +491,22 @@ class UpdateService {
 
   static Future<AppManifest?> _fetchManifestFromNetwork() async {
     final source = await getUpdateSource();
-    if (source == UPDATE_SOURCE_SERVER) {
+    if (source == updateSourceServer) {
       return _fetchFromServerFirst();
     }
     return _fetchFromGitHubFirst();
   }
 
   static Future<AppManifest?> _fetchFromGitHubFirst() async {
-    final github = await _fetchManifestUrl(MANIFEST_URL);
+    final github = await _fetchManifestUrl(manifestUrl);
     if (github != null) return github;
-    return _fetchManifestUrl(FALLBACK_MANIFEST_URL);
+    return _fetchManifestUrl(fallbackManifestUrl);
   }
 
   static Future<AppManifest?> _fetchFromServerFirst() async {
-    final server = await _fetchManifestUrl(FALLBACK_MANIFEST_URL);
+    final server = await _fetchManifestUrl(fallbackManifestUrl);
     if (server != null) return server;
-    return _fetchManifestUrl(MANIFEST_URL);
+    return _fetchManifestUrl(manifestUrl);
   }
 
   static Future<AppManifest?> _fetchManifestUrl(String url) async {
@@ -575,7 +575,7 @@ class UpdateService {
   }) async {
     final archiveUrl = manifest?.changelogArchive.url.isNotEmpty == true
         ? manifest!.changelogArchive.url
-        : CHANGELOG_ARCHIVE_URL;
+        : changelogArchiveUrl;
 
     if (preferCache) {
       final cached = await _readChangelogArchiveCache();

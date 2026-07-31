@@ -81,7 +81,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                 () async {
                   final manifest =
                       await UpdateService.checkManifest(preferCache: false);
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   if (manifest != null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('当前版本: ${manifest.versionName}')),

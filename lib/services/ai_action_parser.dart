@@ -5,6 +5,9 @@ import '../models/ai_todo_action.dart';
 class AiActionParser {
   static const String _actionTypes = 'create_todo|update_todo|complete_todo|'
       'delete_todo|reschedule_todo|bulk_reschedule|bulk_reschedule_todo|'
+      'create_schedule|update_schedule|cancel_schedule|delete_schedule|'
+      'create_fixed_schedule|update_fixed_schedule|cancel_fixed_schedule|'
+      'delete_fixed_schedule|'
       'categorize_todo|plan_todos|create_plan_block|update_plan_block|'
       'delete_plan_block|reschedule_plan_blocks|reschedule_plan_block|'
       'skip_plan_block|start_plan_block_pomodoro|'
@@ -26,6 +29,7 @@ class AiActionParser {
     String content, {
     required String originalText,
     Map<String, String> existingTodoTitles = const {},
+    Map<String, String> existingScheduleTitles = const {},
   }) {
     final actions = <AiTodoAction>[];
 
@@ -35,11 +39,19 @@ class AiActionParser {
       try {
         final data = jsonDecode(_repairJson(jsonStr.trim()));
         if (data is Map<String, dynamic>) {
-          actions.addAll(_processActionMap(data, existingTodoTitles));
+          actions.addAll(_processActionMap(
+            data,
+            existingTodoTitles,
+            existingScheduleTitles,
+          ));
         } else if (data is List) {
           for (final item in data) {
             if (item is Map<String, dynamic>) {
-              actions.addAll(_processActionMap(item, existingTodoTitles));
+              actions.addAll(_processActionMap(
+                item,
+                existingTodoTitles,
+                existingScheduleTitles,
+              ));
             }
           }
         }
@@ -132,6 +144,7 @@ class AiActionParser {
   static List<AiTodoAction> _processActionMap(
     Map<String, dynamic> data,
     Map<String, String> existingTodoTitles,
+    Map<String, String> existingScheduleTitles,
   ) {
     final actionData = _withInferredAction(data);
     switch (actionData['action']) {
@@ -142,6 +155,38 @@ class AiActionParser {
             ...todo,
             'action': actionData['action'],
           });
+        }).toList();
+      case 'create_schedule':
+      case 'create_fixed_schedule':
+        return _listFromOrSelf(
+          actionData,
+          actionData['schedules'] ?? actionData['fixedSchedules'],
+        ).map((schedule) {
+          return AiTodoAction.fromJson({
+            ...schedule,
+            'action': actionData['action'],
+          });
+        }).toList();
+      case 'update_schedule':
+      case 'update_fixed_schedule':
+      case 'cancel_schedule':
+      case 'cancel_fixed_schedule':
+      case 'delete_schedule':
+      case 'delete_fixed_schedule':
+        return _listFromOrSelf(actionData, actionData['updates'])
+            .map((schedule) {
+          final action = AiTodoAction.fromJson({
+            ...schedule,
+            'scheduleId': schedule['scheduleId'] ??
+                schedule['fixedScheduleId'] ??
+                schedule['id'],
+            'action': actionData['action'],
+          });
+          if ((action.title == null || action.title!.isEmpty) &&
+              action.scheduleId != null) {
+            action.title = existingScheduleTitles[action.scheduleId!];
+          }
+          return action;
         }).toList();
       case 'create_plan_block':
       case 'create_todo_plan_block':
@@ -388,6 +433,9 @@ class AiActionParser {
     if (data['blocks'] is List || data['plans'] is List) {
       return {...data, 'action': 'create_plan_block'};
     }
+    if (data['schedules'] is List || data['fixedSchedules'] is List) {
+      return {...data, 'action': 'create_schedule'};
+    }
     if (data['countdowns'] is List) {
       return {...data, 'action': 'create_countdown'};
     }
@@ -464,7 +512,7 @@ class AiActionParser {
       final hasKnownAction =
           RegExp('"action"\\s*:\\s*"(?:$_actionTypes)"').hasMatch(candidate);
       final hasLegacyContainer = RegExp(
-              '"(?:todos|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
+              '"(?:todos|schedules|fixedSchedules|blocks|plans|countdowns|logs|groups|categories|folders|tags)"\\s*:')
           .hasMatch(candidate);
       if (!hasKnownAction && !hasLegacyContainer) {
         continue;

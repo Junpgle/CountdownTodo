@@ -114,7 +114,16 @@ class _SettingsPageState extends State<SettingsPage> {
       'semester_end',
       'semester_sync'
     ];
-    final interconnectTargets = ['lan_sync', 'band_sync', 'calendar_sync'];
+    final interconnectTargets = [
+      'lan_sync',
+      'mcp',
+      'band_sync',
+      'calendar_sync',
+      'batch_tag',
+      'recurrence_merge',
+      'data_export',
+      'data_import',
+    ];
     final advancedTargets = [
       'llm_config',
       'llm_retry',
@@ -223,7 +232,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _username = prefs.getString(StorageService.KEY_CURRENT_USER) ?? "未登录";
+      _username = prefs.getString(StorageService.keyCurrentUser) ?? "未登录";
       _userId = prefs.getInt('current_user_id');
     });
   }
@@ -1054,8 +1063,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const Icon(Icons.devices_outlined, color: Colors.blue),
                   title: const Text('数据与互联'),
                   subtitle: Text(AppPlatform.isWeb
-                      ? '浏览器导入导出、ICS 日历文件与批量标签'
-                      : '局域网同步、手环、日历双向同步'),
+                      ? '浏览器导入导出、MCP 说明与 ICS 日历文件'
+                      : '局域网同步、MCP、手环与日历同步'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,

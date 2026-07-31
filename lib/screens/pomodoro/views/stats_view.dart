@@ -868,7 +868,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
 
   Widget? _todoPickerSubtitle(TodoItem todo) {
     final labels = <String>[
-      if (todo.recurrenceSeriesId?.isNotEmpty == true) '循环任务',
+      if (todo.recurrenceSeriesId?.isNotEmpty == true) '重复待办',
       if (todo.remark?.isNotEmpty == true) todo.remark!,
     ];
     return labels.isEmpty ? null : Text(labels.join(' · '));
@@ -1008,9 +1008,10 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             pickedTime.minute);
                         if (newEnd.millisecondsSinceEpoch <=
                             editSession.startTime) {
-                          if (ctx.mounted)
+                          if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                                 const SnackBar(content: Text('结束时间必须晚于开始时间')));
+                          }
                           return;
                         }
                         sd(() {
@@ -1020,10 +1021,9 @@ class PomodoroStatsState extends State<PomodoroStats> {
                               ((editSession.endTime! - editSession.startTime) /
                                       1000)
                                   .round();
-                          editSession.actualDuration =
-                              (totalSeconds -
-                                      (editSession.totalPauseSeconds ?? 0))
-                                  .clamp(0, totalSeconds);
+                          editSession.actualDuration = (totalSeconds -
+                                  (editSession.totalPauseSeconds ?? 0))
+                              .clamp(0, totalSeconds);
                         });
                       }
                     },
@@ -1038,7 +1038,8 @@ class PomodoroStatsState extends State<PomodoroStats> {
                         const SizedBox(width: 8),
                         Text(DateFormat('HH:mm').format(
                             DateTime.fromMillisecondsSinceEpoch(
-                                    editSession.endTime ?? editSession.startTime,
+                                    editSession.endTime ??
+                                        editSession.startTime,
                                     isUtc: true)
                                 .toLocal())),
                         const Spacer(),

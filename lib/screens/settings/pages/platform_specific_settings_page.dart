@@ -113,7 +113,7 @@ class _PlatformSpecificSettingsPageState
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     if (AppPlatform.isWindows) {
-      String? username = prefs.getString(StorageService.KEY_CURRENT_USER);
+      String? username = prefs.getString(StorageService.keyCurrentUser);
       int style = 0;
       if (username != null && username.isNotEmpty) {
         style = prefs.getInt('float_window_style_$username') ?? 0;

@@ -7,12 +7,6 @@ import 'database_helper.dart';
 import 'pomodoro_service.dart';
 import 'package:intl/intl.dart';
 import '../screens/home_settings_screen.dart';
-import '../screens/animation_settings_page.dart';
-import '../screens/settings/wallpaper_settings_page.dart';
-import '../screens/settings/llm_config_page.dart';
-import '../screens/band_sync_screen.dart';
-import '../screens/settings/lan_sync_screen.dart';
-import '../screens/settings/notification_settings_page.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/todo_section_widget.dart';
 import '../screens/pomodoro_screen.dart';
@@ -68,6 +62,15 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 高级',
       extraData: {'route': '/settings', 'target': 'lan_sync'},
+    ),
+    SearchResult(
+      id: 'setting_mcp',
+      title: 'MCP / 模型上下文协议 / 外部 AI 接入',
+      subtitle: '让兼容的 AI 客户端读取或管理个人待办',
+      icon: Icons.hub_outlined,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 数据与互联',
+      extraData: {'route': '/settings', 'target': 'mcp'},
     ),
     SearchResult(
       id: 'setting_animation',
@@ -1105,15 +1108,13 @@ class SearchNavigationHandler {
     final query = data['query'] as String?;
 
     if (action != null) {
-      if (action == 'ai_query' && query != null) {
-        _showAISuggestion(context, query);
-      } else if (action == 'new_todo') {
-        _executeAction(context, action);
-      } else if (action == 'apply_query' && query != null) {
+      if ((action == 'ai_query' || action == 'apply_query') && query != null) {
         // 交给 UI 层处理：重新设置 Search Bar 的文本并触发搜索
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text("正在搜索: $query"),
             duration: const Duration(seconds: 1)));
+      } else if (action == 'new_todo') {
+        _executeAction(context, action);
       } else if (action == 'navigate') {
         _navigateByRoute(context, route ?? '', data);
       } else if (action == 'filter_overdue') {
@@ -1230,7 +1231,7 @@ class SearchNavigationHandler {
       } else {
         // debugPrint("❌ _handleTodoEdit: context not mounted after async ops");
       }
-    } catch (e, stack) {
+    } catch (e) {
       // debugPrint("❌ _handleTodoEdit crash: $e\n$stack");
     }
   }
@@ -1275,6 +1276,7 @@ class SearchNavigationHandler {
     final target = data['target'] as String?;
     Widget? page;
     final username = await StorageService.getLoginSession() ?? 'default';
+    if (!context.mounted) return;
 
     if (route == '/time_log/tag') {
       final tagUuid = data['tag_uuid'];
@@ -1292,7 +1294,6 @@ class SearchNavigationHandler {
     if (route == '/screen_time/app') {
       final appName = data['app_name'];
       if (appName != null) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
         final history = await StorageService.getScreenTimeHistory();
         final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
         if (history[todayKey] == null || history[todayKey]!.isEmpty) {
@@ -1301,6 +1302,8 @@ class SearchNavigationHandler {
             history[todayKey] = cachedToday;
           }
         }
+        if (!context.mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
         Navigator.push(
             context,
             PageTransitions.material(
@@ -1382,27 +1385,5 @@ class SearchNavigationHandler {
         behavior: SnackBarBehavior.floating,
       ));
     }
-  }
-
-  static void _showAISuggestion(BuildContext context, String query) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.auto_awesome, color: Colors.purple),
-            SizedBox(width: 8),
-            Text("AI 智能分析"),
-          ],
-        ),
-        content: Text(
-            "AI 正在深度分析您的意图：\n\"$query\"\n\n(此处可对接现有的 LLMService 实现智能创建或问答)"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text("了解")),
-        ],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
   }
 }

@@ -27,13 +27,21 @@ class LLMConfig {
         visionPrompt = visionPrompt ?? defaultVisionPrompt;
 
   static const String defaultTextPrompt =
-      '''你是一个专业的日程规划助手，擅长将自然语言准确转换为结构化的待办事项JSON。
+      '''你是一个专业的事项识别助手，负责把自然语言准确区分为待办、固定日程或规划块，并输出结构化JSON。
 
 【当前基准时间】
 {now}
 （注意：所有"今天"、"下周一"等时间，必须基于此基准推算）
 
 【字段提取规则（严格执行）】
+
+===== 事项类型边界（最高优先级） =====
+每条结果都必须输出 itemKind：
+- todo：用户需要完成的结果，例如交作业、写报告、缴费、复习、取件；可以未安排、只有完成日期或有截止时刻。
+- fixedSchedule：时间主要由学校、组织、预约方、交通或票务决定的占用，例如课程、考试、会议、面试、预约、航班、车次、演出；它不是可勾选完成的待办。
+- planBlock：用户自行安排且可以移动的执行时段，例如“今晚8点到9点复习英语”；它必须表达明确执行区间并关联一个要做的结果。
+- needsConfirmation：只有时间段但无法判断是外部约束还是自主执行时段。
+不要因为一句话带时间就一律输出待办；也不要把待办的截止点解释成一小时日程。
 
 ===== 特殊场景：取餐码/取件码 =====
 极其重要！优先检测以下场景：
@@ -55,53 +63,58 @@ class LLMConfig {
      * 识别到具体品牌：如"肯德基取餐"、"顺丰取件"
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值（纯数字或字母数字组合）
-   - isAllDay: true（默认全天事件）
-   - startTime: 当天"00:00"
-   - endTime: 当天"23:59"
+   - 这是需要用户完成领取动作的待办，不是固定日程
+   - 普通文本没有可靠日期时：isAllDay=false，startTime=null，endTime=null，不得擅自设为今天
+   - 文本明确领取日期但没有具体时刻时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
+   - 文本明确最晚领取时刻时：isAllDay=false，startTime为目标日期"00:00"，endTime为最晚领取时刻
 
 4. 示例：
    输入: "KFC取餐码1234"
-   输出: {"title":"KFC取餐","remark":"取餐码: 1234","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"KFC取餐","remark":"取餐码: 1234","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "顺丰快递到了取件码8866"
-   输出: {"title":"顺丰取件","remark":"取件码: 8866","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"顺丰取件","remark":"取件码: 8866","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
    输入: "茶百道做好了A056"
-   输出: {"title":"茶百道取餐","remark":"取餐码: A056","isAllDay":true,"startTime":"[今天] 00:00","endTime":"[今天] 23:59","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
+   输出: {"itemKind":"todo","title":"茶百道取餐","remark":"取餐码: A056","isAllDay":false,"startTime":null,"endTime":null,"timeMode":"unscheduled","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}
 
-===== 通用待办规则 =====
+===== 通用事项规则 =====
 如果不是取餐/取件场景，则按以下规则：
 
-1. title: 核心动作/事件。必须极度精简！必须去除口语化前缀（如"提醒我"、"帮我记一下"、"我要"）、去除时间、去除地点（地点必须剥离到remark中）。
-2. remark: 提取地点、人物、携带物品等补充信息。极其重要：一旦提取了地点（如"在图书馆"），必须将地点词从title中彻底删除！若无补充信息设为null。
-3. isAllDay: 若用户没说具体几点（如"明天去学习"），设为true。
-4. startTime: 格式"YYYY-MM-DD HH:mm"。全天事件设为当天的"00:00"。
-5. endTime: 格式"YYYY-MM-DD HH:mm"。默认startTime加1小时。
-6. recurrence: 识别重复周期。
+1. itemKind: 必须按上面的边界输出 todo/fixedSchedule/planBlock/needsConfirmation。
+2. title: 核心动作/事件。必须极度精简！必须去除口语化前缀（如"提醒我"、"帮我记一下"、"我要"）、去除时间和地点。
+3. location: fixedSchedule 的地点单独写入此字段；没有则为null。todo和planBlock的地点继续放在remark中并把location设为null。
+4. remark: 提取人物、携带物品等补充信息；todo和planBlock也在这里保留地点。地点词必须从title中彻底删除，若无补充信息设为null。
+5. 时间字段：todo 未安排时起止均为null；日期待办为当天00:00到23:59；截止待办为当天00:00到截止点。fixedSchedule 时间待定时用日期的00:00到23:59并设isAllDay=true；只有开始时刻时startTime为原时刻且endTime=null；明确区间才同时填写。planBlock必须有明确开始和结束。
+6. timeMode: 未安排为"unscheduled"；仅日期为"dateOnly"；待办单一截止时刻为"deadline"；明确开始—结束区间为"range"。固定日程只有开始时刻也使用"range"且endTime为null。
+7. recurrence: 识别重复周期。
    - 极其重要：只有当文本包含"每天"、"每周"、"每个[周几]"、"每月"、"每年"、"每隔X天"、"工作日"等表示【持续循环】的词时才设定。
    - 特别注意：类似"下周一"、"这周五"、"下个月1号"是指【特定的某一天】，不是重复事件，recurrence 必须设为 "none"。
-7. customIntervalDays: 仅限customDays时使用，否则为null。
-8. recurrenceEndDate: 循环截止日期，若无则null。
-9. reminderMinutes: 提前多少分钟提醒。
+   - 循环待办和循环日程都会生成多个可独立寻址的期次；这里只描述系列规则，不要自行生成多条JSON。
+   - 用户只说"每天/每周..."而没说首次发生日期时，保留recurrence，但起止时间设为null，让用户确认第一期；不得默认今天。
+8. customIntervalDays: 仅限customDays时使用，否则为null。
+9. recurrenceEndDate: 重复结束日期，若无则null。
+10. reminderMinutes: 提前多少分钟提醒。
    - 识别用户提到的"提前5分钟"、"提前半小时"、"提前1小时"、"准时提醒"等。
-   - 默认为 5。如果是"准时提醒"设为 0。
+   - todo和planBlock默认5，fixedSchedule默认15。如果是"准时提醒"设为0。
 
 【输出格式】
-如果输入包含多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。
-例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
+如果输入包含多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
+例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
 
 【重要约束】
 必须且只能返回纯JSON格式数组，绝对不要包含任何Markdown标记（如```json），确保能够直接被程序反序列化。
 
 待解析文本: "{input}"''';
 
-  static const String defaultVisionPrompt = '''你是一个专业的日程规划助手，请从图片中提取待办事项信息。
+  static const String defaultVisionPrompt =
+      '''你是一个专业的事项识别助手，请从图片中区分并提取待办、固定日程和规划块。
 
 【当前基准时间】
 {now}
 
 【任务】
-仔细观察图片，识别其中的日程、待办、会议、提醒等信息，并转换为结构化JSON。
+仔细观察图片，识别其中的日程、待办、会议、提醒等信息，并转换为结构化JSON。每条必须输出itemKind：todo表示要完成的结果；fixedSchedule表示外部决定时间的课程、考试、会议、预约、交通或演出；planBlock表示用户可调整的执行区间；无法判断的时间段用needsConfirmation。
 
 ===== 特殊场景：取餐码/取件码 =====
 极其重要！优先检测截图中的取餐码/取件码：
@@ -123,26 +136,41 @@ class LLMConfig {
      * 识别到具体品牌：如"肯德基取餐"、"顺丰取件"
      * 未识别具体品牌：外卖用"外卖取餐"，快递用"快递取件"，奶茶用"奶茶取餐"
    - remark: 取餐码/取件码的值
-   - isAllDay: true（默认全天事件）
-   - startTime: 当天"00:00"
-   - endTime: 当天"23:59"
+   - 这是需要用户完成领取动作的待办，不是固定日程
+   - 截图能可靠确认是当前已出餐/已到站通知且没有期限时：isAllDay=true，startTime为当天"00:00"，endTime为当天"23:59"
+   - 截图包含明确领取期限时，按期限设置日期待办或具体截止时刻
+   - 截图日期来源不可靠时，不得猜测今天，时间字段设为null
 
-===== 通用待办规则 =====
-1. title: 核心事件名称（如"开会"、"交作业"、"体检"）
-2. remark: 地点、备注等补充信息，没有则null
-3. isAllDay: 没有具体时间则为true
-4. startTime: 格式"YYYY-MM-DD HH:mm"，全天事件设为"00:00"
-5. endTime: 格式"YYYY-MM-DD HH:mm"，默认加1小时
-6. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
-7. customIntervalDays: 仅customDays时使用
-8. recurrenceEndDate: 循环截止日期
-9. reminderMinutes: 提前多少分钟提醒（默认 5）
+===== 通用事项规则 =====
+1. itemKind: 必须为todo/fixedSchedule/planBlock/needsConfirmation之一。会议、考试、课程、预约等不能静默输出为todo
+2. title: 核心事件名称（如"开会"、"交作业"、"体检"），去除时间和地点
+3. location: fixedSchedule的地点单独写入，没有则null；todo和planBlock设为null
+4. remark: 人物、携带物品等补充信息；todo和planBlock也在这里保留地点，没有则null
+5. 时间字段：todo沿用未安排/日期/截止语义；fixedSchedule时间待定时保留日期并设isAllDay=true，只有开始时刻时startTime为原时刻且endTime=null，明确区间才同时填写；planBlock必须有明确起止
+6. timeMode: 未安排为unscheduled；仅日期为dateOnly；待办单一截止时刻为deadline；明确区间及固定日程开始时刻为range
+7. recurrence: 重复规则（none/daily/weekly/monthly/yearly/weekdays/customDays）
+   - 循环只输出一条系列起始事项，不要为未来每一期重复输出JSON
+   - 图片未提供可靠首次日期时保留recurrence，但起止时间设为null并等待用户确认；不得猜测今天
+8. customIntervalDays: 仅customDays时使用
+9. recurrenceEndDate: 重复结束日期
+10. reminderMinutes: 提前多少分钟提醒（todo和planBlock默认5，fixedSchedule默认15）
 
 【输出格式】
-如果图片中有多个待办，请返回JSON数组；如果是单个待办，也请返回JSON数组（只有一个元素）。
-例如：[{"title":"xxx","remark":"xxx","isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null}]
+如果图片中有多个事项，请返回JSON数组；如果是单个事项，也请返回JSON数组（只有一个元素）。
+例如：[{"itemKind":"fixedSchedule","title":"项目会议","location":"第一会议室","remark":null,"isAllDay":false,"startTime":"YYYY-MM-DD HH:mm","endTime":"YYYY-MM-DD HH:mm","timeMode":"range","recurrence":"none","customIntervalDays":null,"recurrenceEndDate":null,"reminderMinutes":15}]
 
 必须且只能返回纯JSON数组格式，不要包含Markdown标记。''';
+
+  /// 追加到默认或自定义识别提示词末尾的强制语义护栏。
+  /// 用户仍可定制提取风格，但不能覆盖当前数据模型的类型与时间边界。
+  static const String itemSemanticGuardrailPrompt = '''
+【当前事项协议护栏（优先于前文，必须遵守）】
+每条JSON必须增加itemKind，值只能是todo、fixedSchedule、planBlock或needsConfirmation。
+todo是要完成的结果；fixedSchedule是课程、考试、会议、预约、交通等外部决定时间的占用；planBlock是用户可调整的执行区间；无法判断的时间段用needsConfirmation。
+不得把固定日程静默输出为todo，也不得把待办截止点自动扩展成一小时区间。
+todo无日期时保持未安排；fixedSchedule时间待定时保留日期且不捏造时刻，只有开始时刻时不得补结束时间；planBlock必须有明确起止。
+重复不等于习惯。没有首次发生日期时保留循环规则但时间留空，交给用户确认，禁止默认今天。
+fixedSchedule地点使用location字段；todo和planBlock地点放在remark。默认提醒：todo/planBlock为5分钟，fixedSchedule为15分钟。''';
 
   Map<String, dynamic> toJson() => {
         'provider': provider,
@@ -545,9 +573,11 @@ class LLMService {
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    final prompt = config.textPrompt
+    final resolvedPrompt = config.textPrompt
         .replaceAll('{now}', nowStr)
         .replaceAll('{input}', input);
+    final prompt =
+        '$resolvedPrompt\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
 
     final headers = {
       'Content-Type': 'application/json',
@@ -634,7 +664,9 @@ class LLMService {
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    final prompt = config.visionPrompt.replaceAll('{now}', nowStr);
+    final resolvedPrompt = config.visionPrompt.replaceAll('{now}', nowStr);
+    final prompt =
+        '$resolvedPrompt\n\n${LLMConfig.itemSemanticGuardrailPrompt}';
 
     final endpoint = await resolveVisionEndpoint(config.visionModel);
     final visionUrl = endpoint.url.isNotEmpty ? endpoint.url : config.apiUrl;
@@ -664,10 +696,6 @@ class LLMService {
       ],
       'temperature': 0.1,
     });
-
-    // 清理不再需要的变量
-    bytes.length; // 保持引用但不使用
-    base64Image.length;
 
     // print('========== LLM 图片识别请求 ==========');
     // print('API: $visionUrl');

@@ -93,12 +93,6 @@ class _TC {
 
   static Color divider(BuildContext c) => Theme.of(c).dividerColor;
 
-  static Color btnBg(BuildContext c) =>
-      Theme.of(c).colorScheme.surfaceContainerHighest;
-
-  static Color btnBorder(BuildContext c) =>
-      Theme.of(c).colorScheme.outlineVariant;
-
   static Color timeLabel(BuildContext c, {bool major = false}) => major
       ? Theme.of(c).colorScheme.onSurfaceVariant
       : Theme.of(c).colorScheme.onSurfaceVariant.withValues(alpha: 0.55);

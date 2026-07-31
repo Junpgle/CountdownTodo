@@ -345,9 +345,9 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     setState(() => _importingSemester = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(StorageService.KEY_SEMESTER_START,
+      await prefs.setString(StorageService.keySemesterStart,
           _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(StorageService.KEY_SEMESTER_END,
+      await prefs.setString(StorageService.keySemesterEnd,
           _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
@@ -627,6 +627,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ApiService.setServerChoice('aliyun');
       }
     }
+    if (!mounted) return;
 
     if (widget.isManualReview) {
       Navigator.pop(context);
@@ -668,7 +669,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                     .withValues(alpha: 0.3)),
           ),
           clipBehavior: Clip.antiAlias,
-          child: assetPath.toLowerCase().endsWith('.mp4') || assetPath.toLowerCase().endsWith('.webm')
+          child: assetPath.toLowerCase().endsWith('.mp4') ||
+                  assetPath.toLowerCase().endsWith('.webm')
               ? AssetVideoPlayer(assetPath: assetPath)
               : Image.asset(assetPath, fit: fit),
         ),
@@ -1651,7 +1653,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 onChanged: (val) {
                   setState(() => _semesterEnabled = val);
                   StorageService.saveAppSetting(
-                      StorageService.KEY_SEMESTER_PROGRESS_ENABLED, val);
+                      StorageService.keySemesterProgressEnabled, val);
                 },
               ),
               const Divider(height: 1, indent: 56),
@@ -1773,10 +1775,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (isStart) {
         await prefs.setString(
-            StorageService.KEY_SEMESTER_START, picked.toIso8601String());
+            StorageService.keySemesterStart, picked.toIso8601String());
       } else {
         await prefs.setString(
-            StorageService.KEY_SEMESTER_END, picked.toIso8601String());
+            StorageService.keySemesterEnd, picked.toIso8601String());
       }
     }
   }
@@ -1820,7 +1822,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 if (val != null) {
                   setState(() => _themeMode = val);
                   StorageService.saveAppSetting(
-                      StorageService.KEY_THEME_MODE, val);
+                      StorageService.keyThemeMode, val);
                   StorageService.themeNotifier.value = val;
                 }
               },

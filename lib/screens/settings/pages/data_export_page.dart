@@ -258,23 +258,32 @@ class _DataExportPageState extends State<DataExportPage> {
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            RadioListTile<bool>(
-              title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
-              subtitle: Text(AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
-              value: true,
+            RadioGroup<bool>(
               groupValue: _saveToFile,
-              onChanged: (v) => setState(() => _saveToFile = v!),
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (!AppPlatform.isWeb)
-              RadioListTile<bool>(
-                title: const Text('分享'),
-                subtitle: const Text('通过系统分享发送给其他应用'),
-                value: false,
-                groupValue: _saveToFile,
-                onChanged: (v) => setState(() => _saveToFile = v!),
-                contentPadding: EdgeInsets.zero,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _saveToFile = value);
+                }
+              },
+              child: Column(
+                children: [
+                  RadioListTile<bool>(
+                    title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
+                    subtitle: Text(
+                        AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
+                    value: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (!AppPlatform.isWeb)
+                    const RadioListTile<bool>(
+                      title: Text('分享'),
+                      subtitle: Text('通过系统分享发送给其他应用'),
+                      value: false,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ),

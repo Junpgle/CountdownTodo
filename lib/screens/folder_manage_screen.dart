@@ -23,7 +23,7 @@ class FolderManageScreen extends StatefulWidget {
   });
 
   @override
-  _FolderManageScreenState createState() => _FolderManageScreenState();
+  State<FolderManageScreen> createState() => _FolderManageScreenState();
 }
 
 class _FolderManageScreenState extends State<FolderManageScreen> {
@@ -207,8 +207,9 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       if (progressA != progressB) return progressB.compareTo(progressA);
 
       // 3. 截止日期比较
-      if (a.dueDate != null && b.dueDate != null)
+      if (a.dueDate != null && b.dueDate != null) {
         return a.dueDate!.compareTo(b.dueDate!);
+      }
       if (a.dueDate != null) return -1;
       if (b.dueDate != null) return 1;
       return 0;
@@ -323,6 +324,10 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
         builder: (ctx) => AddTodoScreen(
           todoGroups: _groups,
           initialGroupId: g.id,
+          onFixedScheduleAdded: (item) => StorageService.saveFixedSchedules(
+            widget.username,
+            [item],
+          ),
           onTodoAdded: (todo) {
             setState(() {
               _todos.add(todo);
@@ -395,21 +400,25 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                     : Colors.black.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
-                children:
-                    ['inline', 'separate', 'urgentFirst', 'hidden'].map((mode) {
-                  return RadioListTile<String>(
-                    value: mode,
-                    groupValue: _folderDisplayMode,
-                    onChanged: (value) {
-                      if (value == null) return;
-                      _setFolderDisplayMode(value);
-                    },
-                    title: Text(_folderModeLabel(mode),
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(_folderModeSubtitle(mode)),
-                  );
-                }).toList(),
+              child: RadioGroup<String>(
+                groupValue: _folderDisplayMode,
+                onChanged: (value) {
+                  if (value != null) {
+                    _setFolderDisplayMode(value);
+                  }
+                },
+                child: Column(
+                  children: ['inline', 'separate', 'urgentFirst', 'hidden']
+                      .map((mode) {
+                    return RadioListTile<String>(
+                      value: mode,
+                      title: Text(_folderModeLabel(mode),
+                          style:
+                              const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(_folderModeSubtitle(mode)),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
           ),

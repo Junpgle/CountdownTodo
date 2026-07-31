@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../services/permission_request_coordinator.dart';
-import '../../../utils/app_platform.dart';
 
 class PermissionHandler {
   final BuildContext context;

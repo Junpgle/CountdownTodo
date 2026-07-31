@@ -21,17 +21,22 @@ class ExternalShareHandler {
 
   /// 初始化监听，放在主页的 initState 中调用
   /// [onCourseImported] 课表导入成功回调
-  /// [onTodoRecognized] 图片识别待办回调，传入识别结果列表和图片路径
+  /// [onTodoRecognized] 图片识别事项回调，传入识别结果列表和图片路径
   static void init(
     BuildContext context,
     Function onCourseImported, {
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    final previousSubscription = _intentDataStreamSubscription;
+    if (previousSubscription != null) {
+      unawaited(previousSubscription.cancel());
+    }
 
     _intentDataStreamSubscription =
         ReceiveSharingIntent.instance.getMediaStream().listen(
       (List<SharedMediaFile> value) {
+        if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
             onTodoRecognized: onTodoRecognized, fromInitial: false);
       },
@@ -42,6 +47,7 @@ class ExternalShareHandler {
 
     ReceiveSharingIntent.instance.getInitialMedia().then(
       (List<SharedMediaFile> value) {
+        if (!context.mounted) return;
         _processSharedFiles(context, value, onCourseImported,
             onTodoRecognized: onTodoRecognized, fromInitial: true);
       },
@@ -78,14 +84,23 @@ class ExternalShareHandler {
     }
 
     ValueNotifier<String> statusNotifier = ValueNotifier("处理中...");
-    BuildContext? dialogContext;
+    NavigatorState? dialogNavigator;
+    var isDialogOpen = false;
+
+    void closeDialogSafely() {
+      final navigator = dialogNavigator;
+      if (!isDialogOpen || navigator == null || !navigator.mounted) return;
+      isDialogOpen = false;
+      navigator.pop();
+    }
 
     showDialog(
       context: context,
       barrierDismissible: false,
       useRootNavigator: true,
       builder: (ctx) {
-        dialogContext = ctx;
+        dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+        isDialogOpen = true;
         return AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -121,7 +136,7 @@ class ExternalShareHandler {
       final fileKey = await _generateFileKey(filePath);
       if (fromInitial && await _isFileProcessed(fileKey)) {
         // debugPrint("文件已处理过，跳过: $filePath");
-        _closeDialogSafely(dialogContext);
+        closeDialogSafely();
         ReceiveSharingIntent.instance.reset();
         _isProcessing = false;
         return;
@@ -132,14 +147,14 @@ class ExternalShareHandler {
       final isImage = imageExtensions.contains(ext);
 
       if (isImage) {
-        // 图片处理：调用大模型识别待办
+        // 图片处理：调用大模型识别事项并保留类型声明
         statusNotifier.value = "识别到图片\n正在压缩图片...";
 
         final config = await LLMService.getConfig();
         if (config == null || !config.isConfigured) {
           statusNotifier.value = "⚠️ 需要配置大模型API\n请在设置中配置后重试";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -149,7 +164,7 @@ class ExternalShareHandler {
           statusNotifier.value = "⚠️ 图片太大\n请分享小于20MB的图片";
           await NotificationService.cancelTodoRecognizeNotification();
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -181,11 +196,11 @@ class ExternalShareHandler {
           final results = await LLMService.parseTodoFromImage(compressedPath)
               .timeout(const Duration(seconds: 90));
 
-          statusNotifier.value = "✅ 识别成功！\n发现${results.length}个待办事项";
+          statusNotifier.value = "✅ 识别成功！\n发现${results.length}个事项";
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
 
           // 保存成功状态
           await StorageService.savePendingTodoConfirm(
@@ -201,7 +216,9 @@ class ExternalShareHandler {
           );
 
           // 通知首页刷新（dialog 已关闭）
-          if (onTodoRecognized != null && results.isNotEmpty) {
+          if (context.mounted &&
+              onTodoRecognized != null &&
+              results.isNotEmpty) {
             onTodoRecognized(results, filePath);
           }
         } catch (e) {
@@ -215,7 +232,7 @@ class ExternalShareHandler {
             // 有重试次数，启动后台重试
             statusNotifier.value = "首次识别失败\n正在后台重试...";
             await Future.delayed(const Duration(milliseconds: 500));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
 
             // 保存失败状态（首次尝试）
             await StorageService.updatePendingTodoConfirmStatus(
@@ -255,7 +272,7 @@ class ExternalShareHandler {
             );
 
             await Future.delayed(const Duration(seconds: 3));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
           }
         }
       } else {
@@ -267,7 +284,7 @@ class ExternalShareHandler {
         if (username == null || username.isEmpty) {
           statusNotifier.value = "❌ 未登录\n请先登录后再导入课表";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -276,16 +293,18 @@ class ExternalShareHandler {
         // 让用户选择目标学期
         final semesters = await StorageService.getSemesters();
         String targetSemesterId = 'default';
-        
+
         if (semesters.length > 1) {
-          _closeDialogSafely(dialogContext);
-          
+          closeDialogSafely();
+          if (!context.mounted) return;
+
           final selectedSemester = await showDialog<SemesterInfo>(
             context: context,
             builder: (ctx) {
               final colorScheme = Theme.of(ctx).colorScheme;
               return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 title: Row(
                   children: [
                     Icon(Icons.school_outlined, color: colorScheme.primary),
@@ -304,12 +323,14 @@ class ExternalShareHandler {
                           padding: const EdgeInsets.all(16),
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            border: Border.all(color: colorScheme.outlineVariant),
+                            border:
+                                Border.all(color: colorScheme.outlineVariant),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             children: [
-                              Icon(Icons.school_outlined, color: colorScheme.primary),
+                              Icon(Icons.school_outlined,
+                                  color: colorScheme.primary),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
@@ -317,12 +338,15 @@ class ExternalShareHandler {
                                   children: [
                                     Text(
                                       semester.name,
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       '开学: ${semester.startDate.month}/${semester.startDate.day}',
-                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -343,21 +367,24 @@ class ExternalShareHandler {
               );
             },
           );
-          
+
           if (selectedSemester == null) {
             return;
           }
           targetSemesterId = selectedSemester.id;
-          
+          if (!context.mounted) return;
+
           // 重新显示进度对话框
           showDialog(
             context: context,
             barrierDismissible: false,
             useRootNavigator: true,
             builder: (ctx) {
-              dialogContext = ctx;
+              dialogNavigator = Navigator.of(ctx, rootNavigator: true);
+              isDialogOpen = true;
               return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 content: Row(
                   children: [
                     const CircularProgressIndicator(),
@@ -366,7 +393,9 @@ class ExternalShareHandler {
                       child: ValueListenableBuilder<String>(
                         valueListenable: statusNotifier,
                         builder: (context, value, child) {
-                          return Text(value, style: const TextStyle(fontSize: 15, height: 1.4));
+                          return Text(value,
+                              style:
+                                  const TextStyle(fontSize: 15, height: 1.4));
                         },
                       ),
                     ),
@@ -391,11 +420,12 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importXidianScheduleFromIcs(
-              username, content, semStart, semesterId: targetSemesterId);
+              username, content, semStart,
+              semesterId: targetSemesterId);
         } else if (content.contains('timetable_con') ||
             content.contains('id="table1"')) {
           sourceName = "正方教务系统";
@@ -405,11 +435,12 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importZfSoftScheduleFromHtml(
-              username, content, semStart, semesterId: targetSemesterId);
+              username, content, semStart,
+              semesterId: targetSemesterId);
         } else if (['mhtml', 'html', 'htm'].contains(ext) ||
             content.contains('quoted-printable') ||
             content.toLowerCase().contains('<html')) {
@@ -420,22 +451,24 @@ class ExternalShareHandler {
           if (semStart == null) {
             statusNotifier.value = "⚠️ 导入中断\n请先在设置中配置【开学日期】";
             await Future.delayed(const Duration(seconds: 2));
-            _closeDialogSafely(dialogContext);
+            closeDialogSafely();
             return;
           }
           success = await CourseService.importXmuScheduleFromHtml(
-              username, content, semStart, semesterId: targetSemesterId);
+              username, content, semStart,
+              semesterId: targetSemesterId);
         } else if (['json', 'txt'].contains(ext) ||
             content.trim().startsWith('[') ||
             content.trim().startsWith('{')) {
           sourceName = "聚在工大";
           statusNotifier.value = "识别到: $sourceName\n正在导入...";
-          success =
-              await CourseService.importScheduleFromJson(username, content, semesterId: targetSemesterId);
+          success = await CourseService.importScheduleFromJson(
+              username, content,
+              semesterId: targetSemesterId);
         } else {
           statusNotifier.value = "❌ 未知的文件格式\n暂不支持解析该文件";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
           return;
         }
 
@@ -444,22 +477,23 @@ class ExternalShareHandler {
           // 标记文件为已处理，防止重复处理
           await _markFileProcessed(fileKey);
           await Future.delayed(const Duration(milliseconds: 800));
-          _closeDialogSafely(dialogContext);
-          onSuccess();
+          closeDialogSafely();
+          if (context.mounted) onSuccess();
         } else {
           statusNotifier.value = "❌ 导入失败\n课表解析错误或文件已损坏";
           await Future.delayed(const Duration(seconds: 2));
-          _closeDialogSafely(dialogContext);
+          closeDialogSafely();
         }
       }
     } catch (e) {
       // debugPrint("处理外部共享文件崩溃: $e");
       statusNotifier.value = "❌ 发生异常\n读取文件失败或格式崩溃";
       await Future.delayed(const Duration(seconds: 2));
-      _closeDialogSafely(dialogContext);
+      closeDialogSafely();
     } finally {
       ReceiveSharingIntent.instance.reset();
       _isProcessing = false;
+      statusNotifier.dispose();
     }
   }
 
@@ -484,12 +518,6 @@ class ExternalShareHandler {
     }
 
     return result.path;
-  }
-
-  static void _closeDialogSafely(BuildContext? dialogContext) {
-    if (dialogContext != null && dialogContext.mounted) {
-      Navigator.pop(dialogContext);
-    }
   }
 
   static Future<String> _safeReadFile(File file) async {
@@ -561,7 +589,7 @@ class ExternalShareHandler {
   /// [compressedPath] 压缩后的图片路径
   /// [fileKey] 文件唯一标识
   /// [maxRetries] 最大重试次数
-  /// [onTodoRecognized] 识别成功回调
+  /// [onTodoRecognized] 事项识别成功回调（名称为旧接口兼容保留）
   static void _startBackgroundRetry({
     required String filePath,
     required String compressedPath,
@@ -684,25 +712,25 @@ class ExternalShareHandler {
     }
   }
 
-  /// 检查是否有待确认的待办数据
+  /// 检查是否有待确认的事项数据
   /// 返回 null 表示没有待确认数据
   static Future<Map<String, dynamic>?> getPendingTodoConfirm() async {
     return await StorageService.getPendingTodoConfirm();
   }
 
-  /// 清除待确认的待办数据
+  /// 清除待确认的事项数据
   static Future<void> clearPendingTodoConfirm() async {
     await StorageService.clearPendingTodoConfirm();
   }
 
   /// 重试图片识别
-  /// [onTodoRecognized] 识别成功回调
+  /// [onTodoRecognized] 事项识别成功回调（名称为旧接口兼容保留）
   static Future<void> retryTodoRecognition({
     Function(List<Map<String, dynamic>>, String?)? onTodoRecognized,
   }) async {
     final pendingData = await StorageService.getPendingTodoConfirm();
     if (pendingData == null) {
-      // debugPrint("没有待确认的待办数据，无法重试");
+      // debugPrint("没有待确认的事项数据，无法重试");
       return;
     }
 
@@ -779,11 +807,11 @@ class ExternalShareHandler {
         // 识别结果为空
         await StorageService.updatePendingTodoConfirmStatus(
           status: 'failed',
-          errorMsg: '未识别到待办事项',
+          errorMsg: '未识别到可添加的事项',
         );
 
         await NotificationService.showTodoRecognizeFailed(
-          errorMsg: '未识别到待办事项',
+          errorMsg: '未识别到可添加的事项',
         );
 
         // 不通知首页刷新，让用户点击重试按钮来手动刷新

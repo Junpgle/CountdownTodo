@@ -46,7 +46,11 @@ class TodoRemoteViewsFactory(
             when (listType) {
                 0 -> { // Todos
                     val title = prefs.getString("todo_$i", "")
-                    if (!title.isNullOrEmpty()) {
+                    val visibleUntilMs =
+                        (prefs.all["todo_${i}_visible_until"] as? Number)?.toLong() ?: 0L
+                    val isVisible =
+                        visibleUntilMs <= 0L || System.currentTimeMillis() < visibleUntilMs
+                    if (!title.isNullOrEmpty() && isVisible) {
                         bundle.putString("title", title)
                         bundle.putBoolean("isDone", prefs.getBoolean("todo_${i}_done", false))
                         bundle.putString("id", prefs.getString("todo_${i}_id", ""))
