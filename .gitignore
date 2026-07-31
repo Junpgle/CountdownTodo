@@ -135,6 +135,15 @@ todo.md
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
+!/test/features/
+/test/features/*
+!/test/features/habits/
+/test/features/habits/*
+!/test/features/habits/habit_models_test.dart
+!/test/features/habits/habit_progress_calculator_test.dart
+!/test/features/habits/habit_rule_resolver_test.dart
+!/test/features/habits/habit_streak_service_test.dart
+!/test/features/habits/habit_repository_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md
