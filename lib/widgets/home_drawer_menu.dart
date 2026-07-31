@@ -14,6 +14,7 @@ class HomeDrawerMenu extends StatelessWidget {
   final VoidCallback onTimeline;
   final VoidCallback onScreenTime;
   final VoidCallback onPlanCenter;
+  final VoidCallback onHabits;
   final int teamPendingCount;
   final bool hasTeamConflictDot;
 
@@ -29,6 +30,7 @@ class HomeDrawerMenu extends StatelessWidget {
     required this.onTimeline,
     required this.onScreenTime,
     required this.onPlanCenter,
+    required this.onHabits,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
   });
@@ -237,6 +239,15 @@ class HomeDrawerMenu extends StatelessWidget {
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
                               onPlanCenter();
+                            },
+                          ),
+                          _buildMenuItem(
+                            context,
+                            icon: Icons.repeat_rounded,
+                            title: '习惯中心',
+                            onTap: () {
+                              ZoomDrawer.of(context)?.close();
+                              onHabits();
                             },
                           ),
                         ],

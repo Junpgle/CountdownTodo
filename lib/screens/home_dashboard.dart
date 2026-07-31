@@ -68,6 +68,8 @@ import '../widgets/course_section_widget.dart';
 import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
+import '../features/habits/screens/habit_center_screen.dart';
+import '../features/habits/widgets/habit_today_section.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
@@ -146,6 +148,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     'math': true,
     'pomodoro': true,
     'timeline': true,
+    'habits': true,
   };
   Timer? _courseTimer;
   final Set<String> _coursesWithScheduledAlarms = {};
@@ -180,6 +183,7 @@ class _HomeDashboardState extends State<HomeDashboard>
   final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
+  final ValueNotifier<int> _habitsRevision = ValueNotifier<int>(0);
 
   Future<void> _extractColorFromProvider(
       ImageProvider provider, String url) async {
@@ -2767,7 +2771,7 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
 
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['banners', 'countdowns', 'todos'];
+    _leftSections = ['banners', 'countdowns', 'habits', 'todos'];
     _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
@@ -2780,6 +2784,7 @@ class _HomeDashboardState extends State<HomeDashboard>
       'math': true,
       'pomodoro': true,
       'timeline': true,
+      'habits': true,
     };
 
     String? noCourseBehav = prefs.getString('no_course_behavior');
@@ -2808,6 +2813,7 @@ class _HomeDashboardState extends State<HomeDashboard>
         _scheduleRevision.value++;
         _timelineRevision.value++;
         _pomodoroRevision.value++;
+        _habitsRevision.value++;
       }
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
@@ -4993,6 +4999,31 @@ class _HomeDashboardState extends State<HomeDashboard>
                                       'math': mathSection,
                                       'pomodoro': pomodoroSection,
                                       'timeline': timelineSection,
+                                      'habits': RepaintBoundary(
+                                        child: ValueListenableBuilder<int>(
+                                          valueListenable: _habitsRevision,
+                                          builder: (context, trigger, _) {
+                                            return HabitTodaySection(
+                                              username: widget.username,
+                                              isLight: isLight,
+                                              refreshTrigger: trigger,
+                                              onTap: () async {
+                                                await Navigator.of(context)
+                                                    .push(
+                                                  PageTransitions.material(
+                                                    builder: (_) =>
+                                                        HabitCenterScreen(
+                                                      username: widget.username,
+                                                    ),
+                                                  ),
+                                                );
+                                                _habitsRevision.value++;
+                                                _loadAllData();
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
                                     };
 
                                     bool isCourseEmpty =
@@ -5048,6 +5079,7 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         'countdowns',
                                         'courses',
                                         'todos',
+                                        'habits',
                                       ];
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
@@ -5452,6 +5484,18 @@ class _HomeDashboardState extends State<HomeDashboard>
               sourceKey: GlobalKey(),
             );
             _loadSemesterSettings();
+            _loadAllData(deferred: true);
+          });
+        },
+        onHabits: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: HabitCenterScreen(username: widget.username),
+              sourceKey: GlobalKey(),
+            );
+            _habitsRevision.value++;
             _loadAllData(deferred: true);
           });
         },

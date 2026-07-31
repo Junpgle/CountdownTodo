@@ -1,0 +1,943 @@
+import 'package:flutter/material.dart';
+
+import '../models/habit_checkin.dart';
+import '../models/habit_goal.dart';
+import '../models/habit_goal_rule.dart';
+import '../models/habit_progress.dart';
+import '../repositories/habit_repository.dart';
+import '../services/habit_progress_calculator.dart';
+import '../services/habit_rule_resolver.dart';
+import '../services/habit_source_resolver.dart';
+import '../services/habit_streak_service.dart';
+import '../widgets/habit_card.dart';
+import '../widgets/habit_format.dart';
+import '../../../screens/pomodoro_screen.dart';
+import '../../../services/pomodoro_control_service.dart';
+import '../../../services/pomodoro_service.dart';
+import '../../../utils/page_transitions.dart';
+import 'habit_edit_screen.dart';
+
+/// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
+///
+/// 有变更时 pop(true)，由调用方触发刷新。
+class HabitDetailScreen extends StatefulWidget {
+  final HabitGoal goal;
+  final String username;
+
+  const HabitDetailScreen({
+    super.key,
+    required this.goal,
+    this.username = '',
+  });
+
+  @override
+  State<HabitDetailScreen> createState() => _HabitDetailScreenState();
+}
+
+class _HabitDetailScreenState extends State<HabitDetailScreen> {
+  late HabitGoal _goal;
+  List<HabitGoalRuleRevision> _rules = [];
+  HabitProgress? _todayProgress;
+  HabitStreakSummary? _summary;
+  List<HabitCheckIn> _todayCheckIns = [];
+  List<PomodoroRecord> _todayFocusRecords = [];
+  bool _loading = true;
+  String _backfillValueText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _goal = widget.goal;
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    final rules = await HabitRepository.getRules(habitUuid: _goal.uuid);
+    final today = DateTime.now();
+    final progress = rules.isEmpty
+        ? null
+        : await HabitProgressCalculator.computePeriod(
+            habit: _goal,
+            rules: rules,
+            logicalDate: today,
+          );
+    final summary = rules.isEmpty
+        ? null
+        : await HabitStreakService.summarize(habit: _goal, rules: rules);
+    final checkIns = progress?.checkIns ?? const <HabitCheckIn>[];
+    // 时长型：今日专注记录（按绑定标签过滤）。
+    final focusRecords = _goal.sourceType == HabitSourceType.pomodoroTag
+        ? await HabitSourceResolver.recordsForTags(
+            tagUuids: _goal.sourceIds,
+            from: DateTime(today.year, today.month, today.day),
+            to: DateTime(today.year, today.month, today.day)
+                .add(const Duration(days: 1)),
+          )
+        : const <PomodoroRecord>[];
+
+    if (mounted) {
+      setState(() {
+        _rules = rules;
+        _todayProgress = progress;
+        _summary = summary;
+        _todayCheckIns = checkIns;
+        _todayFocusRecords = focusRecords;
+        _loading = false;
+      });
+    }
+  }
+
+  HabitGoalRuleRevision get _rule {
+    final rule = HabitRuleResolver.effectiveRule(_rules, DateTime.now());
+    return rule ??
+        HabitGoalRuleRevision(
+          habitUuid: _goal.uuid,
+          effectiveFromDate: '',
+          periodType: HabitPeriodType.daily,
+        );
+  }
+
+  Future<void> _editHabit() async {
+    final changed = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => HabitEditScreen(goal: _goal)),
+    );
+    if (changed == true && mounted) {
+      _loadData();
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  Future<void> _toggleArchive() async {
+    await HabitRepository.setArchived(_goal, !_goal.isArchived);
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _deleteHabit() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除习惯'),
+        content: Text('确定删除「${_goal.name}」吗？历史记录将保留但不再展示。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await HabitRepository.deleteGoal(_goal);
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_goal.name),
+        centerTitle: false,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'edit':
+                  _editHabit();
+                case 'archive':
+                  _toggleArchive();
+                case 'delete':
+                  _deleteHabit();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'edit', child: Text('编辑习惯')),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text(_goal.isArchived ? '取消归档' : '归档习惯'),
+              ),
+              const PopupMenuItem(value: 'delete', child: Text('删除习惯')),
+            ],
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 840),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    _buildHeader(colorScheme),
+                    if (_todayProgress != null) ...[
+                      const SizedBox(height: 16),
+                      _buildTodayCard(colorScheme),
+                    ],
+                    if (_todayCheckIns.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _buildRecordSection(colorScheme),
+                    ],
+                    if (_todayFocusRecords.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _buildFocusRecordSection(colorScheme),
+                    ],
+                    const SizedBox(height: 20),
+                    _buildRuleSection(colorScheme),
+                    if (_summary != null) ...[
+                      const SizedBox(height: 20),
+                      _buildSummarySection(colorScheme),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  // ── 头部：图标 + 连续 ────────────────────────────────
+  Widget _buildHeader(ColorScheme colorScheme) {
+    return Row(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            _goal.icon.isNotEmpty ? _goal.icon : '🎯',
+            style: const TextStyle(fontSize: 30),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _goal.name,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                HabitText.periodLabel(_rule),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_summary != null && _summary!.currentStreak > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: colorScheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.local_fire_department_rounded,
+                    size: 16, color: colorScheme.tertiary),
+                const SizedBox(width: 4),
+                Text(
+                  '连续 ${_summary!.currentStreak}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 今日进度卡 ──────────────────────────────────────
+  Widget _buildTodayCard(ColorScheme colorScheme) {
+    final progress = _todayProgress!;
+    final dayProgress = HabitDayProgress(
+      habit: _goal,
+      logicalDate: DateTime.now(),
+      status: progress.dayStatus,
+      progress: progress,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitCard(
+          goal: _goal,
+          rule: _rule,
+          dayProgress: dayProgress,
+          username: widget.username,
+          onChanged: _loadData,
+          onStartFocus: (_) => _startFocus(),
+          onViewRecords: () {},
+        ),
+        if (_goal.sourceType == HabitSourceType.quantityCheckIn ||
+            _goal.sourceType == HabitSourceType.timeCheckIn)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _editRecord(_todayCheckIns.lastOrNull),
+                    icon: const Icon(Icons.edit_rounded, size: 16),
+                    label: const Text('编辑记录'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _addBackfill,
+                    icon: const Icon(Icons.history_rounded, size: 16),
+                    label: const Text('补录'),
+                  ),
+                ),
+                if (_todayCheckIns.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await HabitRepository.deleteCheckIn(
+                          _todayCheckIns.last,
+                        );
+                        _loadData();
+                      },
+                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                      label: const Text('删除记录'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 今日专注记录（时长型）────────────────────────────
+  Widget _buildFocusRecordSection(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '今日专注（${_todayFocusRecords.length}）',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final record in _todayFocusRecords)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.timer_rounded, size: 18, color: colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        HabitText.formatDuration(
+                            record.actualDuration ?? record.plannedDuration),
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      if (record.note?.isNotEmpty == true)
+                        Text(
+                          record.note!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Text(
+                  HabitText.timeOfDay(
+                    DateTime.fromMillisecondsSinceEpoch(record.startTime)
+                        .toLocal(),
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 今日记录列表 ────────────────────────────────────
+  Widget _buildRecordSection(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '今日记录（${_todayCheckIns.length}）',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final checkIn in _todayCheckIns)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _goal.sourceType == HabitSourceType.timeCheckIn
+                      ? Icons.schedule_rounded
+                      : Icons.add_circle_outline_rounded,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _recordMainText(checkIn),
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      if (checkIn.note?.isNotEmpty == true)
+                        Text(
+                          checkIn.note!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Text(
+                  HabitText.timeOfDay(
+                      DateTime.fromMillisecondsSinceEpoch(checkIn.occurredAt)
+                          .toLocal()),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _recordMainText(HabitCheckIn checkIn) {
+    if (_goal.sourceType == HabitSourceType.timeCheckIn) {
+      return '打卡 ${HabitText.timeOfDay(DateTime.fromMillisecondsSinceEpoch(checkIn.occurredAt).toLocal())}';
+    }
+    final value = checkIn.value;
+    final text = value == value.roundToDouble()
+        ? value.round().toString()
+        : value.toString();
+    final unit = _rule.unit;
+    return '记录 $text${unit.isNotEmpty ? ' $unit' : ''}';
+  }
+
+  Future<void> _editRecord(HabitCheckIn? checkIn) async {
+    if (checkIn == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('今天还没有记录')),
+      );
+      return;
+    }
+    final valueController = TextEditingController(
+      text: checkIn.value == checkIn.value.roundToDouble()
+          ? checkIn.value.round().toString()
+          : checkIn.value.toString(),
+    );
+    final noteController = TextEditingController(text: checkIn.note ?? '');
+    final isTimeType = _goal.sourceType == HabitSourceType.timeCheckIn;
+    var editedTime = checkIn.localOccurredAt;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(isTimeType ? '编辑打卡时间' : '编辑记录'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isTimeType)
+                TextField(
+                  controller: valueController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText:
+                        '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                )
+              else
+                FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(editedTime),
+                      helpText: '实际发生时间',
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        editedTime = DateTime(
+                          editedTime.year,
+                          editedTime.month,
+                          editedTime.day,
+                          picked.hour,
+                          picked.minute,
+                        );
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.schedule_rounded, size: 18),
+                  label: Text(
+                    '实际时间：${HabitText.timeOfDay(editedTime)}',
+                  ),
+                ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteController,
+                maxLength: 50,
+                decoration: const InputDecoration(
+                  labelText: '备注（可选）',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  counterText: '',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    if (isTimeType) {
+      // 修改实际发生时间：重算逻辑日期与时区偏移（设计文档 7.4 / 8.2）。
+      checkIn
+        ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
+        ..logicalDate = HabitRuleResolver.dayKey(
+          HabitRuleResolver.logicalDateFor(editedTime, _rule.dayBoundaryMinute),
+        )
+        ..timezoneOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
+    } else {
+      final value = double.tryParse(valueController.text.trim());
+      if (value == null || value <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请输入有效的数量')),
+        );
+        return;
+      }
+      checkIn.value = value;
+    }
+    checkIn.note =
+        noteController.text.trim().isEmpty ? null : noteController.text.trim();
+    await HabitRepository.updateCheckIn(checkIn);
+    _loadData();
+  }
+
+  /// 补录：选择任意日期时间新增一条打卡。
+  Future<void> _addBackfill() async {
+    final now = DateTime.now();
+    var date = now;
+    var time = TimeOfDay.fromDateTime(now);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('补录打卡'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_today_rounded),
+                title: Text(
+                  '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+                  '${date.day.toString().padLeft(2, '0')}',
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: date,
+                    firstDate: now.subtract(const Duration(days: 90)),
+                    lastDate: now,
+                  );
+                  if (picked != null) {
+                    setDialogState(() {
+                      date = DateTime(picked.year, picked.month, picked.day,
+                          time.hour, time.minute);
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.schedule_rounded),
+                title: Text(
+                  '时间：${time.hour.toString().padLeft(2, '0')}:'
+                  '${time.minute.toString().padLeft(2, '0')}',
+                ),
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: time,
+                  );
+                  if (picked != null) {
+                    setDialogState(() {
+                      time = picked;
+                      date = DateTime(date.year, date.month, date.day,
+                          picked.hour, picked.minute);
+                    });
+                  }
+                },
+              ),
+              if (_goal.sourceType == HabitSourceType.quantityCheckIn) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: TextEditingController(),
+                  onChanged: (v) => _backfillValueText = v,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText:
+                        '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('补录'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    double value = 0;
+    if (_goal.sourceType == HabitSourceType.quantityCheckIn) {
+      final parsed = double.tryParse(_backfillValueText.trim());
+      if (parsed == null || parsed <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请输入有效的数量')),
+        );
+        return;
+      }
+      value = parsed;
+    }
+    await HabitRepository.addCheckIn(
+      goal: _goal,
+      rule: _rule,
+      localOccurredAt: date,
+      value: value,
+    );
+    _loadData();
+  }
+
+  /// 时长型：启动专注并跳转番茄钟，默认时长为习惯设置的默认时长。
+  Future<void> _startFocus() async {
+    final goal = _goal;
+    final tagUuids = goal.sourceType == HabitSourceType.pomodoroTag
+        ? goal.sourceIds
+        : const <String>[];
+    final running = await PomodoroService.loadRunState();
+    if (running != null &&
+        (running.phase == PomodoroPhase.focusing ||
+            running.phase == PomodoroPhase.breaking)) {
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => PomodoroScreen(username: widget.username),
+        ),
+      );
+      return;
+    }
+    try {
+      final settings = await PomodoroService.getSettings();
+      await PomodoroControlService.startFocus(
+        settings: settings,
+        tagUuids: tagUuids,
+        durationMinutes: goal.defaultFocusMinutes,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        PageTransitions.material(
+          builder: (_) => PomodoroScreen(username: widget.username),
+        ),
+      );
+      if (mounted) _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动专注失败: $e')),
+      );
+    }
+  }
+
+  // ── 目标信息 ────────────────────────────────────────
+  Widget _buildRuleSection(ColorScheme colorScheme) {
+    final rule = _rule;
+    final items = <(String, String)>[
+      ('周期', HabitText.periodLabel(rule)),
+      ('类型', HabitText.sourceTypeLabel(_goal.sourceType)),
+    ];
+    switch (_goal.sourceType) {
+      case HabitSourceType.recurringTodo:
+        break;
+      case HabitSourceType.pomodoroTag:
+        items.add(('目标', '${(rule.targetValue / 60).round()} 分钟 / 周期'));
+      case HabitSourceType.quantityCheckIn:
+        final target = rule.targetValue;
+        final text = target == target.roundToDouble()
+            ? target.round().toString()
+            : target.toString();
+        items.add(('目标', '$text ${rule.unit}'));
+        if (rule.quickValues.isNotEmpty) {
+          items.add(('快捷', rule.quickValues.join('、')));
+        }
+      case HabitSourceType.timeCheckIn:
+        items.add(('目标', HabitText.targetTime(rule.targetTimeMinute)));
+        items.add((
+          '条件',
+          '${rule.timeComparison == HabitTimeComparison.before ? '早于' : '晚于'} '
+              '${HabitText.targetTime(rule.targetTimeMinute)}'
+              '${rule.timeToleranceMinutes > 0 ? '（±${rule.timeToleranceMinutes} 分钟）' : ''}',
+        ));
+        if (rule.dayBoundaryMinute > 0) {
+          items.add(
+              ('日期分界', HabitText.dayBoundaryLabel(rule.dayBoundaryMinute)));
+        }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '目标信息',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              for (final (label, value) in items)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── 统计 ────────────────────────────────────────────
+  Widget _buildSummarySection(ColorScheme colorScheme) {
+    final summary = _summary!;
+    final unit = _periodUnit();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '近 30 周期统计',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _statCell('最长连续', '${summary.longestStreak} $unit'),
+                  ),
+                  Expanded(
+                    child: _statCell('完成率 7', _percent(summary.rate7)),
+                  ),
+                  Expanded(
+                    child: _statCell('完成率 30', _percent(summary.rate30)),
+                  ),
+                  Expanded(
+                    child: _statCell(
+                      '计划',
+                      '${summary.completedCount}/${summary.plannedCount}',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 8,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: summary.rate30.clamp(0.0, 1.0),
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation(colorScheme.tertiary),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCell(String label, String value) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _periodUnit() {
+    switch (_rule.periodType) {
+      case HabitPeriodType.weekly:
+        return '周';
+      case HabitPeriodType.monthly:
+        return '月';
+      default:
+        return '天';
+    }
+  }
+
+  String _percent(double value) => '${(value * 100).round()}%';
+}
