@@ -116,6 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
     ];
     final interconnectTargets = [
       'lan_sync',
+      'mcp',
       'band_sync',
       'calendar_sync',
       'batch_tag',
@@ -1062,8 +1063,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const Icon(Icons.devices_outlined, color: Colors.blue),
                   title: const Text('数据与互联'),
                   subtitle: Text(AppPlatform.isWeb
-                      ? '浏览器导入导出、ICS 日历文件与批量标签'
-                      : '局域网同步、手环、日历双向同步'),
+                      ? '浏览器导入导出、MCP 说明与 ICS 日历文件'
+                      : '局域网同步、MCP、手环与日历同步'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                       context,

@@ -64,6 +64,15 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'lan_sync'},
     ),
     SearchResult(
+      id: 'setting_mcp',
+      title: 'MCP / 模型上下文协议 / 外部 AI 接入',
+      subtitle: '让兼容的 AI 客户端读取或管理个人待办',
+      icon: Icons.hub_outlined,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 数据与互联',
+      extraData: {'route': '/settings', 'target': 'mcp'},
+    ),
+    SearchResult(
       id: 'setting_animation',
       title: '动画效果 / 界面动效',
       subtitle: '调整应用转场与视觉效果',
