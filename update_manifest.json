@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "5.4.21",
+  "version_name": "5.5.27",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 5.4.21",
-    "description": "【同步】网页介绍同步最新多端适配情况\n【修复】Flutter Web 无法加载人机验证的问题\n【新增】macOS菜单栏图标支持在设置中关闭\n【优化】循环待办不展示在周视图的问题\n【修复】macOS 菜单栏番茄钟图标丢失的问题\n【新增】全新的权限管理器\n【优化】循环待办逾期滚动展示\n【优化】通知展示逻辑\n【优化】循环待办全新UI，更直观更明确\n【优化】番茄钟、专注记录、时间日志、规划内的循环待办统一展示\n【新增】Mac适配灵动岛\n【新增】完善和丰富Mac灵动岛\n【新增】新增快捷键支持快速隐藏Mac灵动岛，防止遮挡\n【优化】灵动岛动画形态，剪贴板快速跳转网址\n【新增】灵动岛适配Mac网易云播放，支持歌词展示\n【优化】权限管理新UI",
+    "title": "版本更新 5.5.27",
+    "description": "v5.5\n【修复】循环待办在同步时被异常拆分的问题\n【重构】重构一些代码\n【优化】个人总结界面针对循环待办（习惯）做优化\n【新增】支持查看当前数据库版本\n【重构】重构待办语义\n【优化】增加待办界面\n【优化】macOS灵动岛闲置状态显示内容\n【修复】循环待办同步相互覆盖的问题\n【新增】Mac、Android桌面小组件新增“循环待办”\n【新增】支持本地 MCP 待办服务\n【优化】AI适配待办与日程语义",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -38,6 +38,22 @@
   },
   "changelog_history": [
     {
+      "version_name": "5.5.27",
+      "date": "2026-07-31",
+      "items": [
+        "【修复】循环待办在同步时被异常拆分的问题",
+        "【重构】重构一些代码",
+        "【优化】个人总结界面针对循环待办（习惯）做优化",
+        "【新增】支持查看当前数据库版本",
+        "【重构】重构待办语义",
+        "【优化】增加待办界面",
+        "【优化】macOS灵动岛闲置状态显示内容",
+        "【修复】循环待办同步相互覆盖的问题",
+        "【新增】Mac、Android桌面小组件新增“循环待办”",
+        "【新增】支持本地 MCP 待办服务 Beta",
+        "【优化】AI适配待办与日程语义"
+      ]
+    },{
       "version_name": "5.4.21",
       "date": "2026-07-17",
       "items": [
