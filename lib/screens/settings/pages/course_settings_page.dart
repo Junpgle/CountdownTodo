@@ -215,12 +215,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           ? DateTime(_semesterEnd!.year, _semesterEnd!.month, _semesterEnd!.day)
               .millisecondsSinceEpoch
           : null;
-      
+
       // 准备多学期数据
       final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
-      
+
       await ApiService.uploadUserSettings(
-          semesterStartMs: startMs, semesterEndMs: endMs, semesters: semestersData);
+          semesterStartMs: startMs,
+          semesterEndMs: endMs,
+          semesters: semestersData);
     }
 
     if (!mounted) return;
@@ -272,14 +274,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           await prefs.setString(
               StorageService.keySemesterEnd, _semesterEnd!.toIso8601String());
         }
-        
+
         // 处理多学期数据
-        if (userSettings['semesters'] != null && userSettings['semesters'] is List) {
+        if (userSettings['semesters'] != null &&
+            userSettings['semesters'] is List) {
           final semestersList = userSettings['semesters'] as List;
           final cloudSemesters = semestersList
-              .map((s) => SemesterInfo.fromCloudJson(Map<String, dynamic>.from(s)))
+              .map((s) =>
+                  SemesterInfo.fromCloudJson(Map<String, dynamic>.from(s)))
               .toList();
-          
+
           if (cloudSemesters.isNotEmpty) {
             await StorageService.saveSemesters(cloudSemesters);
             if (!mounted) return;
@@ -303,51 +307,54 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           return;
         }
 
-        final courses = data.map<CourseItem?>((c) {
-          final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
-          final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
-          final String semesterId = c['semester'] ?? 'default';
+        final courses = data
+            .map<CourseItem?>((c) {
+              final int weekIndex = (c['week_index'] as num?)?.toInt() ?? 1;
+              final int weekday = (c['weekday'] as num?)?.toInt() ?? 1;
+              final String semesterId = c['semester'] ?? 'default';
 
-          // 根据学期ID找到对应的开学日期
-          DateTime? semesterStartForCourse;
-          for (final s in _semesters) {
-            if (s.id == semesterId) {
-              semesterStartForCourse = s.startDate;
-              break;
-            }
-          }
-          // 如果找不到对应的学期，使用当前的开学日期
-          semesterStartForCourse ??= _semesterStart;
-          
-          if (semesterStartForCourse == null) return null;
+              // 根据学期ID找到对应的开学日期
+              DateTime? semesterStartForCourse;
+              for (final s in _semesters) {
+                if (s.id == semesterId) {
+                  semesterStartForCourse = s.startDate;
+                  break;
+                }
+              }
+              // 如果找不到对应的学期，使用当前的开学日期
+              semesterStartForCourse ??= _semesterStart;
 
-          final DateTime semesterMonday = semesterStartForCourse
-              .subtract(Duration(days: semesterStartForCourse.weekday - 1));
+              if (semesterStartForCourse == null) return null;
 
-          final DateTime courseDate = semesterMonday
-              .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
-          final String dateStr = DateFormat('yyyy-MM-dd').format(courseDate);
+              final DateTime semesterMonday = semesterStartForCourse
+                  .subtract(Duration(days: semesterStartForCourse.weekday - 1));
 
-          return CourseItem(
-            courseName: c['course_name'] ?? '',
-            roomName: c['room_name'] ?? '',
-            teacherName: c['teacher_name'] ?? '',
-            startTime: (c['start_time'] as num?)?.toInt() ?? 0,
-            endTime: (c['end_time'] as num?)?.toInt() ?? 0,
-            weekday: weekday,
-            weekIndex: weekIndex,
-            lessonType: c['lesson_type'] ?? '',
-            date: dateStr,
-            semesterId: semesterId, // 使用课程本身的学期ID
-          );
-        }).whereType<CourseItem>().toList();
+              final DateTime courseDate = semesterMonday
+                  .add(Duration(days: (weekIndex - 1) * 7 + (weekday - 1)));
+              final String dateStr =
+                  DateFormat('yyyy-MM-dd').format(courseDate);
+
+              return CourseItem(
+                courseName: c['course_name'] ?? '',
+                roomName: c['room_name'] ?? '',
+                teacherName: c['teacher_name'] ?? '',
+                startTime: (c['start_time'] as num?)?.toInt() ?? 0,
+                endTime: (c['end_time'] as num?)?.toInt() ?? 0,
+                weekday: weekday,
+                weekIndex: weekIndex,
+                lessonType: c['lesson_type'] ?? '',
+                date: dateStr,
+                semesterId: semesterId, // 使用课程本身的学期ID
+              );
+            })
+            .whereType<CourseItem>()
+            .toList();
 
         // 检测冲突并让用户选择导入模式
         final conflicts =
             await CourseService.detectTimeConflicts(_username, courses);
         if (!mounted) return;
-        final ImportMode? mode =
-            await _askCloudImportMode(courses, conflicts);
+        final ImportMode? mode = await _askCloudImportMode(courses, conflicts);
         if (mode == null) return;
 
         if (mode == ImportMode.merge) {
@@ -389,8 +396,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           }
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.warning_amber_rounded, color: Colors.orange),
@@ -455,8 +462,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
               children: [
                 Icon(Icons.cloud_download_outlined),
@@ -514,8 +521,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.merge_rounded,
-                            color: colorScheme.primary),
+                        Icon(Icons.merge_rounded, color: colorScheme.primary),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -604,7 +610,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   ..._semesters.map((semester) => _buildSemesterTile(semester)),
                 // 添加新学期按钮
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 6.0),
                   child: OutlinedButton.icon(
                     onPressed: _showAddSemesterDialog,
                     icon: const Icon(Icons.add),
@@ -620,7 +627,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                 // 清除学期课程数据按钮
                 if (_semesters.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 4.0),
                     child: TextButton.icon(
                       onPressed: _showClearSemesterCoursesDialog,
                       icon: const Icon(Icons.delete_outline, size: 18),
@@ -927,14 +935,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isActive 
-              ? colorScheme.primary.withValues(alpha: 0.5) 
+          color: isActive
+              ? colorScheme.primary.withValues(alpha: 0.5)
               : theme.dividerColor.withValues(alpha: 0.5),
         ),
       ),
       child: Material(
-        color: isActive 
-            ? colorScheme.primary.withValues(alpha: 0.1) 
+        color: isActive
+            ? colorScheme.primary.withValues(alpha: 0.1)
             : (isDark ? Colors.grey.shade900 : Colors.grey.shade100),
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
@@ -942,12 +950,13 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
           onTap: () {
             if (!isActive) _activateSemester(semester);
           },
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isActive 
-                  ? colorScheme.primary.withValues(alpha: 0.2) 
+              color: isActive
+                  ? colorScheme.primary.withValues(alpha: 0.2)
                   : Colors.grey.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
@@ -972,11 +981,13 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.calendar_today_outlined, size: 14, color: Colors.grey.shade500),
+                    Icon(Icons.calendar_today_outlined,
+                        size: 14, color: Colors.grey.shade500),
                     const SizedBox(width: 6),
                     Text(
                       '开学: ${DateFormat('yyyy/MM/dd').format(semester.startDate)}',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 13, color: Colors.grey.shade600),
                     ),
                   ],
                 ),
@@ -984,11 +995,13 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.flight_takeoff_outlined, size: 14, color: Colors.grey.shade500),
+                      Icon(Icons.flight_takeoff_outlined,
+                          size: 14, color: Colors.grey.shade500),
                       const SizedBox(width: 6),
                       Text(
                         '放假: ${DateFormat('yyyy/MM/dd').format(semester.endDate!)}',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade600),
                       ),
                     ],
                   ),
@@ -996,9 +1009,16 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                   Builder(
                     builder: (context) {
                       final now = DateTime.now();
-                      final start = DateTime(semester.startDate.year, semester.startDate.month, semester.startDate.day);
-                      final end = DateTime(semester.endDate!.year, semester.endDate!.month, semester.endDate!.day, 23, 59, 59);
-                      
+                      final start = DateTime(semester.startDate.year,
+                          semester.startDate.month, semester.startDate.day);
+                      final end = DateTime(
+                          semester.endDate!.year,
+                          semester.endDate!.month,
+                          semester.endDate!.day,
+                          23,
+                          59,
+                          59);
+
                       double progress = 0.0;
                       if (now.isAfter(end)) {
                         progress = 1.0;
@@ -1007,9 +1027,9 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                         final elapsed = now.difference(start).inMilliseconds;
                         progress = (elapsed / total).clamp(0.0, 1.0);
                       }
-                      
+
                       final percent = (progress * 100).toInt();
-                      
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1017,16 +1037,22 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             children: [
                               Text(
                                 '学期进度',
-                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.bold),
                               ),
                               const Spacer(),
                               Text(
                                 '$percent%',
                                 style: TextStyle(
-                                  fontSize: 11, 
-                                  color: progress == 1.0 ? Colors.green : (isActive ? colorScheme.primary : Colors.grey.shade600), 
-                                  fontWeight: FontWeight.bold
-                                ),
+                                    fontSize: 11,
+                                    color: progress == 1.0
+                                        ? Colors.green
+                                        : (isActive
+                                            ? colorScheme.primary
+                                            : Colors.grey.shade600),
+                                    fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -1036,11 +1062,14 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             child: LinearProgressIndicator(
                               value: progress,
                               minHeight: 6,
-                              backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                              backgroundColor:
+                                  Colors.grey.withValues(alpha: 0.2),
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                progress == 1.0 
-                                  ? Colors.green 
-                                  : (isActive ? colorScheme.primary : Colors.blue.shade400),
+                                progress == 1.0
+                                    ? Colors.green
+                                    : (isActive
+                                        ? colorScheme.primary
+                                        : Colors.blue.shade400),
                               ),
                             ),
                           ),
@@ -1268,7 +1297,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
     );
 
     if (confirmed == true) {
-      final updatedSemesters = _semesters.where((s) => s.id != semester.id).toList();
+      final updatedSemesters =
+          _semesters.where((s) => s.id != semester.id).toList();
       await StorageService.saveSemesters(updatedSemesters);
 
       setState(() {
@@ -1289,7 +1319,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   /// 同步学期数据到服务器
   Future<void> _syncSemestersToServer() async {
     if (_userId == null) return;
-    
+
     try {
       final semestersData = _semesters.map((s) => s.toCloudJson()).toList();
       await ApiService.uploadUserSettings(
@@ -1306,7 +1336,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
   String _generateSemesterName(DateTime startDate) {
     final year = startDate.year;
     final month = startDate.month;
-    
+
     // 3月-5月：春季
     // 6月-8月：夏季
     // 9月-11月：秋季
@@ -1367,7 +1397,8 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                             setState(() {
                               startDate = picked;
                               // 自动生成学期名称
-                              nameController.text = _generateSemesterName(picked);
+                              nameController.text =
+                                  _generateSemesterName(picked);
                             });
                           }
                         },
@@ -1424,8 +1455,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
                       );
                       return;
                     }
-                    final id =
-                        'semester_${startDate!.millisecondsSinceEpoch}';
+                    final id = 'semester_${startDate!.millisecondsSinceEpoch}';
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
@@ -1551,8 +1581,7 @@ class _CourseSettingsPageState extends State<CourseSettingsPage> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('确认清除'),
-        content: Text(
-            '确定要清除 "${selectedSemester.name}" 的所有课程数据吗？\n\n此操作不可撤销。'),
+        content: Text('确定要清除 "${selectedSemester.name}" 的所有课程数据吗？\n\n此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

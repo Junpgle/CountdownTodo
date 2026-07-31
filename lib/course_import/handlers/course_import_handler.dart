@@ -183,9 +183,8 @@ class CourseImportHandler {
                                   semester.name,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: isActive
-                                        ? colorScheme.primary
-                                        : null,
+                                    color:
+                                        isActive ? colorScheme.primary : null,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -325,8 +324,7 @@ class CourseImportHandler {
                       );
                       return;
                     }
-                    final id =
-                        'semester_${startDate!.millisecondsSinceEpoch}';
+                    final id = 'semester_${startDate!.millisecondsSinceEpoch}';
                     Navigator.pop(
                       ctx,
                       SemesterInfo(
@@ -378,12 +376,11 @@ class CourseImportHandler {
           }
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                Icon(Icons.warning_amber_rounded,
-                    color: colorScheme.error),
+                Icon(Icons.warning_amber_rounded, color: colorScheme.error),
                 const SizedBox(width: 10),
                 const Text('检测到时间冲突'),
               ],
@@ -403,8 +400,8 @@ class CourseImportHandler {
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
                           children: [
-                            Icon(Icons.circle, size: 8,
-                                color: colorScheme.error),
+                            Icon(Icons.circle,
+                                size: 8, color: colorScheme.error),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -419,8 +416,7 @@ class CourseImportHandler {
                   Text(
                     '不冲突的课程将保留。',
                     style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.onSurfaceVariant),
+                        fontSize: 13, color: colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -449,12 +445,11 @@ class CourseImportHandler {
         builder: (ctx) {
           final colorScheme = Theme.of(ctx).colorScheme;
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                Icon(Icons.school_outlined,
-                    color: colorScheme.primary),
+                Icon(Icons.school_outlined, color: colorScheme.primary),
                 const SizedBox(width: 10),
                 const Text('选择导入方式'),
               ],
@@ -469,8 +464,7 @@ class CourseImportHandler {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                          color: colorScheme.outlineVariant),
+                      border: Border.all(color: colorScheme.outlineVariant),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -480,19 +474,17 @@ class CourseImportHandler {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text('替换现有课表',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               const SizedBox(height: 4),
                               Text(
                                 '清除旧课表，仅保留新导入的课程',
                                 style: TextStyle(
                                     fontSize: 12,
-                                    color: colorScheme
-                                        .onSurfaceVariant),
+                                    color: colorScheme.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -509,19 +501,16 @@ class CourseImportHandler {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(
-                          color: colorScheme.primary),
+                      border: Border.all(color: colorScheme.primary),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.merge_rounded,
-                            color: colorScheme.primary),
+                        Icon(Icons.merge_rounded, color: colorScheme.primary),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('与现有课表共存',
                                   style: TextStyle(
@@ -532,8 +521,7 @@ class CourseImportHandler {
                                 '新旧课表合并，适用于不同学期的课表',
                                 style: TextStyle(
                                     fontSize: 12,
-                                    color: colorScheme
-                                        .onSurfaceVariant),
+                                    color: colorScheme.onSurfaceVariant),
                               ),
                             ],
                           ),
@@ -664,8 +652,8 @@ class CourseImportHandler {
           if (!HfutScheduleParser.isValid(content)) {
             throw Exception('文件格式不匹配');
           }
-          parsedCourses = HfutScheduleParser.parse(content,
-              semesterStart: semesterStart);
+          parsedCourses =
+              HfutScheduleParser.parse(content, semesterStart: semesterStart);
           break;
         case 'xd':
           sourceName = "西安电子科技大学";
@@ -699,14 +687,12 @@ class CourseImportHandler {
         case 'hl':
           sourceName = selectedSchool == 'xm' ? "厦门大学" : "河南财经政法大学";
           if (semesterStart == null) throw Exception("请先设置开学日期");
-          parsedCourses =
-              XmuScheduleParser.parseHtml(content, semesterStart!);
+          parsedCourses = XmuScheduleParser.parseHtml(content, semesterStart!);
           break;
         case 'xj':
           sourceName = "厦门大学嘉庚学院";
           if (semesterStart == null) throw Exception("请先设置开学日期");
-          parsedCourses =
-              XujcScheduleParser.parseHtml(content, semesterStart!);
+          parsedCourses = XujcScheduleParser.parseHtml(content, semesterStart!);
           break;
         default:
           throw Exception("未知的导入方式");
@@ -749,8 +735,7 @@ class CourseImportHandler {
       }
 
       // 第三步：根据用户选择保存
-      _showLoadingDialog(
-          mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
+      _showLoadingDialog(mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
 
       if (mode == ImportMode.merge) {
         await CourseService.mergeCoursesToSql(username, parsedCourses);
@@ -923,8 +908,8 @@ class CourseImportHandler {
             semesterStart: semesterStart);
       } else if (HfutScheduleParser.isValid(htmlContent)) {
         sourceName = "合肥工业大学";
-        parsedCourses = HfutScheduleParser.parse(htmlContent,
-            semesterStart: semesterStart);
+        parsedCourses =
+            HfutScheduleParser.parse(htmlContent, semesterStart: semesterStart);
       } else if (htmlContent.contains('timetable_con') ||
           htmlContent.contains('id="table1"') ||
           htmlContent.contains('kbgrid_table')) {
@@ -1038,8 +1023,7 @@ class CourseImportHandler {
       }
 
       // 第三步：根据用户选择保存
-      _showLoadingDialog(
-          mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
+      _showLoadingDialog(mode == ImportMode.merge ? "正在合并课表..." : "正在导入课表...");
 
       if (mode == ImportMode.merge) {
         await CourseService.mergeCoursesToSql(username, parsedCourses);

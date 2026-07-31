@@ -108,8 +108,7 @@ class _TurnstileVerificationWidgetState
 
   void _startPositionTracking() {
     _positionTimer?.cancel();
-    _positionTimer =
-        Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    _positionTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (_disposed) {
         timer.cancel();
         return;

@@ -94,7 +94,8 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   void _copyShareLink(TeamShare share) {
-    final url = share.shareUrl ?? 'https://api-cdt.junpgle.me/share/${share.shareCode}';
+    final url =
+        share.shareUrl ?? 'https://api-cdt.junpgle.me/share/${share.shareCode}';
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('链接已复制到剪贴板')),
@@ -235,8 +236,7 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
                   _buildTag('倒计时', Icons.timer_outlined),
                 if (share.shareAnnouncements)
                   _buildTag('团队公告', Icons.announcement_outlined),
-                if (share.hasPassword)
-                  _buildTag('密码保护', Icons.lock_outline),
+                if (share.hasPassword) _buildTag('密码保护', Icons.lock_outline),
               ],
             ),
             const SizedBox(height: 12),
@@ -360,7 +360,8 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
       final result = await ApiService.createTeamShare(
         teamUuid: widget.team.uuid,
         title: _titleController.text.isNotEmpty ? _titleController.text : null,
-        description: _descController.text.isNotEmpty ? _descController.text : null,
+        description:
+            _descController.text.isNotEmpty ? _descController.text : null,
         shareTodos: _shareTodos,
         shareCountdowns: _shareCountdowns,
         shareAnnouncements: _shareAnnouncements,
@@ -529,9 +530,11 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: (_shareTodos || _shareCountdowns || _shareAnnouncements) && !_isCreating
-                    ? _createShare
-                    : null,
+                onPressed:
+                    (_shareTodos || _shareCountdowns || _shareAnnouncements) &&
+                            !_isCreating
+                        ? _createShare
+                        : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Theme.of(context).colorScheme.onPrimary,

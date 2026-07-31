@@ -1643,12 +1643,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16)),
                         side: BorderSide(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.3)),
                       ),
                       onPressed: () => _openShareManage(team),
                       icon: const Icon(Icons.link_rounded, size: 18),
-                      label: const Text('分享',
-                          style: TextStyle(fontSize: 13)),
+                      label: const Text('分享', style: TextStyle(fontSize: 13)),
                     ),
                   ),
                 ],
@@ -2059,7 +2061,6 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
     );
   }
-
 }
 
 // ============== 团队详情看板 (Master-Detail Detail) ==============
@@ -2226,7 +2227,10 @@ class _TeamDetailViewState extends State<_TeamDetailView>
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               side: BorderSide(
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.3)),
             ),
             onPressed: () => Navigator.push(
               context,

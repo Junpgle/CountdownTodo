@@ -413,8 +413,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
                     return RadioListTile<String>(
                       value: mode,
                       title: Text(_folderModeLabel(mode),
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w600)),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(_folderModeSubtitle(mode)),
                     );
                   }).toList(),

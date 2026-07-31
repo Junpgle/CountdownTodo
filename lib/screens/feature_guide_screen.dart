@@ -347,8 +347,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(StorageService.keySemesterStart,
           _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(StorageService.keySemesterEnd,
-          _cloudSemesterEnd!.toIso8601String());
+      await prefs.setString(
+          StorageService.keySemesterEnd, _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
           _semesterStart = _cloudSemesterStart;

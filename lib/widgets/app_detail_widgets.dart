@@ -168,28 +168,30 @@ class AppDetailInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     Widget card = Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, color: colorScheme.primary, size: 22),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+          Text(title,
+              style:
+                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 14, 
-              fontWeight: FontWeight.bold, 
-              color: valueColor ?? colorScheme.onSurface
-            ),
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: valueColor ?? colorScheme.onSurface),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -236,20 +238,23 @@ class AppDetailWideCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     Widget card = Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
           Icon(icon, color: colorScheme.primary, size: 22),
           const SizedBox(width: 12),
-          Text(title, style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+          Text(title,
+              style:
+                  TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
           const SizedBox(width: 16),
           Expanded(
             child: Row(
@@ -259,10 +264,12 @@ class AppDetailWideCard extends StatelessWidget {
                   child: Text(
                     value,
                     style: TextStyle(
-                      fontSize: 14, 
-                      fontWeight: FontWeight.bold, 
-                      color: valueColor ?? (isLink ? colorScheme.primary : colorScheme.onSurface)
-                    ),
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: valueColor ??
+                            (isLink
+                                ? colorScheme.primary
+                                : colorScheme.onSurface)),
                     textAlign: TextAlign.right,
                     maxLines: maxLines,
                     overflow: TextOverflow.ellipsis,
@@ -270,7 +277,8 @@ class AppDetailWideCard extends StatelessWidget {
                 ),
                 if (isLink) ...[
                   const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded, size: 18, color: colorScheme.primary),
+                  Icon(Icons.chevron_right_rounded,
+                      size: 18, color: colorScheme.primary),
                 ],
               ],
             ),
@@ -382,7 +390,8 @@ class AppDetailScreen extends StatelessWidget {
                             progress: progress,
                             progressColor: progressColor,
                           ),
-                          if (leftSections != null && leftSections!.isNotEmpty) ...[
+                          if (leftSections != null &&
+                              leftSections!.isNotEmpty) ...[
                             const SizedBox(height: 20),
                             ...leftSections!,
                           ],

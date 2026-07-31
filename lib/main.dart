@@ -60,7 +60,7 @@ void registerCloseDialogCallback(CloseDialogCallback callback) {
 }
 
 Future<bool> showCloseDialog() async {
-    // debugPrint('[Main] showCloseDialog requested');
+  // debugPrint('[Main] showCloseDialog requested');
   if (_onShowCloseDialog != null) {
     try {
       final result = await _onShowCloseDialog!();
@@ -853,37 +853,42 @@ class _MyAppState extends State<MyApp> {
                             home: _shareCode != null
                                 ? ShareViewScreen(shareCode: _shareCode!)
                                 : _showDefaultSplash
-                                ? DefaultSplashScreen(
-                                    onComplete: _onDefaultSplashComplete)
-                                : _showHolidaySplash
-                                    ? SplashScreen(
-                                        content: _splashContent!,
-                                        onComplete: _onHolidaySplashComplete,
-                                      )
-                                    : _isChecking
-                                        ? Scaffold(
-                                            backgroundColor: currentThemeMode ==
-                                                    ThemeMode.dark
-                                                ? Colors.grey[900]
-                                                : Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                            body: const Center(
-                                              child: CircularProgressIndicator(
-                                                  color: Colors.white),
-                                            ),
+                                    ? DefaultSplashScreen(
+                                        onComplete: _onDefaultSplashComplete)
+                                    : _showHolidaySplash
+                                        ? SplashScreen(
+                                            content: _splashContent!,
+                                            onComplete:
+                                                _onHolidaySplashComplete,
                                           )
-                                        : _showFeatureGuide
-                                            ? FeatureGuideScreen(
-                                                loggedInUser: _loggedInUser)
-                                            : (_loggedInUser != null &&
-                                                    _loggedInUser!.isNotEmpty)
-                                                ? HomeDashboard(
-                                                    key:
-                                                        ValueKey(_loggedInUser),
-                                                    username: _loggedInUser!,
-                                                  )
-                                                : const LoginScreen(),
+                                        : _isChecking
+                                            ? Scaffold(
+                                                backgroundColor:
+                                                    currentThemeMode ==
+                                                            ThemeMode.dark
+                                                        ? Colors.grey[900]
+                                                        : Theme.of(context)
+                                                            .colorScheme
+                                                            .primary,
+                                                body: const Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                          color: Colors.white),
+                                                ),
+                                              )
+                                            : _showFeatureGuide
+                                                ? FeatureGuideScreen(
+                                                    loggedInUser: _loggedInUser)
+                                                : (_loggedInUser != null &&
+                                                        _loggedInUser!
+                                                            .isNotEmpty)
+                                                    ? HomeDashboard(
+                                                        key: ValueKey(
+                                                            _loggedInUser),
+                                                        username:
+                                                            _loggedInUser!,
+                                                      )
+                                                    : const LoginScreen(),
                           ),
                         );
                       },

@@ -230,12 +230,14 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
     }
 
     if (widget.isFocusing) {
-      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+      final isLandscape =
+          MediaQuery.of(context).orientation == Orientation.landscape;
       return Padding(
         key: const ValueKey('focus_btns'),
         padding: EdgeInsets.only(top: widget.isCompact ? 8 : 12),
         child: Row(
-          mainAxisAlignment: isLandscape ? MainAxisAlignment.start : MainAxisAlignment.center,
+          mainAxisAlignment:
+              isLandscape ? MainAxisAlignment.start : MainAxisAlignment.center,
           children: [
             TextButton.icon(
               onPressed: widget.onAbandonFocus,

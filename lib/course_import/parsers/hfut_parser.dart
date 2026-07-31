@@ -477,7 +477,9 @@ class HfutScheduleParser {
       String roomName = weekIdx >= 1 ? args[weekIdx - 1] : '未知教室';
       String courseName = weekIdx >= 3 ? args[weekIdx - 3] : '未知课程';
 
-      if (roomName == 'null' || roomName.isEmpty || roomName.contains('.join')) {
+      if (roomName == 'null' ||
+          roomName.isEmpty ||
+          roomName.contains('.join')) {
         roomName = '未知教室';
       }
       if (courseName == 'null' ||
