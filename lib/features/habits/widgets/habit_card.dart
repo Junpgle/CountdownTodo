@@ -7,6 +7,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../../../utils/theme_color_tokens.dart';
 import 'habit_format.dart';
+import 'habit_quick_checkin_sheet.dart';
 
 /// 单个习惯卡片：进度条 + 类型化操作按钮。
 ///
@@ -451,52 +452,12 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Future<void> _openQuantityCustomDialog() async {
-    final controller = TextEditingController();
-    final value = await showDialog<double>(
+    await HabitQuickCheckInSheet.show(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('记录${widget.goal.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            labelText:
-                widget.rule.unit.isNotEmpty ? '数量（${widget.rule.unit}）' : '数量',
-            suffixText: widget.rule.unit,
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = double.tryParse(controller.text.trim());
-              if (v == null || v <= 0) return;
-              Navigator.pop(context, v);
-            },
-            child: const Text('记录'),
-          ),
-        ],
-      ),
+      goal: widget.goal,
+      rule: widget.rule,
+      onChanged: widget.onChanged,
     );
-    if (value == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final checkIn = await HabitRepository.addCheckIn(
-        goal: widget.goal,
-        rule: widget.rule,
-        localOccurredAt: DateTime.now(),
-        value: value,
-      );
-      widget.onChanged();
-      _showUndoSnackBar('已记录 $value${widget.rule.unit}', checkIn);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Widget _buildTimeAction(HabitProgress progress) {

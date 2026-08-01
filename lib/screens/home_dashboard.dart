@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'dart:async';
 import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -8,7 +9,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:async';
 import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -69,6 +69,7 @@ import '../widgets/todo_section_widget.dart';
 import '../widgets/pomodoro_today_section.dart';
 import '../widgets/plan_block_today_section.dart';
 import '../features/habits/screens/habit_center_screen.dart';
+import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
@@ -466,6 +467,17 @@ class _HomeDashboardState extends State<HomeDashboard>
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
+      }));
+      // 习惯目标提醒：点击打开习惯中心。
+      _notifSubs.add(NotificationService.listen('openHabitCenter', (call) {
+        if (!mounted) return;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        PageTransitions.pushFromRect(
+          context: context,
+          page: HabitCenterScreen(username: widget.username),
+          sourceKey: GlobalKey(),
+        );
+        _habitsRevision.value++;
       }));
       // 通知按钮事件：如果不在番茄钟页，先导航过去，
       // PomodoroScreen 的 listen() 会自动 replay pending 事件。
@@ -2771,8 +2783,8 @@ class _HomeDashboardState extends State<HomeDashboard>
     // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
 
     // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['banners', 'countdowns', 'habits', 'todos'];
-    _rightSections = ['courses', 'timeline', 'pomodoro', 'screenTime', 'math'];
+    _leftSections = ['banners', 'countdowns', 'todos'];
+    _rightSections = ['courses', 'timeline', 'pomodoro', 'habits', 'screenTime', 'math'];
 
     // 忽略之前的可见性设置，全部强制显示
     _sectionVisibility = {
@@ -3183,6 +3195,8 @@ class _HomeDashboardState extends State<HomeDashboard>
 
   Future<void> _initNotifications() async {
     await NotificationService.init();
+    // 习惯提醒：应用启动时重排今日提醒（跨天后固定时刻需要刷新）。
+    unawaited(HabitReminderService.rescheduleAll());
     // 🚀 桌面端拦截：Windows 暂无原生通知权限请求
     if (AppPlatform.isAndroid || AppPlatform.isIOS) {
       await _permissionCoordinator.request(AppPermissionKind.notification);
@@ -5079,7 +5093,6 @@ class _HomeDashboardState extends State<HomeDashboard>
                                         'countdowns',
                                         'courses',
                                         'todos',
-                                        'habits',
                                       ];
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
@@ -5102,12 +5115,15 @@ class _HomeDashboardState extends State<HomeDashboard>
                                               child: sectionsMap[key]!))
                                           .toList();
 
-                                      List<Widget> tab3Widgets = [
+                                      List<String> tab3WidgetsConfig = [
                                         'timeline',
                                         'pomodoro',
+                                        'habits',
                                         'screenTime',
                                         'math'
-                                      ]
+                                      ];
+
+                                      List<Widget> tab3Widgets = tab3WidgetsConfig
                                           .where((key) =>
                                               (_sectionVisibility[key] ??
                                                   true) &&

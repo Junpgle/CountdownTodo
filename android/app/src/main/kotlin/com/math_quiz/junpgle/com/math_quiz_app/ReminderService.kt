@@ -290,6 +290,11 @@ class ReminderService : Service() {
                 if (!planBlockId.isNullOrBlank()) putExtra("plan_block_id", planBlockId)
                 if (!todoId.isNullOrBlank()) putExtra("todo_id", todoId)
             }
+            // 🎯 习惯目标提醒 (notifId 42001-49999)：点击打开习惯中心
+            if (notifId in 42001..49999) {
+                putExtra("open_habit_center", true)
+                putExtra("habit_notif_id", notifId)
+            }
         }
         val pi = PendingIntent.getActivity(
             this, notifId, intent,

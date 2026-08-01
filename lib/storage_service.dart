@@ -502,11 +502,18 @@ class StorageService {
   static int _lastSyncRequestAt = 0;
   static const Duration _minSyncInterval = Duration(milliseconds: 3400);
 
+  /// 数据变更后的外部订阅钩子（如小组件即时刷新）。
+  ///
+  /// 由 WidgetService 在主 isolate 注册；后台打卡 isolate 不注册，
+  /// 避免后台打卡后的重复刷新。
+  static void Function()? onDataChangedHook;
+
   /// 🚀 优化：增加 100ms 防抖，防止背景同步或批量更新时产生高频重绘，减少主线程 GC 与帧丢弃
   static void triggerRefresh() {
     _refreshDebouncer?.cancel();
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
       dataRefreshNotifier.value++;
+      onDataChangedHook?.call();
     });
   }
 

@@ -16,6 +16,7 @@ import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
 import 'habit_edit_screen.dart';
+import 'habit_history_screen.dart';
 
 /// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
 ///
@@ -108,6 +109,15 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     }
   }
 
+  Future<void> _openHistory() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HabitHistoryScreen(goal: _goal, username: widget.username),
+      ),
+    );
+    if (mounted) _loadData();
+  }
+
   Future<void> _toggleArchive() async {
     await HabitRepository.setArchived(_goal, !_goal.isArchived);
     if (mounted) Navigator.of(context).pop(true);
@@ -153,6 +163,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               switch (value) {
                 case 'edit':
                   _editHabit();
+                case 'history':
+                  _openHistory();
                 case 'archive':
                   _toggleArchive();
                 case 'delete':
@@ -161,6 +173,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'edit', child: Text('编辑习惯')),
+              const PopupMenuItem(value: 'history', child: Text('历史记录')),
               PopupMenuItem(
                 value: 'archive',
                 child: Text(_goal.isArchived ? '取消归档' : '归档习惯'),

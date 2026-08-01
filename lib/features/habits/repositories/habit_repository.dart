@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +10,7 @@ import '../../../storage_service.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
+import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
 
@@ -400,6 +403,7 @@ abstract final class HabitRepository {
     );
     await HabitStorage.saveCheckIns([checkIn]);
     StorageService.triggerRefresh();
+    _rescheduleReminders(goal.uuid);
     return checkIn;
   }
 
@@ -407,6 +411,7 @@ abstract final class HabitRepository {
     checkIn.markAsChanged();
     await HabitStorage.saveCheckIns([checkIn]);
     StorageService.triggerRefresh();
+    _rescheduleReminders(checkIn.habitUuid);
   }
 
   /// 逻辑删除打卡。
@@ -416,6 +421,39 @@ abstract final class HabitRepository {
     checkIn.markAsChanged();
     await HabitStorage.saveCheckIns([checkIn]);
     StorageService.triggerRefresh();
+    _rescheduleReminders(checkIn.habitUuid);
+  }
+
+  /// 切换某逻辑日的「跳过」标记：有则移除，无则添加。
+  ///
+  /// 跳过日不执行、不达标，也不中断连续天数（仅每日类周期适用）。
+  static Future<void> toggleSkipped({
+    required HabitGoal goal,
+    required HabitGoalRuleRevision rule,
+    required DateTime localDate,
+  }) async {
+    final logicalDate = HabitRuleResolver.dayKey(
+      HabitRuleResolver.logicalDateFor(localDate, rule.dayBoundaryMinute),
+    );
+    final existing = await HabitStorage.getCheckIns(
+      habitUuid: goal.uuid,
+      fromDate: logicalDate,
+      toDate: logicalDate,
+    );
+    final skip = existing
+        .where((c) => !c.isDeleted && c.source == HabitCheckInSource.skip)
+        .firstOrNull;
+    if (skip != null) {
+      await deleteCheckIn(skip);
+      return;
+    }
+    await addCheckIn(
+      goal: goal,
+      rule: rule,
+      localOccurredAt: localDate,
+      source: HabitCheckInSource.skip,
+      dedupeKey: HabitCheckIn.buildDedupeKey(goal.uuid, 'skip/$logicalDate'),
+    );
   }
 
   // ── 完成型习惯操作 ───────────────────────────────────
@@ -448,6 +486,7 @@ abstract final class HabitRepository {
     todo.markAsChanged();
     await StorageService.updateSingleTodo(username, todo);
     StorageService.triggerRefresh();
+    _rescheduleReminders(goal.uuid);
     return true;
   }
 
@@ -469,9 +508,16 @@ abstract final class HabitRepository {
     todo.markAsChanged();
     await StorageService.updateSingleTodo(username, todo);
     StorageService.triggerRefresh();
+    _rescheduleReminders(goal.uuid);
   }
 
   // ── 工具 ─────────────────────────────────────────────
+
+  /// 打卡 / 达标 / 删除后异步重排该习惯今天的提醒，
+  /// 实现「达标后取消当天剩余提醒」（设计文档 18.3）。
+  static void _rescheduleReminders(String habitUuid) {
+    unawaited(HabitReminderService.rescheduleFor(habitUuid));
+  }
 
   static String _previousDay(String dayKey) {
     final date = HabitRuleResolver.parseDayKey(dayKey);

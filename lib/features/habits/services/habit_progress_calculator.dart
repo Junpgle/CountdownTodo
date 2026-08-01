@@ -169,6 +169,26 @@ abstract final class HabitProgressCalculator {
 
     final isAggregated = rule.periodType == HabitPeriodType.weekly ||
         rule.periodType == HabitPeriodType.monthly;
+    if (!isAggregated) {
+      // 手动跳过：该日不执行也不中断连续（仅每日类周期适用）。
+      final hasSkip = checkIns.any((c) =>
+          !c.isDeleted &&
+          c.source == HabitCheckInSource.skip &&
+          c.logicalDate == HabitRuleResolver.dayKey(logicalDate));
+      if (hasSkip) {
+        return HabitProgress(
+          period: HabitRuleResolver.periodStart(rule, logicalDate),
+          currentValue: 0,
+          targetValue: rule.targetValue <= 0 ? 1.0 : rule.targetValue,
+          completionRatio: 0,
+          hasRecord: true,
+          goalMet: false,
+          isPlanned: HabitRuleResolver.isPlannedDay(rule, logicalDate),
+          isSkipped: true,
+          isFinished: true,
+        );
+      }
+    }
     if (isAggregated && periodCache != null) {
       final key = '${rule.uuid}|'
           '${HabitRuleResolver.periodKey(rule, logicalDate)}';
@@ -371,6 +391,7 @@ abstract final class HabitProgressCalculator {
 
     final dayCheckIns = checkIns.where((c) {
       if (c.isDeleted) return false;
+      if (c.source == HabitCheckInSource.skip) return false;
       if (c.logicalDate.compareTo(startKey) < 0) return false;
       return c.logicalDate.compareTo(endKey) <= 0;
     }).toList();
@@ -424,6 +445,7 @@ abstract final class HabitProgressCalculator {
 
     final dayCheckIns = checkIns.where((c) {
       if (c.isDeleted) return false;
+      if (c.source == HabitCheckInSource.skip) return false;
       if (c.logicalDate.compareTo(startKey) < 0) return false;
       return c.logicalDate.compareTo(endKey) <= 0;
     }).toList();

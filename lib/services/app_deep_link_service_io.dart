@@ -5,12 +5,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../features/habits/screens/habit_center_screen.dart';
+import '../features/habits/services/habit_widget_checkin.dart';
 import '../screens/course_screens.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../storage_service.dart';
 import '../utils/navigator_utils.dart';
 import '../utils/page_transitions.dart';
 import '../utils/todo_recurrence_picker.dart';
+import 'widget_service_io.dart';
 
 class AppDeepLinkService {
   static const String scheme = 'countdowntodo';
@@ -83,6 +86,47 @@ class AppDeepLinkService {
     }
 
     _pendingUri = null;
+
+    // 习惯中心（macOS 习惯小组件点击进入）。
+    if (uri.host == 'habit') {
+      navigator.push(
+        PageTransitions.slideHorizontal(
+          HabitCenterScreen(username: username),
+        ),
+      );
+      return;
+    }
+
+    // 小组件快捷打卡（macOS 习惯小组件按钮 → AppIntent → 深链接）。
+    if (uri.host == 'habitcheckin') {
+      final habitId = uri.queryParameters['habitId']?.trim();
+      if (habitId == null || habitId.isEmpty) return;
+      final value = double.tryParse(uri.queryParameters['value'] ?? '');
+      final result = await HabitWidgetCheckIn.quickCheckIn(
+        habitId: habitId,
+        value: value,
+        username: username,
+      );
+      final todos = await StorageService.getTodos(username);
+      unawaited(WidgetService.updateAllWidgetData(username, todos));
+      if (result is HabitWidgetCheckInOpenApp) {
+        // 时长型：进入习惯中心，由用户手动开始专注。
+        navigator.push(
+          PageTransitions.slideHorizontal(
+            HabitCenterScreen(username: username),
+          ),
+        );
+        return;
+      }
+      // 打卡后回到习惯中心给出视觉反馈（进入习惯中心即可见状态刷新）。
+      navigator.push(
+        PageTransitions.slideHorizontal(
+          HabitCenterScreen(username: username),
+        ),
+      );
+      return;
+    }
+
     final recurrenceSeriesId = _recurrenceSeriesId(uri);
     if (recurrenceSeriesId != null) {
       final todos = await StorageService.getTodos(username);

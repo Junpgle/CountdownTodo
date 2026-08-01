@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../services/pomodoro_service.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 
 /// 新建 / 编辑习惯。
@@ -53,6 +56,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   /// 时长型：开始专注时的默认时长（分钟），为空使用专注设置默认值。
   int? _defaultFocusMinutes;
+
+  /// 编辑模式：规则生效时间（'today' | 'nextPeriod' | 'all'）。
+  String _effectiveFromOption = 'today';
 
   bool _saving = false;
 
@@ -357,10 +363,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         await HabitRepository.updateRule(
           goal: goal,
           updatedRule: rule,
-          effectiveFromOption: 'today',
+          effectiveFromOption: _effectiveFromOption,
           allRules: allRules,
         );
       }
+      // 规则或提醒策略可能变化：重排习惯提醒。
+      unawaited(HabitReminderService.rescheduleAll());
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -936,7 +944,87 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           HabitSourceType.quantityCheckIn => _buildQuantityTarget(colorScheme),
           HabitSourceType.timeCheckIn => _buildTimeTarget(colorScheme),
         },
+        if (widget.goal != null) ...[
+          const SizedBox(height: 20),
+          Text(
+            '规则生效时间',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _effectiveFromChip('today', '从今天开始',
+              '关闭旧规则，新规则从今天生效'),
+          _effectiveFromChip('nextPeriod', '从下一个周期开始',
+              '如每周习惯从下周一、每月习惯从下月 1 号开始'),
+          _effectiveFromChip('all', '应用到全部历史',
+              '覆盖所有历史版本的目标值（不改变历史打卡记录）'),
+        ],
       ],
+    );
+  }
+
+  Widget _effectiveFromChip(String option, String title, String subtitle) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _effectiveFromOption == option;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: selected
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => setState(() => _effectiveFromOption = option),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color:
+                    selected ? colorScheme.primary : colorScheme.outlineVariant,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  size: 20,
+                  color: selected ? colorScheme.primary : colorScheme.outline,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

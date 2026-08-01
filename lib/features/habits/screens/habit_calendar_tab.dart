@@ -118,6 +118,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final key = HabitRuleResolver.dayKey(day);
     int planned = 0;
     int met = 0;
+    int skipped = 0;
     for (final goal in _goals) {
       final days = _daysByHabit[goal.uuid];
       if (days == null) continue;
@@ -127,14 +128,19 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       });
       if (match.isEmpty) continue;
       final status = match.first.status;
-      if (status == HabitDayStatus.notPlanned ||
-          status == HabitDayStatus.skipped) {
+      if (status == HabitDayStatus.notPlanned) continue;
+      if (status == HabitDayStatus.skipped) {
+        skipped++;
         continue;
       }
       planned++;
       if (status == HabitDayStatus.met) met++;
     }
-    if (planned == 0) return _DayAggregate.none;
+    if (planned == 0) {
+      // 全部习惯当天均被跳过：灰色标记（与非计划日的空白区分）。
+      if (skipped > 0) return _DayAggregate.skipped;
+      return _DayAggregate.none;
+    }
     if (met == planned) return _DayAggregate.allMet;
     if (met == 0) return _DayAggregate.noneMet;
     return _DayAggregate.partial;
@@ -247,6 +253,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         case _DayAggregate.noneMet:
           bg = colorScheme.errorContainer.withValues(alpha: 0.45);
           dot = colorScheme.error;
+        case _DayAggregate.skipped:
+          bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+          dot = colorScheme.outline;
         case _DayAggregate.none:
         case _DayAggregate.future:
           bg = Colors.transparent;
@@ -343,6 +352,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         item(colorScheme.tertiary, '全部完成'),
         item(colorScheme.tertiary.withValues(alpha: 0.5), '部分完成'),
         item(colorScheme.error, '未完成'),
+        item(colorScheme.outline, '已跳过'),
       ],
     );
   }
@@ -455,7 +465,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           const SizedBox(width: 8),
           if (goal.sourceType == HabitSourceType.recurringTodo)
             _buildMakeUpButton(goal, day)
-          else
+          else ...[
+            _buildSkipButton(goal, day, colorScheme, label),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -471,8 +482,49 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 ),
               ),
             ),
+          ],
         ],
       ),
+    );
+  }
+
+  /// 非完成型习惯：计划内且非未来日期支持「跳过 / 取消跳过」。
+  Widget _buildSkipButton(
+    HabitGoal goal,
+    HabitDayProgress day,
+    ColorScheme colorScheme,
+    String label,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (day.logicalDate.isAfter(today) || !day.progress.isPlanned) {
+      return const SizedBox.shrink();
+    }
+    final skipped = day.status == HabitDayStatus.skipped;
+    return OutlinedButton(
+      onPressed: () async {
+        final rule = HabitRuleResolver.effectiveRule(
+          _rulesByHabit[goal.uuid] ?? const [],
+          day.logicalDate,
+        );
+        if (rule == null) return;
+        await HabitRepository.toggleSkipped(
+          goal: goal,
+          rule: rule,
+          localDate: day.logicalDate,
+        );
+        _loadData();
+      },
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
+        foregroundColor:
+            skipped ? colorScheme.onSurfaceVariant : colorScheme.outline,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      child: Text(skipped ? '取消跳过' : '跳过'),
     );
   }
 
@@ -537,4 +589,4 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   }
 }
 
-enum _DayAggregate { none, allMet, partial, noneMet, future }
+enum _DayAggregate { none, allMet, partial, noneMet, skipped, future }

@@ -8,6 +8,9 @@ enum HabitCheckInSource {
   import,
   health,
   wearable,
+
+  /// 跳过标记：该日不执行也不中断连续，值为 0。
+  skip,
 }
 
 /// 习惯打卡事件：只用于数量型和时间点型习惯。

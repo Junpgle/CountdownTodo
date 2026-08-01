@@ -48,6 +48,9 @@ class HabitProgress {
   /// 是否计划内周期（非计划日不参与统计）。
   final bool isPlanned;
 
+  /// 本日是否被手动标记为跳过（不达标、不中断连续）。
+  final bool isSkipped;
+
   /// 周期是否已经结束（当天尚未结束时不提前判定失败）。
   final bool isFinished;
 
@@ -75,6 +78,7 @@ class HabitProgress {
     required this.goalMet,
     required this.isPlanned,
     required this.isFinished,
+    this.isSkipped = false,
     this.onTime = false,
     this.recordCount = 0,
     this.firstRecordAt,
@@ -85,6 +89,7 @@ class HabitProgress {
   /// 按设计文档规则推导单日状态。
   HabitDayStatus get dayStatus {
     if (!isPlanned) return HabitDayStatus.notPlanned;
+    if (isSkipped) return HabitDayStatus.skipped;
     if (goalMet) return HabitDayStatus.met;
     if (!isFinished) return HabitDayStatus.inProgress;
     return HabitDayStatus.missed;
