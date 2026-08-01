@@ -316,7 +316,7 @@ class _AboutSectionState extends State<AboutSection> {
           subtitle: const Text('前往 GitHub 下载最新开发版 (Dev)'),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
-            _launchURL('https://github.com/Junpgle/math_quiz_app/releases');
+            _launchURL('https://github.com/Junpgle/CountdownTodo/releases');
           },
         ),
         const AppSettingsDivider(),
