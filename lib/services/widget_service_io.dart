@@ -13,6 +13,10 @@ import '../models/widget_snapshot.dart';
 import '../storage_service.dart';
 import '../utils/todo_widget_visibility.dart';
 import '../utils/widget_recurrence_series.dart';
+import '../features/habits/repositories/habit_repository.dart';
+import '../features/habits/services/habit_progress_calculator.dart';
+import '../features/habits/services/habit_rule_resolver.dart';
+import '../features/habits/services/habit_widget_checkin.dart';
 import 'course_service.dart';
 import 'pomodoro_service.dart';
 
@@ -43,6 +47,25 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
       }
     }
   }
+
+  // 习惯小组件快捷打卡（Android）：todowidget://habitcheckin/<habitId>?value=250
+  if (uri != null && uri.scheme == 'todowidget' && uri.host == 'habitcheckin') {
+    final habitId = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+    if (habitId == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+    if (username.isEmpty) return;
+    final value = double.tryParse(uri.queryParameters['value'] ?? '');
+    final result = await HabitWidgetCheckIn.quickCheckIn(
+      habitId: habitId,
+      value: value,
+      username: username,
+    );
+    if (result is HabitWidgetCheckInDone && result.succeeded) {
+      final todos = await StorageService.getTodos(username);
+      await WidgetService.updateAllWidgetData(username, todos);
+    }
+  }
 }
 
 class WidgetService {
@@ -54,6 +77,7 @@ class WidgetService {
   static const String countdownOnlyWidgetName = 'CountdownOnlyWidgetProvider';
   static const String focusOnlyWidgetName = 'FocusOnlyWidgetProvider';
   static const String recurrenceWidgetName = 'RecurrenceWidgetProvider';
+  static const String habitWidgetName = 'HabitWidgetProvider';
   static bool _initialized = false;
   static final bool _widgetUpdateDisabled = false;
   static const int maxWidgetItems = 8;
@@ -65,6 +89,26 @@ class WidgetService {
   static Future<void> dispose() async {
     _periodicTimer?.cancel();
     _periodicTimer = null;
+  }
+
+  /// 数据变更（习惯打卡、待办增删等）后的即时小组件刷新。
+  ///
+  /// 由 [StorageService.onDataChangedHook] 触发，600ms 防抖合并
+  /// 同步 / 批量操作期间的多次变更；失败时静默等待周期刷新兜底。
+  static Timer? _widgetRefreshDebouncer;
+
+  static Future<void> _refreshWidgetsAfterDataChange() async {
+    _widgetRefreshDebouncer?.cancel();
+    _widgetRefreshDebouncer =
+        Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
+        if (username.isEmpty) return;
+        final todos = await StorageService.getTodos(username);
+        await updateAllWidgetData(username, todos);
+      } catch (_) {}
+    });
   }
 
   static Future<void> init() async {
@@ -82,6 +126,11 @@ class WidgetService {
     } else if (Platform.isMacOS) {
       _initialized = true;
     }
+
+    // 数据变更（打卡、待办、课程等）后即时刷新小组件；只在主 isolate 注册。
+    StorageService.onDataChangedHook = () {
+      unawaited(_refreshWidgetsAfterDataChange());
+    };
 
     // 启动 15 分钟一次的周期刷新（确保在应用运行期间定期更新 widget，减少能耗）
     _periodicTimer?.cancel();
@@ -258,6 +307,23 @@ class WidgetService {
       'poms': slimPoms,
     };
 
+    // 6. 习惯：SQLite 只能在主线程读取，先算好今日进度再 slim 化
+    final habitItems = await _buildTodayHabitItems();
+    final List<Map<String, dynamic>> slimHabits = habitItems
+        .map((h) => {
+              'habitId': h.habitId,
+              'title': h.title,
+              'icon': h.icon,
+              'sourceType': h.sourceType,
+              'currentValue': h.currentValue,
+              'targetValue': h.targetValue,
+              'unit': h.unit,
+              'goalMet': h.goalMet,
+              'quickValues': h.quickValues,
+            })
+        .toList();
+    rawInput['habits'] = slimHabits;
+
     final Map<String, dynamic> widgetData =
         await compute(_prepareWidgetDataIsolate, rawInput);
 
@@ -282,8 +348,53 @@ class WidgetService {
         countdownsRaw,
         now,
         today,
+        habitItems: habitItems,
       );
       await _updateMacOSWidget(macSnapshot);
+    }
+  }
+
+  /// 计算今日各活跃习惯的进度摘要（主线程，SQLite 可访问）。
+  ///
+  /// 仅返回今日为计划日的习惯，未达标排前，最多 5 条。
+  static Future<List<WidgetHabitItem>> _buildTodayHabitItems() async {
+    try {
+      final goals = await HabitRepository.getActiveGoals();
+      if (goals.isEmpty) return const [];
+      final now = DateTime.now();
+      final items = <WidgetHabitItem>[];
+      for (final goal in goals) {
+        final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
+        final rule = HabitRuleResolver.effectiveRule(rules, now);
+        if (rule == null) continue;
+        final logicalDate =
+            HabitRuleResolver.logicalDateFor(now, rule.dayBoundaryMinute);
+        if (!HabitRuleResolver.isPlannedDay(rule, logicalDate)) continue;
+        final progress = await HabitProgressCalculator.computePeriod(
+          habit: goal,
+          rules: rules,
+          logicalDate: logicalDate,
+          now: now,
+        );
+        items.add(WidgetHabitItem(
+          habitId: goal.uuid,
+          title: goal.name,
+          icon: goal.icon,
+          sourceType: goal.sourceType.name,
+          currentValue: progress.currentValue,
+          targetValue: progress.targetValue,
+          unit: rule.unit,
+          goalMet: progress.goalMet,
+          quickValues: rule.quickValues.map((v) => v.toDouble()).toList(),
+        ));
+      }
+      items.sort((a, b) {
+        if (a.goalMet != b.goalMet) return a.goalMet ? 1 : -1;
+        return a.title.compareTo(b.title);
+      });
+      return items.take(5).toList();
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -293,8 +404,9 @@ class WidgetService {
     List<CourseItem> allCourses,
     List<CountdownItem> countdownsRaw,
     DateTime now,
-    DateTime today,
-  ) async {
+    DateTime today, {
+    List<WidgetHabitItem> habitItems = const [],
+  }) async {
     // 1. 倒数日：未删除、未过期，按目标日期排序
     final countdownItems = countdownsRaw
         .where((c) => !c.isDeleted && !c.isCompleted)
@@ -439,6 +551,7 @@ class WidgetService {
       courses: courseItems.take(6).toList(),
       focus: focusState,
       recurrenceSeries: buildWidgetRecurrenceSeries(allTodos, now: now),
+      habits: habitItems,
     );
   }
 
@@ -492,6 +605,11 @@ class WidgetService {
           }),
           HomeWidget.updateWidget(
                   qualifiedAndroidName: '$_widgetPackage.$recurrenceWidgetName')
+              .catchError((e) {
+            return false;
+          }),
+          HomeWidget.updateWidget(
+                  qualifiedAndroidName: '$_widgetPackage.$habitWidgetName')
               .catchError((e) {
             return false;
           }),
@@ -741,6 +859,51 @@ class WidgetService {
 
     // 5. 专注状态判断
     resultData['widget_mode'] = urgentCourseId.isNotEmpty ? 'course' : 'todo';
+
+    // 6. 习惯（主线程已算好今日进度并按达标排序，最多 5 条）
+    final List<Map<String, dynamic>> habits =
+        (input['habits'] as List).cast<Map<String, dynamic>>();
+    for (int i = 1; i <= 5; i++) {
+      resultData['habit_title_$i'] = '';
+      resultData['habit_icon_$i'] = '';
+      resultData['habit_progress_$i'] = '';
+      resultData['habit_met_$i'] = false;
+      resultData['habit_id_$i'] = '';
+      resultData['habit_source_$i'] = '';
+      resultData['habit_quick_$i'] = '';
+    }
+    String formatHabitNumber(double v) =>
+        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+    for (int i = 0; i < habits.length && i < 5; i++) {
+      final h = habits[i];
+      final source = h['sourceType'] as String? ?? 'quantityCheckIn';
+      final met = h['goalMet'] as bool? ?? false;
+      final current = (h['currentValue'] as num?)?.toDouble() ?? 0;
+      final target = (h['targetValue'] as num?)?.toDouble() ?? 0;
+      final unit = h['unit'] as String? ?? '';
+      String progress;
+      if (source == 'quantityCheckIn' || source == 'pomodoroTag') {
+        progress = target > 0
+            ? (met
+                ? '已达标 ${formatHabitNumber(current)}$unit'
+                : '${formatHabitNumber(current)} / ${formatHabitNumber(target)}$unit')
+            : '${formatHabitNumber(current)}$unit';
+      } else {
+        progress = met ? '已达标' : '待完成';
+      }
+      resultData['habit_title_${i + 1}'] = h['title'] as String? ?? '';
+      resultData['habit_icon_${i + 1}'] = h['icon'] as String? ?? '';
+      resultData['habit_progress_${i + 1}'] = progress;
+      resultData['habit_met_${i + 1}'] = met;
+      resultData['habit_id_${i + 1}'] = h['habitId'] as String? ?? '';
+      resultData['habit_source_${i + 1}'] = source;
+      resultData['habit_pct_${i + 1}'] =
+          target > 0 ? ((current / target).clamp(0.0, 1.0) * 100).round() : 0;
+      resultData['habit_quick_${i + 1}'] =
+          ((h['quickValues'] as List?) ?? const [])
+              .map((v) => (v as num).toString())
+              .join(',');
+    }
     return resultData;
   }
 
