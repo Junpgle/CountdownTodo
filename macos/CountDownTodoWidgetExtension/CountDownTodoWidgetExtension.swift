@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import AppKit
 
 // MARK: - Container Background Extension
 
@@ -28,6 +29,7 @@ struct WidgetSnapshot: Codable {
     let courses: [WidgetCourseItem]
     let focus: WidgetFocusState
     let recurrenceSeries: [WidgetRecurrenceSeriesItem]?
+    let habits: [WidgetHabitItem]?
 
     static let empty = WidgetSnapshot(
         updatedAt: "",
@@ -35,8 +37,65 @@ struct WidgetSnapshot: Codable {
         todos: [],
         courses: [],
         focus: WidgetFocusState.empty,
-        recurrenceSeries: []
+        recurrenceSeries: [],
+        habits: []
     )
+}
+
+struct WidgetHabitItem: Codable, Identifiable {
+    let habitId: String
+    let title: String
+    let icon: String
+    let sourceType: String
+    let currentValue: Double
+    let targetValue: Double
+    let unit: String
+    let goalMet: Bool
+    let quickValues: [Double]
+
+    var id: String { habitId }
+
+    static let empty = WidgetHabitItem(
+        habitId: "",
+        title: "",
+        icon: "",
+        sourceType: "quantityCheckIn",
+        currentValue: 0,
+        targetValue: 0,
+        unit: "",
+        goalMet: false,
+        quickValues: []
+    )
+
+    /// 数量型 / 时长型显示 "当前 / 目标"，其余显示达标状态。
+    var progressText: String {
+        switch sourceType {
+        case "quantityCheckIn", "pomodoroTag":
+            if goalMet {
+                return targetValue > 0 ? "达标 \(formattedCurrent)\(unit)" : formattedCurrent
+            }
+            return targetValue > 0 ? "\(formattedCurrent) / \(formattedTarget)\(unit)" : formattedCurrent
+        case "recurringTodo", "timeCheckIn":
+            return goalMet ? "已达标" : "待完成"
+        default:
+            return goalMet ? "已达标" : "待完成"
+        }
+    }
+
+    private var formattedCurrent: String {
+        formatValue(currentValue)
+    }
+
+    private var formattedTarget: String {
+        formatValue(targetValue)
+    }
+
+    private func formatValue(_ value: Double) -> String {
+        if value == value.rounded() {
+            return "\(Int(value))"
+        }
+        return String(format: "%.1f", value)
+    }
 }
 
 struct WidgetRecurrenceSeriesItem: Codable, Identifiable {
@@ -157,7 +216,8 @@ class WidgetDataLoader {
             todos: visibleTodos,
             courses: snapshot.courses,
             focus: snapshot.focus,
-            recurrenceSeries: snapshot.recurrenceSeries
+            recurrenceSeries: snapshot.recurrenceSeries,
+            habits: snapshot.habits
         )
     }
 
@@ -379,7 +439,14 @@ struct RecurrenceWidgetProvider: AppIntentTimelineProvider {
 
 extension WidgetSnapshot {
     var isEmpty: Bool {
-        countdowns.isEmpty && todos.isEmpty && courses.isEmpty && !focus.isRunning
+        countdowns.isEmpty && todos.isEmpty && courses.isEmpty && !focus.isRunning && (habits ?? []).isEmpty
+    }
+
+    var deepLinkURL: URL {
+        var components = URLComponents()
+        components.scheme = "countdowntodo"
+        components.host = "habit"
+        return components.url ?? URL(string: "countdowntodo://habit")!
     }
 
     var nearestCountdown: WidgetCountdownItem? {
@@ -1546,6 +1613,251 @@ struct FocusWidgetEntryView: View {
     }
 }
 
+// MARK: - Habit Widget
+
+struct CountDownTodoHabitWidget: Widget {
+    let kind: String = "CountDownTodoHabitWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: Provider()) { entry in
+            HabitWidgetEntryView(entry: entry)
+        }
+        .configurationDisplayName("今日习惯")
+        .description("查看今日习惯打卡进度")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+struct HabitWidgetEntryView: View {
+    @Environment(\.widgetFamily) var family
+    var entry: SimpleEntry
+
+    var body: some View {
+        content
+            .widgetContainerBackground {
+                Color.clear
+            }
+            .widgetURL(entry.snapshot.deepLinkURL)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch family {
+        case .systemMedium:
+            mediumHabit
+        default:
+            smallHabit
+        }
+    }
+
+    private var displayedHabits: [WidgetHabitItem] {
+        let all = entry.snapshot.habits ?? []
+        return all.sorted { lhs, rhs in
+            if lhs.goalMet != rhs.goalMet { return !lhs.goalMet }
+            return lhs.title < rhs.title
+        }
+    }
+
+    private var smallHabit: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "checkmark.seal")
+                    .foregroundColor(.accentColor)
+                Text("今日习惯")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+
+            Spacer()
+
+            if entry.isPlaceholder || displayedHabits.isEmpty {
+                VStack(spacing: 4) {
+                    Image(systemName: "checkmark.seal")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    Text("暂无习惯")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(displayedHabits.prefix(3), id: \.id) { habit in
+                        habitRow(habit, compact: true)
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding()
+    }
+
+    private var mediumHabit: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "checkmark.seal")
+                    .foregroundColor(.accentColor)
+                Text("今日习惯")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                Text("\(displayedHabits.filter(\.goalMet).count)/\(displayedHabits.count) 达标")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            if entry.isPlaceholder || displayedHabits.isEmpty {
+                Spacer()
+                VStack(spacing: 4) {
+                    Image(systemName: "checkmark.seal")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    Text("暂无习惯")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("在应用内创建习惯后展示进度")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 16),
+                        GridItem(.flexible(), spacing: 16)
+                    ],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    ForEach(displayedHabits.prefix(6), id: \.id) { habit in
+                        habitRow(habit, compact: false)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func habitRow(_ habit: WidgetHabitItem, compact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(habit.icon.isEmpty ? "🎯" : habit.icon)
+                .font(compact ? .caption : .subheadline)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(habit.title)
+                    .font(compact ? .caption : .subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                if !compact {
+                    progressBar(habit)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(habit.progressText)
+                    .font(compact ? .system(size: 10) : .caption)
+                    .foregroundColor(habit.goalMet ? .green : .secondary)
+                    .lineLimit(1)
+                quickCheckInButton(habit)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func quickCheckInButton(_ habit: WidgetHabitItem) -> some View {
+        if habit.goalMet {
+            Text("✅")
+                .font(.system(size: 10))
+                .foregroundColor(.green)
+        } else if #available(macOSApplicationExtension 14.0, *) {
+            Button(intent: habit.quickCheckInIntent) {
+                Image(systemName: "plus.circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(.accentColor)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text("○")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func progressBar(_ habit: WidgetHabitItem) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.18))
+                Capsule()
+                    .fill(habit.goalMet ? Color.green : Color.accentColor)
+                    .frame(width: max(0, geo.size.width * CGFloat(habit.ratio)))
+            }
+        }
+        .frame(height: 5)
+    }
+}
+
+extension WidgetHabitItem {
+    var ratio: Double {
+        guard targetValue > 0 else { return 0 }
+        return min(1, currentValue / targetValue)
+    }
+}
+
+// MARK: - Habit Quick Check-In Intent
+
+@available(macOS 14.0, *)
+struct HabitQuickCheckInIntent: AppIntent {
+    static var title: LocalizedStringResource = "习惯快捷打卡"
+    static var description = IntentDescription("从习惯小组件快速打卡一次。")
+
+    @Parameter(title: "习惯 ID")
+    var habitId: String
+
+    @Parameter(title: "快捷值")
+    var quickValue: Double?
+
+    init() {}
+
+    init(habitId: String, quickValue: Double?) {
+        self.habitId = habitId
+        self.quickValue = quickValue
+    }
+
+    func perform() async throws -> some IntentResult {
+        var components = URLComponents()
+        components.scheme = "countdowntodo"
+        components.host = "habitcheckin"
+        components.queryItems = [
+            URLQueryItem(name: "habitId", value: habitId)
+        ]
+        if let quickValue {
+            components.queryItems?.append(
+                URLQueryItem(name: "value", value: "\(quickValue)")
+            )
+        }
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
+        }
+        return .result()
+    }
+}
+
+extension WidgetHabitItem {
+    @available(macOS 14.0, *)
+    var quickCheckInIntent: HabitQuickCheckInIntent {
+        HabitQuickCheckInIntent(
+            habitId: habitId,
+            quickValue: quickValues.first
+        )
+    }
+}
+
 // MARK: - Configurable Recurrence Widget
 
 @available(macOS 14.2, *)
@@ -1850,13 +2162,14 @@ struct RecurrenceWidgetEntryView: View {
 @main
 struct CountDownTodoWidgetBundle: WidgetBundle {
     var body: some Widget {
-        // macOS currently publishes at most five descriptors from a WidgetBundle.
-        // The overview already includes focus state, so the standalone focus
-        // entry yields its gallery slot to the configurable recurrence widget.
+        // macOS 桌面小组件画廊按扩展显示，WidgetBundle 编译期上限为 10 个
+        // （Xcode 14+）。专注状态已并入总览小组件，因此专注条目让位给
+        // 循环待办与习惯条目。
         CountDownTodoOverviewWidget()
         CountDownTodoCountdownWidget()
         CountDownTodoTodoWidget()
         CountDownTodoCourseWidget()
+        CountDownTodoHabitWidget()
         CountDownTodoRecurrenceWidget()
     }
 }
@@ -1881,7 +2194,42 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
                 WidgetCourseItem(title: "计算机组成原理实验", timeText: "19:00 - 21:30", location: "电气楼513", statusText: "下一节课"),
             ],
             focus: WidgetFocusState(isRunning: false, currentTitle: "", todayMinutes: 80, sessionMinutes: 0, remainingSeconds: 0),
-            recurrenceSeries: [WidgetRecurrenceSeriesItem.preview]
+            recurrenceSeries: [WidgetRecurrenceSeriesItem.preview],
+            habits: [
+                WidgetHabitItem(
+                    habitId: "preview-water",
+                    title: "喝水",
+                    icon: "💧",
+                    sourceType: "quantityCheckIn",
+                    currentValue: 680,
+                    targetValue: 2000,
+                    unit: "ml",
+                    goalMet: false,
+                    quickValues: [250, 500, 1000]
+                ),
+                WidgetHabitItem(
+                    habitId: "preview-run",
+                    title: "跑步",
+                    icon: "🏃",
+                    sourceType: "quantityCheckIn",
+                    currentValue: 5,
+                    targetValue: 5,
+                    unit: "km",
+                    goalMet: true,
+                    quickValues: [1, 2, 5]
+                ),
+                WidgetHabitItem(
+                    habitId: "preview-read",
+                    title: "读书",
+                    icon: "📖",
+                    sourceType: "recurringTodo",
+                    currentValue: 0,
+                    targetValue: 1,
+                    unit: "",
+                    goalMet: false,
+                    quickValues: []
+                ),
+            ]
         )
         let entry = SimpleEntry(date: Date(), snapshot: sampleSnapshot, isPlaceholder: false)
 
@@ -1892,6 +2240,12 @@ struct CountDownTodoWidget_Previews: PreviewProvider {
                 .previewContext(WidgetPreviewContext(family: .systemMedium))
             OverviewWidgetEntryView(entry: entry)
                 .previewContext(WidgetPreviewContext(family: .systemLarge))
+            HabitWidgetEntryView(entry: entry)
+                .previewContext(WidgetPreviewContext(family: .systemSmall))
+                .previewDisplayName("今日习惯 · 小号")
+            HabitWidgetEntryView(entry: entry)
+                .previewContext(WidgetPreviewContext(family: .systemMedium))
+                .previewDisplayName("今日习惯 · 中号")
             if #available(macOS 14.2, *) {
                 RecurrenceWidgetEntryView(
                     entry: RecurrenceWidgetEntry(
