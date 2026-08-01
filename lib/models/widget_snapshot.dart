@@ -7,6 +7,7 @@ class WidgetSnapshot {
   final List<WidgetCourseItem> courses;
   final WidgetFocusState focus;
   final List<WidgetRecurrenceSeriesItem> recurrenceSeries;
+  final List<WidgetHabitItem> habits;
 
   const WidgetSnapshot({
     required this.updatedAt,
@@ -15,6 +16,7 @@ class WidgetSnapshot {
     this.courses = const [],
     this.focus = const WidgetFocusState(),
     this.recurrenceSeries = const [],
+    this.habits = const [],
   });
 
   Map<String, dynamic> toJson() {
@@ -25,6 +27,7 @@ class WidgetSnapshot {
       'courses': courses.map((e) => e.toJson()).toList(),
       'focus': focus.toJson(),
       'recurrenceSeries': recurrenceSeries.map((e) => e.toJson()).toList(),
+      'habits': habits.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -55,6 +58,10 @@ class WidgetSnapshot {
                   ))
               .toList() ??
           [],
+      habits: (json['habits'] as List<dynamic>?)
+              ?.map((e) => WidgetHabitItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 
@@ -62,6 +69,62 @@ class WidgetSnapshot {
 
   static WidgetSnapshot empty() {
     return WidgetSnapshot(updatedAt: DateTime.now());
+  }
+}
+
+/// 小组件中的今日习惯条目（设计文档 §20）。
+class WidgetHabitItem {
+  final String habitId;
+  final String title;
+  final String icon;
+  final String sourceType;
+  final double currentValue;
+  final double targetValue;
+  final String unit;
+  final bool goalMet;
+  final List<double> quickValues;
+
+  const WidgetHabitItem({
+    required this.habitId,
+    required this.title,
+    this.icon = '',
+    this.sourceType = 'quantityCheckIn',
+    this.currentValue = 0,
+    this.targetValue = 0,
+    this.unit = '',
+    this.goalMet = false,
+    this.quickValues = const [],
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'habitId': habitId,
+      'title': title,
+      'icon': icon,
+      'sourceType': sourceType,
+      'currentValue': currentValue,
+      'targetValue': targetValue,
+      'unit': unit,
+      'goalMet': goalMet,
+      'quickValues': quickValues,
+    };
+  }
+
+  factory WidgetHabitItem.fromJson(Map<String, dynamic> json) {
+    return WidgetHabitItem(
+      habitId: json['habitId'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      icon: json['icon'] as String? ?? '',
+      sourceType: json['sourceType'] as String? ?? 'quantityCheckIn',
+      currentValue: (json['currentValue'] as num?)?.toDouble() ?? 0,
+      targetValue: (json['targetValue'] as num?)?.toDouble() ?? 0,
+      unit: json['unit'] as String? ?? '',
+      goalMet: json['goalMet'] as bool? ?? false,
+      quickValues: (json['quickValues'] as List<dynamic>?)
+              ?.map((e) => (e as num).toDouble())
+              .toList() ??
+          const [],
+    );
   }
 }
 

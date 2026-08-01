@@ -72,4 +72,53 @@ void main() {
 
     expect(restored.recurrenceSeries, isEmpty);
   });
+
+  test('habit items survive a widget snapshot JSON round trip', () {
+    final snapshot = WidgetSnapshot(
+      updatedAt: DateTime(2026, 8, 1, 9),
+      habits: const [
+        WidgetHabitItem(
+          habitId: 'water-habit',
+          title: '喝水',
+          icon: '💧',
+          sourceType: 'quantityCheckIn',
+          currentValue: 680,
+          targetValue: 2000,
+          unit: 'ml',
+          goalMet: false,
+          quickValues: [250, 500, 1000],
+        ),
+        WidgetHabitItem(
+          habitId: 'run-habit',
+          title: '跑步',
+          sourceType: 'recurringTodo',
+          goalMet: true,
+        ),
+      ],
+    );
+
+    final restored = WidgetSnapshot.fromJson(snapshot.toJson());
+
+    expect(restored.habits, hasLength(2));
+    final water = restored.habits.first;
+    expect(water.habitId, 'water-habit');
+    expect(water.currentValue, 680);
+    expect(water.targetValue, 2000);
+    expect(water.unit, 'ml');
+    expect(water.goalMet, isFalse);
+    expect(water.quickValues, [250.0, 500.0, 1000.0]);
+    expect(restored.habits.last.goalMet, isTrue);
+  });
+
+  test('older widget snapshots decode with empty habits', () {
+    final restored = WidgetSnapshot.fromJson({
+      'updatedAt': '2026-07-30T09:00:00.000',
+      'countdowns': <dynamic>[],
+      'todos': <dynamic>[],
+      'courses': <dynamic>[],
+      'focus': <String, dynamic>{},
+    });
+
+    expect(restored.habits, isEmpty);
+  });
 }
