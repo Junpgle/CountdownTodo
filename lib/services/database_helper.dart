@@ -277,8 +277,11 @@ class DatabaseHelper {
           reminder_policy_json TEXT,
           is_deleted INTEGER NOT NULL DEFAULT 0,
           version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
           created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL,
+          has_conflict INTEGER DEFAULT 0,
+          conflict_data TEXT
         )
       ''');
       await db.execute('''
@@ -331,6 +334,29 @@ class DatabaseHelper {
         }
       } catch (e) {
         // 忽略：新建库时该列已存在。
+      }
+      // V38：为规则表补充同步字段 device_id / has_conflict / conflict_data（幂等）。
+      try {
+        final ruleInfo =
+            await db.rawQuery('PRAGMA table_info(habit_goal_rule_revisions)');
+        final ruleCols = ruleInfo.map((row) => row['name']).toSet();
+        if (!ruleCols.contains('device_id')) {
+          await db.execute(
+            'ALTER TABLE habit_goal_rule_revisions ADD COLUMN device_id TEXT',
+          );
+        }
+        if (!ruleCols.contains('has_conflict')) {
+          await db.execute(
+            'ALTER TABLE habit_goal_rule_revisions ADD COLUMN has_conflict INTEGER DEFAULT 0',
+          );
+        }
+        if (!ruleCols.contains('conflict_data')) {
+          await db.execute(
+            'ALTER TABLE habit_goal_rule_revisions ADD COLUMN conflict_data TEXT',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时这些列已存在。
       }
     } catch (e) {
 //       debugPrint('⚠️ Database: 检查/修复 habit 表结构失败: $e');

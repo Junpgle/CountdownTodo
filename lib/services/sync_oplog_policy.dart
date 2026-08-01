@@ -40,6 +40,7 @@ class SyncOplogPolicy {
     required Iterable<SyncOplogEntry> requestSnapshot,
     required Set<String> blockingConflictUuids,
     required bool acknowledgeFixedScheduleOps,
+    required bool acknowledgeHabitOps,
   }) {
     final acknowledgedIds = <int>{};
     final blockedIds = <int>{};
@@ -47,7 +48,11 @@ class SyncOplogPolicy {
     for (final entry in requestSnapshot) {
       if (entry.table == 'pomodoro_records' ||
           entry.table == 'pomodoro_tags' ||
-          (!acknowledgeFixedScheduleOps && entry.table == 'fixed_schedules')) {
+          (!acknowledgeFixedScheduleOps && entry.table == 'fixed_schedules') ||
+          (!acknowledgeHabitOps &&
+              (entry.table == 'habit_goals' ||
+                  entry.table == 'habit_goal_rule_revisions' ||
+                  entry.table == 'habit_checkins'))) {
         continue;
       }
       if (blockingConflictUuids.contains(entry.uuid)) {

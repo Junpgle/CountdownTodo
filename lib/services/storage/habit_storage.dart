@@ -10,11 +10,11 @@ import '../database_helper.dart';
 
 /// 习惯模块的 SQL 存取层。
 ///
-/// 与固定日程一致，采用独立表 + 可选 oplog 写入；
-/// 云同步接入前（PR5）不向 op_logs 写记录，避免未消费的日志堆积。
+/// 与固定日程一致，采用独立表 + oplog 写入；
+/// 云同步接入（PR5）后向 op_logs 写入记录，由同步引擎消费。
 abstract final class HabitStorage {
-  /// 是否写入同步操作日志。云同步 PR5 接入后置为 true。
-  static const bool writeOplog = false;
+  /// 是否写入同步操作日志。云同步 PR5 已接入，置为 true。
+  static const bool writeOplog = true;
 
   static const String tableGoals = 'habit_goals';
   static const String tableRules = 'habit_goal_rule_revisions';
@@ -36,6 +36,7 @@ abstract final class HabitStorage {
     'created_at',
     'updated_at',
     'has_conflict',
+    'conflict_data',
   ];
 
   static const List<String> ruleChangeColumns = [
@@ -54,8 +55,11 @@ abstract final class HabitStorage {
     'reminder_policy_json',
     'is_deleted',
     'version',
+    'device_id',
     'created_at',
     'updated_at',
+    'has_conflict',
+    'conflict_data',
   ];
 
   static const List<String> checkInChangeColumns = [

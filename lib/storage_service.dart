@@ -3715,6 +3715,7 @@ class StorageService {
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,
     bool syncFixedSchedules = true,
+    bool syncHabits = true,
   }) async {
     final bool shouldUploadAllLocal = uploadAllLocal || forceFullSync;
     // 1. 状态锁：防止重复进入
@@ -3723,7 +3724,8 @@ class StorageService {
         !syncTimeLogs &&
         !syncPomodoro &&
         !syncPlanBlocks &&
-        !syncFixedSchedules) {
+        !syncFixedSchedules &&
+        !syncHabits) {
       return {'success': false, 'hasChanges': false};
     }
     if (_isSyncing) {
@@ -3753,6 +3755,9 @@ class StorageService {
           'fixed_schedule_sync_v1_${fixedScheduleServerScope}_$username';
       final fixedScheduleSyncInitialized =
           prefs.getBool(fixedScheduleBootstrapKey) == true;
+      final habitBootstrapKey =
+          'habit_sync_v1_${fixedScheduleServerScope}_$username';
+      final habitSyncInitialized = prefs.getBool(habitBootstrapKey) == true;
       int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
@@ -3766,6 +3771,9 @@ class StorageService {
       List<Map<String, dynamic>> dirtyTimeLogs = [];
       List<Map<String, dynamic>> dirtyPlanBlocks = [];
       List<Map<String, dynamic>> dirtyFixedSchedules = [];
+      List<Map<String, dynamic>> dirtyHabitGoals = [];
+      List<Map<String, dynamic>> dirtyHabitRules = [];
+      List<Map<String, dynamic>> dirtyHabitCheckIns = [];
       List<TodoItem> allLocalTodos =
           await getTodos(username, includeDeleted: true);
       List<TodoGroup> allLocalGroups =
@@ -3777,6 +3785,12 @@ class StorageService {
           await getPlanBlocks(username, includeDeleted: true);
       List<FixedScheduleItem> allLocalFixedSchedules =
           await getFixedSchedules(username, includeDeleted: true);
+      final List<HabitGoal> allLocalHabitGoals =
+          await HabitStorage.getHabitGoals(includeDeleted: true);
+      final List<HabitGoalRuleRevision> allLocalHabitRules =
+          await HabitStorage.getRuleRevisions();
+      final List<HabitCheckIn> allLocalHabitCheckIns =
+          await HabitStorage.getCheckIns(includeDeleted: true);
       final autoResolvedMigrationConflicts =
           _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
       if (autoResolvedMigrationConflicts.isNotEmpty) {
@@ -3868,6 +3882,9 @@ class StorageService {
       final Map<String, Map<String, dynamic>> dedupCountdowns = {};
       final Map<String, Map<String, dynamic>> dedupPlanBlocks = {};
       final Map<String, Map<String, dynamic>> dedupFixedSchedules = {};
+      final Map<String, Map<String, dynamic>> dedupHabitGoals = {};
+      final Map<String, Map<String, dynamic>> dedupHabitRules = {};
+      final Map<String, Map<String, dynamic>> dedupHabitCheckIns = {};
       final List<int> consumedConflictOpIds = [];
 
       for (var op in pendingOps) {
@@ -3922,6 +3939,36 @@ class StorageService {
           dedupPlanBlocks[uuid] = data;
         } else if (table == 'fixed_schedules' && syncFixedSchedules) {
           dedupFixedSchedules[uuid] = data;
+        } else if (table == 'habit_goals' && syncHabits) {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          if (_payloadHasConflict(data) ||
+              (allLocalHabitGoals
+                  .any((g) => g.uuid == uuid && g.hasConflict))) {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          dedupHabitGoals[uuid] = data;
+        } else if (table == 'habit_goal_rule_revisions' && syncHabits) {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          if (_payloadHasConflict(data) ||
+              (allLocalHabitRules
+                  .any((r) => r.uuid == uuid && r.hasConflict))) {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          dedupHabitRules[uuid] = data;
+        } else if (table == 'habit_checkins' && syncHabits) {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          dedupHabitCheckIns[uuid] = data;
         }
       }
 
@@ -3943,6 +3990,9 @@ class StorageService {
       dirtyCountdowns = dedupCountdowns.values.toList();
       dirtyPlanBlocks = dedupPlanBlocks.values.toList();
       dirtyFixedSchedules = dedupFixedSchedules.values.toList();
+      dirtyHabitGoals = dedupHabitGoals.values.toList();
+      dirtyHabitRules = dedupHabitRules.values.toList();
+      dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
 
       // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
       if (syncTodos) {
@@ -4002,6 +4052,30 @@ class StorageService {
         dirtyFixedSchedules = dedupFixedSchedules.values.toList();
       }
 
+      // 习惯：与固定日程一致的引导策略。首次与支持 habits v1 的服务端
+      // 握手前全量携带本地习惯数据，避免 PR5 之前（未写 oplog）创建的
+      // 习惯因旧水位线而漏传。
+      if (syncHabits) {
+        for (final item in allLocalHabitGoals) {
+          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+            dedupHabitGoals[item.uuid] = item.toJson();
+          }
+        }
+        for (final item in allLocalHabitRules) {
+          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+            dedupHabitRules[item.uuid] = item.toJson();
+          }
+        }
+        for (final item in allLocalHabitCheckIns) {
+          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+            dedupHabitCheckIns[item.uuid] = item.toJson();
+          }
+        }
+        dirtyHabitGoals = dedupHabitGoals.values.toList();
+        dirtyHabitRules = dedupHabitRules.values.toList();
+        dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
+      }
+
       if (shouldUploadAllLocal) {
         for (final item in allLocalTodos) {
           if (item.hasConflict && _hasVersionConflict(item.serverVersionData)) {
@@ -4037,11 +4111,25 @@ class StorageService {
             dedupFixedSchedules.putIfAbsent(item.id, item.toJson);
           }
         }
+        if (syncHabits) {
+          for (final item in allLocalHabitGoals) {
+            dedupHabitGoals.putIfAbsent(item.uuid, item.toJson);
+          }
+          for (final item in allLocalHabitRules) {
+            dedupHabitRules.putIfAbsent(item.uuid, item.toJson);
+          }
+          for (final item in allLocalHabitCheckIns) {
+            dedupHabitCheckIns.putIfAbsent(item.uuid, item.toJson);
+          }
+        }
         dirtyTodos = dedupTodos.values.toList();
         dirtyGroups = dedupGroups.values.toList();
         dirtyCountdowns = dedupCountdowns.values.toList();
         dirtyPlanBlocks = dedupPlanBlocks.values.toList();
         dirtyFixedSchedules = dedupFixedSchedules.values.toList();
+        dirtyHabitGoals = dedupHabitGoals.values.toList();
+        dirtyHabitRules = dedupHabitRules.values.toList();
+        dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
@@ -4098,6 +4186,10 @@ class StorageService {
           fixedSchedulesChanges: dirtyFixedSchedules,
           fixedSchedulesFullSync: syncFixedSchedules &&
               (!fixedScheduleSyncInitialized || forceFullSync),
+          habitGoalsChanges: dirtyHabitGoals,
+          habitRuleChanges: dirtyHabitRules,
+          habitCheckInChanges: dirtyHabitCheckIns,
+          habitFullSync: syncHabits && (!habitSyncInitialized || forceFullSync),
           screenTime: screenPayload,
           forceFullSync: forceFullSync,
         );
@@ -4111,6 +4203,9 @@ class StorageService {
           dirtyTimeLogs.isNotEmpty ||
           dirtyPlanBlocks.isNotEmpty ||
           dirtyFixedSchedules.isNotEmpty ||
+          dirtyHabitGoals.isNotEmpty ||
+          dirtyHabitRules.isNotEmpty ||
+          dirtyHabitCheckIns.isNotEmpty ||
           screenPayload != null;
 
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
@@ -4126,7 +4221,12 @@ class StorageService {
             (syncResponse['server_pomodoros'] as List?)?.isEmpty == true &&
             (syncResponse['server_tags'] as List?)?.isEmpty == true &&
             (syncResponse['server_plan_blocks'] as List?)?.isEmpty == true &&
-            (syncResponse['server_fixed_schedules'] as List?)?.isEmpty == true;
+            (syncResponse['server_fixed_schedules'] as List?)?.isEmpty ==
+                true &&
+            (syncResponse['server_habit_goals'] as List?)?.isEmpty == true &&
+            (syncResponse['server_habit_goal_rules'] as List?)?.isEmpty ==
+                true &&
+            (syncResponse['server_habit_checkins'] as List?)?.isEmpty == true;
         final syncTimeUnchanged =
             (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
         return syncResponse['success'] == true &&
@@ -4153,6 +4253,14 @@ class StorageService {
       final acknowledgeFixedScheduleOps =
           SyncCapabilityService.shouldAcknowledgeFixedScheduleOps(
         syncEnabled: syncFixedSchedules,
+        rawCapabilities: response['sync_capabilities'],
+      );
+      final habitsSupported = SyncCapabilityService.supportsHabits(
+        response['sync_capabilities'],
+      );
+      final acknowledgeHabitOps =
+          SyncCapabilityService.shouldAcknowledgeHabitOps(
+        syncEnabled: syncHabits,
         rawCapabilities: response['sync_capabilities'],
       );
 
@@ -4247,6 +4355,7 @@ class StorageService {
           requestSnapshot: requestOplogSnapshot,
           blockingConflictUuids: blockingConflictUuids,
           acknowledgeFixedScheduleOps: acknowledgeFixedScheduleOps,
+          acknowledgeHabitOps: acknowledgeHabitOps,
         );
         await _updateOplogRowsByIds(
           db,
@@ -4877,6 +4986,129 @@ class StorageService {
         }
       }
 
+      // 合并习惯数据。只在服务端显式声明 habits v1 能力时读取，
+      // 避免旧服务端的空字段被误解为“云端已全部删除”。
+      if (syncHabits && habitsSupported) {
+        final serverHabitGoals =
+            (response['server_habit_goals'] as List?) ?? const [];
+        final habitGoalsIndexMap = <String, int>{
+          for (var i = 0; i < allLocalHabitGoals.length; i++)
+            allLocalHabitGoals[i].uuid: i,
+        };
+        for (final raw in serverHabitGoals) {
+          if (raw is! Map) continue;
+          final serverItem = HabitGoal.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.uuid)) continue;
+          final localIndex = habitGoalsIndexMap[serverItem.uuid];
+          if (localIndex == null) {
+            if (!serverItem.isDeleted) {
+              habitGoalsIndexMap[serverItem.uuid] = allLocalHabitGoals.length;
+              allLocalHabitGoals.add(serverItem);
+              hasChanges = true;
+            }
+            continue;
+          }
+          final localItem = allLocalHabitGoals[localIndex];
+          // 冲突标记会推高服务端 updated_at；时间路径必须排除冲突项，
+          // 避免用冲突快照覆盖本地更新的内容（与倒计时合并规则一致）。
+          final serverWins = serverItem.version > localItem.version ||
+              (serverItem.updatedAt > localItem.updatedAt &&
+                  !serverItem.hasConflict);
+          if (serverWins) {
+            allLocalHabitGoals[localIndex] = serverItem;
+            hasChanges = true;
+          } else if (serverItem.hasConflict && !localItem.hasConflict) {
+            // 服务端冲突标记与本地内容分开同步：不覆盖本地新内容，
+            // 只让冲突状态保持一致，冲突收件箱可见。
+            localItem.hasConflict = true;
+            localItem.conflictData = serverItem.conflictData;
+            hasChanges = true;
+          } else if (!serverItem.hasConflict && localItem.hasConflict) {
+            localItem.hasConflict = false;
+            localItem.conflictData = null;
+            hasChanges = true;
+          }
+        }
+
+        final serverHabitRules =
+            (response['server_habit_goal_rules'] as List?) ?? const [];
+        final habitRulesIndexMap = <String, int>{
+          for (var i = 0; i < allLocalHabitRules.length; i++)
+            allLocalHabitRules[i].uuid: i,
+        };
+        for (final raw in serverHabitRules) {
+          if (raw is! Map) continue;
+          final serverItem = HabitGoalRuleRevision.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.uuid)) continue;
+          final localIndex = habitRulesIndexMap[serverItem.uuid];
+          if (localIndex == null) {
+            if (!serverItem.isDeleted) {
+              habitRulesIndexMap[serverItem.uuid] = allLocalHabitRules.length;
+              allLocalHabitRules.add(serverItem);
+              hasChanges = true;
+            }
+            continue;
+          }
+          final localItem = allLocalHabitRules[localIndex];
+          // 与目标一致：冲突标记会推高服务端 updated_at，
+          // 时间路径必须排除冲突项，避免冲突快照覆盖本地新内容。
+          final serverWins = serverItem.version > localItem.version ||
+              (serverItem.updatedAt > localItem.updatedAt &&
+                  !serverItem.hasConflict);
+          if (serverWins) {
+            allLocalHabitRules[localIndex] = serverItem;
+            hasChanges = true;
+          } else if (serverItem.hasConflict && !localItem.hasConflict) {
+            localItem.hasConflict = true;
+            localItem.conflictData = serverItem.conflictData;
+            hasChanges = true;
+          } else if (!serverItem.hasConflict && localItem.hasConflict) {
+            localItem.hasConflict = false;
+            localItem.conflictData = null;
+            hasChanges = true;
+          }
+        }
+
+        // 打卡采用事件合并：不同 UUID 全部保留，同一 UUID 按 LWW 更新。
+        final serverHabitCheckIns =
+            (response['server_habit_checkins'] as List?) ?? const [];
+        final habitCheckInsIndexMap = <String, int>{
+          for (var i = 0; i < allLocalHabitCheckIns.length; i++)
+            allLocalHabitCheckIns[i].uuid: i,
+        };
+        for (final raw in serverHabitCheckIns) {
+          if (raw is! Map) continue;
+          final serverItem = HabitCheckIn.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.uuid)) continue;
+          final localIndex = habitCheckInsIndexMap[serverItem.uuid];
+          if (localIndex == null) {
+            if (!serverItem.isDeleted) {
+              habitCheckInsIndexMap[serverItem.uuid] =
+                  allLocalHabitCheckIns.length;
+              allLocalHabitCheckIns.add(serverItem);
+              hasChanges = true;
+            }
+            continue;
+          }
+          final localItem = allLocalHabitCheckIns[localIndex];
+          if (TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: serverItem.updatedAt,
+            incomingVersion: serverItem.version,
+            currentUpdatedAt: localItem.updatedAt,
+            currentVersion: localItem.version,
+          )) {
+            allLocalHabitCheckIns[localIndex] = serverItem;
+            hasChanges = true;
+          }
+        }
+      }
+
       // 🚀 关键：将 conflicts 数组中的冲突也标记到本地数据上。
       // 服务器在标记 has_conflict=1 时可能不会同时更新 updated_at，
       // 导致该条目被 filterWithActualTime 过滤掉，不在 server_todos 中。
@@ -5054,6 +5286,20 @@ class StorageService {
             isSyncSource: true,
           );
         }
+        if (syncHabits && habitsSupported) {
+          await HabitStorage.saveHabitGoals(
+            allLocalHabitGoals,
+            isSyncSource: true,
+          );
+          await HabitStorage.saveRuleRevisions(
+            allLocalHabitRules,
+            isSyncSource: true,
+          );
+          await HabitStorage.saveCheckIns(
+            allLocalHabitCheckIns,
+            isSyncSource: true,
+          );
+        }
         _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
         _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
       }
@@ -5091,6 +5337,9 @@ class StorageService {
       await prefs.setInt('last_sync_time_${serverKey}_$username', newSyncTime);
       if (syncFixedSchedules && fixedSchedulesSupported) {
         await prefs.setBool(fixedScheduleBootstrapKey, true);
+      }
+      if (syncHabits && habitsSupported) {
+        await prefs.setBool(habitBootstrapKey, true);
       }
 
       // 如果屏幕时间同步成功，可以在这里刷新 UI 用的 Cache 数据（如果后端有返回最新的聚合数据）
@@ -6671,6 +6920,97 @@ class StorageService {
                 ? 1
                 : 0,
             'team_uuid': resolvedData['team_uuid'] ?? resolvedData['teamUuid'],
+          },
+          where: 'uuid = ?',
+          whereArgs: [uuid],
+        );
+        break;
+      case 'habit_goals':
+        batch.update(
+          'habit_goals',
+          {
+            'has_conflict': 0,
+            'version': resolvedData['version'],
+            'updated_at': resolvedUpdatedAt,
+            'name': resolvedData['name'] ?? '',
+            'icon': resolvedData['icon'],
+            'source_type':
+                resolvedData['source_type'] ?? resolvedData['sourceType'] ?? 2,
+            'source_ids':
+                resolvedData['source_ids'] ?? resolvedData['sourceIds'],
+            'current_rule_uuid': resolvedData['current_rule_uuid'] ??
+                resolvedData['currentRuleUuid'],
+            'display_mode': resolvedData['display_mode'] ??
+                resolvedData['displayMode'] ??
+                0,
+            'default_focus_minutes': resolvedData['default_focus_minutes'] ??
+                resolvedData['defaultFocusMinutes'],
+            'sort_order':
+                resolvedData['sort_order'] ?? resolvedData['sortOrder'] ?? 0,
+            'is_archived': resolvedData['is_archived'] == 1 ||
+                    resolvedData['is_archived'] == true
+                ? 1
+                : 0,
+            'is_deleted': resolvedData['is_deleted'] == 1 ||
+                    resolvedData['is_deleted'] == true
+                ? 1
+                : 0,
+            'device_id': resolvedData['device_id'] ?? resolvedData['deviceId'],
+            'created_at': resolvedData['created_at'] ??
+                resolvedData['createdAt'] ??
+                resolvedUpdatedAt,
+          },
+          where: 'uuid = ?',
+          whereArgs: [uuid],
+        );
+        break;
+      case 'habit_goal_rule_revisions':
+        batch.update(
+          'habit_goal_rule_revisions',
+          {
+            'has_conflict': 0,
+            'version': resolvedData['version'],
+            'updated_at': resolvedUpdatedAt,
+            'habit_uuid':
+                resolvedData['habit_uuid'] ?? resolvedData['habitUuid'],
+            'effective_from_date': resolvedData['effective_from_date'] ??
+                resolvedData['effectiveFromDate'],
+            'effective_to_date': resolvedData['effective_to_date'] ??
+                resolvedData['effectiveToDate'],
+            'period_type':
+                resolvedData['period_type'] ?? resolvedData['periodType'] ?? 0,
+            'weekdays_mask': resolvedData['weekdays_mask'] ??
+                resolvedData['weekdaysMask'] ??
+                127,
+            'custom_interval_days': resolvedData['custom_interval_days'] ??
+                resolvedData['customIntervalDays'],
+            'target_value': resolvedData['target_value'] ??
+                resolvedData['targetValue'] ??
+                0,
+            'unit': resolvedData['unit'],
+            'target_time_minute': resolvedData['target_time_minute'] ??
+                resolvedData['targetTimeMinute'],
+            'time_comparison': resolvedData['time_comparison'] ??
+                resolvedData['timeComparison'] ??
+                0,
+            'time_tolerance_minutes': resolvedData['time_tolerance_minutes'] ??
+                resolvedData['timeToleranceMinutes'] ??
+                0,
+            'day_boundary_minute': resolvedData['day_boundary_minute'] ??
+                resolvedData['dayBoundaryMinute'] ??
+                0,
+            'quick_values_json': resolvedData['quick_values_json'] ??
+                resolvedData['quickValuesJson'],
+            'reminder_policy_json': resolvedData['reminder_policy_json'] ??
+                resolvedData['reminderPolicyJson'],
+            'is_deleted': resolvedData['is_deleted'] == 1 ||
+                    resolvedData['is_deleted'] == true
+                ? 1
+                : 0,
+            'device_id': resolvedData['device_id'] ?? resolvedData['deviceId'],
+            'created_at': resolvedData['created_at'] ??
+                resolvedData['createdAt'] ??
+                resolvedUpdatedAt,
           },
           where: 'uuid = ?',
           whereArgs: [uuid],

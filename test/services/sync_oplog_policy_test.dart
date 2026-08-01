@@ -14,6 +14,7 @@ void main() {
         requestSnapshot: requestSnapshot,
         blockingConflictUuids: const {},
         acknowledgeFixedScheduleOps: true,
+        acknowledgeHabitOps: true,
       );
 
       expect(resolution.acknowledgedIds, {1, 2});
@@ -51,16 +52,46 @@ void main() {
         SyncOplogEntry(id: 20, table: 'todos', uuid: 'conflicted'),
         SyncOplogEntry(id: 21, table: 'fixed_schedules', uuid: 'schedule'),
         SyncOplogEntry(id: 22, table: 'pomodoro_records', uuid: 'pomodoro'),
+        SyncOplogEntry(id: 23, table: 'habit_goals', uuid: 'habit-goal'),
       ];
 
       final resolution = SyncOplogPolicy.resolveRequestSnapshot(
         requestSnapshot: requestSnapshot,
         blockingConflictUuids: const {'conflicted'},
         acknowledgeFixedScheduleOps: false,
+        acknowledgeHabitOps: false,
       );
 
       expect(resolution.acknowledgedIds, isEmpty);
       expect(resolution.blockedIds, {20});
+    });
+
+    test('habit ops are acknowledged only when the server declares habits v1',
+        () {
+      const requestSnapshot = [
+        SyncOplogEntry(id: 30, table: 'habit_goals', uuid: 'goal-1'),
+        SyncOplogEntry(
+            id: 31, table: 'habit_goal_rule_revisions', uuid: 'rule-1'),
+        SyncOplogEntry(id: 32, table: 'habit_checkins', uuid: 'checkin-1'),
+      ];
+
+      final resolution = SyncOplogPolicy.resolveRequestSnapshot(
+        requestSnapshot: requestSnapshot,
+        blockingConflictUuids: const {},
+        acknowledgeFixedScheduleOps: true,
+        acknowledgeHabitOps: true,
+      );
+
+      expect(resolution.acknowledgedIds, {30, 31, 32});
+
+      final oldServer = SyncOplogPolicy.resolveRequestSnapshot(
+        requestSnapshot: requestSnapshot,
+        blockingConflictUuids: const {},
+        acknowledgeFixedScheduleOps: true,
+        acknowledgeHabitOps: false,
+      );
+
+      expect(oldServer.acknowledgedIds, isEmpty);
     });
   });
 }

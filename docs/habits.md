@@ -728,6 +728,7 @@ source_ids
 current_rule_uuid
 
 display_mode
+default_focus_minutes
 sort_order
 is_archived
 is_deleted
@@ -743,10 +744,11 @@ conflict_data
 
 说明：
 
-* `source_ids` 使用 JSON 数组；
+* `source_ids` 使用 JSON 数组（服务端原样存储字符串，客户端负责解析）；
 * 完成型保存一个 `recurrenceSeriesId`；
 * 时长型可保存多个 `PomodoroTag UUID`；
-* 数量型和时间点型可以为空。
+* 数量型和时间点型可以为空；
+* `default_focus_minutes`（V37 新增）：时长型点击「开始专注」时的默认专注时长（分钟），为空时使用专注设置默认值。
 
 # 13.2 HabitGoalRuleRevision
 
@@ -775,9 +777,15 @@ reminder_policy_json
 
 is_deleted
 version
+device_id
 created_at
 updated_at
+
+has_conflict
+conflict_data
 ```
+
+与 `HabitGoal` 一样遵循同步模型：`version` 并发控制、`device_id` 溯源、逻辑删除，以及 `has_conflict`/`conflict_data` 冲突快照（V38 起支持，两台设备同时修改同一规则版本时进入冲突收件箱）。
 
 # 13.3 HabitCheckIn
 
@@ -1148,7 +1156,17 @@ habitUuid + reminderSlot + logicalDate
 * 逻辑删除；
 * 冲突快照。
 
-两台设备同时修改目标时，可以进入冲突收件箱。
+两台设备同时修改目标或同一规则版本时（version 相同且内容不同），服务端写入
+`has_conflict=1` + `conflict_data` 快照并进入冲突收件箱；本地合并时时间路径
+排除冲突项，避免冲突快照覆盖本地更新的内容。
+
+冲突收件箱支持习惯目标与规则：
+
+* 展示项：`habit_goals`、`habit_goal_rule_revisions`（有 `has_conflict` 且未删除）；
+* 解析：`/api/sync/resolve_conflict` 支持两表（`keep_local` 写入本地内容并清除标记、
+  `accept_server` 提升版本并清除标记，冲突快照经 `compactSnapshot` 完整落盘）；
+* 本地解析：`StorageService.resolveConflictLocally` 支持两表，`keep_local` 生成
+  oplog 回传，`accept_server` 下次同步拉取服务器版本。
 
 ## 19.2 打卡合并
 
@@ -1172,10 +1190,21 @@ habitUuid + reminderSlot + logicalDate
 合并原则：
 
 * 不同 UUID 的打卡全部保留；
-* 同一 UUID 按版本更新；
+* 同一 UUID 按版本更新（严格 LWW）；
 * 删除使用墓碑；
 * `dedupeKey` 防止通知按钮重复提交；
 * 每日进度不参与同步，由客户端重新计算。
+
+打卡不做冲突快照（事件模型天然可合并，冲突概率低且覆盖会丢数据）。
+
+## 19.3 协议约定
+
+* 习惯数据不设专属 CRUD 路由，统一走 `/api/sync` 增量同步
+  （`habit_goals_changes` / `habit_goal_rules_changes` / `habit_checkins_changes`）；
+* `source_ids`、`quick_values_json`、`reminder_policy_json` 等服务端原样存储
+  并原样返回 JSON 字符串，由客户端解析，保证协议自洽；
+* 首次与声明 `habits=1` 的服务端握手前，客户端全量携带本地习惯数据
+  （`habit_full_sync`），避免旧版本未写 oplog 的数据漏传。
 
 ---
 
