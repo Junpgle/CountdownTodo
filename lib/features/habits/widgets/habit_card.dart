@@ -69,7 +69,7 @@ class _HabitCardState extends State<HabitCard> {
       decoration: BoxDecoration(
         color: isDarkCard
             ? _colors.surfaceContainerLow
-            : Colors.white.withValues(alpha: 0.9),
+            : Colors.white.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: borderColor),
         boxShadow: [
@@ -284,10 +284,10 @@ class _HabitCardState extends State<HabitCard> {
                   ? (widget.isLight
                       ? Colors.white.withValues(alpha: 0.15)
                       : _colors.surfaceContainerHighest)
-                  : null,
+                  : (widget.isLight ? Colors.white.withValues(alpha: 0.2) : null),
               foregroundColor: done
                   ? (widget.isLight ? Colors.white70 : _colors.onSurfaceVariant)
-                  : null,
+                  : (widget.isLight ? Colors.white : null),
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -309,6 +309,8 @@ class _HabitCardState extends State<HabitCard> {
           OutlinedButton(
             onPressed: _busy ? null : () => _toggleDone(progress),
             style: OutlinedButton.styleFrom(
+              foregroundColor: widget.isLight ? Colors.white : null,
+              side: widget.isLight ? const BorderSide(color: Colors.white70) : null,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -352,6 +354,8 @@ class _HabitCardState extends State<HabitCard> {
                     }
                   },
             style: FilledButton.styleFrom(
+              backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : null,
+              foregroundColor: widget.isLight ? Colors.white : null,
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -372,6 +376,8 @@ class _HabitCardState extends State<HabitCard> {
           OutlinedButton(
             onPressed: widget.onViewRecords,
             style: OutlinedButton.styleFrom(
+              foregroundColor: widget.isLight ? Colors.white : null,
+              side: widget.isLight ? const BorderSide(color: Colors.white70) : null,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -399,6 +405,7 @@ class _HabitCardState extends State<HabitCard> {
         TextButton(
           onPressed: _busy ? null : () => _openQuantityCustomDialog(),
           style: TextButton.styleFrom(
+            foregroundColor: widget.isLight ? Colors.white : null,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             minimumSize: const Size(0, 36),
           ),
@@ -415,8 +422,8 @@ class _HabitCardState extends State<HabitCard> {
     return FilledButton.tonal(
       onPressed: _busy ? null : () => _quickCheckIn(value, text),
       style: FilledButton.styleFrom(
-        backgroundColor: _colors.secondaryContainer,
-        foregroundColor: _colors.onSecondaryContainer,
+        backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : _colors.secondaryContainer,
+        foregroundColor: widget.isLight ? Colors.white : _colors.onSecondaryContainer,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         minimumSize: const Size(0, 36),
         shape: RoundedRectangleBorder(
@@ -520,6 +527,8 @@ class _HabitCardState extends State<HabitCard> {
           child: FilledButton.tonal(
             onPressed: _busy ? null : () => _openTimePicker(actual),
             style: FilledButton.styleFrom(
+              backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : null,
+              foregroundColor: widget.isLight ? Colors.white : null,
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
