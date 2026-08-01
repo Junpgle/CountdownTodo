@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -51,11 +53,18 @@ abstract final class HabitDayLoader {
       final rule = HabitRuleResolver.effectiveRule(rules, date);
       if (rule == null) continue;
       effective[goal.uuid] = rule;
-      progress[goal.uuid] = await HabitProgressCalculator.computePeriod(
-        habit: goal,
-        rules: rules,
-        logicalDate: date,
-      );
+      try {
+        progress[goal.uuid] = await HabitProgressCalculator.computePeriod(
+          habit: goal,
+          rules: rules,
+          logicalDate: date,
+        );
+      } catch (e) {
+        // 单个习惯计算失败不阻塞整个快照：降级为空进度，
+        // 该习惯今天按无记录展示，其余习惯不受影响。
+        debugPrint('⚠️ 习惯 ${goal.name} 进度计算失败: $e');
+        progress[goal.uuid] = HabitProgress.empty(date);
+      }
     }
 
     return HabitDaySnapshot(

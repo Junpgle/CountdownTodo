@@ -42,7 +42,6 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   List<HabitCheckIn> _todayCheckIns = [];
   List<PomodoroRecord> _todayFocusRecords = [];
   bool _loading = true;
-  String _backfillValueText = '';
 
   @override
   void initState() {
@@ -509,101 +508,108 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final isTimeType = _goal.sourceType == HabitSourceType.timeCheckIn;
     var editedTime = checkIn.localOccurredAt;
 
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(isTimeType ? '编辑打卡时间' : '编辑记录'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!isTimeType)
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(isTimeType ? '编辑打卡时间' : '编辑记录'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isTimeType)
+                  TextField(
+                    controller: valueController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText:
+                          '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(editedTime),
+                        helpText: '实际发生时间',
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          editedTime = DateTime(
+                            editedTime.year,
+                            editedTime.month,
+                            editedTime.day,
+                            picked.hour,
+                            picked.minute,
+                          );
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.schedule_rounded, size: 18),
+                    label: Text(
+                      '实际时间：${HabitText.timeOfDay(editedTime)}',
+                    ),
+                  ),
+                const SizedBox(height: 10),
                 TextField(
-                  controller: valueController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText:
-                        '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
-                    border: const OutlineInputBorder(),
+                  controller: noteController,
+                  maxLength: 50,
+                  decoration: const InputDecoration(
+                    labelText: '备注（可选）',
+                    border: OutlineInputBorder(),
                     isDense: true,
-                  ),
-                )
-              else
-                FilledButton.tonalIcon(
-                  onPressed: () async {
-                    final picked = await showTimePicker(
-                      context: context,
-                      initialTime: TimeOfDay.fromDateTime(editedTime),
-                      helpText: '实际发生时间',
-                    );
-                    if (picked != null) {
-                      setDialogState(() {
-                        editedTime = DateTime(
-                          editedTime.year,
-                          editedTime.month,
-                          editedTime.day,
-                          picked.hour,
-                          picked.minute,
-                        );
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.schedule_rounded, size: 18),
-                  label: Text(
-                    '实际时间：${HabitText.timeOfDay(editedTime)}',
+                    counterText: '',
                   ),
                 ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: noteController,
-                maxLength: 50,
-                decoration: const InputDecoration(
-                  labelText: '备注（可选）',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                  counterText: '',
-                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('保存'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('保存'),
-            ),
-          ],
         ),
-      ),
-    );
-    if (saved != true || !mounted) return;
+      );
+      if (saved != true || !mounted) return;
 
-    if (isTimeType) {
-      // 修改实际发生时间：重算逻辑日期与时区偏移（设计文档 7.4 / 8.2）。
-      checkIn
-        ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
-        ..logicalDate = HabitRuleResolver.dayKey(
-          HabitRuleResolver.logicalDateFor(editedTime, _rule.dayBoundaryMinute),
-        )
-        ..timezoneOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
-    } else {
-      final value = double.tryParse(valueController.text.trim());
-      if (value == null || value <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入有效的数量')),
-        );
-        return;
+      if (isTimeType) {
+        // 修改实际发生时间：重算逻辑日期与时区偏移（设计文档 7.4 / 8.2）。
+        checkIn
+          ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
+          ..logicalDate = HabitRuleResolver.dayKey(
+            HabitRuleResolver.logicalDateFor(
+                editedTime, _rule.dayBoundaryMinute),
+          )
+          ..timezoneOffsetMinutes = editedTime.timeZoneOffset.inMinutes;
+      } else {
+        final value = double.tryParse(valueController.text.trim());
+        if (value == null || value <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请输入有效的数量')),
+          );
+          return;
+        }
+        checkIn.value = value;
       }
-      checkIn.value = value;
+      checkIn.note = noteController.text.trim().isEmpty
+          ? null
+          : noteController.text.trim();
+      await HabitRepository.updateCheckIn(checkIn);
+      _loadData();
+    } finally {
+      valueController.dispose();
+      noteController.dispose();
     }
-    checkIn.note =
-        noteController.text.trim().isEmpty ? null : noteController.text.trim();
-    await HabitRepository.updateCheckIn(checkIn);
-    _loadData();
   }
 
   /// 补录：选择任意日期时间新增一条打卡。
@@ -611,6 +617,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final now = DateTime.now();
     var date = now;
     var time = TimeOfDay.fromDateTime(now);
+    // 局部 controller：对话框每次打开都是空值，避免残留上一次输入。
+    final valueController = TextEditingController();
 
     final ok = await showDialog<bool>(
       context: context,
@@ -666,8 +674,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               if (_goal.sourceType == HabitSourceType.quantityCheckIn) ...[
                 const SizedBox(height: 8),
                 TextField(
-                  controller: TextEditingController(),
-                  onChanged: (v) => _backfillValueText = v,
+                  controller: valueController,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
@@ -693,11 +700,15 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         ),
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted) {
+      valueController.dispose();
+      return;
+    }
 
     double value = 0;
     if (_goal.sourceType == HabitSourceType.quantityCheckIn) {
-      final parsed = double.tryParse(_backfillValueText.trim());
+      final parsed = double.tryParse(valueController.text.trim());
+      valueController.dispose();
       if (parsed == null || parsed <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('请输入有效的数量')),
@@ -705,6 +716,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         return;
       }
       value = parsed;
+    } else {
+      valueController.dispose();
     }
     await HabitRepository.addCheckIn(
       goal: _goal,

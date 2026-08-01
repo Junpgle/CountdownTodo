@@ -13,7 +13,8 @@ void main() {
     test('早睡习惯日期分界 04:00 的三种情况', () {
       final boundary = 4 * 60;
       expect(
-        HabitRuleResolver.logicalDateFor(DateTime(2026, 7, 31, 23, 30), boundary),
+        HabitRuleResolver.logicalDateFor(
+            DateTime(2026, 7, 31, 23, 30), boundary),
         DateTime(2026, 7, 31),
       );
       expect(
@@ -71,7 +72,8 @@ void main() {
     });
 
     test('无规则时返回 null', () {
-      expect(HabitRuleResolver.effectiveRule([], DateTime(2026, 7, 15)), isNull);
+      expect(
+          HabitRuleResolver.effectiveRule([], DateTime(2026, 7, 15)), isNull);
     });
   });
 
@@ -125,15 +127,15 @@ void main() {
   });
 
   group('HabitRuleResolver 周期计算', () {
-    HabitGoalRuleRevision rule(HabitPeriodType type) =>
-        HabitGoalRuleRevision(
+    HabitGoalRuleRevision rule(HabitPeriodType type) => HabitGoalRuleRevision(
           habitUuid: 'h1',
           periodType: type,
         );
 
     test('每日周期', () {
       expect(
-        HabitRuleResolver.periodStart(rule(HabitPeriodType.daily), DateTime(2026, 8, 5, 12)),
+        HabitRuleResolver.periodStart(
+            rule(HabitPeriodType.daily), DateTime(2026, 8, 5, 12)),
         DateTime(2026, 8, 5),
       );
       expect(
@@ -146,7 +148,8 @@ void main() {
     test('每周周期从周一开始', () {
       // 2026-08-05 是周三
       expect(
-        HabitRuleResolver.periodStart(rule(HabitPeriodType.weekly), DateTime(2026, 8, 5)),
+        HabitRuleResolver.periodStart(
+            rule(HabitPeriodType.weekly), DateTime(2026, 8, 5)),
         DateTime(2026, 8, 3),
       );
       expect(
@@ -163,7 +166,8 @@ void main() {
 
     test('每月周期从 1 号开始', () {
       expect(
-        HabitRuleResolver.periodStart(rule(HabitPeriodType.monthly), DateTime(2026, 8, 20)),
+        HabitRuleResolver.periodStart(
+            rule(HabitPeriodType.monthly), DateTime(2026, 8, 20)),
         DateTime(2026, 8, 1),
       );
       expect(
@@ -238,6 +242,97 @@ void main() {
       );
     });
 
+    test('before 型：容差跨午夜时凌晨仅宽限内达标', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 23 * 60 + 30,
+        timeComparison: HabitTimeComparison.before,
+        timeToleranceMinutes: 60,
+        dayBoundaryMinute: 4 * 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 23, 59)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 20)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 45)),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 12, 0)),
+        true,
+      );
+    });
+
+    test('before 型：容差未跨午夜时凌晨打卡不因容差恒真', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 23 * 60 + 30,
+        timeComparison: HabitTimeComparison.before,
+        timeToleranceMinutes: 30,
+        dayBoundaryMinute: 4 * 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 30)),
+        false,
+      );
+    });
+
+    test('before 型：未配置日期分界时跨午夜容差同样受限', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 23 * 60 + 59,
+        timeComparison: HabitTimeComparison.before,
+        timeToleranceMinutes: 30,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 23, 50)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 29)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 30)),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 12, 0)),
+        true,
+      );
+    });
+
+    test('before 型：早间目标凌晨打卡仍算早于目标', () {
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 6 * 60,
+        timeComparison: HabitTimeComparison.before,
+        timeToleranceMinutes: 30,
+        dayBoundaryMinute: 4 * 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 3, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 6, 20)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 7, 0)),
+        false,
+      );
+    });
+
     test('after 型：晚于目标达标，允许范围提前', () {
       final rule = HabitGoalRuleRevision(
         habitUuid: 'h1',
@@ -255,6 +350,115 @@ void main() {
       );
       expect(
         HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 19, 0)),
+        true,
+      );
+    });
+
+    test('after 型：容差不早于当日开始', () {
+      // 目标 06:00、容差 30：达标区间 [05:30, 24:00)。
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 6 * 60,
+        timeComparison: HabitTimeComparison.after,
+        timeToleranceMinutes: 30,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 5, 0)),
+        false,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 5, 35)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 12, 0)),
+        true,
+      );
+      // 凌晨打卡归属前夜实例，扩展分钟后晚于前夜 05:30 达标。
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 30)),
+        true,
+      );
+    });
+
+    test('after 型：深夜起始目标凌晨打卡按扩展分钟判定', () {
+      // 「23:30 后」+ 容差 60：达标区间 [22:30, 24:00)。
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 23 * 60 + 30,
+        timeComparison: HabitTimeComparison.after,
+        timeToleranceMinutes: 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 23, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 22, 0)),
+        false,
+      );
+      // 次日 00:30 = 前夜 24:30，晚于 23:30（且超出容差下限 22:30）达标。
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 30)),
+        true,
+      );
+      // 次日 00:00 = 前夜 24:00，晚于 23:30 达标。
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 2, 0, 0)),
+        true,
+      );
+    });
+
+    test('after 型：容差超过目标时下限收敛到当日开始', () {
+      // 目标 00:30、容差 60 > 目标：下限收敛到 00:00，
+      // 凌晨宽限与前夜相连，全天时段均不早于目标。
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 30,
+        timeComparison: HabitTimeComparison.after,
+        timeToleranceMinutes: 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 0, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 0, 29)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 12, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 23, 59)),
+        true,
+      );
+    });
+
+    test('after 型：容差超过目标时下限收敛到当日开始', () {
+      // 目标 00:30、容差 60 > 目标：下限收敛到 00:00，
+      // 凌晨宽限与前夜相连，全天时段均不早于目标。
+      final rule = HabitGoalRuleRevision(
+        habitUuid: 'h1',
+        targetTimeMinute: 30,
+        timeComparison: HabitTimeComparison.after,
+        timeToleranceMinutes: 60,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 0, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 0, 29)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 12, 0)),
+        true,
+      );
+      expect(
+        HabitRuleResolver.isTimePointMet(rule, DateTime(2026, 8, 1, 23, 59)),
         true,
       );
     });

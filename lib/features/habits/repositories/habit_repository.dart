@@ -232,7 +232,7 @@ abstract final class HabitRepository {
   ///
   /// [effectiveFromOption]：
   /// - 'today'：从今天开始（默认），关闭旧版本、新规则从今天生效；
-  /// - 'nextPeriod'：从下一个周期开始；
+  /// - 'nextPeriod'：从下一个周期开始（如每周从下周一、每月从下月 1 号）；
   /// - 'all'：修改全部历史目标（覆盖所有版本的目标值）。
   static Future<void> updateRule({
     required HabitGoal goal,
@@ -275,7 +275,9 @@ abstract final class HabitRepository {
           (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
     final current = sorted.isNotEmpty ? sorted.last : null;
 
-    if (current != null && current.effectiveFromDate == todayKey) {
+    if (effectiveFromOption != 'nextPeriod' &&
+        current != null &&
+        current.effectiveFromDate == todayKey) {
       // 当前版本今天开始生效：直接修改，不新增版本。
       current
         ..targetValue = updatedRule.targetValue
@@ -296,9 +298,19 @@ abstract final class HabitRepository {
       return;
     }
 
+    final startKey = effectiveFromOption == 'nextPeriod' && current != null
+        ? HabitRuleResolver.dayKey(
+            HabitRuleResolver.nextPeriodStart(
+              current,
+              HabitRuleResolver.logicalDateFor(
+                  DateTime.now(), current.dayBoundaryMinute),
+            ),
+          )
+        : todayKey;
+
     final newRule = HabitGoalRuleRevision(
       habitUuid: goal.uuid,
-      effectiveFromDate: todayKey,
+      effectiveFromDate: startKey,
       periodType: updatedRule.periodType,
       weekdaysMask: updatedRule.weekdaysMask,
       customIntervalDays: updatedRule.customIntervalDays,
@@ -316,10 +328,10 @@ abstract final class HabitRepository {
 
     final changes = <HabitGoalRuleRevision>[];
     if (current != null &&
-        effectiveFromOption == 'today' &&
-        current.effectiveToDate == null) {
+        current.effectiveToDate == null &&
+        current.effectiveFromDate != startKey) {
       current
-        ..effectiveToDate = _previousDay(todayKey)
+        ..effectiveToDate = _previousDay(startKey)
         ..markAsChanged();
       changes.add(current);
     }
@@ -379,7 +391,7 @@ abstract final class HabitRepository {
           rule.dayBoundaryMinute,
         ),
       ),
-      timezoneOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+      timezoneOffsetMinutes: localOccurredAt.timeZoneOffset.inMinutes,
       value: value,
       note: note,
       source: source,

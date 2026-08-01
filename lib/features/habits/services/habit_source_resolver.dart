@@ -70,7 +70,6 @@ abstract final class HabitSourceResolver {
         DateTime(from.year, from.month, from.day),
         DateTime(to.year, to.month, to.day, 23, 59, 59),
       );
-      if (tagUuids.isEmpty) return [];
       return records.where((r) {
         if (r.isDeleted || !r.isCompleted || r.hasConflict) return false;
         return r.tagUuids.any(tagUuids.contains);

@@ -102,7 +102,9 @@ class HabitGoalRuleRevision {
   /// 目标值：
   /// - 完成型：1；
   /// - 时长型：目标时长（秒）；
-  /// - 数量型：目标数量。
+  /// - 数量型：目标数量；
+  /// - 时间点型：0（不使用）。
+  /// 默认 0，与 fromJson / 数据库 DEFAULT 保持一致。
   double targetValue;
 
   /// 单位（数量型，如 ml、个、次；时长型为空或“分钟”）。
@@ -127,8 +129,11 @@ class HabitGoalRuleRevision {
 
   bool isDeleted;
   int version;
+  String? deviceId;
   int createdAt;
   int updatedAt;
+  bool hasConflict;
+  Map<String, dynamic>? conflictData;
 
   HabitGoalRuleRevision({
     String? uuid,
@@ -138,7 +143,7 @@ class HabitGoalRuleRevision {
     this.periodType = HabitPeriodType.daily,
     this.weekdaysMask = 127,
     this.customIntervalDays,
-    this.targetValue = 1,
+    this.targetValue = 0,
     this.unit = '',
     this.targetTimeMinute,
     this.timeComparison = HabitTimeComparison.before,
@@ -148,8 +153,11 @@ class HabitGoalRuleRevision {
     HabitReminderPolicy? reminderPolicy,
     this.isDeleted = false,
     this.version = 1,
+    this.deviceId,
     int? createdAt,
     int? updatedAt,
+    this.hasConflict = false,
+    this.conflictData,
   })  : uuid = uuid ?? const Uuid().v4(),
         quickValues = quickValues ?? [],
         reminderPolicy = reminderPolicy ?? const HabitReminderPolicy(),
@@ -193,8 +201,11 @@ class HabitGoalRuleRevision {
         'reminder_policy_json': jsonEncode(reminderPolicy.toJson()),
         'is_deleted': isDeleted ? 1 : 0,
         'version': version,
+        'device_id': deviceId,
         'created_at': createdAt,
         'updated_at': updatedAt,
+        'has_conflict': hasConflict ? 1 : 0,
+        'conflict_data': conflictData != null ? jsonEncode(conflictData) : null,
       };
 
   factory HabitGoalRuleRevision.fromJson(Map<String, dynamic> json) {
@@ -255,9 +266,24 @@ class HabitGoalRuleRevision {
       reminderPolicy: reminderPolicy,
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       version: int.tryParse(json['version']?.toString() ?? '') ?? 1,
+      deviceId: json['device_id']?.toString(),
       createdAt: _parseMs(json['created_at']),
       updatedAt: _parseMs(json['updated_at']),
+      hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
+      conflictData: _mapOrNull(json['conflict_data']),
     );
+  }
+
+  static Map<String, dynamic>? _mapOrNull(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
   }
 
   static int _parseMs(dynamic v) {

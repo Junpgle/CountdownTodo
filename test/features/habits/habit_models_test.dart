@@ -32,10 +32,13 @@ void main() {
     });
 
     test('source_ids 兼容 List 与 JSON 字符串', () {
-      final fromList = HabitGoal.fromJson({'uuid': 'x', 'source_ids': ['a']});
+      final fromList = HabitGoal.fromJson({
+        'uuid': 'x',
+        'source_ids': ['a']
+      });
       expect(fromList.sourceIds, ['a']);
-      final fromString = HabitGoal.fromJson(
-          {'uuid': 'x', 'source_ids': '["a","b"]'});
+      final fromString =
+          HabitGoal.fromJson({'uuid': 'x', 'source_ids': '["a","b"]'});
       expect(fromString.sourceIds, ['a', 'b']);
       final missing = HabitGoal.fromJson({'uuid': 'x'});
       expect(missing.sourceIds, isEmpty);
@@ -90,8 +93,7 @@ void main() {
         createdAt: 1000,
         updatedAt: 2000,
       );
-      final restored =
-          HabitGoalRuleRevision.fromJson(rule.toJson());
+      final restored = HabitGoalRuleRevision.fromJson(rule.toJson());
       expect(restored.uuid, rule.uuid);
       expect(restored.periodType, HabitPeriodType.weekdays);
       expect(restored.weekdaysMask, 31);
@@ -103,6 +105,35 @@ void main() {
       expect(restored.reminderPolicy.fixedTimes, [600, 1080]);
       expect(restored.reminderPolicy.progressReminder, true);
       expect(restored.reminderPolicy.nearEndReminder, false);
+    });
+
+    test('同步字段（deviceId / hasConflict / conflictData）往返一致', () {
+      final rule = HabitGoalRuleRevision(
+        uuid: '33333333-3333-3333-3333-333333333334',
+        habitUuid: 'h1',
+        deviceId: 'device_b',
+        createdAt: 1000,
+        updatedAt: 2000,
+        hasConflict: true,
+        conflictData: {'uuid': 'rule-x', 'version': 1, 'target_value': 250},
+      );
+      final json = rule.toJson();
+      expect(json['device_id'], 'device_b');
+      expect(json['has_conflict'], 1);
+      expect(json['conflict_data'], isA<String>());
+
+      final restored = HabitGoalRuleRevision.fromJson(json);
+      expect(restored.deviceId, 'device_b');
+      expect(restored.hasConflict, true);
+      expect(restored.conflictData?['target_value'], 250);
+
+      final fromString = HabitGoalRuleRevision.fromJson({
+        'uuid': 'x',
+        'has_conflict': true,
+        'conflict_data': '{"version":2}',
+      });
+      expect(fromString.hasConflict, true);
+      expect(fromString.conflictData?['version'], 2);
     });
 
     test('coversDate 判断生效范围', () {

@@ -4,6 +4,10 @@ import '../models/habit_goal_rule.dart';
 ///
 /// 纯函数实现，便于单元测试。
 abstract final class HabitRuleResolver {
+  /// 未配置日期分界（dayBoundaryMinute == 0）时默认的分界时刻（04:00），
+  /// 用于跨午夜容差的判定，避免容差把全时段变成恒真条件。
+  static const int defaultDayBoundaryMinute = 4 * 60;
+
   /// 计算逻辑日期：实际本地时间减去日期分界时长后的日期。
   ///
   /// 早睡习惯日期分界为 04:00 时：
@@ -198,11 +202,33 @@ abstract final class HabitRuleResolver {
     if (target == null) return false;
     final actualMinute = localActualTime.hour * 60 + localActualTime.minute;
     final tolerance = rule.timeToleranceMinutes;
+    final dayBoundary = rule.dayBoundaryMinute > 0
+        ? rule.dayBoundaryMinute
+        : defaultDayBoundaryMinute;
     switch (rule.timeComparison) {
       case HabitTimeComparison.before:
-        return actualMinute <= target + tolerance;
+        // 截止型：实际时间不得晚于「目标 + 容差」。
+        // 容差跨午夜时（如 23:59 + 30 分钟），次日凌晨仅宽限
+        // 「目标 + 容差 - 24 小时」内达标，避免容差把全时段变成恒真条件；
+        // 未配置日期分界时按默认分界 04:00 判定。
+        final bound = target + tolerance;
+        if (bound >= 24 * 60 && actualMinute < dayBoundary) {
+          final grace = bound - 24 * 60;
+          return actualMinute <= grace;
+        }
+        return actualMinute <= bound;
       case HabitTimeComparison.after:
-        return actualMinute >= target - tolerance;
+        // 起始型：实际时间不得早于「目标 - 容差」。
+        // 凌晨打卡归属前夜（逻辑日期已按日期分界前移），在扩展分钟空间判断：
+        // 如「23:30 后」在次日 00:30 打卡 = 前夜 24:30，晚于 23:30 达标。
+        final lower = target - tolerance;
+        if (actualMinute < dayBoundary) {
+          return actualMinute + 24 * 60 >= lower;
+        }
+        // 容差越过当日开始时（如 00:30 目标 + 60 分钟容差），下限收敛到当日
+        // 开始：早于目标的宽限归入前夜，白天时段均不早于目标；
+        // 避免 target - tolerance 为负导致条件恒真。
+        return actualMinute >= (lower < 0 ? 0 : lower);
     }
   }
 }

@@ -22,6 +22,8 @@ abstract final class HabitProgressCalculator {
   /// 计算一个习惯在 [from]（含）到 [to]（含）逻辑日期范围内的逐日进度。
   ///
   /// 数据可预先传入避免重复加载；未传入时内部加载。
+  /// [periodLevel] 为 true 时，每周/每月习惯只返回每个周期起始日的条目
+  /// （周期内每天的进度本就相同），供连续统计等只关心周期粒度的场景使用。
   static Future<List<HabitDayProgress>> computeRange({
     required HabitGoal habit,
     required List<HabitGoalRuleRevision> rules,
@@ -31,12 +33,14 @@ abstract final class HabitProgressCalculator {
     List<TodoItem>? todos,
     List<PomodoroRecord>? records,
     List<HabitCheckIn>? checkIns,
+    bool periodLevel = false,
   }) async {
     final nowValue = now ?? DateTime.now();
     final fromDay = DateTime(from.year, from.month, from.day);
     final toDay = DateTime(to.year, to.month, to.day);
     final dayCount = toDay.difference(fromDay).inDays;
-    if (dayCount < 0 || dayCount > 1000) return const [];
+    // 上限覆盖 60 个月（60*31≈1860 天）的统计回看窗口。
+    if (dayCount < 0 || dayCount > 2400) return const [];
 
     final todosValue = todos ?? await _loadTodos(habit);
     final recordsValue =
@@ -49,8 +53,30 @@ abstract final class HabitProgressCalculator {
         );
 
     final results = <HabitDayProgress>[];
+    // 周期累计型（每周/每月）按周期只计算一次，周期内每天复用同一结果，
+    // 避免长回看窗口下逐日重复扫描打卡数据。
+    final periodCache = <String, HabitProgress>{};
+    // periodLevel 下记录上一个条目所属「规则 + 周期」，周期变更时保留新条目，
+    // 避免规则在周期中途变更（如 3 月 15 日生效新规则）时丢失部分周期进度。
+    String? lastPeriodId;
     for (int i = 0; i <= dayCount; i++) {
       final date = fromDay.add(Duration(days: i));
+      if (periodLevel) {
+        final rule = HabitRuleResolver.effectiveRule(rules, date);
+        if (rule != null &&
+            (rule.periodType == HabitPeriodType.weekly ||
+                rule.periodType == HabitPeriodType.monthly)) {
+          final periodId =
+              '${rule.uuid}|${HabitRuleResolver.periodKey(rule, date)}';
+          if (periodId == lastPeriodId) {
+            // 同规则同周期内：进度与周期起始日相同，跳过避免生成重复条目。
+            continue;
+          }
+          lastPeriodId = periodId;
+        } else {
+          lastPeriodId = null;
+        }
+      }
       final progress = _computeDay(
         habit: habit,
         rules: rules,
@@ -59,6 +85,7 @@ abstract final class HabitProgressCalculator {
         todos: todosValue,
         records: recordsValue,
         checkIns: checkInsValue,
+        periodCache: periodCache,
       );
       results.add(HabitDayProgress(
         habit: habit,
@@ -124,6 +151,7 @@ abstract final class HabitProgressCalculator {
     required List<TodoItem> todos,
     required List<PomodoroRecord> records,
     required List<HabitCheckIn> checkIns,
+    Map<String, HabitProgress>? periodCache,
   }) {
     final rule = HabitRuleResolver.effectiveRule(rules, logicalDate);
     if (rule == null) {
@@ -137,6 +165,47 @@ abstract final class HabitProgressCalculator {
         isPlanned: false,
         isFinished: true,
       );
+    }
+
+    final isAggregated = rule.periodType == HabitPeriodType.weekly ||
+        rule.periodType == HabitPeriodType.monthly;
+    if (isAggregated && periodCache != null) {
+      final key = '${rule.uuid}|'
+          '${HabitRuleResolver.periodKey(rule, logicalDate)}';
+      final cached = periodCache[key];
+      if (cached != null) return cached;
+      final computed = switch (habit.sourceType) {
+        HabitSourceType.recurringTodo => _computeCompletion(
+            habit: habit,
+            rule: rule,
+            logicalDate: logicalDate,
+            now: now,
+            todos: todos,
+          ),
+        HabitSourceType.pomodoroTag => _computeDuration(
+            habit: habit,
+            rule: rule,
+            logicalDate: logicalDate,
+            now: now,
+            records: records,
+          ),
+        HabitSourceType.quantityCheckIn => _computeQuantity(
+            habit: habit,
+            rule: rule,
+            logicalDate: logicalDate,
+            now: now,
+            checkIns: checkIns,
+          ),
+        HabitSourceType.timeCheckIn => _computeTimePoint(
+            habit: habit,
+            rule: rule,
+            logicalDate: logicalDate,
+            now: now,
+            checkIns: checkIns,
+          ),
+      };
+      periodCache[key] = computed;
+      return computed;
     }
 
     switch (habit.sourceType) {

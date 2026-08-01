@@ -94,6 +94,16 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   void _changeMonth(int delta) {
     setState(() {
       _month = DateTime(_month.year, _month.month + delta, 1);
+      // 选中日期超出新月份（如 1 月 31 日切到 2 月）时回落到当月最后一天。
+      final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+      if (_selectedDay.year != _month.year ||
+          _selectedDay.month != _month.month) {
+        _selectedDay = DateTime(
+          _month.year,
+          _month.month,
+          _selectedDay.day.clamp(1, daysInMonth).toInt(),
+        );
+      }
     });
     _loadData();
   }

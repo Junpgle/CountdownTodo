@@ -4,6 +4,7 @@ import '../../../services/pomodoro_service.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_rule_resolver.dart';
 
 /// 新建 / 编辑习惯。
 ///
@@ -117,8 +118,70 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _selectedTagUuids = List.from(goal.sourceIds);
       _defaultFocusMinutes = goal.defaultFocusMinutes;
       _step = 1;
+      _loadRuleForEdit(goal);
     }
     _loadTags();
+  }
+
+  /// 编辑模式：加载当前生效的规则并回填所有规则级字段，
+  /// 避免保存时把原有规则配置重置为默认值。
+  Future<void> _loadRuleForEdit(HabitGoal goal) async {
+    try {
+      final allRules = await HabitRepository.getRules(habitUuid: goal.uuid);
+      final rule = allRules
+              .where((r) => r.uuid == goal.currentRuleUuid && !r.isDeleted)
+              .firstOrNull ??
+          HabitRuleResolver.currentRule(
+              allRules, HabitRuleResolver.defaultDayBoundaryMinute, null);
+      if (rule == null || !mounted) return;
+
+      final fixedTimes = rule.reminderPolicy.fixedTimes
+          .map((m) => TimeOfDay(hour: (m ~/ 60) % 24, minute: m % 60))
+          .toList();
+
+      setState(() {
+        _periodType = rule.periodType;
+        _weekdaysMask = rule.weekdaysMask;
+        _customIntervalDays = rule.customIntervalDays ?? 2;
+        switch (goal.sourceType) {
+          case HabitSourceType.quantityCheckIn:
+            _targetController.text = _formatTargetValue(rule.targetValue);
+            _unitController.text = rule.unit;
+            _quickValuesText = rule.quickValues.join(',');
+            _quickValuesController.text = _quickValuesText;
+          case HabitSourceType.pomodoroTag:
+            _targetMinutes = (rule.targetValue / 60).round().clamp(5, 240);
+          case HabitSourceType.timeCheckIn:
+            final m = rule.targetTimeMinute;
+            if (m != null) {
+              _targetTime = TimeOfDay(hour: (m ~/ 60) % 24, minute: m % 60);
+            }
+            _timeComparison = rule.timeComparison;
+            _toleranceMinutes = rule.timeToleranceMinutes;
+          case HabitSourceType.recurringTodo:
+            break;
+        }
+        _crossMidnightBoundary = rule.dayBoundaryMinute > 0;
+        _reminderEnabled = rule.reminderPolicy.fixedTimes.isNotEmpty ||
+            rule.reminderPolicy.progressReminder ||
+            rule.reminderPolicy.nearEndReminder ||
+            rule.reminderPolicy.dailySummaryReminder;
+        _fixedTimes
+          ..clear()
+          ..addAll(fixedTimes);
+        _progressReminder = rule.reminderPolicy.progressReminder;
+        _nearEndReminder = rule.reminderPolicy.nearEndReminder;
+        _dailySummaryReminder = rule.reminderPolicy.dailySummaryReminder;
+      });
+    } catch (e) {
+      // 加载失败不阻塞编辑；保存时仍会基于当前输入生成规则。
+      debugPrint('⚠️ 编辑习惯加载规则失败: $e');
+    }
+  }
+
+  static String _formatTargetValue(double value) {
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toString();
   }
 
   Future<void> _loadTags() async {

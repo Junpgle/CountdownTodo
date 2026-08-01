@@ -41,6 +41,9 @@ abstract final class HabitStreakService {
       from: from,
       to: today,
       now: nowValue,
+      // 每周/每月习惯只需周期级进度：跳过周期内重复条目，
+      // 避免 60 个月回看窗口生成约 1860 个 day-level 条目。
+      periodLevel: true,
     );
 
     return summarizeFromDays(
@@ -98,7 +101,15 @@ abstract final class HabitStreakService {
     int running = 0;
     for (final period in periods) {
       if (!period.planned) continue;
-      if (!period.finished) continue;
+      if (!period.finished) {
+        // 当前周期尚未结束：达标计入、未达标不中断，与 currentStreak 口径一致，
+        // 保证 longestStreak >= currentStreak 恒成立。
+        if (period.met) {
+          running++;
+          if (running > longestStreak) longestStreak = running;
+        }
+        continue;
+      }
       if (period.met) {
         running++;
         if (running > longestStreak) longestStreak = running;

@@ -17,8 +17,7 @@ void main() {
         sourceIds: sourceIds,
       );
 
-  HabitGoalRuleRevision dailyRule({double target = 1}) =>
-      HabitGoalRuleRevision(
+  HabitGoalRuleRevision dailyRule({double target = 1}) => HabitGoalRuleRevision(
         uuid: 'rule-1',
         habitUuid: 'goal-1',
         effectiveFromDate: '2026-07-01',
@@ -26,8 +25,7 @@ void main() {
         targetValue: target,
       );
 
-  String dayKey(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  String dayKey(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
@@ -164,7 +162,8 @@ void main() {
   });
 
   group('完成型习惯', () {
-    TodoItem todo({required String id, required DateTime day, bool done = false}) =>
+    TodoItem todo(
+            {required String id, required DateTime day, bool done = false}) =>
         TodoItem(
           id: id,
           title: '每天整理桌面',
@@ -262,8 +261,14 @@ void main() {
         to: DateTime(2026, 8, 5),
         now: now,
         records: [
-          record(uuid: 'r1', start: DateTime(2026, 8, 5, 9, 0), effective: 20 * 60),
-          record(uuid: 'r2', start: DateTime(2026, 8, 5, 10, 0), effective: 10 * 60),
+          record(
+              uuid: 'r1',
+              start: DateTime(2026, 8, 5, 9, 0),
+              effective: 20 * 60),
+          record(
+              uuid: 'r2',
+              start: DateTime(2026, 8, 5, 10, 0),
+              effective: 10 * 60),
         ],
       );
       final progress = results.first.progress;
@@ -318,9 +323,18 @@ void main() {
         to: DateTime(2026, 8, 9),
         now: now,
         records: [
-          record(uuid: 'r1', start: DateTime(2026, 8, 3, 9, 0), effective: 80 * 60),
-          record(uuid: 'r2', start: DateTime(2026, 8, 5, 10, 0), effective: 70 * 60),
-          record(uuid: 'r3', start: DateTime(2026, 8, 10, 9, 0), effective: 60 * 60),
+          record(
+              uuid: 'r1',
+              start: DateTime(2026, 8, 3, 9, 0),
+              effective: 80 * 60),
+          record(
+              uuid: 'r2',
+              start: DateTime(2026, 8, 5, 10, 0),
+              effective: 70 * 60),
+          record(
+              uuid: 'r3',
+              start: DateTime(2026, 8, 10, 9, 0),
+              effective: 60 * 60),
         ],
       );
       for (final day in results) {
@@ -328,6 +342,56 @@ void main() {
         expect(day.progress.goalMet, true);
         expect(day.progress.dayStatus, HabitDayStatus.met);
       }
+    });
+
+    test('periodLevel：每月习惯只返回周期起始日条目', () async {
+      final habit = goal(HabitSourceType.quantityCheckIn, []);
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-1',
+        habitUuid: 'goal-1',
+        effectiveFromDate: '2021-01-01',
+        periodType: HabitPeriodType.monthly,
+        targetValue: 30,
+      );
+      final from = DateTime(2021, 1, 1);
+      final to = DateTime(2026, 8, 5);
+      final dayCount = to.difference(from).inDays + 1;
+
+      final dayLevel = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: from,
+        to: to,
+        now: now,
+        checkIns: [checkIn(DateTime(2026, 7, 15, 9, 0), 30)],
+      );
+      expect(dayLevel.length, dayCount);
+
+      final periodLevel = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: from,
+        to: to,
+        now: now,
+        checkIns: [checkIn(DateTime(2026, 7, 15, 9, 0), 30)],
+        periodLevel: true,
+      );
+      // 仅每个月 1 号一个条目：2021-01 ~ 2026-08 共 68 个月。
+      expect(periodLevel.length, 68);
+      // 周期级条目仍携带周期进度（8 月当期未结束不计达标）。
+      expect(periodLevel.first.logicalDate, DateTime(2021, 1, 1));
+      expect(
+        periodLevel
+            .lastWhere(
+                (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 7)
+            .progress
+            .goalMet,
+        true,
+      );
+      final aug = periodLevel.lastWhere(
+          (d) => d.logicalDate.year == 2026 && d.logicalDate.month == 8);
+      expect(aug.progress.isFinished, false);
+      expect(aug.progress.goalMet, false);
     });
 
     test('多标签绑定累计正确', () async {

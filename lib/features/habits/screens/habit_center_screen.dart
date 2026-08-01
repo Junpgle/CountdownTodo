@@ -50,81 +50,77 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('习惯中心'),
-          centerTitle: false,
-          actions: [
-            IconButton(
-              tooltip: '新建习惯',
-              onPressed: _openCreateHabit,
-              icon: const Icon(Icons.add_rounded),
-            ),
-            const SizedBox(width: 4),
-          ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(48),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Container(
-                  height: 40,
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.5),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('习惯中心'),
+        centerTitle: false,
+        actions: [
+          IconButton(
+            tooltip: '新建习惯',
+            onPressed: _openCreateHabit,
+            icon: const Icon(Icons.add_rounded),
+          ),
+          const SizedBox(width: 4),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Container(
+                height: 40,
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  indicator: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    dividerColor: Colors.transparent,
-                    indicator: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: colorScheme.primaryContainer,
-                      boxShadow: [
-                        BoxShadow(
-                          color: colorScheme.shadow.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    labelColor: colorScheme.onPrimaryContainer,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-                    unselectedLabelColor: colorScheme.onSurfaceVariant,
-                    tabs: const [
-                      Tab(text: '今日'),
-                      Tab(text: '日历'),
-                      Tab(text: '分析'),
+                    color: colorScheme.primaryContainer,
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.shadow.withValues(alpha: 0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
                     ],
                   ),
+                  labelColor: colorScheme.onPrimaryContainer,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+                  unselectedLabelColor: colorScheme.onSurfaceVariant,
+                  tabs: const [
+                    Tab(text: '今日'),
+                    Tab(text: '日历'),
+                    Tab(text: '分析'),
+                  ],
                 ),
               ),
             ),
           ),
         ),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            HabitTodayTab(
-              username: widget.username,
-              reloadTick: _reloadTick,
-              onChanged: () => setState(() => _reloadTick++),
-            ),
-            HabitCalendarTab(
-              username: widget.username,
-              reloadTick: _reloadTick,
-            ),
-            HabitAnalysisTab(
-              username: widget.username,
-              reloadTick: _reloadTick,
-            ),
-          ],
-        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          HabitTodayTab(
+            username: widget.username,
+            reloadTick: _reloadTick,
+            onChanged: () => setState(() => _reloadTick++),
+          ),
+          HabitCalendarTab(
+            username: widget.username,
+            reloadTick: _reloadTick,
+          ),
+          HabitAnalysisTab(
+            username: widget.username,
+            reloadTick: _reloadTick,
+          ),
+        ],
       ),
     );
   }

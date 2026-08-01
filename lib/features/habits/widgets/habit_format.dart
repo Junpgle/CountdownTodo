@@ -1,6 +1,7 @@
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
+import '../services/habit_rule_resolver.dart';
 
 /// 习惯文案格式化工具。
 abstract final class HabitText {
@@ -77,9 +78,9 @@ abstract final class HabitText {
   ) {
     final actual = progress.firstRecordAt;
     if (actual == null) return '未打卡';
+    final targetMinute = rule.targetTimeMinute ?? 0;
+    final actualMinute = actual.hour * 60 + actual.minute;
     if (!progress.goalMet) {
-      final targetMinute = rule.targetTimeMinute ?? 0;
-      final actualMinute = actual.hour * 60 + actual.minute;
       final diff = rule.timeComparison == HabitTimeComparison.before
           ? actualMinute - targetMinute
           : targetMinute - actualMinute;
@@ -88,17 +89,23 @@ abstract final class HabitText {
       }
       return '未达标';
     }
-    final targetMinute = rule.targetTimeMinute ?? 0;
-    final actualMinute = actual.hour * 60 + actual.minute;
+    // 凌晨打卡归属前夜，按扩展分钟与目标比较，与 isTimePointMet 口径一致，
+    // 避免跨午夜宽限内达标却显示「比目标早 1390 分钟」。
+    final dayBoundary = rule.dayBoundaryMinute > 0
+        ? rule.dayBoundaryMinute
+        : HabitRuleResolver.defaultDayBoundaryMinute;
+    final effectiveActual =
+        actualMinute < dayBoundary ? actualMinute + 24 * 60 : actualMinute;
     final diff = rule.timeComparison == HabitTimeComparison.before
-        ? targetMinute - actualMinute
-        : actualMinute - targetMinute;
-    if (diff >= 0 &&
-        rule.timeToleranceMinutes > 0 &&
-        diff <= rule.timeToleranceMinutes) {
+        ? targetMinute - effectiveActual
+        : effectiveActual - targetMinute;
+    if (rule.timeToleranceMinutes > 0 &&
+        diff.abs() <= rule.timeToleranceMinutes) {
       return '已达标';
     }
-    return diff >= 0 ? '比目标早 $diff 分钟' : '已达标';
+    if (diff > 0) return '比目标早 $diff 分钟';
+    if (diff < 0) return '比目标晚 ${-diff} 分钟';
+    return '准时达标';
   }
 
   static String _trimNumber(double value) {
