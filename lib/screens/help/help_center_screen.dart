@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/help_article.dart';
+import '../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../../services/feature_tip_service.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
@@ -48,6 +49,28 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                 Icons.tips_and_updates_rounded,
                 Colors.amber,
                 () => _resetTips(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildSection(
+            scheme,
+            Icons.explore_rounded,
+            '生活挑战',
+            scheme.tertiary,
+            [
+              _HelpEntry(
+                '30天找到全新自我',
+                '用 30 个小任务，重新找回生活中的兴奋感',
+                Icons.auto_awesome_rounded,
+                scheme.tertiary,
+                () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    PageTransitions.slideHorizontal(
+                      const ThirtyDayChallengeScreen(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
