@@ -423,28 +423,33 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       'pomodoro': pomodoroSection,
                                       'timeline': timelineSection,
                                       'habits': RepaintBoundary(
-                                        child: ValueListenableBuilder<int>(
-                                          valueListenable: _habitsRevision,
-                                          builder: (context, trigger, _) {
-                                            return HabitTodaySection(
-                                              username: widget.username,
-                                              isLight: isLight,
-                                              refreshTrigger: trigger,
-                                              onTap: () async {
-                                                await Navigator.of(context)
-                                                    .push(
-                                                  PageTransitions.material(
-                                                    builder: (_) =>
-                                                        HabitCenterScreen(
+                                        child: KeyedSubtree(
+                                          key: _habitsCardKey,
+                                          child: ValueListenableBuilder<int>(
+                                            valueListenable: _habitsRevision,
+                                            builder: (context, trigger, _) {
+                                              return HabitTodaySection(
+                                                username: widget.username,
+                                                isLight: isLight,
+                                                refreshTrigger: trigger,
+                                                onTap: () async {
+                                                  await PageTransitions
+                                                      .pushFromRect(
+                                                    context: context,
+                                                    page: HabitCenterScreen(
                                                       username: widget.username,
                                                     ),
-                                                  ),
-                                                );
-                                                _habitsRevision.value++;
-                                                _loadAllData();
-                                              },
-                                            );
-                                          },
+                                                    sourceKey: _habitsCardKey,
+                                                    sourceBorderRadius:
+                                                        BorderRadius.circular(
+                                                            24),
+                                                  );
+                                                  _habitsRevision.value++;
+                                                  _loadAllData();
+                                                },
+                                              );
+                                            },
+                                          ),
                                         ),
                                       ),
                                     };
@@ -920,7 +925,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             await PageTransitions.pushFromRect(
               context: context,
               page: HabitCenterScreen(username: widget.username),
-              sourceKey: GlobalKey(),
+              sourceKey: _habitsCardKey,
             );
             _habitsRevision.value++;
             _loadAllData(deferred: true);

@@ -180,6 +180,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _timelineCardKey = GlobalKey(); // 🚀 新增：专注Tab时间轴
   final GlobalKey _mathCardKey = GlobalKey();
   final GlobalKey _screenTimeCardKey = GlobalKey();
+  final GlobalKey _habitsCardKey = GlobalKey();
   final GlobalKey _focusBannerKey = GlobalKey();
   final GlobalKey _fabPomodoroKey = GlobalKey();
   final GlobalKey _fabTodoKey = GlobalKey();

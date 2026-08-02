@@ -38,6 +38,8 @@ class HabitDetailScreen extends StatefulWidget {
 
 class _HabitDetailScreenState extends State<HabitDetailScreen> {
   late HabitGoal _goal;
+  final GlobalKey _detailCardKey = GlobalKey();
+  final GlobalKey _menuActionKey = GlobalKey();
   List<HabitGoalRuleRevision> _rules = [];
   HabitProgress? _todayProgress;
   HabitStreakSummary? _summary;
@@ -113,8 +115,11 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   Future<void> _editHabit() async {
-    final changed = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => HabitEditScreen(goal: _goal)),
+    final changed = await PageTransitions.pushFromRect(
+      context: context,
+      page: HabitEditScreen(goal: _goal),
+      sourceKey: _menuActionKey,
+      sourceBorderRadius: BorderRadius.circular(20),
     );
     if (changed == true && mounted) {
       _loadData();
@@ -122,12 +127,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     }
   }
 
-  Future<void> _openHistory() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            HabitHistoryScreen(goal: _goal, username: widget.username),
-      ),
+  Future<void> _openHistory({GlobalKey? sourceKey}) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: HabitHistoryScreen(goal: _goal, username: widget.username),
+      sourceKey: sourceKey ?? _menuActionKey,
+      sourceBorderRadius: BorderRadius.circular(16),
     );
     if (mounted) _loadData();
   }
@@ -173,6 +178,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         centerTitle: false,
         actions: [
           PopupMenuButton<String>(
+            key: _menuActionKey,
             onSelected: (value) {
               switch (value) {
                 case 'edit':
@@ -263,7 +269,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ),
             ),
             TextButton(
-              onPressed: _openHistory,
+              onPressed: () => _openHistory(sourceKey: _detailCardKey),
               child: const Text('查看全部'),
             ),
           ],
@@ -631,7 +637,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           username: widget.username,
           onChanged: _loadData,
           onStartFocus: (_) => _startFocus(),
-          onViewRecords: _openHistory,
+          animationKey: _detailCardKey,
+          onViewRecords: () => _openHistory(sourceKey: _detailCardKey),
         ),
         if (_goal.sourceType == HabitSourceType.quantityCheckIn ||
             _goal.sourceType == HabitSourceType.timeCheckIn)
@@ -641,7 +648,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _openHistory,
+                    onPressed: () => _openHistory(sourceKey: _detailCardKey),
                     icon: const Icon(Icons.history_rounded, size: 16),
                     label: const Text('历史记录'),
                   ),
@@ -680,7 +687,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ),
             ),
             TextButton(
-              onPressed: _openHistory,
+              onPressed: () => _openHistory(sourceKey: _detailCardKey),
               child: const Text('查看全部'),
             ),
           ],
@@ -760,7 +767,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ),
             ),
             TextButton(
-              onPressed: _openHistory,
+              onPressed: () => _openHistory(sourceKey: _detailCardKey),
               child: const Text('查看全部'),
             ),
           ],

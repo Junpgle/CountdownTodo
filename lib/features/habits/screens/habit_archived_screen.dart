@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/page_transitions.dart';
 import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
 import '../widgets/habit_format.dart';
@@ -15,6 +16,7 @@ class HabitArchivedScreen extends StatefulWidget {
 
 class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
   List<HabitGoal> _goals = [];
+  final Map<String, GlobalKey> _cardKeys = {};
   bool _loading = true;
 
   @override
@@ -34,11 +36,16 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
     });
   }
 
+  GlobalKey _cardKeyFor(HabitGoal goal) {
+    return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
+  }
+
   Future<void> _openDetail(HabitGoal goal) async {
-    final changed = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => HabitDetailScreen(goal: goal),
-      ),
+    final changed = await PageTransitions.pushFromRect(
+      context: context,
+      page: HabitDetailScreen(goal: goal),
+      sourceKey: _cardKeyFor(goal),
+      sourceBorderRadius: BorderRadius.circular(16),
     );
     if (changed == true && mounted) {
       await _loadData();
@@ -81,6 +88,7 @@ class _HabitArchivedScreenState extends State<HabitArchivedScreen> {
 
   Widget _buildGoalTile(HabitGoal goal, ColorScheme colorScheme) {
     return Container(
+      key: _cardKeyFor(goal),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),

@@ -17,9 +17,6 @@ class HabitCard extends StatefulWidget {
   final HabitGoalRuleRevision rule;
   final HabitDayProgress dayProgress;
 
-  /// 首页浅色背景模式。
-  final bool isLight;
-
   /// 数据变化后通知父级刷新。
   final VoidCallback onChanged;
 
@@ -32,6 +29,9 @@ class HabitCard extends StatefulWidget {
   /// 点击卡片主体（跳转详情）。
   final VoidCallback? onTap;
 
+  /// 容器变换动画的起点。为空时保持普通卡片渲染。
+  final GlobalKey? animationKey;
+
   final String username;
 
   const HabitCard({
@@ -39,11 +39,11 @@ class HabitCard extends StatefulWidget {
     required this.goal,
     required this.rule,
     required this.dayProgress,
-    this.isLight = false,
     required this.onChanged,
     this.onStartFocus,
     this.onViewRecords,
     this.onTap,
+    this.animationKey,
     this.username = '',
   });
 
@@ -53,6 +53,7 @@ class HabitCard extends StatefulWidget {
 
 class _HabitCardState extends State<HabitCard> {
   bool _busy = false;
+  bool _isPressed = false;
 
   ColorScheme get _colors => Theme.of(context).colorScheme;
 
@@ -60,41 +61,45 @@ class _HabitCardState extends State<HabitCard> {
   Widget build(BuildContext context) {
     final progress = widget.dayProgress.progress;
     final status = widget.dayProgress.status;
-    final isDarkCard = !widget.isLight;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final Color borderColor = widget.isLight
-        ? Colors.white.withValues(alpha: 0.2)
-        : _colors.outlineVariant.withValues(alpha: 0.5);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDarkCard
-            ? _colors.surfaceContainerLow
-            : Colors.white.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          if (widget.isLight)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          else
-            BoxShadow(
-              color: _colors.shadow.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return GestureDetector(
+      onTapDown: (_) {
+        if (widget.onTap != null) setState(() => _isPressed = true);
+      },
+      onTapUp: (_) {
+        if (widget.onTap != null) {
+          setState(() => _isPressed = false);
+          widget.onTap!();
+        }
+      },
+      onTapCancel: () {
+        if (widget.onTap != null) setState(() => _isPressed = false);
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          key: widget.animationKey,
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: _colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: _colors.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
+              width: 1,
             ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: widget.onTap,
+            boxShadow: [
+              BoxShadow(
+                color: _colors.shadow.withValues(alpha: 0.04),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -102,10 +107,10 @@ class _HabitCardState extends State<HabitCard> {
                 if (widget.goal.sourceType != HabitSourceType.timeCheckIn &&
                     widget.goal.sourceType !=
                         HabitSourceType.recurringTodo) ...[
-                  const SizedBox(height: 10),
-                  _buildProgressBar(progress),
+                  const SizedBox(height: 14),
+                  _buildProgressBar(progress, status),
                 ],
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 _buildActions(progress, status),
               ],
             ),
@@ -117,25 +122,24 @@ class _HabitCardState extends State<HabitCard> {
 
   // ── 头部：图标 + 名称 + 状态 ────────────────────────
   Widget _buildHeader(HabitProgress progress, HabitDayStatus status) {
-    final textColor = widget.isLight ? Colors.white : _colors.onSurface;
-    final subColor = widget.isLight
-        ? Colors.white.withValues(alpha: 0.7)
-        : _colors.onSurfaceVariant;
+    final textColor = _colors.onSurface;
+    final subColor = _colors.onSurfaceVariant;
+    final statusColor = _statusColor(status);
 
     return Row(
       children: [
         Container(
-          width: 38,
-          height: 38,
+          width: 40,
+          height: 40,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: _statusColor(status).withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
+            color: statusColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
           ),
           child: Text(widget.goal.icon.isNotEmpty ? widget.goal.icon : '🎯',
-              style: const TextStyle(fontSize: 20)),
+              style: const TextStyle(fontSize: 22)),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +149,7 @@ class _HabitCardState extends State<HabitCard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: textColor,
                 ),
@@ -155,7 +159,7 @@ class _HabitCardState extends State<HabitCard> {
                 _subtitle(status, progress),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: subColor),
+                style: TextStyle(fontSize: 12, color: subColor),
               ),
             ],
           ),
@@ -184,27 +188,15 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Color _statusColor(HabitDayStatus status) {
-    if (widget.isLight) {
-      switch (status) {
-        case HabitDayStatus.met:
-          return Colors.greenAccent;
-        case HabitDayStatus.missed:
-          return Colors.redAccent;
-        case HabitDayStatus.inProgress:
-          return Colors.amber;
-        default:
-          return Colors.white70;
-      }
-    }
     switch (status) {
       case HabitDayStatus.met:
         return _colors.cdtSuccess;
       case HabitDayStatus.missed:
         return _colors.error;
       case HabitDayStatus.inProgress:
-        return _colors.cdtWarning;
+        return _colors.primary;
       default:
-        return _colors.outline;
+        return _colors.outlineVariant;
     }
   }
 
@@ -214,46 +206,48 @@ class _HabitCardState extends State<HabitCard> {
     switch (status) {
       case HabitDayStatus.met:
         text = '已完成';
+        break;
       case HabitDayStatus.missed:
         text = '未完成';
+        break;
       case HabitDayStatus.inProgress:
         text = '进行中';
+        break;
       case HabitDayStatus.notPlanned:
         text = '今日无计划';
+        break;
       case HabitDayStatus.skipped:
         text = '已跳过';
+        break;
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: widget.isLight ? 0.2 : 0.12),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         text,
         style: TextStyle(
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: widget.isLight ? Colors.white : color,
+          color: color,
         ),
       ),
     );
   }
 
   // ── 进度条 ──────────────────────────────────────────
-  Widget _buildProgressBar(HabitProgress progress) {
-    final status = widget.dayProgress.status;
+  Widget _buildProgressBar(HabitProgress progress, HabitDayStatus status) {
     final barColor = _statusColor(status);
     final ratio = progress.completionRatio.clamp(0.0, 1.0);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(2),
       child: LinearProgressIndicator(
         value: ratio,
-        minHeight: 6,
-        backgroundColor: widget.isLight
-            ? Colors.white.withValues(alpha: 0.2)
-            : _colors.surfaceContainerHighest,
+        minHeight: 4,
+        backgroundColor: _colors.surfaceContainerHighest,
         valueColor: AlwaysStoppedAnimation(barColor),
       ),
     );
@@ -278,27 +272,19 @@ class _HabitCardState extends State<HabitCard> {
     return Row(
       children: [
         Expanded(
-          child: FilledButton(
+          child: FilledButton.tonal(
             onPressed: done || _busy ? null : () => _toggleDone(progress),
             style: FilledButton.styleFrom(
-              backgroundColor: done
-                  ? (widget.isLight
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : _colors.surfaceContainerHighest)
-                  : (widget.isLight ? Colors.white.withValues(alpha: 0.2) : null),
-              foregroundColor: done
-                  ? (widget.isLight ? Colors.white70 : _colors.onSurfaceVariant)
-                  : (widget.isLight ? Colors.white : null),
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(done ? Icons.check_circle_rounded : Icons.check_rounded,
-                    size: 17),
+                    size: 18),
                 const SizedBox(width: 6),
                 Text(done ? '已完成' : '完成'),
               ],
@@ -307,14 +293,12 @@ class _HabitCardState extends State<HabitCard> {
         ),
         if (done) ...[
           const SizedBox(width: 8),
-          OutlinedButton(
+          TextButton(
             onPressed: _busy ? null : () => _toggleDone(progress),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: widget.isLight ? Colors.white : null,
-              side: widget.isLight ? const BorderSide(color: Colors.white70) : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: const Text('撤销'),
@@ -355,11 +339,9 @@ class _HabitCardState extends State<HabitCard> {
                     }
                   },
             style: FilledButton.styleFrom(
-              backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : null,
-              foregroundColor: widget.isLight ? Colors.white : null,
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: const Row(
@@ -374,14 +356,12 @@ class _HabitCardState extends State<HabitCard> {
         ),
         if (widget.onViewRecords != null) ...[
           const SizedBox(width: 8),
-          OutlinedButton(
+          TextButton(
             onPressed: widget.onViewRecords,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: widget.isLight ? Colors.white : null,
-              side: widget.isLight ? const BorderSide(color: Colors.white70) : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: const Text('查看记录'),
@@ -406,8 +386,7 @@ class _HabitCardState extends State<HabitCard> {
         TextButton(
           onPressed: _busy ? null : () => _openQuantityCustomDialog(),
           style: TextButton.styleFrom(
-            foregroundColor: widget.isLight ? Colors.white : null,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             minimumSize: const Size(0, 36),
           ),
           child: const Text('自定义'),
@@ -423,12 +402,10 @@ class _HabitCardState extends State<HabitCard> {
     return FilledButton.tonal(
       onPressed: _busy ? null : () => _quickCheckIn(value, text),
       style: FilledButton.styleFrom(
-        backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : _colors.secondaryContainer,
-        foregroundColor: widget.isLight ? Colors.white : _colors.onSecondaryContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         minimumSize: const Size(0, 36),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
       child: Text(unit.isNotEmpty ? '$text $unit' : text),
@@ -470,7 +447,7 @@ class _HabitCardState extends State<HabitCard> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: _colors.cdtSuccess.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               '${HabitText.timeOfDay(actual)} · '
@@ -488,11 +465,9 @@ class _HabitCardState extends State<HabitCard> {
           child: FilledButton.tonal(
             onPressed: _busy ? null : () => _openTimePicker(actual),
             style: FilledButton.styleFrom(
-              backgroundColor: widget.isLight ? Colors.white.withValues(alpha: 0.2) : null,
-              foregroundColor: widget.isLight ? Colors.white : null,
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: Text(actual == null ? '打卡' : '重新打卡'),

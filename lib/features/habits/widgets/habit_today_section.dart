@@ -45,6 +45,7 @@ class HabitTodaySection extends StatefulWidget {
 
 class _HabitTodaySectionState extends State<HabitTodaySection> {
   HabitDaySnapshot? _snapshot;
+  final Map<String, GlobalKey> _cardKeys = {};
   bool _loading = true;
 
   @override
@@ -112,14 +113,19 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     }
   }
 
-  void _viewRecords(HabitGoal goal) {
-    Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => HabitDetailScreen(
-          username: widget.username,
-          goal: goal,
-        ),
+  GlobalKey _cardKeyFor(HabitGoal goal) {
+    return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
+  }
+
+  Future<void> _viewRecords(HabitGoal goal) async {
+    await PageTransitions.pushFromRect(
+      context: context,
+      page: HabitDetailScreen(
+        username: widget.username,
+        goal: goal,
       ),
+      sourceKey: _cardKeyFor(goal),
+      sourceBorderRadius: BorderRadius.circular(24),
     );
   }
 
@@ -304,10 +310,10 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: HabitCard(
+        animationKey: _cardKeyFor(goal),
         goal: goal,
         rule: rule,
         dayProgress: dayProgress,
-        isLight: widget.isLight,
         username: widget.username,
         onChanged: _loadData,
         onStartFocus: widget.onStartFocus ?? _startFocus,

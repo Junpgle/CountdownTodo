@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../screens/pomodoro_screen.dart';
@@ -35,6 +36,7 @@ class HabitTodayTab extends StatefulWidget {
 
 class _HabitTodayTabState extends State<HabitTodayTab> {
   HabitDaySnapshot? _snapshot;
+  final Map<String, GlobalKey> _cardKeys = {};
   bool _loading = true;
 
   @override
@@ -68,18 +70,34 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     _loadData();
   }
 
-  Future<void> _openDetail(HabitGoal goal) async {
-    final changed = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => HabitDetailScreen(goal: goal),
-      ),
+  GlobalKey _cardKeyFor(HabitGoal goal) {
+    return _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new);
+  }
+
+  Future<void> _openDetail(
+    HabitGoal goal, {
+    GlobalKey? sourceKey,
+  }) async {
+    final page = HabitDetailScreen(
+      goal: goal,
+      username: widget.username,
     );
+    final changed = sourceKey == null
+        ? await Navigator.of(context).push(
+            PageTransitions.material(builder: (_) => page),
+          )
+        : await PageTransitions.pushFromRect(
+            context: context,
+            page: page,
+            sourceKey: sourceKey,
+            sourceBorderRadius: BorderRadius.circular(24),
+          );
     if (changed == true && mounted) _handleChanged();
   }
 
   Future<void> _openCreate() async {
     final created = await Navigator.of(context).push(
-      MaterialPageRoute(
+      PageTransitions.material(
         builder: (_) => const HabitEditScreen(),
       ),
     );
@@ -175,30 +193,30 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     for (final (label, icon, goals) in groups) {
       if (goals.isEmpty) continue;
       children.add(Padding(
-        padding: const EdgeInsets.only(top: 6, bottom: 10),
+        padding: const EdgeInsets.only(top: 16, bottom: 12),
         child: Row(
           children: [
-            Icon(icon, size: 17, color: colorScheme.primary),
-            const SizedBox(width: 6),
+            Icon(icon, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurfaceVariant,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: colorScheme.onSurface,
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
                 '${goals.length}',
                 style: TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -220,6 +238,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
               runSpacing: spacing,
               children: goals
                   .map((goal) => SizedBox(
+                        key: ValueKey(goal.uuid),
                         width: width,
                         child: HabitCard(
                           goal: goal,
@@ -228,8 +247,11 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
                           username: widget.username,
                           onChanged: _handleChanged,
                           onStartFocus: _startFocus,
-                          onViewRecords: () => _openDetail(goal),
-                          onTap: () => _openDetail(goal),
+                          animationKey: _cardKeyFor(goal),
+                          onTap: () => _openDetail(
+                            goal,
+                            sourceKey: _cardKeyFor(goal),
+                          ),
                         ),
                       ))
                   .toList(),
@@ -286,90 +308,87 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
       if (progress.goalMet) met++;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer,
-            colorScheme.secondaryContainer,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color:
-                        colorScheme.onPrimaryContainer.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '今日进度',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  planned == 0 ? '今天没有计划安排' : '$met / $planned 已完成',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: colorScheme.onSurface,
-                    letterSpacing: -0.5,
-                  ),
-                ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colorScheme.primaryContainer.withValues(alpha: 0.7),
+                colorScheme.tertiaryContainer.withValues(alpha: 0.3),
               ],
             ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: colorScheme.onSurface.withValues(alpha: 0.08),
+              width: 1,
+            ),
           ),
-          if (planned > 0)
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CircularProgressIndicator(
-                    value: planned == 0 ? 0 : met / planned,
-                    strokeWidth: 8,
-                    strokeCap: StrokeCap.round,
-                    backgroundColor: colorScheme.surface.withValues(alpha: 0.5),
-                    valueColor: AlwaysStoppedAnimation(colorScheme.primary),
-                  ),
-                  Center(
-                    child: Text(
-                      planned == 0 ? '0%' : '${(met / planned * 100).round()}%',
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '今日进度',
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      planned == 0 ? '今天没有计划' : '$met / $planned 已完成',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.onSurface,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        ],
+              if (planned > 0)
+                SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CircularProgressIndicator(
+                        value: planned == 0 ? 0 : met / planned,
+                        strokeWidth: 8,
+                        strokeCap: StrokeCap.round,
+                        backgroundColor:
+                            colorScheme.onSurface.withValues(alpha: 0.1),
+                        valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                      ),
+                      Center(
+                        child: Text(
+                          planned == 0
+                              ? '0%'
+                              : '${(met / planned * 100).round()}%',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

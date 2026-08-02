@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/page_transitions.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -29,6 +30,7 @@ class HabitAnalysisTab extends StatefulWidget {
 
 class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   List<HabitGoal> _goals = [];
+  final Map<String, GlobalKey> _cardKeys = {};
   Map<String, List<HabitGoalRuleRevision>> _rulesByHabit = {};
   Map<String, HabitStreakSummary> _summaries = {};
 
@@ -336,7 +338,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     );
   }
 
-  /// 近 30 天每日达标数柱状趋势。
+  /// 近 30 天每日达标数热力图 (Heatmap)
   Widget _buildMonthTrendCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final maxCount =
@@ -344,6 +346,66 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final first = today.subtract(const Duration(days: 29));
+    final firstWeekday = first.weekday; // 1 = Monday, 7 = Sunday
+    
+    // We arrange the 30 days into columns of 7 (Mon-Sun).
+    // Pad empty spaces before the first day.
+    final leadingEmpty = firstWeekday - 1;
+    final totalCells = leadingEmpty + 30;
+    final totalColumns = (totalCells / 7).ceil();
+
+    final columns = <Widget>[];
+    for (int col = 0; col < totalColumns; col++) {
+      final cells = <Widget>[];
+      for (int row = 0; row < 7; row++) {
+        final cellIndex = col * 7 + row;
+        final dayIndex = cellIndex - leadingEmpty;
+        
+        if (dayIndex < 0 || dayIndex >= 30) {
+          // Empty placeholder
+          cells.add(Container(
+            width: 12,
+            height: 12,
+            margin: const EdgeInsets.all(2),
+            color: Colors.transparent,
+          ));
+        } else {
+          final value = _monthTrend[dayIndex];
+          final isToday = dayIndex == 29;
+          
+          Color cellColor;
+          if (value == 0) {
+            cellColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+          } else {
+            // Calculate opacity based on intensity
+            final intensity = maxCount == 0 ? 1.0 : (value / maxCount).clamp(0.2, 1.0);
+            cellColor = colorScheme.primary.withValues(alpha: intensity);
+          }
+          if (isToday) {
+            cellColor = colorScheme.tertiary; // Highlight today
+          }
+          
+          cells.add(
+            Container(
+              width: 12,
+              height: 12,
+              margin: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: cellColor,
+                borderRadius: BorderRadius.circular(3),
+                border: isToday 
+                    ? Border.all(color: colorScheme.onTertiary, width: 1) 
+                    : null,
+              ),
+            )
+          );
+        }
+      }
+      columns.add(Column(
+        mainAxisSize: MainAxisSize.min,
+        children: cells,
+      ));
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
@@ -355,7 +417,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '近 30 天趋势',
+            '打卡热力图 (近 30 天)',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -363,34 +425,41 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
             ),
           ),
           const SizedBox(height: 14),
-          SizedBox(
-            height: 84,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(30, (index) {
-                final value =
-                    index < _monthTrend.length ? _monthTrend[index] : 0;
-                final isToday = index == 29;
-                final height =
-                    maxCount == 0 ? 2.0 : (value / maxCount) * 66 + 2;
-                return Expanded(
-                  child: Container(
-                    height: height,
-                    margin: const EdgeInsets.symmetric(horizontal: 1.2),
-                    decoration: BoxDecoration(
-                      color: isToday
-                          ? colorScheme.tertiary
-                          : (value > 0
-                              ? colorScheme.primary
-                              : colorScheme.surfaceContainerHighest),
-                      borderRadius: BorderRadius.circular(3),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Weekday labels
+              Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (int i = 0; i < 7; i++)
+                    Container(
+                      height: 16,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        i % 2 == 0 ? ['一', '二', '三', '四', '五', '六', '日'][i] : '',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
+                ],
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  reverse: true, // Scroll to end (today)
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: columns,
                   ),
-                );
-              }),
-            ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -426,15 +495,20 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     final periodUnit = _periodUnit(rule);
 
     return Material(
+      key: _cardKeys.putIfAbsent(goal.uuid, GlobalKey.new),
       color: colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () async {
-          final changed = await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => HabitDetailScreen(goal: goal),
+          final changed = await PageTransitions.pushFromRect(
+            context: context,
+            page: HabitDetailScreen(
+              goal: goal,
+              username: widget.username,
             ),
+            sourceKey: _cardKeys[goal.uuid]!,
+            sourceBorderRadius: BorderRadius.circular(16),
           );
           if (changed == true && mounted) _loadData();
         },
@@ -492,6 +566,8 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                   const SizedBox(height: 10),
                   _buildExtrasRow(goal, summary),
                 ],
+                const SizedBox(height: 12),
+                _buildInsightText(goal, summary),
               ],
             ],
           ),
@@ -655,4 +731,50 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   }
 
   String _percent(double value) => '${(value * 100).round()}%';
+
+  Widget _buildInsightText(HabitGoal goal, HabitStreakSummary summary) {
+    final colorScheme = Theme.of(context).colorScheme;
+    String insight = '';
+    
+    if (summary.currentStreak > 7) {
+      insight = '太棒了！你已经连续坚持超过一周，继续保持！🔥';
+    } else if (summary.weakestWeekday != null) {
+      final weekday = '一二三四五六日'[summary.weakestWeekday!];
+      insight = '小提示：周$weekday的达成率偏低，那天可以多给自己设点提醒哦。💡';
+    } else if (summary.rate30 >= 0.8) {
+      insight = '近 30 天表现极其优秀，习惯已经快要刻入你的 DNA 里啦！🧬';
+    } else if (summary.rate7 == 0 && summary.rate30 > 0) {
+      insight = '最近似乎有些懈怠，今天是重新开始的好日子，加油！💪';
+    } else {
+      insight = '保持节奏，每天的一小步，都是未来的一大步。✨';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.auto_awesome,
+            size: 14,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              insight,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

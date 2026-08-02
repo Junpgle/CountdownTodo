@@ -23,11 +23,18 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
 
   /// 习惯数据变化后自增，通知各标签页重新加载。
   int _reloadTick = 0;
+  final GlobalKey _archiveActionKey = GlobalKey();
+  final GlobalKey _createActionKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // Listen to tab controller to update navigation rail selection
+    _tabController.addListener(() {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   @override
@@ -37,10 +44,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   }
 
   Future<void> _openCreateHabit() async {
-    final created = await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const HabitEditScreen(),
-      ),
+    final created = await PageTransitions.pushFromRect(
+      context: context,
+      page: const HabitEditScreen(),
+      sourceKey: _createActionKey,
+      sourceBorderRadius: BorderRadius.circular(20),
     );
     if (created == true && mounted) {
       setState(() => _reloadTick++);
@@ -48,10 +56,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   }
 
   Future<void> _openArchived() async {
-    final changed = await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => const HabitArchivedScreen(),
-      ),
+    final changed = await PageTransitions.pushFromRect(
+      context: context,
+      page: const HabitArchivedScreen(),
+      sourceKey: _archiveActionKey,
+      sourceBorderRadius: BorderRadius.circular(20),
     );
     if (changed == true && mounted) {
       setState(() => _reloadTick++);
@@ -62,68 +71,27 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('习惯中心'),
-        centerTitle: false,
-        actions: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 600;
+
+        final actions = [
           IconButton(
+            key: _archiveActionKey,
             tooltip: '已归档习惯',
             onPressed: _openArchived,
             icon: const Icon(Icons.inventory_2_outlined),
           ),
           IconButton(
+            key: _createActionKey,
             tooltip: '新建习惯',
             onPressed: _openCreateHabit,
             icon: const Icon(Icons.add_rounded),
           ),
           const SizedBox(width: 4),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Container(
-                height: 40,
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  indicator: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: colorScheme.primaryContainer,
-                    boxShadow: [
-                      BoxShadow(
-                        color: colorScheme.shadow.withValues(alpha: 0.05),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  labelColor: colorScheme.onPrimaryContainer,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.w700),
-                  unselectedLabelColor: colorScheme.onSurfaceVariant,
-                  tabs: const [
-                    Tab(text: '今日'),
-                    Tab(text: '日历'),
-                    Tab(text: '分析'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
+        ];
+
+        final bodyTabs = [
           HabitTodayTab(
             username: widget.username,
             reloadTick: _reloadTick,
@@ -137,8 +105,89 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             username: widget.username,
             reloadTick: _reloadTick,
           ),
-        ],
-      ),
+        ];
+
+        if (isWide) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('习惯中心'),
+              centerTitle: false,
+              actions: actions,
+            ),
+            body: Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _tabController.index,
+                  onDestinationSelected: (index) {
+                    _tabController.animateTo(index);
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.today_outlined),
+                      selectedIcon: Icon(Icons.today),
+                      label: Text('今日'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.calendar_month_outlined),
+                      selectedIcon: Icon(Icons.calendar_month),
+                      label: Text('日历'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.analytics_outlined),
+                      selectedIcon: Icon(Icons.analytics),
+                      label: Text('分析'),
+                    ),
+                  ],
+                ),
+                VerticalDivider(
+                    thickness: 1,
+                    width: 1,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: bodyTabs,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Narrow screen (mobile)
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('习惯中心'),
+            centerTitle: false,
+            actions: actions,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(48),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor:
+                        colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+                    tabs: const [
+                      Tab(text: '今日'),
+                      Tab(text: '日历'),
+                      Tab(text: '分析'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          body: TabBarView(
+            controller: _tabController,
+            children: bodyTabs,
+          ),
+        );
+      },
     );
   }
 }
