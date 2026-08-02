@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/page_transitions.dart';
 import 'habit_analysis_tab.dart';
+import 'habit_archived_screen.dart';
 import 'habit_calendar_tab.dart';
 import 'habit_edit_screen.dart';
 import 'habit_today_tab.dart';
@@ -46,6 +47,17 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     }
   }
 
+  Future<void> _openArchived() async {
+    final changed = await Navigator.of(context).push(
+      PageTransitions.material(
+        builder: (_) => const HabitArchivedScreen(),
+      ),
+    );
+    if (changed == true && mounted) {
+      setState(() => _reloadTick++);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -55,6 +67,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         title: const Text('习惯中心'),
         centerTitle: false,
         actions: [
+          IconButton(
+            tooltip: '已归档习惯',
+            onPressed: _openArchived,
+            icon: const Icon(Icons.inventory_2_outlined),
+          ),
           IconButton(
             tooltip: '新建习惯',
             onPressed: _openCreateHabit,

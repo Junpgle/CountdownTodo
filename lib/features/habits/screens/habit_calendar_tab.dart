@@ -50,7 +50,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final goals = await HabitRepository.getActiveGoals();
+    // 日历是历史视图，归档习惯仍需参与计算；今日 / 分析页仍只加载未归档习惯。
+    final goals = await HabitRepository.getGoals();
     final allRules = await HabitRepository.getRules();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final daysByHabit = <String, List<HabitDayProgress>>{};
@@ -127,7 +128,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         return k == key;
       });
       if (match.isEmpty) continue;
-      final status = match.first.status;
+      final day = match.first;
+      // 归档代表停止后续执行。归档后的空计划日不应继续污染日历，
+      // 但归档前已经产生过记录的日期仍要保留。
+      if (goal.isArchived && !_hasHistoricalRecord(day)) continue;
+      final status = day.status;
       if (status == HabitDayStatus.notPlanned) continue;
       if (status == HabitDayStatus.skipped) {
         skipped++;
@@ -151,22 +156,65 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          _buildMonthHeader(),
-          const SizedBox(height: 12),
-          _buildWeekdayHeader(),
-          const SizedBox(height: 4),
-          _buildDayGrid(),
-          const SizedBox(height: 16),
-          _buildLegend(),
-          const SizedBox(height: 12),
-          _buildSelectedDayDetail(),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 600;
+
+        if (isWide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 5,
+                child: RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    children: [
+                      _buildMonthHeader(),
+                      const SizedBox(height: 12),
+                      _buildWeekdayHeader(),
+                      const SizedBox(height: 4),
+                      _buildDayGrid(),
+                      const SizedBox(height: 16),
+                      _buildLegend(),
+                    ],
+                  ),
+                ),
+              ),
+              const VerticalDivider(
+                  width: 1, thickness: 1, color: Colors.black12),
+              Expanded(
+                flex: 4,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                  children: [
+                    _buildSelectedDayDetail(),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: _loadData,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            children: [
+              _buildMonthHeader(),
+              const SizedBox(height: 12),
+              _buildWeekdayHeader(),
+              const SizedBox(height: 4),
+              _buildDayGrid(),
+              const SizedBox(height: 16),
+              _buildLegend(),
+              const SizedBox(height: 12),
+              _buildSelectedDayDetail(),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -372,7 +420,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         (d) => HabitRuleResolver.dayKey(d.logicalDate) == key,
       );
       if (day.isEmpty) continue;
-      rows.add(_buildDayRow(goal, day.first));
+      final dayProgress = day.first;
+      if (goal.isArchived && !_hasHistoricalRecord(dayProgress)) continue;
+      rows.add(_buildDayRow(goal, dayProgress));
     }
 
     return Column(
@@ -381,25 +431,25 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         Text(
           dayLabel,
           style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
             color: colorScheme.onSurface,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
         if (rows.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.symmetric(vertical: 24),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
               '这一天没有习惯计划',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14,
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
@@ -408,6 +458,11 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           ...rows,
       ],
     );
+  }
+
+  bool _hasHistoricalRecord(HabitDayProgress day) {
+    final progress = day.progress;
+    return progress.hasRecord || progress.goalMet || progress.isSkipped;
   }
 
   Widget _buildDayRow(HabitGoal goal, HabitDayProgress day) {
@@ -424,65 +479,74 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     final detail = _dayValueText(goal, day);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           Text(goal.icon.isNotEmpty ? goal.icon : '🎯',
-              style: const TextStyle(fontSize: 18)),
-          const SizedBox(width: 10),
+              style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  goal.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        goal.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                if (detail.isNotEmpty)
+                if (detail.isNotEmpty) ...[
+                  const SizedBox(height: 2),
                   Text(
                     detail,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 12.5,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
+                ]
               ],
             ),
           ),
           const SizedBox(width: 8),
           if (goal.sourceType == HabitSourceType.recurringTodo)
             _buildMakeUpButton(goal, day)
-          else ...[
+          else
             _buildSkipButton(goal, day, colorScheme, label),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
