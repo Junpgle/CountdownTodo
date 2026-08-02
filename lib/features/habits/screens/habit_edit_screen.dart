@@ -49,6 +49,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   String _quickValuesText = '';
   int _targetMinutes = 30;
   TimeOfDay _targetTime = const TimeOfDay(hour: 7, minute: 0);
+  bool _timeTargetCustomized = false;
+  _SleepPairAnchor? _existingEarlyWake;
+  _SleepPairAnchor? _existingEarlySleep;
+  bool _sleepPairAnchorsLoaded = false;
   HabitTimeComparison _timeComparison = HabitTimeComparison.before;
   int _toleranceMinutes = 0;
   bool _crossMidnightBoundary = false;
@@ -147,11 +151,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       }
       _defaultFocusMinutes = goal.defaultFocusMinutes;
       _creationMode = _HabitCreationMode.custom;
+      _timeTargetCustomized = true;
       _step = 0;
       _loadRuleForEdit(goal);
     }
     _loadTags();
     _loadRecurringTodos();
+    _loadSleepPairAnchors();
   }
 
   /// 编辑模式：加载当前生效的规则并回填所有规则级字段，
@@ -245,6 +251,59 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     }
   }
 
+  Future<void> _loadSleepPairAnchors() async {
+    if (widget.goal != null) return;
+    try {
+      final goals = await HabitRepository.getActiveGoals();
+      _SleepPairAnchor? earlyWake;
+      _SleepPairAnchor? earlySleep;
+      for (final goal in goals) {
+        if (goal.sourceType != HabitSourceType.timeCheckIn) continue;
+        final adaptation = HabitAdaptationService.forHabit(goal);
+        if (adaptation?.kind != HabitAdaptationKind.earlyWake &&
+            adaptation?.kind != HabitAdaptationKind.earlySleep) {
+          continue;
+        }
+        final rules = await HabitRepository.getRules(habitUuid: goal.uuid);
+        final rule = rules
+                .where((candidate) =>
+                    candidate.uuid == goal.currentRuleUuid &&
+                    !candidate.isDeleted)
+                .firstOrNull ??
+            HabitRuleResolver.currentRule(
+                rules, HabitRuleResolver.defaultDayBoundaryMinute, null);
+        final targetMinute = rule?.targetTimeMinute;
+        if (targetMinute == null) continue;
+        final anchor = _SleepPairAnchor(
+          name: goal.name,
+          kind: adaptation!.kind,
+          targetMinute: targetMinute,
+          updatedAt: rule!.updatedAt > goal.updatedAt
+              ? rule.updatedAt
+              : goal.updatedAt,
+        );
+        if (anchor.kind == HabitAdaptationKind.earlyWake &&
+            (earlyWake == null || anchor.updatedAt > earlyWake.updatedAt)) {
+          earlyWake = anchor;
+        }
+        if (anchor.kind == HabitAdaptationKind.earlySleep &&
+            (earlySleep == null || anchor.updatedAt > earlySleep.updatedAt)) {
+          earlySleep = anchor;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _existingEarlyWake = earlyWake;
+        _existingEarlySleep = earlySleep;
+        _sleepPairAnchorsLoaded = true;
+      });
+      _applySleepPairSuggestionIfNeeded();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sleepPairAnchorsLoaded = true);
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -256,6 +315,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   // ── 模板应用 ────────────────────────────────────────
   void _applyTemplate(_HabitTemplate template) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: template.type,
+      name: template.name,
+    );
     setState(() {
       _creationMode = _HabitCreationMode.template;
       _selectedTemplateName = template.name;
@@ -265,6 +328,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _periodType = HabitPeriodType.daily;
       _weekdaysMask = 127;
       _crossMidnightBoundary = template.crossMidnight;
+      _timeTargetCustomized = false;
       _selectedTagUuids.clear();
       _selectedRecurringSeriesId = _autoCreateRecurringSeries;
       _reminderEnabled = false;
@@ -272,6 +336,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _progressReminder = false;
       _nearEndReminder = false;
       _dailySummaryReminder = false;
+      _toleranceMinutes = 0;
       if (template.adaptationKind == HabitAdaptationKind.hydration) {
         // 饮水适合少量多次；默认提供 3 个分散时段，用户仍可在下一步修改。
         _reminderEnabled = true;
@@ -285,6 +350,16 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         _progressReminder = true;
         _nearEndReminder = false;
         _dailySummaryReminder = false;
+      }
+      if (adaptation?.kind == HabitAdaptationKind.earlyWake ||
+          adaptation?.kind == HabitAdaptationKind.earlySleep) {
+        // 时间点型默认保留 15 分钟宽容窗口，并开启目标前提醒。
+        _reminderEnabled = true;
+        _nearEndReminder = true;
+        _toleranceMinutes = 15;
+        if (adaptation?.kind == HabitAdaptationKind.earlySleep) {
+          _crossMidnightBoundary = true;
+        }
       }
       switch (template.type) {
         case HabitSourceType.quantityCheckIn:
@@ -303,6 +378,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           break;
       }
     });
+    _applySleepPairSuggestionIfNeeded();
   }
 
   void _startCustomCreation() {
@@ -322,6 +398,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _quickValuesController.clear();
       _targetMinutes = 30;
       _targetTime = const TimeOfDay(hour: 7, minute: 0);
+      _timeTargetCustomized = false;
       _timeComparison = HabitTimeComparison.before;
       _toleranceMinutes = 0;
       _crossMidnightBoundary = false;
@@ -332,6 +409,72 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _progressReminder = false;
       _nearEndReminder = false;
       _dailySummaryReminder = false;
+    });
+  }
+
+  void _handleNameChanged(String value) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: value,
+    );
+    setState(() {
+      if (!_timeTargetCustomized &&
+          (adaptation?.kind == HabitAdaptationKind.earlyWake ||
+              adaptation?.kind == HabitAdaptationKind.earlySleep)) {
+        final isEarlySleep = adaptation?.kind == HabitAdaptationKind.earlySleep;
+        _targetTime = isEarlySleep
+            ? const TimeOfDay(hour: 23, minute: 30)
+            : const TimeOfDay(hour: 7, minute: 0);
+        _timeComparison = HabitTimeComparison.before;
+        _toleranceMinutes = 15;
+        _crossMidnightBoundary = isEarlySleep;
+        _reminderEnabled = true;
+        _nearEndReminder = true;
+      }
+    });
+    _applySleepPairSuggestionIfNeeded();
+  }
+
+  HabitSleepPairSuggestion? _sleepPairSuggestionFor(
+    HabitAdaptation? adaptation,
+  ) {
+    if (!_sleepPairAnchorsLoaded || adaptation == null) return null;
+    final anchor = switch (adaptation.kind) {
+      HabitAdaptationKind.earlyWake => _existingEarlySleep,
+      HabitAdaptationKind.earlySleep => _existingEarlyWake,
+      HabitAdaptationKind.hydration => null,
+    };
+    if (anchor == null) return null;
+    return HabitAdaptationService.pairSuggestionFor(
+      sourceKind: anchor.kind,
+      sourceName: anchor.name,
+      sourceMinute: anchor.targetMinute,
+    );
+  }
+
+  void _applySleepPairSuggestionIfNeeded() {
+    if (widget.goal != null ||
+        _sourceType != HabitSourceType.timeCheckIn ||
+        _timeTargetCustomized) {
+      return;
+    }
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    final suggestion = _sleepPairSuggestionFor(adaptation);
+    if (suggestion == null) return;
+    setState(() {
+      _targetTime = TimeOfDay(
+        hour: (suggestion.recommendedMinute ~/ 60) % 24,
+        minute: suggestion.recommendedMinute % 60,
+      );
+      _timeComparison = HabitTimeComparison.before;
+      _toleranceMinutes = 15;
+      _crossMidnightBoundary =
+          suggestion.targetKind == HabitAdaptationKind.earlySleep;
+      _reminderEnabled = true;
+      _nearEndReminder = true;
     });
   }
 
@@ -1122,7 +1265,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               child: TextField(
                 controller: _nameController,
                 maxLength: 20,
-                onChanged: (_) => setState(() {}),
+                onChanged: _handleNameChanged,
                 decoration: const InputDecoration(
                   labelText: '习惯名称',
                   hintText: '如：喝水、早起、阅读',
@@ -1334,12 +1477,15 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: enabled
-              ? () => setState(() {
+              ? () {
+                  setState(() {
                     _sourceType = type;
                     if (type != HabitSourceType.recurringTodo) {
                       _selectedRecurringSeriesId = _autoCreateRecurringSeries;
                     }
-                  })
+                  });
+                  _applySleepPairSuggestionIfNeeded();
+                }
               : null,
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -1921,18 +2067,88 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     });
   }
 
+  void _applyTimeAdaptationTarget(int target) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    if (adaptation == null) return;
+    setState(() {
+      _targetTime = TimeOfDay(hour: (target ~/ 60) % 24, minute: target % 60);
+      _timeTargetCustomized = true;
+      _timeComparison = HabitTimeComparison.before;
+      if (adaptation.kind == HabitAdaptationKind.earlySleep) {
+        _crossMidnightBoundary = true;
+      }
+    });
+  }
+
+  void _applyTimePairSuggestion(int target) {
+    setState(() {
+      _targetTime = TimeOfDay(hour: (target ~/ 60) % 24, minute: target % 60);
+      _timeTargetCustomized = true;
+      _timeComparison = HabitTimeComparison.before;
+      _toleranceMinutes = 15;
+      final adaptation = HabitAdaptationService.forDraft(
+        sourceType: _sourceType,
+        name: _nameController.text,
+      );
+      _crossMidnightBoundary =
+          adaptation?.kind == HabitAdaptationKind.earlySleep;
+      _reminderEnabled = true;
+      _nearEndReminder = true;
+    });
+  }
+
   Widget _buildTimeTarget(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    final isSleepAdaptation =
+        adaptation?.kind == HabitAdaptationKind.earlyWake ||
+            adaptation?.kind == HabitAdaptationKind.earlySleep;
+    final pairSuggestion =
+        widget.goal == null ? _sleepPairSuggestionFor(adaptation) : null;
     final timeText = '${_targetTime.hour.toString().padLeft(2, '0')}:'
         '${_targetTime.minute.toString().padLeft(2, '0')}';
+    final beforeLabel = isSleepAdaptation ? '不晚于 $timeText' : '早于 $timeText';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (adaptation != null && isSleepAdaptation) ...[
+          HabitAdaptationPanel(
+            adaptation: adaptation,
+            targetValue:
+                (_targetTime.hour * 60 + _targetTime.minute).toDouble(),
+            onTargetSelected: _applyTimeAdaptationTarget,
+          ),
+          const SizedBox(height: 14),
+          if (pairSuggestion != null) ...[
+            HabitSleepPairSuggestionCard(
+              suggestion: pairSuggestion,
+              currentTargetMinute: _targetTime.hour * 60 + _targetTime.minute,
+              onApply: _applyTimePairSuggestion,
+            ),
+            const SizedBox(height: 14),
+          ],
+          HabitSleepTimingGuide(
+            adaptation: adaptation,
+            targetMinute: _targetTime.hour * 60 + _targetTime.minute,
+            onTargetChanged: _applyTimeAdaptationTarget,
+          ),
+          const SizedBox(height: 16),
+        ],
         Row(
           children: [
             Expanded(
               child: Text(
-                '目标时间',
+                adaptation?.kind == HabitAdaptationKind.earlyWake
+                    ? '目标起床时间'
+                    : adaptation?.kind == HabitAdaptationKind.earlySleep
+                        ? '目标入睡时间'
+                        : '目标时间',
                 style: TextStyle(
                   fontSize: 13,
                   color: colorScheme.onSurfaceVariant,
@@ -1946,7 +2162,13 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                   initialTime: _targetTime,
                 );
                 if (picked != null && mounted) {
-                  setState(() => _targetTime = picked);
+                  setState(() {
+                    _targetTime = picked;
+                    _timeTargetCustomized = true;
+                    if (adaptation?.kind == HabitAdaptationKind.earlySleep) {
+                      _crossMidnightBoundary = true;
+                    }
+                  });
                 }
               },
               icon: const Icon(Icons.schedule_rounded, size: 18),
@@ -1956,14 +2178,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          '达标条件',
+          isSleepAdaptation ? '达标条件（建议使用截止时间）' : '达标条件',
           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             ChoiceChip(
-              label: Text('早于 $timeText'),
+              label: Text(beforeLabel),
               selected: _timeComparison == HabitTimeComparison.before,
               onSelected: (_) =>
                   setState(() => _timeComparison = HabitTimeComparison.before),
@@ -2006,6 +2228,29 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ],
         ),
+        if (isSleepAdaptation) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议先从 15 分钟宽容窗口开始，避免把偶尔的晚睡或晚起直接判定为失败。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [0, 15, 30].map((minutes) {
+              return ChoiceChip(
+                label: Text('$minutes 分钟'),
+                selected: _toleranceMinutes == minutes,
+                onSelected: (_) => setState(() => _toleranceMinutes = minutes),
+              );
+            }).toList(),
+          ),
+        ],
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -2125,6 +2370,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   // ── 第 4 步：提醒 ────────────────────────────────────
   Widget _buildReminderStep() {
     final colorScheme = Theme.of(context).colorScheme;
+    if (_sourceType == HabitSourceType.timeCheckIn) {
+      return _buildTimePointReminderStep(colorScheme);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2219,6 +2467,65 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       ],
     );
   }
+
+  Widget _buildTimePointReminderStep(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    final title = adaptation?.kind == HabitAdaptationKind.earlySleep
+        ? '启用早睡提醒'
+        : adaptation?.kind == HabitAdaptationKind.earlyWake
+            ? '启用早起提醒'
+            : '启用目标提醒';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(title),
+          subtitle: const Text('目标前 30 分钟和 5 分钟各提醒一次'),
+          value: _nearEndReminder,
+          onChanged: (v) => setState(() {
+            _reminderEnabled = v;
+            _nearEndReminder = v;
+          }),
+        ),
+        if (_reminderEnabled)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '提醒会围绕目标时间安排，不需要额外添加固定时间。${adaptation?.kind == HabitAdaptationKind.earlySleep ? '早睡习惯还会按跨午夜规则归属到前一天。' : ''}',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('当日汇总'),
+          subtitle: const Text('每晚汇总当天习惯完成情况'),
+          value: _dailySummaryReminder,
+          onChanged: (v) => setState(() => _dailySummaryReminder = v),
+        ),
+        Text(
+          '提醒是辅助，不代表需要为了赶上目标而牺牲睡眠时长。',
+          style: TextStyle(
+            fontSize: 12,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _TagColorDot extends StatelessWidget {
@@ -2234,6 +2541,20 @@ class _TagColorDot extends StatelessWidget {
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
+}
+
+class _SleepPairAnchor {
+  final String name;
+  final HabitAdaptationKind kind;
+  final int targetMinute;
+  final int updatedAt;
+
+  const _SleepPairAnchor({
+    required this.name,
+    required this.kind,
+    required this.targetMinute,
+    required this.updatedAt,
+  });
 }
 
 enum _HabitCreationMode { template, custom }

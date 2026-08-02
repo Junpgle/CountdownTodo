@@ -856,10 +856,25 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   Widget _buildAdaptationSection(ColorScheme colorScheme) {
     final adaptation = HabitAdaptationService.forHabit(_goal);
     if (adaptation == null) return const SizedBox.shrink();
-    return HabitAdaptationPanel(
-      adaptation: adaptation,
-      currentValue: _todayProgress?.currentValue,
-      targetValue: _rule.targetValue,
+    final isSleepAdaptation =
+        adaptation.kind == HabitAdaptationKind.earlyWake ||
+            adaptation.kind == HabitAdaptationKind.earlySleep;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          currentValue: isSleepAdaptation ? null : _todayProgress?.currentValue,
+          targetValue: isSleepAdaptation ? null : _rule.targetValue,
+        ),
+        if (isSleepAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitSleepTimingGuide(
+            adaptation: adaptation,
+            targetMinute: _rule.targetTimeMinute ?? 0,
+          ),
+        ],
+      ],
     );
   }
 

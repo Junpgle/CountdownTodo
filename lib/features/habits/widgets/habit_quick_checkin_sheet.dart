@@ -6,6 +6,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
 import 'habit_format.dart';
+import 'habit_adaptation_panel.dart';
 
 /// 快捷打卡底部弹窗（设计文档第十五节 `habit_quick_checkin_sheet.dart`）。
 ///
@@ -246,10 +247,23 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
   Widget _buildTimePoint(ColorScheme colorScheme) {
     final now = DateTime.now();
     var time = TimeOfDay(hour: now.hour, minute: now.minute);
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
+    final isSleepAdaptation =
+        adaptation?.kind == HabitAdaptationKind.earlyWake ||
+            adaptation?.kind == HabitAdaptationKind.earlySleep;
     return StatefulBuilder(
       builder: (context, setSheetState) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (adaptation != null && isSleepAdaptation) ...[
+            HabitAdaptationPanel(adaptation: adaptation),
+            const SizedBox(height: 12),
+            HabitSleepTimingGuide(
+              adaptation: adaptation,
+              targetMinute: widget.rule.targetTimeMinute ?? 0,
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
             '实际时间',
             style: TextStyle(

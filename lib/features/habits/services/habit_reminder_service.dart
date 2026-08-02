@@ -295,19 +295,19 @@ abstract final class HabitReminderService {
     if (targetMinute == null) return;
     final target = today.add(Duration(minutes: targetMinute));
 
-    // 提前提醒：目标前 30 分钟。
-    _addReminder(
-      reminders: reminders,
-      goal: goal,
-      slot: 'advance',
-      triggerAt: target.subtract(Duration(minutes: timePointAdvanceMinutes)),
-      now: now,
-      title: title,
-      text: '距离目标 ${HabitText.targetTime(targetMinute)}'
-          '还有 $timePointAdvanceMinutes 分钟',
-    );
-    // 临近提醒（nearEnd）。
     if (policy.nearEndReminder) {
+      // 提前提醒：目标前 30 分钟。
+      _addReminder(
+        reminders: reminders,
+        goal: goal,
+        slot: 'advance',
+        triggerAt: target.subtract(Duration(minutes: timePointAdvanceMinutes)),
+        now: now,
+        title: title,
+        text: '距离目标 ${HabitText.targetTime(targetMinute)}'
+            '还有 $timePointAdvanceMinutes 分钟',
+      );
+      // 临近提醒（nearEnd）。
       _addReminder(
         reminders: reminders,
         goal: goal,
