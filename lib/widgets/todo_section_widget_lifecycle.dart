@@ -8,7 +8,29 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     super.initState();
     _selectedSubTeamUuid = widget.initialSelectedTeamUuid;
     _loadSettings();
+    _loadHabitDisplaySettings();
     _fetchTeamRoles(); // 🚀 获取角色
+  }
+
+  Future<void> _loadHabitDisplaySettings() async {
+    try {
+      final goals = await HabitRepository.getActiveGoals();
+      final seriesIds = <String>{};
+      for (final goal in goals) {
+        if (goal.sourceType != HabitSourceType.recurringTodo ||
+            goal.displayMode != HabitDisplayMode.habitOnly) {
+          continue;
+        }
+        seriesIds.addAll(goal.sourceIds.where((id) => id.isNotEmpty));
+      }
+      if (!mounted) return;
+      setState(() {
+        _habitOnlyRecurringSeriesIds = seriesIds;
+        _cachedVm = null;
+      });
+    } catch (_) {
+      // 习惯数据读取失败时保留待办列表，避免影响普通待办展示。
+    }
   }
 
   Future<void> _fetchTeamRoles() async {
@@ -78,6 +100,7 @@ mixin _TodoSectionLifecycleMixin on _TodoSectionStateBase {
     if (oldWidget.todos != widget.todos ||
         oldWidget.todoGroups != widget.todoGroups) {
       _cachedVm = null;
+      _loadHabitDisplaySettings();
     }
     if (!_hasInitializedExpansion && widget.todos.isNotEmpty) {
       _isTodayExpanded = !widget.todos

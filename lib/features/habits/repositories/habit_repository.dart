@@ -148,6 +148,23 @@ abstract final class HabitRepository {
     );
   }
 
+  /// 为缺少数据源的完成型习惯补建并返回循环待办系列 ID。
+  ///
+  /// 正常新建流程会在 [createGoal] 内自动完成这一步；该入口用于修复
+  /// 旧数据或编辑时发现 sourceIds 为空的完成型习惯。
+  static Future<String> createRecurringTodoBinding({
+    required String name,
+    required HabitGoalRuleRevision rule,
+    String username = '',
+  }) async {
+    final todo = await _createRecurringTodoFromRule(
+      username: username,
+      name: name,
+      rule: rule,
+    );
+    return todo.recurrenceSeriesId ?? todo.id;
+  }
+
   static HabitPeriodType _periodFromRecurrence(TodoItem todo) {
     switch (todo.recurrence) {
       case RecurrenceType.weekly:

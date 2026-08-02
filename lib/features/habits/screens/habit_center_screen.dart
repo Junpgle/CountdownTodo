@@ -82,12 +82,6 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             onPressed: _openArchived,
             icon: const Icon(Icons.inventory_2_outlined),
           ),
-          IconButton(
-            key: _createActionKey,
-            tooltip: '新建习惯',
-            onPressed: _openCreateHabit,
-            icon: const Icon(Icons.add_rounded),
-          ),
           const SizedBox(width: 4),
         ];
 
@@ -113,6 +107,16 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
               title: const Text('习惯中心'),
               centerTitle: false,
               actions: actions,
+            ),
+            floatingActionButton: Padding(
+              padding: const EdgeInsets.only(bottom: 32.0, right: 32.0),
+              child: FloatingActionButton.extended(
+                key: _createActionKey,
+                onPressed: _openCreateHabit,
+                tooltip: '新建习惯',
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('新建习惯'),
+              ),
             ),
             body: Row(
               children: [
@@ -181,6 +185,20 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                 ),
               ),
             ),
+          ),
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              FloatingActionButton.extended(
+                key: _createActionKey,
+                onPressed: _openCreateHabit,
+                tooltip: '新建习惯',
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('新建习惯'),
+              ),
+              const SizedBox(height: 100),
+            ],
           ),
           body: TabBarView(
             controller: _tabController,

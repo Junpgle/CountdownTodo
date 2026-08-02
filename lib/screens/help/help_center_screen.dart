@@ -425,8 +425,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   }
 
   void _showChangelog() {
-    Navigator.push(
-      context,
+    Navigator.of(context, rootNavigator: true).push(
       PageTransitions.slideHorizontal(
         FeatureGuideScreen(
           isManualReview: true,

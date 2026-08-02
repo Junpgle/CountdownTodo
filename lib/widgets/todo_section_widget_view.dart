@@ -1406,6 +1406,7 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     for (final todo in widget.todos) {
       final seriesId = todo.recurrenceSeriesId;
       if (todo.isDeleted || seriesId == null || seriesId.isEmpty) continue;
+      if (_habitOnlyRecurringSeriesIds.contains(seriesId)) continue;
       if (_selectedSubTeamUuid != null &&
           todo.teamUuid != _selectedSubTeamUuid) {
         continue;
@@ -1434,7 +1435,11 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
     // Build todosByGroup map and orphaned list in one pass
     final todosByGroup = <String, List<TodoItem>>{};
     final orphanedTodos = <TodoItem>[];
-    for (final t in widget.todos) {
+    final displayTodos = _filterHabitOnlyRecurringTodos(
+      widget.todos,
+      _habitOnlyRecurringSeriesIds,
+    );
+    for (final t in displayTodos) {
       if (t.isDeleted || _isHistoricalTodo(t)) continue;
       if (_selectedSubTeamUuid != null && t.teamUuid != _selectedSubTeamUuid) {
         continue;

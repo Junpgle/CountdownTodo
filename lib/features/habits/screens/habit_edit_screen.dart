@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
+import '../../../storage_service.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
@@ -47,6 +50,11 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   // 时长型：绑定专注标签（可多选，sourceIds 存标签 UUID）。
   List<PomodoroTag> _tags = [];
   List<String> _selectedTagUuids = [];
+
+  // 完成型：绑定循环待办系列；未选择时由保存流程自动创建。
+  static const _autoCreateRecurringSeries = '__auto_create_recurring__';
+  List<TodoItem> _recurringTodos = [];
+  String _selectedRecurringSeriesId = _autoCreateRecurringSeries;
 
   bool _reminderEnabled = false;
   final List<TimeOfDay> _fixedTimes = [];
@@ -122,11 +130,18 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _sourceType = goal.sourceType;
       _displayMode = goal.displayMode;
       _selectedTagUuids = List.from(goal.sourceIds);
+      if (_sourceType == HabitSourceType.recurringTodo &&
+          goal.sourceIds.isNotEmpty) {
+        _selectedRecurringSeriesId = goal.sourceIds.first;
+        // 关联已有循环待办后，首页只保留习惯卡片，避免同一条内容重复展示。
+        _displayMode = HabitDisplayMode.habitOnly;
+      }
       _defaultFocusMinutes = goal.defaultFocusMinutes;
       _step = 1;
       _loadRuleForEdit(goal);
     }
     _loadTags();
+    _loadRecurringTodos();
   }
 
   /// 编辑模式：加载当前生效的规则并回填所有规则级字段，
@@ -196,6 +211,28 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     setState(() {
       _tags = tags.where((t) => !t.isDeleted && !t.isArchived).toList();
     });
+  }
+
+  Future<void> _loadRecurringTodos() async {
+    try {
+      final username = await StorageService.getLoginSession() ?? '';
+      final todos = await StorageService.getTodos(username);
+      final seenSeries = <String>{};
+      final candidates = <TodoItem>[];
+      for (final todo in todos) {
+        if (todo.isDeleted || todo.recurrence == RecurrenceType.none) {
+          continue;
+        }
+        final seriesId = todo.recurrenceSeriesId ?? todo.id;
+        if (!seenSeries.add(seriesId)) continue;
+        candidates.add(todo);
+      }
+      candidates.sort((a, b) => a.title.compareTo(b.title));
+      if (!mounted) return;
+      setState(() => _recurringTodos = candidates);
+    } catch (_) {
+      // 读取待办失败不阻塞习惯编辑，保存时仍可自动创建循环待办。
+    }
   }
 
   @override
@@ -337,12 +374,31 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     try {
       final rule = _buildRule();
       final goal = widget.goal;
+      var recurringSourceIds =
+          _selectedRecurringSeriesId == _autoCreateRecurringSeries
+              ? (goal?.sourceType == HabitSourceType.recurringTodo
+                  ? List<String>.from(goal!.sourceIds)
+                  : const <String>[])
+              : <String>[_selectedRecurringSeriesId];
+      if (goal != null &&
+          goal.sourceType == HabitSourceType.recurringTodo &&
+          recurringSourceIds.isEmpty) {
+        final username = await StorageService.getLoginSession() ?? '';
+        final seriesId = await HabitRepository.createRecurringTodoBinding(
+          name: _nameController.text.trim(),
+          rule: rule,
+          username: username,
+        );
+        recurringSourceIds = [seriesId];
+      }
       if (goal == null) {
         await HabitRepository.createGoal(
           name: _nameController.text.trim(),
           icon: _icon,
           sourceType: _sourceType,
-          sourceIds: _selectedTagUuids,
+          sourceIds: _sourceType == HabitSourceType.recurringTodo
+              ? recurringSourceIds
+              : _selectedTagUuids,
           rule: rule,
           displayMode: _displayMode,
           defaultFocusMinutes: _sourceType == HabitSourceType.pomodoroTag
@@ -357,6 +413,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         if (goal.sourceType == HabitSourceType.pomodoroTag) {
           goal.sourceIds = List.from(_selectedTagUuids);
           goal.defaultFocusMinutes = _defaultFocusMinutes;
+        } else if (goal.sourceType == HabitSourceType.recurringTodo &&
+            recurringSourceIds.isNotEmpty) {
+          goal.sourceIds = recurringSourceIds;
         }
         final allRules = await HabitRepository.getRules(habitUuid: goal.uuid);
         await HabitRepository.updateGoal(goal);
@@ -382,33 +441,203 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
-        centerTitle: false,
-      ),
-      body: Column(
-        children: [
-          _buildStepIndicator(),
-          const Divider(height: 1),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: switch (_step) {
-                0 => _buildTemplateStep(),
-                1 => _buildTypeStep(),
-                2 => _buildTargetStep(),
-                _ => _buildReminderStep(),
-              },
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 800;
+        final content = switch (_step) {
+          0 => _buildTemplateStep(),
+          1 => _buildTypeStep(),
+          2 => _buildTargetStep(),
+          _ => _buildReminderStep(),
+        };
+
+        final formArea = AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.05, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey<int>(_step),
+            child: content,
           ),
-          _buildBottomBar(),
-        ],
-      ),
+        );
+
+        if (isWide) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
+              centerTitle: false,
+            ),
+            body: Row(
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Text(
+                          '设置进度',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(child: _buildWideStepIndicator()),
+                    ],
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 40, vertical: 24),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: formArea,
+                            ),
+                          ),
+                        ),
+                      ),
+                      _buildBottomBar(isWide: true),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(widget.goal == null ? '新建习惯' : '编辑习惯'),
+            centerTitle: true,
+          ),
+          body: Stack(
+            children: [
+              Column(
+                children: [
+                  _buildStepIndicator(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                      child: formArea,
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildBottomBar(isWide: false),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  // ── 步骤指示器 ──────────────────────────────────────
+  // ── 宽屏纵向步骤指示器 ──────────────────────────────────────
+  Widget _buildWideStepIndicator() {
+    const labels = ['模板 (基本信息)', '类型与周期', '目标设定', '习惯提醒'];
+    final colorScheme = Theme.of(context).colorScheme;
+    final isEdit = widget.goal != null;
+    final steps = isEdit ? ['类型与周期', '目标设定', '习惯提醒'] : labels;
+    final current = isEdit ? _step - 1 : _step;
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: steps.length,
+      itemBuilder: (context, i) {
+        final isActive = i == current;
+        final isDone = i < current;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isDone || isActive
+                          ? colorScheme.primary
+                          : colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                  color: colorScheme.primary
+                                      .withValues(alpha: 0.3),
+                                  blurRadius: 8)
+                            ]
+                          : null,
+                    ),
+                    child: isDone
+                        ? Icon(Icons.check_rounded,
+                            size: 18, color: colorScheme.onPrimary)
+                        : Text('${i + 1}',
+                            style: TextStyle(
+                                color: isActive
+                                    ? colorScheme.onPrimary
+                                    : colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.bold)),
+                  ),
+                  if (i < steps.length - 1)
+                    Container(
+                      width: 2,
+                      height: 32,
+                      margin: const EdgeInsets.only(top: 8),
+                      color: isDone
+                          ? colorScheme.primary
+                          : colorScheme.outlineVariant,
+                    ),
+                ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(
+                    steps[i],
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                      color: isActive || isDone
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── 窄屏步骤指示器 (现代进度条) ──────────────────────────────────────
   Widget _buildStepIndicator() {
     const labels = ['模板', '类型', '目标', '提醒'];
     final colorScheme = Theme.of(context).colorScheme;
@@ -416,119 +645,143 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final steps = isEdit ? ['类型', '目标', '提醒'] : labels;
     final current = isEdit ? _step - 1 : _step;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Row(
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+            bottom: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+      ),
+      child: Column(
         children: [
-          for (int i = 0; i < steps.length; i++) ...[
-            if (i > 0)
-              Expanded(
-                child: Container(
-                  height: 2,
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
-                  color: i <= current
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                steps[current],
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface),
               ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
+              Text(
+                '${current + 1} / ${steps.length}',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: List.generate(steps.length, (i) {
+              return Expanded(
+                child: Container(
+                  height: 4,
+                  margin: EdgeInsets.only(right: i < steps.length - 1 ? 6 : 0),
                   decoration: BoxDecoration(
                     color: i <= current
                         ? colorScheme.primary
                         : colorScheme.surfaceContainerHighest,
-                    shape: BoxShape.circle,
-                  ),
-                  child: i < current
-                      ? Icon(Icons.check_rounded,
-                          size: 16, color: colorScheme.onPrimary)
-                      : Text(
-                          '${i + 1}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: i <= current
-                                ? colorScheme.onPrimary
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  steps[i],
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight:
-                        i == current ? FontWeight.w700 : FontWeight.w400,
-                    color: i <= current
-                        ? colorScheme.onSurface
-                        : colorScheme.onSurfaceVariant,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ],
-            ),
-          ],
+              );
+            }),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBottomBar() {
+  Widget _buildBottomBar({required bool isWide}) {
     final colorScheme = Theme.of(context).colorScheme;
     final isEdit = widget.goal != null;
-    final lastStep = isEdit ? 2 : 3;
+    // 编辑模式从第 2 步开始，但仍需经过第 3 步提醒配置后才能保存。
+    final lastStep = 3;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: colorScheme.outlineVariant),
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: EdgeInsets.fromLTRB(16, 12, 16,
+              isWide ? 12 : (bottomPadding > 0 ? bottomPadding : 12)),
+          decoration: BoxDecoration(
+              color: colorScheme.surface.withValues(alpha: 0.8),
+              border: Border(
+                  top: BorderSide(
+                      color:
+                          colorScheme.outlineVariant.withValues(alpha: 0.3))),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                )
+              ]),
+          child: Row(
+            children: [
+              if (_step > (isEdit ? 1 : 0))
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : () => setState(() => _step--),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: const Text('上一步'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                )
+              else
+                const SizedBox(width: 0),
+              const Spacer(),
+              if (_step < lastStep)
+                FilledButton.icon(
+                  onPressed: _saving
+                      ? null
+                      : () {
+                          final error = _validateStep(_step);
+                          if (error != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(error),
+                                behavior: SnackBarBehavior.floating));
+                            return;
+                          }
+                          setState(() => _step++);
+                        },
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('下一步'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_rounded, size: 18),
+                  label: Text(_saving ? '保存中…' : '完成'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+            ],
           ),
-        ),
-        child: Row(
-          children: [
-            if (_step > (isEdit ? 1 : 0))
-              OutlinedButton(
-                onPressed: _saving ? null : () => setState(() => _step--),
-                child: const Text('上一步'),
-              ),
-            const Spacer(),
-            if (_step < lastStep)
-              FilledButton(
-                onPressed: _saving
-                    ? null
-                    : () {
-                        final error = _validateStep(_step);
-                        if (error != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(error)),
-                          );
-                          return;
-                        }
-                        setState(() => _step++);
-                      },
-                child: const Text('下一步'),
-              )
-            else
-              FilledButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_rounded, size: 18),
-                label: Text(_saving ? '保存中…' : '保存'),
-              ),
-          ],
         ),
       ),
     );
@@ -584,45 +837,57 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           child: Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _templates
-                .map(
-                  (t) => SizedBox(
-                    width: 104,
-                    child: InkWell(
-                      onTap: () => _applyTemplate(t),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        height: 76,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colorScheme.outlineVariant
-                                .withValues(alpha: 0.6),
-                          ),
+            children: _templates.map((t) {
+              final isMatch = _nameController.text == t.name;
+              return SizedBox(
+                width: 104,
+                child: Material(
+                  color: isMatch
+                      ? colorScheme.primaryContainer
+                      : colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(16),
+                  elevation: isMatch ? 4 : 0,
+                  shadowColor: colorScheme.primary.withValues(alpha: 0.4),
+                  child: InkWell(
+                    onTap: () => _applyTemplate(t),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      height: 76,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isMatch
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant
+                                  .withValues(alpha: 0.3),
+                          width: isMatch ? 2 : 1,
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(t.icon, style: const TextStyle(fontSize: 24)),
-                            const SizedBox(height: 6),
-                            Text(
-                              t.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurface,
-                              ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(t.icon, style: const TextStyle(fontSize: 26)),
+                          const SizedBox(height: 6),
+                          Text(
+                            t.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight:
+                                  isMatch ? FontWeight.w800 : FontWeight.w600,
+                              color: isMatch
+                                  ? colorScheme.onPrimaryContainer
+                                  : colorScheme.onSurface,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                )
-                .toList(),
+                ),
+              );
+            }).toList(),
           ),
         ),
       ],
@@ -915,7 +1180,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    '完成型习惯：每天在待办中完成一次即可。创建后将自动生成循环待办。',
+                    '完成型习惯：每天在待办中完成一次即可。提醒由关联的循环待办触发。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,
@@ -923,6 +1188,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                _buildRecurringTodoBinding(colorScheme),
                 const SizedBox(height: 16),
                 Text(
                   '首页展示位置',
@@ -955,12 +1222,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          _effectiveFromChip('today', '从今天开始',
-              '关闭旧规则，新规则从今天生效'),
-          _effectiveFromChip('nextPeriod', '从下一个周期开始',
-              '如每周习惯从下周一、每月习惯从下月 1 号开始'),
-          _effectiveFromChip('all', '应用到全部历史',
-              '覆盖所有历史版本的目标值（不改变历史打卡记录）'),
+          _effectiveFromChip('today', '从今天开始', '关闭旧规则，新规则从今天生效'),
+          _effectiveFromChip(
+              'nextPeriod', '从下一个周期开始', '如每周习惯从下周一、每月习惯从下月 1 号开始'),
+          _effectiveFromChip('all', '应用到全部历史', '覆盖所有历史版本的目标值（不改变历史打卡记录）'),
         ],
       ],
     );
@@ -1346,6 +1611,95 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
   }
 
+  Widget _buildRecurringTodoBinding(ColorScheme colorScheme) {
+    final selectedExists = _recurringTodos.any(
+      (todo) =>
+          (todo.recurrenceSeriesId ?? todo.id) == _selectedRecurringSeriesId,
+    );
+    final selectedValue = selectedExists
+        ? _selectedRecurringSeriesId
+        : _autoCreateRecurringSeries;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '关联循环待办',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '完成型的进度和提醒都来自这条循环待办。',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            key: ValueKey(selectedValue),
+            initialValue: selectedValue,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            items: [
+              const DropdownMenuItem(
+                value: _autoCreateRecurringSeries,
+                child: Text('自动创建新的循环待办'),
+              ),
+              ..._recurringTodos.map((todo) {
+                final seriesId = todo.recurrenceSeriesId ?? todo.id;
+                return DropdownMenuItem(
+                  value: seriesId,
+                  child: Text(
+                    todo.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _selectedRecurringSeriesId = value;
+                if (value != _autoCreateRecurringSeries) {
+                  _displayMode = HabitDisplayMode.habitOnly;
+                }
+              });
+            },
+          ),
+          if (selectedValue == _autoCreateRecurringSeries) ...[
+            const SizedBox(height: 6),
+            Text(
+              _recurringTodos.isEmpty
+                  ? '未找到可用的循环待办，保存后会自动创建并绑定。'
+                  : '未选择已有待办，保存后会自动创建并绑定。',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ── 第 4 步：提醒 ────────────────────────────────────
   Widget _buildReminderStep() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1432,8 +1786,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              // TODO(PR4): 提醒调度与推送，当前仅保存配置。
-              '提醒推送将在后续版本上线，当前仅保存配置。',
+              '提醒设置会保存，并在保存后重新安排通知。',
               style: TextStyle(
                 fontSize: 12,
                 color: colorScheme.onSurfaceVariant,

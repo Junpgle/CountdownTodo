@@ -390,7 +390,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 subtitle: const Text('前往 GitHub 下载最新开发版，体验最新功能'),
                 trailing: const Icon(Icons.open_in_new),
                 onTap: () async {
-                  final uri = Uri.parse('https://github.com/Junpgle/CountdownTodo/releases');
+                  final uri = Uri.parse(
+                      'https://github.com/Junpgle/CountdownTodo/releases');
                   if (await canLaunchUrl(uri)) {
                     await launchUrl(uri, mode: LaunchMode.externalApplication);
                   }
@@ -462,8 +463,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               subtitle: const Text('查看新版本功能介绍'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
-                Navigator.push(
-                  context,
+                Navigator.of(context, rootNavigator: true).push(
                   PageTransitions.slideHorizontal(FeatureGuideScreen(
                     isManualReview: true,
                     loggedInUser: _username,

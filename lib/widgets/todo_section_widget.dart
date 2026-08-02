@@ -37,6 +37,7 @@ import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
 import '../screens/todo_plan_screen.dart';
+import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
 
 part 'todo_section_widget_contract.dart';
@@ -153,6 +154,19 @@ bool _shouldDisplayRecurrenceTodo(
   return representativeId == null || representativeId == todo.id;
 }
 
+List<TodoItem> _filterHabitOnlyRecurringTodos(
+  List<TodoItem> todos,
+  Set<String> habitOnlySeriesIds,
+) {
+  if (habitOnlySeriesIds.isEmpty) return todos;
+  return todos.where((todo) {
+    final seriesId = todo.recurrenceSeriesId;
+    return seriesId == null ||
+        seriesId.isEmpty ||
+        !habitOnlySeriesIds.contains(seriesId);
+  }).toList();
+}
+
 List<TodoItem> _collapseRecurrenceInstancesForDisplayForTest(
   List<TodoItem> todos,
 ) {
@@ -213,6 +227,7 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   String? _selectedSubTeamUuid; // 🚀 内部视口：当前选择的团队 UUID
   final Map<String, String> _teamRoles = {}; // 🚀 缓存团队 ID -> 角色 (admin/member)
   List<Team> _teams = [];
+  Set<String> _habitOnlyRecurringSeriesIds = <String>{};
 
   bool _isAiGeneratedTodo(TodoItem todo) => isAiGeneratedTodo(todo);
 }
@@ -228,6 +243,13 @@ class TodoSectionWidgetState extends _TodoSectionStateBase
     List<TodoItem> todos,
   ) =>
       _collapseRecurrenceInstancesForDisplayForTest(todos);
+
+  @visibleForTesting
+  static List<TodoItem> filterHabitOnlyRecurringTodosForTest(
+    List<TodoItem> todos,
+    Set<String> habitOnlySeriesIds,
+  ) =>
+      _filterHabitOnlyRecurringTodos(todos, habitOnlySeriesIds);
 
   @visibleForTesting
   static ({int completedCount, int totalCount, int overdueCount})
