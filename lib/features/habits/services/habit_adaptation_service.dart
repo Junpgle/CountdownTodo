@@ -29,18 +29,63 @@ class HabitAdaptation {
     this.targetUnit = 'ml',
   });
 
-  String quickLabel(int value) {
-    if (kind != HabitAdaptationKind.hydration) return '$value';
-    return switch (value) {
-      200 => '一杯 · 200 ml',
-      300 => '小瓶 · 300 ml',
-      500 => '一瓶 · 500 ml',
-      _ => '$value ml',
+  String quickLabel(int value, {String? unit}) {
+    if (kind == HabitAdaptationKind.running && !_isDurationUnit(unit)) {
+      final displayUnit = unit?.trim() ?? '';
+      return displayUnit.isEmpty ? '$value' : '$value $displayUnit';
+    }
+    return switch (kind) {
+      HabitAdaptationKind.hydration => switch (value) {
+          200 => '一杯 · 200 ml',
+          300 => '小瓶 · 300 ml',
+          500 => '一瓶 · 500 ml',
+          _ => '$value ml',
+        },
+      HabitAdaptationKind.pushUp => switch (value) {
+          8 => '起步 · 8 个',
+          12 => '标准组 · 12 个',
+          16 => '挑战组 · 16 个',
+          _ => '$value 个',
+        },
+      HabitAdaptationKind.running => switch (value) {
+          20 => '入门 · 20 分钟',
+          30 => '基础 · 30 分钟',
+          45 => '进阶 · 45 分钟',
+          60 => '耐力 · 60 分钟',
+          _ => '$value 分钟',
+        },
+      HabitAdaptationKind.reading => switch (value) {
+          15 => '轻量 · 15 分钟',
+          25 => '专注 · 25 分钟',
+          30 => '基础 · 30 分钟',
+          45 => '深入 · 45 分钟',
+          60 => '沉浸 · 60 分钟',
+          _ => '$value 分钟',
+        },
+      HabitAdaptationKind.earlyWake ||
+      HabitAdaptationKind.earlySleep =>
+        '$value',
     };
+  }
+
+  static bool _isDurationUnit(String? unit) {
+    final normalized = (unit ?? '').trim().toLowerCase();
+    return normalized.isEmpty ||
+        normalized == '分钟' ||
+        normalized == 'minute' ||
+        normalized == 'minutes' ||
+        normalized == 'min';
   }
 }
 
-enum HabitAdaptationKind { hydration, earlyWake, earlySleep }
+enum HabitAdaptationKind {
+  hydration,
+  pushUp,
+  running,
+  reading,
+  earlyWake,
+  earlySleep,
+}
 
 class HabitTargetSuggestion {
   final String label;
@@ -146,6 +191,234 @@ abstract final class HabitAdaptationService {
         takeaway: '6–8 杯是一般性指南，炎热、长时间运动、怀孕哺乳或生病时可能需要更多。',
       ),
     ],
+  );
+
+  static const _pushUp = HabitAdaptation(
+    kind: HabitAdaptationKind.pushUp,
+    title: '科学俯卧撑',
+    headline: '把俯卧撑当作力量训练：每周 2–3 次，每次分 2–3 组完成',
+    explanation:
+        '俯卧撑属于自重抗阻训练。对健康成年人，可以先用每组约 8–12 个、每次 2–3 组作为可编辑起点；目标数量表示一次训练的总次数，不要求每天做到。做不到标准俯卧撑时，可先用斜板或跪姿版本，保持动作质量后再逐步增加。',
+    safetyNote:
+        '动作时保持躯干稳定、下放和撑起都要受控，不要为了凑数牺牲姿势。肩、腕、肘或背部出现明显疼痛，或出现头晕、胸闷、异常气短时请立即停止；已有伤病或慢性病，先向医生或运动专业人士确认合适的变式和负荷。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '入门',
+        description: '1 组 × 8 个，先熟悉动作',
+        value: 8,
+        displayValue: '8 个/次',
+      ),
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '2 组 × 8 个，适合逐步建立习惯',
+        value: 16,
+        displayValue: '16 个/次',
+      ),
+      HabitTargetSuggestion(
+        label: '平衡',
+        description: '2 组 × 12 个，作为通用起点',
+        value: 24,
+        displayValue: '24 个/次',
+      ),
+      HabitTargetSuggestion(
+        label: '进阶',
+        description: '3 组 × 12 个，已有基础后再选',
+        value: 36,
+        displayValue: '36 个/次',
+      ),
+    ],
+    suggestedQuickValues: [8, 12, 16],
+    citations: [
+      HabitCitation(
+        title: 'Resistance Training for Health',
+        publisher: 'American College of Sports Medicine (ACSM)',
+        url:
+            'https://www.acsm.org/docs/default-source/files-for-resource-library/resistance-training-for-health.pdf',
+        takeaway:
+            'ACSM 的通用抗阻训练建议包括每个动作 2–3 组、每组 8–12 次、动作保持良好形式，并每周训练 2–3 次；应随能力逐步增加挑战。',
+      ),
+      HabitCitation(
+        title:
+            '5 Things to Know About Creating an Effective Resistance Training Plan',
+        publisher: 'American College of Sports Medicine (ACSM)',
+        url:
+            'https://www.acsm.org/wp-content/uploads/2026/03/Resistance-Training-Position-Stand-infographic.pdf',
+        takeaway:
+            '2026 年 ACSM 更新强调，徒手训练和居家训练也能有效，最重要的是持续训练、覆盖主要肌群并逐步增加负荷，不必追求复杂技巧。',
+      ),
+      HabitCitation(
+        title: 'Physical Activity Guidelines for Americans, 2nd edition',
+        publisher: 'U.S. Department of Health and Human Services',
+        url:
+            'https://health.gov/paguidelines/second-edition/pdf/Physical_Activity_Guidelines_2nd_edition.pdf',
+        takeaway: '指南把俯卧撑列为自重肌力训练示例，建议成年人每周至少 2 天进行覆盖主要肌群的肌力活动；数量和难度应随个人能力调整。',
+      ),
+      HabitCitation(
+        title: 'Weight training: Do’s and don’ts of proper technique',
+        publisher: 'Mayo Clinic Orthopedics & Sports Medicine',
+        url:
+            'https://sportsmedicine.mayoclinic.org/news/weight-training-dos-and-donts-of-proper-technique/',
+        takeaway:
+            '正确姿势、完整且受控的动作、充分热身和逐步增加训练量有助于降低不必要的损伤风险；出现疼痛应停止并降低负荷或寻求专业建议。',
+      ),
+      HabitCitation(
+        title: 'Push-up Assessment Protocol',
+        publisher: 'American Council on Exercise (ACE)',
+        url:
+            'https://www.acefitness.org/images/webcontent/assets/certification/ace-answers/forms/pt/36_Push-up_Assessment_Protocol.pdf',
+        takeaway: '标准俯卧撑评估强调身体保持稳定、肘部充分伸展、完成完整动作；当无法保持正确技术时应停止计数或改用合适的变式。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每次训练目标',
+    targetUnit: '个',
+  );
+
+  static const _running = HabitAdaptation(
+    kind: HabitAdaptationKind.running,
+    title: '科学跑步',
+    headline: '把跑步按时间累计：先从每次 30 分钟、每周 3 次起步',
+    explanation:
+        '跑步通常属于高强度有氧活动，但同样的配速对不同人强度不同。以时间而不是公里数记录，更容易和权威指南对齐：成年人每周可先以 75 分钟高强度活动为起点，或以 150 分钟中等强度活动为起点；当前每次目标和训练日都可以按体能调整。',
+    safetyNote:
+        '新开始或久未运动时，先用跑走交替和舒适配速，逐步增加时间与强度；每次先热身、结束后放慢走几分钟。出现胸痛、晕厥、异常气短、关节明显疼痛，或已有心肺/关节疾病、孕期等情况，请停止并先咨询医生或运动专业人士。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '入门',
+        description: '跑走交替或轻松慢跑',
+        value: 20,
+        displayValue: '20 分钟/次',
+      ),
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '每周 3 次约 90 分钟',
+        value: 30,
+        displayValue: '30 分钟/次',
+      ),
+      HabitTargetSuggestion(
+        label: '进阶',
+        description: '已有基础后逐步增加',
+        value: 45,
+        displayValue: '45 分钟/次',
+      ),
+      HabitTargetSuggestion(
+        label: '耐力',
+        description: '适合已有稳定跑量的人',
+        value: 60,
+        displayValue: '60 分钟/次',
+      ),
+    ],
+    suggestedQuickValues: [20, 30, 45],
+    citations: [
+      HabitCitation(
+        title: 'Physical activity',
+        publisher: 'World Health Organization (WHO)',
+        url:
+            'https://www.who.int/health-topics/noncommunicable-diseases/physical-activity',
+        takeaway:
+            '成年人每周至少进行 150 分钟中等强度，或 75 分钟高强度有氧活动；WHO 将跑步列为高强度活动示例，并强调不活动者应从少量开始、逐步增加。',
+      ),
+      HabitCitation(
+        title: '最新版中国居民膳食指南（2022）发布——吃动平衡 养成健康生活方式',
+        publisher: '国家体育总局 · 中国居民膳食指南（2022）',
+        url:
+            'https://www.sport.gov.cn/n20001280/n20001265/n20066978/c24291669/content.html',
+        takeaway: '建议每周至少 5 天中等强度身体活动，累计 150 分钟以上；同时鼓励适当高强度有氧和每周 2–3 天抗阻运动。',
+      ),
+      HabitCitation(
+        title: 'Physical Activity Guidelines for Americans, 2nd edition',
+        publisher: 'U.S. Department of Health and Human Services (HHS)',
+        url:
+            'https://health.gov/paguidelines/second-edition/pdf/Physical_Activity_Guidelines_2nd_edition.pdf',
+        takeaway: '指南强调任何活动都比不活动好，应根据能力逐步增加；中等强度通常可以说话但不能唱歌，高强度时只能说几句话就需要换气。',
+      ),
+      HabitCitation(
+        title: 'Couch to 5K running plan',
+        publisher: 'National Health Service (NHS)',
+        url:
+            'https://www.nhs.uk/better-health/get-active/get-running-with-couch-to-5k/couch-to-5k-running-plan/',
+        takeaway:
+            '面向初跑者的计划采用每周 3 次、跑走交替、跑步日之间安排休息日的渐进方式，并建议每次先 5 分钟热身走、结束后 5 分钟放松走。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每次跑步目标',
+    targetUnit: '分钟',
+  );
+
+  static const _reading = HabitAdaptation(
+    kind: HabitAdaptationKind.reading,
+    title: '科学阅读',
+    headline: '阅读不只看时长：先用每次 25–30 分钟建立专注，再把理解留下来',
+    explanation:
+        '没有适合所有人的统一“每日阅读分钟数”。这里把 30 分钟作为可编辑的行为起点：读前明确一个问题，读中少量标记，读后用自己的话回忆要点；学习型阅读再通过间隔复习巩固，而不是只追求翻页速度。',
+    safetyNote:
+        '阅读时保持舒适的光线、距离和坐姿；屏幕阅读可每 20 分钟看向远处约 20 秒，眼睛疲劳或干涩时先休息。不要为了完成时长熬夜，也不要把页数或速度当成理解程度的替代品。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '轻量',
+        description: '适合刚开始建立阅读习惯',
+        value: 15,
+        displayValue: '15 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '专注',
+        description: '一个完整专注块，适合忙碌日',
+        value: 25,
+        displayValue: '25 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '默认可编辑起点',
+        value: 30,
+        displayValue: '30 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '深入',
+        description: '适合需要连续理解的内容',
+        value: 45,
+        displayValue: '45 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '沉浸',
+        description: '已有稳定阅读节奏后再选',
+        value: 60,
+        displayValue: '60 分钟/天',
+      ),
+    ],
+    suggestedQuickValues: [15, 25, 30],
+    citations: [
+      HabitCitation(
+        title: 'Cognitive Health and Older Adults',
+        publisher: 'National Institute on Aging (NIH)',
+        url:
+            'https://www.nia.nih.gov/health/brain-health/cognitive-health-and-older-adults',
+        takeaway:
+            '有意义的认知活动可能有助于保持脑健康，但长期效果的证据仍不确定；因此阅读目标应当是可持续的行为锚点，而不是保证认知收益的医学承诺。',
+      ),
+      HabitCitation(
+        title: 'Review of learning: spaced retrieval practice',
+        publisher: 'NSW Department of Education',
+        url:
+            'https://education.nsw.gov.au/teaching-and-learning/curriculum/explicit-teaching/explicit-teaching-strategies/connecting-learning/review-learning',
+        takeaway: '主动从记忆中回忆并把复习间隔开，比单纯重复阅读更有利于长期保留；阅读后用自己的话回忆要点可以形成一个轻量的理解闭环。',
+      ),
+      HabitCitation(
+        title: 'Computer Vision Syndrome',
+        publisher: 'American Academy of Ophthalmology EyeWiki',
+        url:
+            'https://eyewiki.aao.org/Computer_Vision_Syndrome_%28Digital_Eye_Strain%29',
+        takeaway: '长时间屏幕阅读可配合定期远眺、眨眼和短暂休息来减少视觉疲劳；出现持续不适时应减少负荷并寻求眼科建议。',
+      ),
+      HabitCitation(
+        title: 'Reading and cognitive processing challenges',
+        publisher:
+            'U.S. Department of Health and Human Services · Health Literacy Online',
+        url:
+            'https://odphp.health.gov/healthliteracyonline/what-we-know/section-1-1/',
+        takeaway: '阅读同时涉及文字解码和理解，内容过密会增加认知负担；将目标拆成可完成的阅读块，有助于把注意力放在理解而不是硬撑时长上。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每日阅读目标',
+    targetUnit: '分钟',
   );
 
   static const _sleepCitations = <HabitCitation>[
@@ -290,6 +563,25 @@ abstract final class HabitAdaptationService {
           'water',
         ];
         if (waterWords.any(normalized.contains)) return _hydration;
+        const pushUpWords = [
+          '俯卧撑',
+          '俯卧支撑',
+          'pushup',
+          'push-up',
+          'pushups',
+          'pressup',
+          'press-up',
+        ];
+        if (pushUpWords.any(normalized.contains)) return _pushUp;
+        const runningWords = [
+          '跑步',
+          '慢跑',
+          '跑走',
+          'running',
+          'jogging',
+          'jog',
+        ];
+        if (runningWords.any(normalized.contains)) return _running;
       case HabitSourceType.timeCheckIn:
         const sleepWords = [
           '早睡',
@@ -314,6 +606,17 @@ abstract final class HabitAdaptationService {
         ];
         if (wakeWords.any(normalized.contains)) return _earlyWake;
       case HabitSourceType.pomodoroTag:
+        const readingWords = [
+          '阅读',
+          '读书',
+          '看书',
+          '书籍',
+          '读文献',
+          'reading',
+          'read',
+          'book',
+        ];
+        if (readingWords.any(normalized.contains)) return _reading;
       case HabitSourceType.recurringTodo:
         break;
     }

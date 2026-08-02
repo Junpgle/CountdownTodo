@@ -125,14 +125,36 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
                     v.toDouble(),
                     unit,
                     colorScheme,
-                    label: adaptation?.quickLabel(v),
+                    label: adaptation?.quickLabel(v, unit: unit),
                   ))
               .toList(),
         ),
-        if (adaptation != null) ...[
+        if (adaptation?.kind == HabitAdaptationKind.hydration) ...[
           const SizedBox(height: 8),
           Text(
             '建议少量多次，每次约 200 ml；可在详情页查看参考文献。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.pushUp) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议按组完成，动作质量优先；可在详情页查看每组次数、训练频率和动作提示。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.running) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议按分钟记录；默认每周 3 次、每次 30 分钟，可在详情页查看每周运动量和强度提示。',
             style: TextStyle(
               fontSize: 11.5,
               height: 1.4,
@@ -408,9 +430,21 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
 
   // ── 时长型 ──────────────────────────────────────────
   Widget _buildFocusHint(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (adaptation?.kind == HabitAdaptationKind.reading) ...[
+          Text(
+            '建议先专注 25–30 分钟，读前明确一个问题，结束后用自己的话回忆 3 个要点。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         Text(
           '时长型习惯通过在专注中累计时长达标，回到卡片点击「开始专注」即可。',
           style: TextStyle(

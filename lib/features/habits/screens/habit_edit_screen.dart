@@ -111,14 +111,20 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         quickValues: [200, 300, 500],
         adaptationKind: HabitAdaptationKind.hydration),
     _HabitTemplate('早起', '🌅', HabitSourceType.timeCheckIn,
-        targetTimeMinute: 7 * 60),
+        targetTimeMinute: 7 * 60,
+        adaptationKind: HabitAdaptationKind.earlyWake),
     _HabitTemplate('早睡', '🌙', HabitSourceType.timeCheckIn,
-        targetTimeMinute: 23 * 60 + 30, crossMidnight: true),
+        targetTimeMinute: 23 * 60 + 30,
+        crossMidnight: true,
+        adaptationKind: HabitAdaptationKind.earlySleep),
     _HabitTemplate('每日签到', '✅', HabitSourceType.recurringTodo),
     _HabitTemplate('俯卧撑', '💪', HabitSourceType.quantityCheckIn,
-        targetValue: 50, unit: '个', quickValues: [10, 20]),
+        targetValue: 24,
+        unit: '个',
+        quickValues: [8, 12, 16],
+        adaptationKind: HabitAdaptationKind.pushUp),
     _HabitTemplate('阅读', '📖', HabitSourceType.pomodoroTag,
-        targetValue: 30 * 60),
+        targetValue: 30 * 60, adaptationKind: HabitAdaptationKind.reading),
     _HabitTemplate('运动', '🏃', HabitSourceType.pomodoroTag,
         targetValue: 30 * 60),
     _HabitTemplate('学习', '📚', HabitSourceType.pomodoroTag,
@@ -132,8 +138,27 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     _HabitTemplate('单词', '🔤', HabitSourceType.quantityCheckIn,
         targetValue: 30, unit: '个', quickValues: [10, 20]),
     _HabitTemplate('跑步', '🏃', HabitSourceType.quantityCheckIn,
-        targetValue: 3, unit: '公里', quickValues: [1, 2]),
+        targetValue: 30,
+        unit: '分钟',
+        quickValues: [20, 30, 45],
+        adaptationKind: HabitAdaptationKind.running),
   ];
+
+  /// 深度适配模板优先展示，普通模板保持原有相对顺序。
+  List<_HabitTemplate> get _orderedTemplates {
+    final adapted = <_HabitTemplate>[];
+    final standard = <_HabitTemplate>[];
+    for (final template in _templates) {
+      final hasAdaptation = template.adaptationKind != null ||
+          HabitAdaptationService.forDraft(
+                sourceType: template.type,
+                name: template.name,
+              ) !=
+              null;
+      (hasAdaptation ? adapted : standard).add(template);
+    }
+    return [...adapted, ...standard];
+  }
 
   @override
   void initState() {
@@ -351,6 +376,20 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         _nearEndReminder = false;
         _dailySummaryReminder = false;
       }
+      if (template.adaptationKind == HabitAdaptationKind.pushUp) {
+        // 俯卧撑按力量训练安排默认训练日，避免把同一肌群强行设为每天。
+        _periodType = HabitPeriodType.weekdays;
+        _weekdaysMask = (1 << 0) | (1 << 2) | (1 << 4);
+      }
+      if (template.adaptationKind == HabitAdaptationKind.running) {
+        // 跑步默认安排隔天训练，给初学者留出恢复时间。
+        _periodType = HabitPeriodType.weekdays;
+        _weekdaysMask = (1 << 0) | (1 << 2) | (1 << 4);
+      }
+      if (template.adaptationKind == HabitAdaptationKind.reading) {
+        // 阅读默认以一个 25 分钟专注块起步，目标时长仍可单独调整。
+        _defaultFocusMinutes = 25;
+      }
       if (adaptation?.kind == HabitAdaptationKind.earlyWake ||
           adaptation?.kind == HabitAdaptationKind.earlySleep) {
         // 时间点型默认保留 15 分钟宽容窗口，并开启目标前提醒。
@@ -443,6 +482,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       HabitAdaptationKind.earlyWake => _existingEarlySleep,
       HabitAdaptationKind.earlySleep => _existingEarlyWake,
       HabitAdaptationKind.hydration => null,
+      HabitAdaptationKind.pushUp => null,
+      HabitAdaptationKind.running => null,
+      HabitAdaptationKind.reading => null,
     };
     if (anchor == null) return null;
     return HabitAdaptationService.pairSuggestionFor(
@@ -1177,7 +1219,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           child: Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _templates.map((template) {
+            children: _orderedTemplates.map((template) {
               final isSelected = _selectedTemplateName == template.name;
               return SizedBox(
                 width: 104,
@@ -1817,6 +1859,17 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   }
 
   Widget _buildDurationTarget(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    if (adaptation?.kind == HabitAdaptationKind.reading) {
+      return _buildReadingTarget(colorScheme, adaptation);
+    }
+    return _buildGenericDurationTarget(colorScheme);
+  }
+
+  Widget _buildGenericDurationTarget(ColorScheme colorScheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1921,11 +1974,46 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     return parsed == null ? const Color(0xFF607D8B) : Color(parsed);
   }
 
+  Widget _buildReadingTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    final targetMinutes = _targetMinutes > 0 ? _targetMinutes : 30;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: targetMinutes.toDouble(),
+          targetUnitOverride: '分钟',
+          onTargetSelected: _applyReadingTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitReadingGuide(
+          targetMinutes: targetMinutes,
+          defaultFocusMinutes: _defaultFocusMinutes,
+          periodType: _periodType,
+          weekdaysMask: _weekdaysMask,
+        ),
+        const SizedBox(height: 14),
+        _buildGenericDurationTarget(colorScheme),
+      ],
+    );
+  }
+
   Widget _buildQuantityTarget(ColorScheme colorScheme) {
     final adaptation = HabitAdaptationService.forDraft(
       sourceType: _sourceType,
       name: _nameController.text,
     );
+    if (adaptation?.kind == HabitAdaptationKind.pushUp) {
+      return _buildPushUpTarget(colorScheme, adaptation);
+    }
+    if (adaptation?.kind == HabitAdaptationKind.running) {
+      return _buildRunningTarget(colorScheme, adaptation);
+    }
     if (adaptation?.kind == HabitAdaptationKind.hydration) {
       return _buildHydrationTarget(colorScheme, adaptation);
     }
@@ -2040,12 +2128,180 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
   }
 
+  Widget _buildPushUpTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    _ensurePushUpDefaults(adaptation);
+    final parsedTarget = int.tryParse(_targetController.text.trim()) ?? 24;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: parsedTarget.toDouble(),
+          onTargetSelected: _applyAdaptationTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitPushUpGuide(
+          targetValue: parsedTarget,
+          periodType: _periodType,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _targetController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: '每次训练目标',
+                  suffixText: '个',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _unitController,
+                decoration: const InputDecoration(
+                  labelText: '单位',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '快捷增加（逗号分隔，最多 4 个）',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _quickValuesController,
+          onChanged: (v) => _quickValuesText = v,
+          decoration: const InputDecoration(
+            hintText: '如：8,12,16',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRunningTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    _ensureRunningDefaults(adaptation);
+    final parsedTarget = int.tryParse(_targetController.text.trim()) ?? 30;
+    final unit = _unitController.text.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: parsedTarget.toDouble(),
+          targetUnitOverride: unit,
+          onTargetSelected: _applyAdaptationTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitRunningGuide(
+          targetValue: parsedTarget,
+          periodType: _periodType,
+          weekdaysMask: _weekdaysMask,
+          unit: unit,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _targetController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _periodType == HabitPeriodType.weekly
+                      ? '每周运动量'
+                      : '每次跑步目标',
+                  suffixText: unit,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _unitController,
+                decoration: const InputDecoration(
+                  labelText: '单位（建议分钟）',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '快捷增加（逗号分隔，最多 4 个）',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _quickValuesController,
+          onChanged: (v) => _quickValuesText = v,
+          decoration: const InputDecoration(
+            hintText: '如：20,30,45',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+      ],
+    );
+  }
+
   void _ensureHydrationDefaults(HabitAdaptation adaptation) {
     if (_targetController.text.trim().isEmpty) {
       _targetController.text = '1600';
     }
     if (_unitController.text.trim().isEmpty) {
       _unitController.text = 'ml';
+    }
+    if (_quickValuesController.text.trim().isEmpty) {
+      _quickValuesText = adaptation.suggestedQuickValues.join(',');
+      _quickValuesController.text = _quickValuesText;
+    }
+  }
+
+  void _ensurePushUpDefaults(HabitAdaptation adaptation) {
+    if (_targetController.text.trim().isEmpty) {
+      _targetController.text = '24';
+    }
+    if (_unitController.text.trim().isEmpty) {
+      _unitController.text = adaptation.targetUnit;
+    }
+    if (_quickValuesController.text.trim().isEmpty) {
+      _quickValuesText = adaptation.suggestedQuickValues.join(',');
+      _quickValuesController.text = _quickValuesText;
+    }
+  }
+
+  void _ensureRunningDefaults(HabitAdaptation adaptation) {
+    if (_targetController.text.trim().isEmpty) {
+      _targetController.text = '30';
+    }
+    if (_unitController.text.trim().isEmpty) {
+      _unitController.text = adaptation.targetUnit;
     }
     if (_quickValuesController.text.trim().isEmpty) {
       _quickValuesText = adaptation.suggestedQuickValues.join(',');
@@ -2061,9 +2317,23 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     if (adaptation == null) return;
     setState(() {
       _targetController.text = target.toString();
-      _unitController.text = 'ml';
+      _unitController.text = adaptation.targetUnit;
       _quickValuesText = adaptation.suggestedQuickValues.join(',');
       _quickValuesController.text = _quickValuesText;
+    });
+  }
+
+  void _applyReadingTarget(int target) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    if (adaptation?.kind != HabitAdaptationKind.reading) return;
+    setState(() {
+      _targetMinutes = target;
+      if (_defaultFocusMinutes == null || _defaultFocusMinutes! > target) {
+        _defaultFocusMinutes = target >= 25 ? 25 : target;
+      }
     });
   }
 

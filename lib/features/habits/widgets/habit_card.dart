@@ -390,7 +390,7 @@ class _HabitCardState extends State<HabitCard> {
               (v) => _quickValueChip(
                 v.toDouble(),
                 unit,
-                label: adaptation?.quickLabel(v),
+                label: adaptation?.quickLabel(v, unit: unit),
               ),
             ),
         TextButton(

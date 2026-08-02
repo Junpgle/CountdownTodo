@@ -859,19 +859,58 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     final isSleepAdaptation =
         adaptation.kind == HabitAdaptationKind.earlyWake ||
             adaptation.kind == HabitAdaptationKind.earlySleep;
+    final isPushUpAdaptation = adaptation.kind == HabitAdaptationKind.pushUp;
+    final isRunningAdaptation = adaptation.kind == HabitAdaptationKind.running;
+    final isReadingAdaptation = adaptation.kind == HabitAdaptationKind.reading;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         HabitAdaptationPanel(
           adaptation: adaptation,
-          currentValue: isSleepAdaptation ? null : _todayProgress?.currentValue,
-          targetValue: isSleepAdaptation ? null : _rule.targetValue,
+          currentValue: isSleepAdaptation
+              ? null
+              : isReadingAdaptation
+                  ? _todayProgress == null
+                      ? null
+                      : _todayProgress!.currentValue / 60
+                  : _todayProgress?.currentValue,
+          targetValue: isSleepAdaptation
+              ? null
+              : isReadingAdaptation
+                  ? _rule.targetValue / 60
+                  : _rule.targetValue,
+          targetUnitOverride: _rule.unit.isEmpty ? null : _rule.unit,
         ),
         if (isSleepAdaptation) ...[
           const SizedBox(height: 12),
           HabitSleepTimingGuide(
             adaptation: adaptation,
             targetMinute: _rule.targetTimeMinute ?? 0,
+          ),
+        ],
+        if (isPushUpAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitPushUpGuide(
+            targetValue: _rule.targetValue.round(),
+            periodType: _rule.periodType,
+          ),
+        ],
+        if (isRunningAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitRunningGuide(
+            targetValue: _rule.targetValue.round(),
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+            unit: _rule.unit,
+          ),
+        ],
+        if (isReadingAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitReadingGuide(
+            targetMinutes: (_rule.targetValue / 60).round(),
+            defaultFocusMinutes: _goal.defaultFocusMinutes,
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
           ),
         ],
       ],

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/habit_goal_rule.dart';
 import '../services/habit_adaptation_service.dart';
 
 /// 领域化建议面板：可用于新建/编辑页和习惯详情页。
@@ -12,6 +13,7 @@ class HabitAdaptationPanel extends StatelessWidget {
   final double? targetValue;
   final ValueChanged<int>? onTargetSelected;
   final bool showTargetSuggestions;
+  final String? targetUnitOverride;
 
   const HabitAdaptationPanel({
     super.key,
@@ -20,6 +22,7 @@ class HabitAdaptationPanel extends StatelessWidget {
     this.targetValue,
     this.onTargetSelected,
     this.showTargetSuggestions = true,
+    this.targetUnitOverride,
   });
 
   @override
@@ -27,9 +30,13 @@ class HabitAdaptationPanel extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final adaptationIcon = switch (adaptation.kind) {
       HabitAdaptationKind.hydration => Icons.water_drop_rounded,
+      HabitAdaptationKind.pushUp => Icons.fitness_center_rounded,
+      HabitAdaptationKind.running => Icons.directions_run_rounded,
+      HabitAdaptationKind.reading => Icons.menu_book_rounded,
       HabitAdaptationKind.earlyWake => Icons.wb_sunny_rounded,
       HabitAdaptationKind.earlySleep => Icons.bedtime_rounded,
     };
+    final displayUnit = (targetUnitOverride ?? adaptation.targetUnit).trim();
     final progress =
         currentValue != null && targetValue != null && targetValue! > 0
             ? (currentValue! / targetValue!).clamp(0.0, 1.0)
@@ -108,7 +115,8 @@ class HabitAdaptationPanel extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  '${_amount(currentValue!)} / ${_amount(targetValue!)} ml',
+                  '${_amount(currentValue!)} / ${_amount(targetValue!)}'
+                  '${displayUnit.isNotEmpty ? ' $displayUnit' : ''}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -138,7 +146,7 @@ class HabitAdaptationPanel extends StatelessWidget {
                   selected: selected,
                   label: Text(
                     '${suggestion.label} '
-                    '${suggestion.displayValue ?? '${suggestion.value} ${adaptation.targetUnit}'}',
+                    '${suggestion.displayValue ?? '${suggestion.value} $displayUnit'}',
                   ),
                   onSelected: (_) => onTargetSelected!(suggestion.value),
                   selectedColor: colorScheme.tertiary,
@@ -183,6 +191,741 @@ class HabitAdaptationPanel extends StatelessWidget {
     return value == value.roundToDouble()
         ? value.round().toString()
         : value.toStringAsFixed(1);
+  }
+}
+
+/// 俯卧撑的训练安排与动作质量提示。
+class HabitPushUpGuide extends StatelessWidget {
+  final int targetValue;
+  final HabitPeriodType? periodType;
+
+  const HabitPushUpGuide({
+    super.key,
+    required this.targetValue,
+    this.periodType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final target = targetValue > 0 ? targetValue : 24;
+    final setCount = target <= 12 ? 1 : math.min(5, (target / 12).ceil());
+    final repsPerSet = (target / setCount).ceil();
+    final frequency =
+        periodType == HabitPeriodType.weekdays ? '当前：按指定训练日' : '建议：每周 2–3 天';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fitness_center_rounded,
+                  size: 19, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '训练安排',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$target 个/次',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.view_agenda_outlined,
+                  title: '分组完成',
+                  value: '$setCount 组 × $repsPerSet 个',
+                  colorScheme: colorScheme,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.event_repeat_rounded,
+                  title: '训练频率',
+                  value: frequency,
+                  colorScheme: colorScheme,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '动作质量优先',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _HabitGuideTip(
+            icon: Icons.straighten_rounded,
+            text: '头、背、髋尽量保持一条线，核心收紧。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.swap_vert_rounded,
+            text: '下放和撑起都保持受控，做不到标准姿势就降低难度。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.pause_circle_outline_rounded,
+            text: '组间充分休息；出现明显疼痛、头晕或异常气短时停止。',
+            colorScheme: colorScheme,
+          ),
+          const SizedBox(height: 6),
+          const _PushUpFaq(),
+        ],
+      ),
+    );
+  }
+}
+
+class _PushUpFaq extends StatelessWidget {
+  const _PushUpFaq();
+
+  static const _items = [
+    (
+      '一次做得越多越好吗？',
+      '不一定。俯卧撑的有效训练取决于动作质量、总训练量和持续性，不是单次硬撑到最大数量。出现塌腰、耸肩或动作幅度明显变小，就应停止这一组或降低难度。',
+    ),
+    (
+      '需要每天做吗？',
+      '不需要。模板默认安排每周 2–3 个训练日，让同一肌群有恢复时间；其他日子可以休息，或训练下肢、背部等不同肌群。',
+    ),
+    (
+      '做不到标准俯卧撑怎么办？',
+      '可以先从斜板俯卧撑、跪姿俯卧撑或更高支撑面开始。选择能保持身体稳定和完整控制的版本，比勉强做标准动作更合适。',
+    ),
+    (
+      '每组都要做到力竭吗？',
+      '不需要。保留动作质量比做到完全力竭更重要；当下一次重复可能破坏姿势时结束这一组，之后再逐步增加次数或难度。',
+    ),
+    (
+      '肌肉酸痛还能继续做吗？',
+      '轻微延迟性酸痛可以先休息或降低训练量；关节疼痛、刺痛、明显肿胀，或伴随胸闷头晕时不要硬练，应停止并视情况咨询专业人士。',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: colorScheme.outlineVariant.withValues(alpha: 0),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 2),
+          leading: Icon(Icons.help_outline_rounded,
+              size: 19, color: colorScheme.primary),
+          title: Text(
+            '常见问题',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          children: [
+            for (final item in _items)
+              _PushUpFaqItem(
+                question: item.$1,
+                answer: item.$2,
+                colorScheme: colorScheme,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PushUpFaqItem extends StatelessWidget {
+  final String question;
+  final String answer;
+  final ColorScheme colorScheme;
+
+  const _PushUpFaqItem({
+    required this.question,
+    required this.answer,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            answer,
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.45,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HabitGuideMetric extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final ColorScheme colorScheme;
+
+  const _HabitGuideMetric({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 17, color: colorScheme.primary),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HabitGuideTip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final ColorScheme colorScheme;
+
+  const _HabitGuideTip({
+    required this.icon,
+    required this.text,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.4,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 跑步的每次目标、每周总量和安全起步提示。
+class HabitRunningGuide extends StatelessWidget {
+  final int targetValue;
+  final HabitPeriodType periodType;
+  final int weekdaysMask;
+  final String? unit;
+
+  const HabitRunningGuide({
+    super.key,
+    required this.targetValue,
+    required this.periodType,
+    this.weekdaysMask = 127,
+    this.unit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final target = targetValue > 0 ? targetValue : 30;
+    final normalizedUnit = (unit ?? '分钟').trim().toLowerCase();
+    final isDurationUnit = normalizedUnit.isEmpty ||
+        normalizedUnit == '分钟' ||
+        normalizedUnit == 'minute' ||
+        normalizedUnit == 'minutes' ||
+        normalizedUnit == 'min';
+    final isWeeklyTarget = periodType == HabitPeriodType.weekly;
+    final sessions = _sessionsPerWeek();
+    final weeklyMinutes = isDurationUnit
+        ? isWeeklyTarget
+            ? target
+            : sessions == null
+                ? null
+                : target * sessions
+        : null;
+    final schedule = _scheduleLabel(sessions);
+    final targetLabel = isWeeklyTarget ? '$target 分钟/周' : '$target 分钟/次';
+    final weeklyLabel =
+        weeklyMinutes == null ? '切换为分钟后计算' : '$weeklyMinutes 分钟/周';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.directions_run_rounded,
+                  size: 19, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '跑步安排',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                targetLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.event_repeat_rounded,
+                  title: '当前安排',
+                  value: schedule,
+                  colorScheme: colorScheme,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.timelapse_rounded,
+                  title: '估算周总量',
+                  value: weeklyLabel,
+                  colorScheme: colorScheme,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '运动量参考',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _HabitGuideTip(
+            icon: Icons.flag_outlined,
+            text: '成年人每周可先以 75 分钟高强度，或 150 分钟中等强度有氧活动为起点；跑步强度因人而异。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.record_voice_over_outlined,
+            text: '能说完整句但不能唱歌≈中等强度；只能说几句话就要换气≈高强度。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.directions_walk_rounded,
+            text: '每次先快走 5–10 分钟热身，结束后放慢走几分钟；初学者可跑走交替，跑步日之间留恢复时间。',
+            colorScheme: colorScheme,
+          ),
+          if (!isDurationUnit) ...[
+            const SizedBox(height: 9),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '当前单位为“$unit”。健康指南以每周活动时长衡量，建议改用“分钟”记录，便于判断周运动量。',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.4,
+                  color: colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  int? _sessionsPerWeek() {
+    switch (periodType) {
+      case HabitPeriodType.daily:
+        return 7;
+      case HabitPeriodType.weekdays:
+        var count = 0;
+        for (var i = 0; i < 7; i++) {
+          if ((weekdaysMask & (1 << i)) != 0) count++;
+        }
+        return count == 0 ? null : count;
+      case HabitPeriodType.weekly:
+      case HabitPeriodType.monthly:
+      case HabitPeriodType.custom:
+        return null;
+    }
+  }
+
+  String _scheduleLabel(int? sessions) {
+    switch (periodType) {
+      case HabitPeriodType.daily:
+        return '每天 · 约 7 次/周';
+      case HabitPeriodType.weekdays:
+        return sessions == null ? '未选择训练日' : '$sessions 次/周';
+      case HabitPeriodType.weekly:
+        return '每周累计';
+      case HabitPeriodType.monthly:
+        return '按月安排';
+      case HabitPeriodType.custom:
+        return '自定义周期';
+    }
+  }
+}
+
+/// 阅读的专注节奏、理解闭环与屏幕阅读提示。
+class HabitReadingGuide extends StatelessWidget {
+  final int targetMinutes;
+  final int? defaultFocusMinutes;
+  final HabitPeriodType periodType;
+  final int weekdaysMask;
+
+  const HabitReadingGuide({
+    super.key,
+    required this.targetMinutes,
+    this.defaultFocusMinutes,
+    required this.periodType,
+    this.weekdaysMask = 127,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final target = targetMinutes > 0 ? targetMinutes : 30;
+    final focus = math.min(defaultFocusMinutes ?? 25, target);
+    final schedule = _scheduleLabel();
+    final pace = _paceLabel(target, focus);
+    final targetLabel =
+        periodType == HabitPeriodType.weekly ? '$target 分钟/周' : '$target 分钟/天';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.menu_book_rounded,
+                  size: 19, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '阅读安排',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                targetLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.timer_outlined,
+                  title: '专注节奏',
+                  value: pace,
+                  colorScheme: colorScheme,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HabitGuideMetric(
+                  icon: Icons.event_repeat_rounded,
+                  title: '阅读安排',
+                  value: schedule,
+                  colorScheme: colorScheme,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '把阅读变成理解闭环',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _HabitGuideTip(
+            icon: Icons.help_outline_rounded,
+            text: '读前：用 30 秒写下今天想回答的问题或阅读目的。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.bookmark_outline_rounded,
+            text: '读中：少量标记关键内容，每读完一小节停下来概括一句。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.lightbulb_outline_rounded,
+            text: '读后：合上书回忆 3 个要点；学习型内容下次先复述上次内容。',
+            colorScheme: colorScheme,
+          ),
+          _HabitGuideTip(
+            icon: Icons.visibility_outlined,
+            text: '屏幕阅读可采用 20-20-20：每 20 分钟看向约 6 米外 20 秒。',
+            colorScheme: colorScheme,
+          ),
+          const SizedBox(height: 6),
+          const _ReadingFaq(),
+        ],
+      ),
+    );
+  }
+
+  String _scheduleLabel() {
+    switch (periodType) {
+      case HabitPeriodType.daily:
+        return '每天 · 7 次/周';
+      case HabitPeriodType.weekdays:
+        var count = 0;
+        for (var i = 0; i < 7; i++) {
+          if ((weekdaysMask & (1 << i)) != 0) count++;
+        }
+        return '$count 次/周';
+      case HabitPeriodType.weekly:
+        return '每周累计';
+      case HabitPeriodType.monthly:
+        return '按月安排';
+      case HabitPeriodType.custom:
+        return '自定义周期';
+    }
+  }
+
+  String _paceLabel(int target, int focus) {
+    if (target <= focus) return '$target 分钟 × 1 块';
+    final fullBlocks = target ~/ focus;
+    final remainder = target % focus;
+    if (remainder == 0) return '$focus 分钟 × $fullBlocks 块';
+    return '$focus 分钟 × $fullBlocks + $remainder 分钟';
+  }
+}
+
+class _ReadingFaq extends StatelessWidget {
+  const _ReadingFaq();
+
+  static const _items = [
+    (
+      '一定要每天读 30 分钟吗？',
+      '不一定。30 分钟只是可编辑起点，没有适合所有人的统一阅读处方。先选择能长期坚持的时长，比一开始定得很高更重要。',
+    ),
+    (
+      '读得越久、页数越多越好吗？',
+      '不一定。阅读还包括理解和回忆；如果注意力已经明显下降，可以先停下来休息或拆成两个阅读块。',
+    ),
+    (
+      '只读不做笔记可以吗？',
+      '可以。笔记不是必需品，但读完后用自己的话回忆一句或说出 3 个要点，通常比被动重读更能检验理解。',
+    ),
+    (
+      '纸书和电子书应该选哪个？',
+      '优先选择更容易持续、眼睛和姿势更舒服的载体。屏幕阅读时注意远眺、眨眼和亮度，出现持续不适就减少屏幕时长。',
+    ),
+    (
+      '今天读不下去怎么办？',
+      '把目标降到 10–15 分钟，换成更容易进入状态的章节，或者只完成“读一小节并复述一句”；先保留节奏，再逐步增加。',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: colorScheme.outlineVariant.withValues(alpha: 0),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 2),
+          leading: Icon(Icons.help_outline_rounded,
+              size: 19, color: colorScheme.primary),
+          title: Text(
+            '常见问题',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          children: [
+            for (final item in _items)
+              _ReadingFaqItem(
+                question: item.$1,
+                answer: item.$2,
+                colorScheme: colorScheme,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadingFaqItem extends StatelessWidget {
+  final String question;
+  final String answer;
+  final ColorScheme colorScheme;
+
+  const _ReadingFaqItem({
+    required this.question,
+    required this.answer,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            answer,
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.45,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
