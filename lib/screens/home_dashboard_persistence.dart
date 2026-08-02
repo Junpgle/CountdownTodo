@@ -236,6 +236,10 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           _rescheduleAlarms();
           _loadAllData();
         }
+        
+        if (!silent) {
+          StorageService.triggerRefresh();
+        }
 
         // 🚀 同步手环版本信息
         unawaited(UpdateService.syncBandVersionInfo());

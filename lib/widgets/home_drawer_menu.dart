@@ -185,7 +185,7 @@ class HomeDrawerMenu extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
                   // Features Group
                   Expanded(
@@ -357,7 +357,7 @@ class HomeDrawerMenu extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.symmetric(
-          vertical: isCompact ? 2.0 : 4.0, horizontal: 8.0),
+          vertical: isCompact ? 0.0 : 2.0, horizontal: 8.0),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -367,7 +367,7 @@ class HomeDrawerMenu extends StatelessWidget {
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(
             padding: EdgeInsets.symmetric(
-                vertical: isCompact ? 10.0 : 12.0, horizontal: 12.0),
+                vertical: isCompact ? 8.0 : 10.0, horizontal: 12.0),
             child: Row(
               children: [
                 // Icon inside a rounded squircle
