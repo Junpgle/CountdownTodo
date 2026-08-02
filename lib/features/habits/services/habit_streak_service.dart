@@ -216,6 +216,22 @@ abstract final class HabitStreakService {
       }
     }
 
+    // 周/月时长型习惯按周期级条目统计平均时长，详情页也能展示相同口径。
+    if (!isDailyLike && habit.sourceType == HabitSourceType.pomodoroTag) {
+      final recordedPeriods = days
+          .where((d) =>
+              d.progress.isPlanned &&
+              d.progress.isFinished &&
+              d.progress.hasRecord)
+          .toList();
+      if (recordedPeriods.isNotEmpty) {
+        averageDuration = recordedPeriods
+                .map((d) => d.progress.currentValue)
+                .reduce((a, b) => a + b) /
+            recordedPeriods.length;
+      }
+    }
+
     return HabitStreakSummary(
       currentStreak: currentStreak,
       longestStreak: longestStreak,

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/pomodoro_service.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_source_resolver.dart';
+import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
 
 /// 习惯历史：打卡记录 + 目标修改历史。
@@ -27,6 +30,7 @@ class HabitHistoryScreen extends StatefulWidget {
 class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   bool _loading = true;
   List<HabitCheckIn> _checkIns = [];
+  List<PomodoroRecord> _focusRecords = [];
   List<HabitGoalRuleRevision> _rules = [];
 
   @override
@@ -39,11 +43,20 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     final checkIns = await HabitRepository.getCheckIns(
       habitUuid: widget.goal.uuid,
     );
+    final focusRecords = widget.goal.sourceType == HabitSourceType.pomodoroTag
+        ? await HabitSourceResolver.recordsForTags(
+            tagUuids: widget.goal.sourceIds,
+            from: DateTime(1970),
+            to: DateTime.now(),
+          )
+        : const <PomodoroRecord>[];
     final rules = await HabitRepository.getRules(habitUuid: widget.goal.uuid);
     if (!mounted) return;
     setState(() {
       _checkIns = checkIns.where((c) => !c.isDeleted).toList()
         ..sort((a, b) => b.logicalDate.compareTo(a.logicalDate));
+      _focusRecords = focusRecords.toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
       _rules = rules.where((r) => !r.isDeleted).toList()
         ..sort((a, b) =>
             (b.effectiveFromDate ?? '').compareTo(a.effectiveFromDate ?? ''));
@@ -77,6 +90,26 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     _loadData();
   }
 
+  Future<void> _editCheckIn(HabitCheckIn checkIn) async {
+    final rule = _ruleFor(checkIn.ruleRevisionUuid);
+    if (rule == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('找不到这条记录对应的目标规则')),
+      );
+      return;
+    }
+    final edited = await showHabitCheckInEditor(
+      context: context,
+      goal: widget.goal,
+      rule: rule,
+      checkIn: checkIn,
+    );
+    if (edited == null || !mounted) return;
+    await HabitRepository.updateCheckIn(edited);
+    _loadData();
+  }
+
   HabitGoalRuleRevision? _ruleFor(String? uuid) {
     if (uuid == null) return null;
     for (final rule in _rules) {
@@ -102,13 +135,134 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   children: [
-                    _buildCheckInSection(colorScheme),
+                    if (widget.goal.sourceType == HabitSourceType.pomodoroTag)
+                      _buildFocusRecordSection(colorScheme)
+                    else
+                      _buildCheckInSection(colorScheme),
                     const SizedBox(height: 24),
                     _buildRuleHistorySection(colorScheme),
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildFocusRecordSection(ColorScheme colorScheme) {
+    final grouped = <String, List<PomodoroRecord>>{};
+    for (final record in _focusRecords) {
+      final local =
+          DateTime.fromMillisecondsSinceEpoch(record.startTime).toLocal();
+      final key = '${local.year.toString().padLeft(4, '0')}-'
+          '${local.month.toString().padLeft(2, '0')}-'
+          '${local.day.toString().padLeft(2, '0')}';
+      grouped.putIfAbsent(key, () => []).add(record);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '专注记录',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '共 ${_focusRecords.length} 条',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_focusRecords.isEmpty) _emptyBox(colorScheme, '暂无专注记录'),
+        ...grouped.entries.map(
+          (entry) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text(
+                  _dateLabel(entry.key),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              ...entry.value.map((record) => _focusRecordRow(
+                    colorScheme,
+                    record,
+                  )),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _focusRecordRow(
+    ColorScheme colorScheme,
+    PomodoroRecord record,
+  ) {
+    final local =
+        DateTime.fromMillisecondsSinceEpoch(record.startTime).toLocal();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.timer_rounded, size: 18, color: colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  HabitText.formatDuration(
+                    record.actualDuration ?? record.plannedDuration,
+                  ),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                if (record.note?.isNotEmpty == true)
+                  Text(
+                    record.note!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            HabitText.timeOfDay(local),
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -232,6 +386,14 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
+          if (checkIn.source != HabitCheckInSource.skip &&
+              (widget.goal.sourceType == HabitSourceType.quantityCheckIn ||
+                  widget.goal.sourceType == HabitSourceType.timeCheckIn))
+            IconButton(
+              tooltip: '编辑',
+              onPressed: () => _editCheckIn(checkIn),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+            ),
           IconButton(
             tooltip: '删除',
             onPressed: () => _deleteCheckIn(checkIn),

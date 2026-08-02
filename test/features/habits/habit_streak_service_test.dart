@@ -236,6 +236,43 @@ void main() {
       expect(summary.currentStreak, 1);
     });
 
+    test('每周时长型习惯统计平均周期时长', () async {
+      final habit = HabitGoal(
+        uuid: 'h1',
+        name: 't',
+        sourceType: HabitSourceType.pomodoroTag,
+        sourceIds: const ['tag-1'],
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'r1',
+        habitUuid: 'h1',
+        effectiveFromDate: '2026-07-01',
+        periodType: HabitPeriodType.weekly,
+        targetValue: 150 * 60,
+      );
+      final summary = HabitStreakService.summarizeFromDays(
+        habit: habit,
+        days: [
+          _day(
+            DateTime(2026, 8, 3),
+            met: true,
+            hasRecord: true,
+            currentValue: 120 * 60,
+          ),
+          _day(
+            DateTime(2026, 8, 10),
+            met: true,
+            hasRecord: true,
+            currentValue: 180 * 60,
+          ),
+        ],
+        rule: rule,
+        now: DateTime(2026, 8, 20, 14, 0),
+      );
+
+      expect(summary.averageDuration, 150 * 60);
+    });
+
     test('时间点型平均起床时间与准时率', () async {
       final habit = HabitGoal(
         uuid: 'h1',
@@ -279,10 +316,11 @@ HabitDayProgress _day(
   bool finished = true,
   bool hasRecord = false,
   DateTime? firstAt,
+  double? currentValue,
 }) {
   final progress = HabitProgress(
     period: date,
-    currentValue: met ? 100 : (hasRecord ? 50 : 0),
+    currentValue: currentValue ?? (met ? 100 : (hasRecord ? 50 : 0)),
     targetValue: 100,
     completionRatio: met ? 1 : 0,
     hasRecord: hasRecord,

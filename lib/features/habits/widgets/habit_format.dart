@@ -96,9 +96,14 @@ abstract final class HabitText {
         : HabitRuleResolver.defaultDayBoundaryMinute;
     final effectiveActual =
         actualMinute < dayBoundary ? actualMinute + 24 * 60 : actualMinute;
+    // 目标本身也可能落在日期分界之前（如 00:30）。实际时间和目标
+    // 必须位于同一条扩展时间轴，否则 00:06 会被拿去和前一天的
+    // 00:30 比较，错误显示为晚了 1416 分钟。
+    final effectiveTarget =
+        targetMinute < dayBoundary ? targetMinute + 24 * 60 : targetMinute;
     final diff = rule.timeComparison == HabitTimeComparison.before
-        ? targetMinute - effectiveActual
-        : effectiveActual - targetMinute;
+        ? effectiveTarget - effectiveActual
+        : effectiveActual - effectiveTarget;
     if (rule.timeToleranceMinutes > 0 &&
         diff.abs() <= rule.timeToleranceMinutes) {
       return '已达标';

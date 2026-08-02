@@ -10,6 +10,7 @@ import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
 import '../services/habit_streak_service.dart';
 import '../widgets/habit_card.dart';
+import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
 import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
@@ -42,6 +43,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   HabitStreakSummary? _summary;
   List<HabitCheckIn> _todayCheckIns = [];
   List<PomodoroRecord> _todayFocusRecords = [];
+  List<HabitDayProgress> _timeTrend = [];
   bool _loading = true;
 
   @override
@@ -67,6 +69,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         ? null
         : await HabitStreakService.summarize(habit: _goal, rules: rules);
     final checkIns = progress?.checkIns ?? const <HabitCheckIn>[];
+    final todayDate = DateTime(today.year, today.month, today.day);
+    final timeTrend =
+        _goal.sourceType == HabitSourceType.timeCheckIn && rules.isNotEmpty
+            ? await HabitProgressCalculator.computeRange(
+                habit: _goal,
+                rules: rules,
+                from: todayDate.subtract(const Duration(days: 29)),
+                to: todayDate,
+              )
+            : const <HabitDayProgress>[];
     // 时长型：今日专注记录（按绑定标签过滤）。
     final focusRecords = _goal.sourceType == HabitSourceType.pomodoroTag
         ? await HabitSourceResolver.recordsForTags(
@@ -84,6 +96,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         _summary = summary;
         _todayCheckIns = checkIns;
         _todayFocusRecords = focusRecords;
+        _timeTrend = timeTrend;
         _loading = false;
       });
     }
@@ -112,7 +125,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   Future<void> _openHistory() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => HabitHistoryScreen(goal: _goal, username: widget.username),
+        builder: (_) =>
+            HabitHistoryScreen(goal: _goal, username: widget.username),
       ),
     );
     if (mounted) _loadData();
@@ -204,17 +218,328 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       const SizedBox(height: 20),
                       _buildFocusRecordSection(colorScheme),
                     ],
+                    if (_goal.sourceType == HabitSourceType.timeCheckIn &&
+                        (_summary != null || _timeTrend.isNotEmpty)) ...[
+                      const SizedBox(height: 20),
+                      _buildTimePointSection(colorScheme),
+                    ],
                     const SizedBox(height: 20),
                     _buildRuleSection(colorScheme),
-                    if (_summary != null) ...[
+                    if (_summary != null &&
+                        _goal.sourceType != HabitSourceType.timeCheckIn) ...[
                       const SizedBox(height: 20),
-                      _buildSummarySection(colorScheme),
+                      _goal.sourceType == HabitSourceType.pomodoroTag
+                          ? _buildDurationSummarySection(colorScheme)
+                          : _buildSummarySection(colorScheme),
                     ],
                   ],
                 ),
               ),
             ),
     );
+  }
+
+  // ── 时间点型：打卡趋势、实际时间与统计 ─────────────────
+  Widget _buildTimePointSection(ColorScheme colorScheme) {
+    final recordedDays = _timeTrend
+        .where((day) => day.progress.firstRecordAt != null)
+        .toList(growable: false);
+    final recentRecordedDays = recordedDays.reversed.take(7);
+    final summary = _summary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '近 30 天打卡趋势',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _openHistory,
+              child: const Text('查看全部'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_timeTrend.isEmpty)
+                Text(
+                  '暂无可展示的趋势数据',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                )
+              else ...[
+                _buildTimeTrendBars(colorScheme),
+                const SizedBox(height: 5),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _shortDate(_timeTrend.first.logicalDate),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      _shortDate(_timeTrend.last.logicalDate),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    _trendLegend(
+                      colorScheme.tertiary,
+                      '达标',
+                      colorScheme,
+                    ),
+                    _trendLegend(
+                      colorScheme.error,
+                      '未达标',
+                      colorScheme,
+                    ),
+                    _trendLegend(
+                      colorScheme.surfaceContainerHighest,
+                      '未打卡',
+                      colorScheme,
+                    ),
+                  ],
+                ),
+              ],
+              if (recordedDays.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Divider(color: colorScheme.outlineVariant),
+                const SizedBox(height: 4),
+                Text(
+                  '最近打卡时间',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ...recentRecordedDays.map(
+                  (day) => _buildTimeTrendDayRow(day, colorScheme),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (summary != null) ...[
+          const SizedBox(height: 10),
+          _buildTimePointStats(summary, colorScheme),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTimeTrendBars(ColorScheme colorScheme) {
+    return SizedBox(
+      height: 64,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: _timeTrend.map((day) {
+          final record = day.progress.firstRecordAt;
+          final minute = record == null ? 0 : record.hour * 60 + record.minute;
+          final height = record == null ? 5.0 : 10.0 + minute / 1440 * 42;
+          final color = record == null
+              ? colorScheme.surfaceContainerHighest
+              : day.progress.goalMet
+                  ? colorScheme.tertiary
+                  : colorScheme.error;
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: height,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _trendLegend(
+    Color color,
+    String label,
+    ColorScheme colorScheme,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeTrendDayRow(
+    HabitDayProgress day,
+    ColorScheme colorScheme,
+  ) {
+    final actual = day.progress.firstRecordAt!;
+    final rule =
+        HabitRuleResolver.effectiveRule(_rules, day.logicalDate) ?? _rule;
+    final statusColor =
+        day.progress.goalMet ? colorScheme.tertiary : colorScheme.error;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: Text(
+              _shortDate(day.logicalDate),
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Icon(Icons.schedule_rounded, size: 16, color: statusColor),
+          const SizedBox(width: 6),
+          Text(
+            HabitText.timeOfDay(actual),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            HabitText.timePointStatus(rule, day.progress),
+            style: TextStyle(
+              fontSize: 11.5,
+              color: statusColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimePointStats(
+    HabitStreakSummary summary,
+    ColorScheme colorScheme,
+  ) {
+    final averageTime = summary.averageTimeMinute == null
+        ? '—'
+        : HabitText.targetTime(summary.averageTimeMinute!.round());
+    final onTimeRate =
+        summary.onTimeRate == null ? '—' : _percent(summary.onTimeRate!);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '时间点统计',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _statCell('平均时间', averageTime)),
+              Expanded(child: _statCell('准时率', onTimeRate)),
+              Expanded(
+                child: _statCell('当前连续', '${summary.currentStreak} 天'),
+              ),
+              Expanded(
+                child: _statCell('最长连续', '${summary.longestStreak} 天'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _statCell('完成率 7', _percent(summary.rate7))),
+              Expanded(child: _statCell('完成率 30', _percent(summary.rate30))),
+              Expanded(
+                child: _statCell(
+                  '已完成',
+                  '${summary.completedCount}/${summary.plannedCount}',
+                ),
+              ),
+              Expanded(child: _statCell('逾期', '${summary.overdueCount}')),
+            ],
+          ),
+          if (summary.weakestWeekday != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              '最容易中断：${_weekdayLabel(summary.weakestWeekday!)}',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _shortDate(DateTime date) => '${date.month}/${date.day}';
+
+  String _weekdayLabel(int weekday) {
+    const labels = <String>['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return weekday >= 0 && weekday < labels.length ? labels[weekday] : '—';
   }
 
   // ── 头部：图标 + 连续 ────────────────────────────────
@@ -306,7 +631,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           username: widget.username,
           onChanged: _loadData,
           onStartFocus: (_) => _startFocus(),
-          onViewRecords: () {},
+          onViewRecords: _openHistory,
         ),
         if (_goal.sourceType == HabitSourceType.quantityCheckIn ||
             _goal.sourceType == HabitSourceType.timeCheckIn)
@@ -316,34 +641,20 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _editRecord(_todayCheckIns.lastOrNull),
-                    icon: const Icon(Icons.edit_rounded, size: 16),
-                    label: const Text('编辑记录'),
+                    onPressed: _openHistory,
+                    icon: const Icon(Icons.history_rounded, size: 16),
+                    label: const Text('历史记录'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _addBackfill,
-                    icon: const Icon(Icons.history_rounded, size: 16),
+                    icon:
+                        const Icon(Icons.add_circle_outline_rounded, size: 16),
                     label: const Text('补录'),
                   ),
                 ),
-                if (_todayCheckIns.isNotEmpty) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await HabitRepository.deleteCheckIn(
-                          _todayCheckIns.last,
-                        );
-                        _loadData();
-                      },
-                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                      label: const Text('删除记录'),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -356,17 +667,27 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '今日专注（${_todayFocusRecords.length}）',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '今日专注（${_todayFocusRecords.length}）',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _openHistory,
+              child: const Text('查看全部'),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
-        for (final record in _todayFocusRecords)
-          Container(
+        ..._todayFocusRecords.map(
+          (record) => Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
@@ -416,6 +737,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ],
             ),
           ),
+        ),
       ],
     );
   }
@@ -425,13 +747,23 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '今日记录（${_todayCheckIns.length}）',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '今日记录（${_todayCheckIns.length}）',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _openHistory,
+              child: const Text('查看全部'),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         for (final checkIn in _todayCheckIns)
@@ -486,6 +818,21 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
+                if (checkIn.source != HabitCheckInSource.skip)
+                  IconButton(
+                    tooltip: '编辑记录',
+                    onPressed: () => _editRecord(checkIn),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                  ),
+                IconButton(
+                  tooltip: '删除记录',
+                  onPressed: () => _deleteRecord(checkIn),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -512,117 +859,24 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       );
       return;
     }
-    final valueController = TextEditingController(
-      text: checkIn.value == checkIn.value.roundToDouble()
-          ? checkIn.value.round().toString()
-          : checkIn.value.toString(),
+    final rule = _rules.firstWhere(
+      (candidate) => candidate.uuid == checkIn.ruleRevisionUuid,
+      orElse: () => _rule,
     );
-    final noteController = TextEditingController(text: checkIn.note ?? '');
-    final isTimeType = _goal.sourceType == HabitSourceType.timeCheckIn;
-    var editedTime = checkIn.localOccurredAt;
+    final edited = await showHabitCheckInEditor(
+      context: context,
+      goal: _goal,
+      rule: rule,
+      checkIn: checkIn,
+    );
+    if (edited == null || !mounted) return;
+    await HabitRepository.updateCheckIn(edited);
+    _loadData();
+  }
 
-    try {
-      final saved = await showDialog<bool>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: Text(isTimeType ? '编辑打卡时间' : '编辑记录'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isTimeType)
-                  TextField(
-                    controller: valueController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText:
-                          '数量${_rule.unit.isNotEmpty ? '（${_rule.unit}）' : ''}',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  )
-                else
-                  FilledButton.tonalIcon(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.fromDateTime(editedTime),
-                        helpText: '实际发生时间',
-                      );
-                      if (picked != null) {
-                        setDialogState(() {
-                          editedTime = DateTime(
-                            editedTime.year,
-                            editedTime.month,
-                            editedTime.day,
-                            picked.hour,
-                            picked.minute,
-                          );
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.schedule_rounded, size: 18),
-                    label: Text(
-                      '实际时间：${HabitText.timeOfDay(editedTime)}',
-                    ),
-                  ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: noteController,
-                  maxLength: 50,
-                  decoration: const InputDecoration(
-                    labelText: '备注（可选）',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    counterText: '',
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (saved != true || !mounted) return;
-
-      if (isTimeType) {
-        // 修改实际发生时间：重算逻辑日期与时区偏移（设计文档 7.4 / 8.2）。
-        checkIn
-          ..occurredAt = editedTime.toUtc().millisecondsSinceEpoch
-          ..logicalDate = HabitRuleResolver.dayKey(
-            HabitRuleResolver.logicalDateFor(
-                editedTime, _rule.dayBoundaryMinute),
-          )
-          ..timezoneOffsetMinutes = editedTime.timeZoneOffset.inMinutes;
-      } else {
-        final value = double.tryParse(valueController.text.trim());
-        if (value == null || value <= 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请输入有效的数量')),
-          );
-          return;
-        }
-        checkIn.value = value;
-      }
-      checkIn.note = noteController.text.trim().isEmpty
-          ? null
-          : noteController.text.trim();
-      await HabitRepository.updateCheckIn(checkIn);
-      _loadData();
-    } finally {
-      valueController.dispose();
-      noteController.dispose();
-    }
+  Future<void> _deleteRecord(HabitCheckIn checkIn) async {
+    await HabitRepository.deleteCheckIn(checkIn);
+    if (mounted) _loadData();
   }
 
   /// 补录：选择任意日期时间新增一条打卡。
@@ -868,6 +1122,110 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   }
 
   // ── 统计 ────────────────────────────────────────────
+  Widget _buildDurationSummarySection(ColorScheme colorScheme) {
+    final summary = _summary!;
+    final unit = _periodUnit();
+    final averageDuration = summary.averageDuration == null
+        ? '—'
+        : HabitText.formatDuration(summary.averageDuration!.round());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '时长统计（近 30 周期）',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _statCell('平均时长/$unit', averageDuration),
+                  ),
+                  Expanded(
+                    child: _statCell(
+                      '当前连续',
+                      '${summary.currentStreak} $unit',
+                    ),
+                  ),
+                  Expanded(
+                    child: _statCell(
+                      '最长连续',
+                      '${summary.longestStreak} $unit',
+                    ),
+                  ),
+                  Expanded(
+                    child: _statCell('完成率 7', _percent(summary.rate7)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _statCell('完成率 30', _percent(summary.rate30)),
+                  ),
+                  Expanded(
+                    child: _statCell(
+                      '已完成',
+                      '${summary.completedCount}/${summary.plannedCount}',
+                    ),
+                  ),
+                  Expanded(
+                    child: _statCell('逾期', '${summary.overdueCount}'),
+                  ),
+                  Expanded(
+                    child: _statCell(
+                      '目标',
+                      '${(_rule.targetValue / 60).round()} 分钟',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 8,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: summary.rate30.clamp(0.0, 1.0),
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation(colorScheme.tertiary),
+                  ),
+                ),
+              ),
+              if (summary.weakestWeekday != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '最容易中断：${_weekdayLabel(summary.weakestWeekday!)}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSummarySection(ColorScheme colorScheme) {
     final summary = _summary!;
     final unit = _periodUnit();

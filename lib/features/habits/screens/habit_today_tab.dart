@@ -242,7 +242,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     return children;
   }
 
-  /// 目标时间分组：清晨 00:00-10:00，晚间 >= 21:00，其余归白天；
+  /// 目标时间分组：清晨 05:00-10:00，晚间 >= 21:00 或 < 05:00（深夜），其余归白天；
   /// 时长型按统计周期归入本周/本月目标。
   int _groupIndex(HabitGoal goal, HabitGoalRuleRevision rule) {
     if (goal.sourceType == HabitSourceType.pomodoroTag) {
@@ -259,8 +259,8 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     }
     if (goal.sourceType == HabitSourceType.timeCheckIn) {
       final minute = rule.targetTimeMinute ?? 0;
-      if (minute < 10 * 60) return 0;
-      if (minute >= 21 * 60) return 2;
+      if (minute < 5 * 60 || minute >= 21 * 60) return 2; // 深夜或晚间归入晚间打卡
+      if (minute >= 5 * 60 && minute < 10 * 60) return 0; // 05:00-10:00 归入清晨打卡
     }
     return 1;
   }
