@@ -5,6 +5,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
@@ -12,6 +13,7 @@ import '../services/habit_streak_service.dart';
 import '../widgets/habit_card.dart';
 import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
+import '../widgets/habit_adaptation_panel.dart';
 import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
@@ -215,6 +217,10 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     if (_todayProgress != null) ...[
                       const SizedBox(height: 16),
                       _buildTodayCard(colorScheme),
+                    ],
+                    if (HabitAdaptationService.forHabit(_goal) != null) ...[
+                      const SizedBox(height: 16),
+                      _buildAdaptationSection(colorScheme),
                     ],
                     if (_todayCheckIns.isNotEmpty) ...[
                       const SizedBox(height: 20),
@@ -844,6 +850,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildAdaptationSection(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(_goal);
+    if (adaptation == null) return const SizedBox.shrink();
+    return HabitAdaptationPanel(
+      adaptation: adaptation,
+      currentValue: _todayProgress?.currentValue,
+      targetValue: _rule.targetValue,
     );
   }
 

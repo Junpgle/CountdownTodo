@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import 'habit_format.dart';
 
 /// 快捷打卡底部弹窗（设计文档第十五节 `habit_quick_checkin_sheet.dart`）。
@@ -106,9 +107,10 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
 
   // ── 数量型 ──────────────────────────────────────────
   Widget _buildQuantity(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
     final quickValues = widget.rule.quickValues.isNotEmpty
         ? widget.rule.quickValues
-        : const [1];
+        : adaptation?.suggestedQuickValues ?? const [1];
     final unit = widget.rule.unit;
 
     return Column(
@@ -118,9 +120,25 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           spacing: 8,
           runSpacing: 8,
           children: quickValues
-              .map((v) => _valueChip(v.toDouble(), unit, colorScheme))
+              .map((v) => _valueChip(
+                    v.toDouble(),
+                    unit,
+                    colorScheme,
+                    label: adaptation?.quickLabel(v),
+                  ))
               .toList(),
         ),
+        if (adaptation != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议少量多次，每次约 200 ml；可在详情页查看参考文献。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         TextField(
           controller: _controller,
@@ -156,7 +174,12 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
     );
   }
 
-  Widget _valueChip(double value, String unit, ColorScheme colorScheme) {
+  Widget _valueChip(
+    double value,
+    String unit,
+    ColorScheme colorScheme, {
+    String? label,
+  }) {
     final text = value == value.roundToDouble()
         ? value.round().toString()
         : value.toString();
@@ -169,7 +192,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           borderRadius: BorderRadius.circular(20),
         ),
       ),
-      child: Text(unit.isNotEmpty ? '$text $unit' : text),
+      child: Text(label ?? (unit.isNotEmpty ? '$text $unit' : text)),
     );
   }
 
