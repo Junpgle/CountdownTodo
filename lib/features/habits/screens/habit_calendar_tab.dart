@@ -110,16 +110,17 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   }
 
   // ── 每日聚合状态 ────────────────────────────────────
-  _DayAggregate _aggregate(DateTime day) {
+  ({_DayAggregate status, double ratio}) _aggregate(DateTime day) {
     // 未来日期不显示状态（设计文档 11.2）。
     final now = DateTime.now();
     if (day.isAfter(DateTime(now.year, now.month, now.day))) {
-      return _DayAggregate.future;
+      return (status: _DayAggregate.future, ratio: 0.0);
     }
     final key = HabitRuleResolver.dayKey(day);
     int planned = 0;
     int met = 0;
     int skipped = 0;
+    double totalRatio = 0.0;
     for (final goal in _goals) {
       final days = _daysByHabit[goal.uuid];
       if (days == null) continue;
@@ -139,16 +140,18 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         continue;
       }
       planned++;
+      totalRatio += day.progress.completionRatio.clamp(0.0, 1.0);
       if (status == HabitDayStatus.met) met++;
     }
     if (planned == 0) {
       // 全部习惯当天均被跳过：灰色标记（与非计划日的空白区分）。
-      if (skipped > 0) return _DayAggregate.skipped;
-      return _DayAggregate.none;
+      if (skipped > 0) return (status: _DayAggregate.skipped, ratio: 0.0);
+      return (status: _DayAggregate.none, ratio: 0.0);
     }
-    if (met == planned) return _DayAggregate.allMet;
-    if (met == 0) return _DayAggregate.noneMet;
-    return _DayAggregate.partial;
+    final overallRatio = totalRatio / planned;
+    if (met == planned) return (status: _DayAggregate.allMet, ratio: 1.0);
+    if (met == 0) return (status: _DayAggregate.noneMet, ratio: overallRatio);
+    return (status: _DayAggregate.partial, ratio: overallRatio);
   }
 
   @override
@@ -287,7 +290,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       final isSelected = date.year == _selectedDay.year &&
           date.month == _selectedDay.month &&
           date.day == _selectedDay.day;
-      final aggregate = _aggregate(date);
+      final aggData = _aggregate(date);
+      final aggregate = aggData.status;
+      final ratio = aggData.ratio;
 
       Color bg = Colors.transparent;
       Color dot = colorScheme.outlineVariant;
@@ -296,18 +301,16 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           bg = colorScheme.tertiaryContainer;
           dot = colorScheme.tertiary;
         case _DayAggregate.partial:
-          bg = colorScheme.tertiaryContainer.withValues(alpha: 0.5);
+          bg = Colors.transparent;
           dot = colorScheme.tertiary;
         case _DayAggregate.noneMet:
-          bg = colorScheme.errorContainer.withValues(alpha: 0.45);
-          dot = colorScheme.error;
-        case _DayAggregate.skipped:
-          bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
-          dot = colorScheme.outline;
         case _DayAggregate.none:
         case _DayAggregate.future:
           bg = Colors.transparent;
           dot = colorScheme.outlineVariant;
+        case _DayAggregate.skipped:
+          bg = colorScheme.surfaceContainerHighest.withValues(alpha: 0.45);
+          dot = colorScheme.outline;
       }
 
       cells.add(
@@ -316,7 +319,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
           child: Container(
             margin: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              color: bg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected
@@ -327,31 +329,53 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                 width: isSelected ? 2 : 1,
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '$day',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.onSurface,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8), // 略小于外框
+              child: Stack(
+                children: [
+                  Container(color: bg),
+                  // “水池灌水”式的进度填充
+                  if (ratio > 0.0 && aggregate == _DayAggregate.partial)
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: ratio,
+                        widthFactor: 1.0,
+                        child: Container(
+                          color: colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$day',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: aggregate == _DayAggregate.none
+                                ? Colors.transparent
+                                : dot,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: aggregate == _DayAggregate.none
-                        ? Colors.transparent
-                        : dot,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -399,7 +423,6 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
       children: [
         item(colorScheme.tertiary, '全部完成'),
         item(colorScheme.tertiary.withValues(alpha: 0.5), '部分完成'),
-        item(colorScheme.error, '未完成'),
         item(colorScheme.outline, '已跳过'),
       ],
     );

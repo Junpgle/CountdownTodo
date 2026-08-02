@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../models.dart';
 import '../../../services/pomodoro_service.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
@@ -31,6 +32,7 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   bool _loading = true;
   List<HabitCheckIn> _checkIns = [];
   List<PomodoroRecord> _focusRecords = [];
+  List<TodoItem> _linkedTodos = [];
   List<HabitGoalRuleRevision> _rules = [];
 
   @override
@@ -50,6 +52,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
             to: DateTime.now(),
           )
         : const <PomodoroRecord>[];
+    final linkedTodos = widget.goal.sourceType == HabitSourceType.recurringTodo
+        ? await HabitSourceResolver.todosForSeries(widget.goal.sourceIds)
+        : const <TodoItem>[];
     final rules = await HabitRepository.getRules(habitUuid: widget.goal.uuid);
     if (!mounted) return;
     setState(() {
@@ -57,6 +62,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
         ..sort((a, b) => b.logicalDate.compareTo(a.logicalDate));
       _focusRecords = focusRecords.toList()
         ..sort((a, b) => b.startTime.compareTo(a.startTime));
+      _linkedTodos = linkedTodos.where((todo) => !todo.isDeleted).toList()
+        ..sort((a, b) => _todoDate(b).compareTo(_todoDate(a)));
       _rules = rules.where((r) => !r.isDeleted).toList()
         ..sort((a, b) =>
             (b.effectiveFromDate ?? '').compareTo(a.effectiveFromDate ?? ''));
@@ -137,6 +144,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
                   children: [
                     if (widget.goal.sourceType == HabitSourceType.pomodoroTag)
                       _buildFocusRecordSection(colorScheme)
+                    else if (widget.goal.sourceType ==
+                        HabitSourceType.recurringTodo)
+                      _buildRecurringTodoSection(colorScheme)
                     else
                       _buildCheckInSection(colorScheme),
                     const SizedBox(height: 24),
@@ -146,6 +156,131 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
               ),
             ),
     );
+  }
+
+  Widget _buildRecurringTodoSection(ColorScheme colorScheme) {
+    final completedTodos = _linkedTodos.where((todo) => todo.isDone).toList();
+    final grouped = <String, List<TodoItem>>{};
+    for (final todo in completedTodos) {
+      grouped.putIfAbsent(_todoDateKey(todo), () => []).add(todo);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '关联待办完成记录',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '已完成 ${completedTodos.length}/${_linkedTodos.length} 期',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (completedTodos.isEmpty) _emptyBox(colorScheme, '暂无已完成的关联待办'),
+        ...grouped.entries.map(
+          (entry) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text(
+                  _dateLabel(entry.key),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              ...entry.value.map(
+                (todo) => _linkedTodoRow(colorScheme, todo),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _linkedTodoRow(ColorScheme colorScheme, TodoItem todo) {
+    final local = _todoDate(todo);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_rounded,
+            size: 18,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  todo.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                if (todo.remark?.trim().isNotEmpty == true)
+                  Text(
+                    todo.remark!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            HabitText.timeOfDay(local),
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static DateTime _todoDate(TodoItem todo) {
+    return DateTime.fromMillisecondsSinceEpoch(
+      todo.createdDate ?? todo.createdAt,
+      isUtc: true,
+    ).toLocal();
+  }
+
+  static String _todoDateKey(TodoItem todo) {
+    final local = _todoDate(todo);
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
   }
 
   Widget _buildFocusRecordSection(ColorScheme colorScheme) {

@@ -133,11 +133,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       if (_sourceType == HabitSourceType.recurringTodo &&
           goal.sourceIds.isNotEmpty) {
         _selectedRecurringSeriesId = goal.sourceIds.first;
-        // 关联已有循环待办后，首页只保留习惯卡片，避免同一条内容重复展示。
-        _displayMode = HabitDisplayMode.habitOnly;
       }
       _defaultFocusMinutes = goal.defaultFocusMinutes;
-      _step = 1;
+      _step = 0;
       _loadRuleForEdit(goal);
     }
     _loadTags();
@@ -277,12 +275,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
   String? _validateStep(int step) {
     switch (step) {
       case 0:
-        if (_nameController.text.trim().isEmpty) {
-          return '请填写习惯名称';
-        }
-      case 1:
         if (_periodType == HabitPeriodType.weekdays && _weekdaysMask == 0) {
           return '请至少选择一天';
+        }
+      case 1:
+        if (_nameController.text.trim().isEmpty) {
+          return '请填写习惯名称';
         }
       case 2:
         switch (_sourceType) {
@@ -445,8 +443,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 800;
         final content = switch (_step) {
-          0 => _buildTemplateStep(),
-          1 => _buildTypeStep(),
+          0 => _buildTypeStep(),
+          1 => _buildTemplateStep(),
           2 => _buildTargetStep(),
           _ => _buildReminderStep(),
         };
@@ -556,11 +554,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   // ── 宽屏纵向步骤指示器 ──────────────────────────────────────
   Widget _buildWideStepIndicator() {
-    const labels = ['模板 (基本信息)', '类型与周期', '目标设定', '习惯提醒'];
+    const labels = ['类型与周期', '模板 (基本信息)', '目标设定', '习惯提醒'];
     final colorScheme = Theme.of(context).colorScheme;
-    final isEdit = widget.goal != null;
-    final steps = isEdit ? ['类型与周期', '目标设定', '习惯提醒'] : labels;
-    final current = isEdit ? _step - 1 : _step;
+    const steps = labels;
+    final current = _step;
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -639,11 +636,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   // ── 窄屏步骤指示器 (现代进度条) ──────────────────────────────────────
   Widget _buildStepIndicator() {
-    const labels = ['模板', '类型', '目标', '提醒'];
+    const labels = ['类型', '名称', '目标', '提醒'];
     final colorScheme = Theme.of(context).colorScheme;
-    final isEdit = widget.goal != null;
-    final steps = isEdit ? ['类型', '目标', '提醒'] : labels;
-    final current = isEdit ? _step - 1 : _step;
+    const steps = labels;
+    final current = _step;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -698,8 +694,6 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
 
   Widget _buildBottomBar({required bool isWide}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isEdit = widget.goal != null;
-    // 编辑模式从第 2 步开始，但仍需经过第 3 步提醒配置后才能保存。
     final lastStep = 3;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
@@ -724,7 +718,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               ]),
           child: Row(
             children: [
-              if (_step > (isEdit ? 1 : 0))
+              if (_step > 0)
                 OutlinedButton.icon(
                   onPressed: _saving ? null : () => setState(() => _step--),
                   icon: const Icon(Icons.arrow_back_rounded, size: 18),
@@ -787,7 +781,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
   }
 
-  // ── 第 1 步：模板 ────────────────────────────────────
+  // ── 第 2 步：名称与模板 ───────────────────────────────
   Widget _buildTemplateStep() {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -821,6 +815,17 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             _buildIconPicker(),
           ],
         ),
+        if (_sourceType == HabitSourceType.recurringTodo &&
+            _selectedRecurringSeriesId != _autoCreateRecurringSeries) ...[
+          const SizedBox(height: 8),
+          Text(
+            '已从关联循环待办带入名称和图标，可按需修改。',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         Text(
           '或选择一个模板',
@@ -953,9 +958,10 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     }
   }
 
-  // ── 第 2 步：类型 ────────────────────────────────────
+  // ── 第 1 步：类型与周期 ───────────────────────────────
   Widget _buildTypeStep() {
     final isEdit = widget.goal != null;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -987,8 +993,53 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         ],
         const SizedBox(height: 20),
         _buildPeriodSection(),
+        if (_sourceType == HabitSourceType.recurringTodo) ...[
+          const SizedBox(height: 20),
+          _buildRecurringTodoBinding(colorScheme),
+          const SizedBox(height: 16),
+          _buildDisplayModeSection(colorScheme),
+        ],
       ],
     );
+  }
+
+  void _selectRecurringTodo(String seriesId) {
+    if (seriesId == _autoCreateRecurringSeries) {
+      setState(() => _selectedRecurringSeriesId = seriesId);
+      return;
+    }
+    final todo = _recurringTodos
+        .where((item) => (item.recurrenceSeriesId ?? item.id) == seriesId)
+        .firstOrNull;
+    setState(() {
+      _selectedRecurringSeriesId = seriesId;
+      _sourceType = HabitSourceType.recurringTodo;
+      _displayMode = HabitDisplayMode.habitOnly;
+      if (todo != null) {
+        _nameController.text = todo.title;
+        _icon = HabitRepository.defaultIconForName(todo.title);
+        _applyRecurrenceFromTodo(todo);
+      }
+    });
+  }
+
+  void _applyRecurrenceFromTodo(TodoItem todo) {
+    switch (todo.recurrence) {
+      case RecurrenceType.weekly:
+        _periodType = HabitPeriodType.weekly;
+      case RecurrenceType.monthly:
+        _periodType = HabitPeriodType.monthly;
+      case RecurrenceType.weekdays:
+        _periodType = HabitPeriodType.weekdays;
+        _weekdaysMask = 31;
+      case RecurrenceType.customDays:
+        _periodType = HabitPeriodType.custom;
+        _customIntervalDays = (todo.customIntervalDays ?? 2).clamp(1, 365);
+      case RecurrenceType.daily:
+      case RecurrenceType.yearly:
+      case RecurrenceType.none:
+        _periodType = HabitPeriodType.daily;
+    }
   }
 
   Widget _typeCard(
@@ -1012,7 +1063,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             : colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: enabled ? () => setState(() => _sourceType = type) : null,
+          onTap: enabled
+              ? () => setState(() {
+                    _sourceType = type;
+                    if (type != HabitSourceType.recurringTodo) {
+                      _selectedRecurringSeriesId = _autoCreateRecurringSeries;
+                    }
+                  })
+              : null,
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1188,23 +1246,6 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _buildRecurringTodoBinding(colorScheme),
-                const SizedBox(height: 16),
-                Text(
-                  '首页展示位置',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _displayModeChip(
-                    HabitDisplayMode.habitOnly, '仅习惯', '只在家页习惯卡片展示'),
-                _displayModeChip(
-                    HabitDisplayMode.todoOnly, '仅待办', '只按普通循环待办展示'),
-                _displayModeChip(HabitDisplayMode.both, '同时展示', '习惯与待办都显示'),
               ],
             ),
           HabitSourceType.pomodoroTag => _buildDurationTarget(colorScheme),
@@ -1675,12 +1716,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             ],
             onChanged: (value) {
               if (value == null) return;
-              setState(() {
-                _selectedRecurringSeriesId = value;
-                if (value != _autoCreateRecurringSeries) {
-                  _displayMode = HabitDisplayMode.habitOnly;
-                }
-              });
+              _selectRecurringTodo(value);
             },
           ),
           if (selectedValue == _autoCreateRecurringSeries) ...[
@@ -1697,6 +1733,26 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildDisplayModeSection(ColorScheme colorScheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '首页展示位置',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _displayModeChip(HabitDisplayMode.habitOnly, '仅习惯', '只在首页习惯卡片展示'),
+        _displayModeChip(HabitDisplayMode.todoOnly, '仅待办', '只按普通循环待办展示'),
+        _displayModeChip(HabitDisplayMode.both, '同时展示', '习惯与待办都显示'),
+      ],
     );
   }
 
