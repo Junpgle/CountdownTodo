@@ -356,6 +356,8 @@ mixin _StorageSync on _StorageServiceBase {
     bool hasChanges = false;
     List<ConflictInfo> conflicts = [];
     final Set<String> updatedTodoIds = <String>{};
+    final staleHabitConflictSnapshots = <String, Map<String, dynamic>>{};
+    final autoResolvedHabitConflictIds = <String>{};
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -412,6 +414,18 @@ mixin _StorageSync on _StorageServiceBase {
           await HabitStorage.getRuleRevisions();
       final List<HabitCheckIn> allLocalHabitCheckIns =
           await HabitStorage.getCheckIns(includeDeleted: true);
+      // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
+      // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
+      for (final goal in allLocalHabitGoals) {
+        if (!goal.hasConflict || goal.conflictData == null) continue;
+        staleHabitConflictSnapshots['habit_goals:${goal.uuid}'] =
+            Map<String, dynamic>.from(goal.conflictData!);
+      }
+      for (final rule in allLocalHabitRules) {
+        if (!rule.hasConflict || rule.conflictData == null) continue;
+        staleHabitConflictSnapshots['habit_goal_rule_revisions:${rule.uuid}'] =
+            Map<String, dynamic>.from(rule.conflictData!);
+      }
       final autoResolvedMigrationConflicts =
           _clearResolvedRecurrenceMigrationConflicts(allLocalTodos);
       if (autoResolvedMigrationConflicts.isNotEmpty) {
@@ -1173,6 +1187,29 @@ mixin _StorageSync on _StorageServiceBase {
             .toList();
       }
 
+      // 服务端有时只在 conflicts 返回冲突快照，不会重复返回整条习惯记录。
+      // 先把这些快照登记下来，后面可判断是否只是残留冲突标记。
+      final localHabitGoalIds =
+          allLocalHabitGoals.map((item) => item.uuid).toSet();
+      final localHabitRuleIds =
+          allLocalHabitRules.map((item) => item.uuid).toSet();
+      for (final conflict in conflicts) {
+        final itemId =
+            (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
+        if (itemId == null || itemId.isEmpty || conflict.conflictWith.isEmpty) {
+          continue;
+        }
+        final table = localHabitGoalIds.contains(itemId)
+            ? 'habit_goals'
+            : localHabitRuleIds.contains(itemId)
+                ? 'habit_goal_rule_revisions'
+                : null;
+        if (table != null) {
+          staleHabitConflictSnapshots['$table:$itemId'] =
+              Map<String, dynamic>.from(conflict.conflictWith);
+        }
+      }
+
       // 🛡️ 屏幕时间逻辑优化：上传成功后，务必清理“待上传”缓存
       if (screenPayload != null) {
         await prefs.remove(_scopedKey(keyLocalScreenTime, username));
@@ -1632,6 +1669,10 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           final localItem = allLocalHabitGoals[localIndex];
+          if (serverItem.hasConflict) {
+            staleHabitConflictSnapshots['habit_goals:${serverItem.uuid}'] =
+                serverItem.toJson();
+          }
           // 冲突标记会推高服务端 updated_at；时间路径必须排除冲突项，
           // 避免用冲突快照覆盖本地更新的内容（与倒计时合并规则一致）。
           final serverWins = serverItem.version > localItem.version ||
@@ -1675,6 +1716,11 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           final localItem = allLocalHabitRules[localIndex];
+          if (serverItem.hasConflict) {
+            staleHabitConflictSnapshots[
+                    'habit_goal_rule_revisions:${serverItem.uuid}'] =
+                serverItem.toJson();
+          }
           // 与目标一致：冲突标记会推高服务端 updated_at，
           // 时间路径必须排除冲突项，避免冲突快照覆盖本地新内容。
           final serverWins = serverItem.version > localItem.version ||
@@ -1727,6 +1773,21 @@ mixin _StorageSync on _StorageServiceBase {
             allLocalHabitCheckIns[localIndex] = serverItem;
             hasChanges = true;
           }
+        }
+      }
+
+      // 即使服务端暂未声明 habits 能力，也要处理本地遗留的假冲突：这些快照
+      // 可能来自旧版本，不能因为本轮没有返回习惯列表就永久留在冲突中心。
+      if (syncHabits) {
+        final autoResolved = await _autoResolveEquivalentHabitConflicts(
+          goals: allLocalHabitGoals,
+          rules: allLocalHabitRules,
+          snapshots: staleHabitConflictSnapshots,
+        );
+        if (autoResolved.isNotEmpty) {
+          autoResolvedHabitConflictIds.addAll(autoResolved);
+          hasChanges = true;
+          debugPrint('🧹 [同步修复] 已自动清理 ${autoResolved.length} 条业务内容一致的习惯冲突标记');
         }
       }
 
@@ -1977,6 +2038,7 @@ mixin _StorageSync on _StorageServiceBase {
         final itemId =
             (conflict.item['uuid'] ?? conflict.item['id'])?.toString();
         if (itemId == null || itemId.isEmpty) return false;
+        if (autoResolvedHabitConflictIds.contains(itemId)) return true;
         TodoItem? local;
         for (final todo in allLocalTodos) {
           if (todo.id == itemId) {
@@ -1984,7 +2046,16 @@ mixin _StorageSync on _StorageServiceBase {
             break;
           }
         }
-        return local != null && (local.isDeleted || !local.hasConflict);
+        if (local != null && (local.isDeleted || !local.hasConflict)) {
+          return true;
+        }
+        for (final goal in allLocalHabitGoals) {
+          if (goal.uuid == itemId) return goal.isDeleted || !goal.hasConflict;
+        }
+        for (final rule in allLocalHabitRules) {
+          if (rule.uuid == itemId) return rule.isDeleted || !rule.hasConflict;
+        }
+        return false;
       });
 
       // 10. 🛡️ 内存守卫：同步成功后，自动从锁定集合中清理掉在最新 conflicts 中不再包含的 ID
@@ -2015,5 +2086,152 @@ mixin _StorageSync on _StorageServiceBase {
       _pendingSyncOplogUuids.clear();
       _forceFlushProtectedUuids.clear();
     }
+  }
+
+  Future<Set<String>> _autoResolveEquivalentHabitConflicts({
+    required List<HabitGoal> goals,
+    required List<HabitGoalRuleRevision> rules,
+    required Map<String, Map<String, dynamic>> snapshots,
+  }) async {
+    final goalsById = {for (final goal in goals) goal.uuid: goal};
+    final rulesById = {for (final rule in rules) rule.uuid: rule};
+    final candidates = <String, ({String table, String uuid})>{};
+
+    for (final entry in snapshots.entries) {
+      final separator = entry.key.indexOf(':');
+      if (separator <= 0) continue;
+      final table = entry.key.substring(0, separator);
+      final uuid = entry.key.substring(separator + 1);
+      final localJson = table == 'habit_goals'
+          ? goalsById[uuid]?.toJson()
+          : table == 'habit_goal_rule_revisions'
+              ? rulesById[uuid]?.toJson()
+              : null;
+      if (localJson == null ||
+          !HabitSyncConflictService.hasSameBusinessContent(
+            localJson,
+            entry.value,
+          )) {
+        continue;
+      }
+      candidates[entry.key] = (table: table, uuid: uuid);
+    }
+
+    if (candidates.isEmpty) return <String>{};
+
+    final results = await Future.wait(candidates.values.map((candidate) async {
+      final localJson = candidate.table == 'habit_goals'
+          ? goalsById[candidate.uuid]?.toJson()
+          : rulesById[candidate.uuid]?.toJson();
+      if (localJson == null) {
+        return (
+          candidate: candidate,
+          resolved: false,
+          resolvedData: null as Map<String, dynamic>?,
+        );
+      }
+
+      try {
+        final result = await ApiService.resolveConflict(
+          uuid: candidate.uuid,
+          table: candidate.table,
+          resolution: 'accept_server',
+        );
+        if (result['success'] == true) {
+          return (
+            candidate: candidate,
+            resolved: true,
+            resolvedData: null as Map<String, dynamic>?,
+          );
+        }
+        debugPrint(
+            '⚠️ [同步修复] 服务端清理习惯冲突失败 ${candidate.uuid}: ${result['error'] ?? '未知错误'}');
+      } catch (error) {
+        debugPrint('⚠️ [同步修复] 服务端清理习惯冲突异常 ${candidate.uuid}: $error');
+      }
+
+      // 兼容旧服务端或解除接口暂时不可用的情况：本地先清理并排队一条
+      // 高版本的干净数据，下一次普通同步仍可完成服务端收敛。
+      try {
+        final snapshot = snapshots['${candidate.table}:${candidate.uuid}'];
+        final serverVersion =
+            int.tryParse(snapshot?['version']?.toString() ?? '') ?? 0;
+        final currentVersion =
+            int.tryParse(localJson['version']?.toString() ?? '') ?? 1;
+        final resolvedData = Map<String, dynamic>.from(localJson)
+          ..['version'] = (serverVersion > currentVersion
+                  ? serverVersion
+                  : currentVersion) +
+              1
+          ..['updated_at'] = DateTime.now().millisecondsSinceEpoch
+          ..['has_conflict'] = 0
+          ..remove('conflict_data')
+          ..remove('serverVersionData');
+        await StorageService.resolveConflictLocally(
+          uuid: candidate.uuid,
+          table: candidate.table,
+          resolvedData: resolvedData,
+          createOplog: true,
+          touchUpdatedAt: false,
+        );
+        final fallback = await ApiService.resolveConflict(
+          uuid: candidate.uuid,
+          table: candidate.table,
+          resolution: 'keep_local',
+          bumpedVersion: resolvedData['version'] as int,
+          data: resolvedData,
+        );
+        if (fallback['success'] != true) {
+          debugPrint(
+              'ℹ️ [同步修复] 已清除本地习惯冲突并排队重试 ${candidate.uuid}: ${fallback['error'] ?? '等待下次同步'}');
+        }
+        return (
+          candidate: candidate,
+          resolved: true,
+          resolvedData: resolvedData,
+        );
+      } catch (error) {
+        debugPrint('⚠️ [同步修复] 本地排队清理习惯冲突失败 ${candidate.uuid}: $error');
+        return (
+          candidate: candidate,
+          resolved: false,
+          resolvedData: null as Map<String, dynamic>?,
+        );
+      }
+    }));
+
+    final resolvedIds = <String>{};
+    for (final result in results) {
+      if (!result.resolved) continue;
+      if (result.resolvedData != null) {
+        if (result.candidate.table == 'habit_goals') {
+          final index = goals.indexWhere(
+            (goal) => goal.uuid == result.candidate.uuid,
+          );
+          if (index >= 0) {
+            goals[index] = HabitGoal.fromJson(result.resolvedData!);
+          }
+        } else {
+          final index = rules.indexWhere(
+            (rule) => rule.uuid == result.candidate.uuid,
+          );
+          if (index >= 0) {
+            rules[index] = HabitGoalRuleRevision.fromJson(result.resolvedData!);
+          }
+        }
+      } else {
+        if (result.candidate.table == 'habit_goals') {
+          final goal = goalsById[result.candidate.uuid];
+          goal?.hasConflict = false;
+          goal?.conflictData = null;
+        } else {
+          final rule = rulesById[result.candidate.uuid];
+          rule?.hasConflict = false;
+          rule?.conflictData = null;
+        }
+      }
+      resolvedIds.add(result.candidate.uuid);
+    }
+    return resolvedIds;
   }
 }

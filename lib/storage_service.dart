@@ -25,6 +25,7 @@ import 'services/storage/user_session_storage.dart';
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
+import 'features/habits/services/habit_sync_conflict_service.dart';
 
 part 'storage_service_fixed.dart';
 part 'storage_service_core.dart';

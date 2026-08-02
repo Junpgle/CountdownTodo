@@ -16,6 +16,9 @@ import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
+import '../services/storage/habit_storage.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_goal_rule.dart';
 import '../utils/page_transitions.dart';
 
 String? normalizeInviteCode(String? code) {
@@ -370,9 +373,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         StorageService.getTodos(widget.username, includeDeleted: true),
         StorageService.getTodoGroups(widget.username, includeDeleted: true),
         StorageService.getCountdowns(widget.username, includeDeleted: true),
+        HabitStorage.getHabitGoals(includeDeleted: true),
+        HabitStorage.getRuleRevisions(includeDeleted: true),
       ]);
 
-      final allItems = results.expand((x) => x).toList();
+      final allItems = results.take(3).expand((x) => x).toList();
+      final habitGoals = results[3] as List<HabitGoal>;
+      final habitRules = results[4] as List<HabitGoalRuleRevision>;
       final conflictCounts = <String, int>{};
       int total = 0;
 
@@ -418,6 +425,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           }
         }
       }
+
+      // 冲突中心内部还会展示习惯目标和规则，入口角标必须使用同一口径。
+      total += habitGoals
+          .where((goal) => !goal.isDeleted && goal.hasConflict)
+          .length;
+      total += habitRules
+          .where((rule) => !rule.isDeleted && rule.hasConflict)
+          .length;
 
       if (!mounted) return;
       setState(() {
