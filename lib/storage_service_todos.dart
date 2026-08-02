@@ -1,6 +1,81 @@
 part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+int? _parseNullableIntForIsolate(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw.toString());
+}
+
+List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
+  return maps
+      .map((m) => TodoItem(
+            id: m['uuid'],
+            title: m['content'] ?? '',
+            remark: m['remark'],
+            isDone: m['is_completed'] == 1,
+            isDeleted: m['is_deleted'] == 1,
+            version: m['version'] ?? 1,
+            updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
+            createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
+            createdDate: m['created_date'] != null
+                ? int.tryParse(m['created_date'].toString())
+                : null,
+            dueDate: (m['due_date'] != null &&
+                    m['due_date'].toString() != '0' &&
+                    m['due_date'].toString() != 'null' &&
+                    m['due_date'].toString().isNotEmpty)
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    int.tryParse(m['due_date'].toString()) ?? 0)
+                : null,
+            teamUuid: m['team_uuid'],
+            teamName: m['team_name'],
+            creatorId: m['creator_id'],
+            creatorName: m['creator_name'],
+            groupId: m['group_id'],
+            collabType: m['collab_type'] ?? 0,
+            recurrence: RecurrenceType.values[
+                (_parseNullableIntForIsolate(m['recurrence']) ?? 0)
+                    .clamp(0, RecurrenceType.values.length - 1)],
+            recurrenceSeriesId: m['recurrence_series_id']?.toString(),
+            customIntervalDays:
+                _parseNullableIntForIsolate(m['custom_interval_days']),
+            recurrenceEndDate: (m['recurrence_end_date'] != null &&
+                    m['recurrence_end_date'].toString() != '0')
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
+                : null,
+            reminderMinutes: (m['reminder_minutes'] != null &&
+                    m['reminder_minutes'].toString() != '-1')
+                ? int.tryParse(m['reminder_minutes'].toString())
+                : null,
+            imagePath: m['image_path']?.toString(),
+            originalText: m['original_text']?.toString(),
+            isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
+            hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
+            serverVersionData: m['conflict_data'] != null
+                ? (m['conflict_data'] is String
+                    ? Map<String, dynamic>.from(jsonDecode(m['conflict_data']))
+                    : Map<String, dynamic>.from(m['conflict_data']))
+                : null,
+          ))
+      .toList();
+}
+
+List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
+  return jsonList
+      .map((e) {
+        try {
+          return TodoItem.fromJson(jsonDecode(e));
+        } catch (_) {
+          return null;
+        }
+      })
+      .whereType<TodoItem>()
+      .toList();
+}
+
 mixin _StorageTodos on _StorageServiceBase {
   Future<void> saveTodos(String username, List<TodoItem> items,
       {bool sync = true,
@@ -1131,76 +1206,6 @@ mixin _StorageTodos on _StorageServiceBase {
     debugPrint(
         "📦 getTodos(Prefs Fallback) 完成: count=${result.length}, includeDeleted=$includeDeleted, limit=$limit, cost=${DateTime.now().difference(startedAt).inMilliseconds}ms");
     return result;
-  }
-
-  List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
-    return maps
-        .map((m) => TodoItem(
-              id: m['uuid'],
-              title: m['content'] ?? '',
-              remark: m['remark'],
-              isDone: m['is_completed'] == 1,
-              isDeleted: m['is_deleted'] == 1,
-              version: m['version'] ?? 1,
-              updatedAt:
-                  m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
-              createdAt:
-                  m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-              createdDate: m['created_date'] != null
-                  ? int.tryParse(m['created_date'].toString())
-                  : null,
-              dueDate: (m['due_date'] != null &&
-                      m['due_date'].toString() != '0' &&
-                      m['due_date'].toString() != 'null' &&
-                      m['due_date'].toString().isNotEmpty)
-                  ? DateTime.fromMillisecondsSinceEpoch(
-                      int.tryParse(m['due_date'].toString()) ?? 0)
-                  : null,
-              teamUuid: m['team_uuid'],
-              teamName: m['team_name'],
-              creatorId: m['creator_id'],
-              creatorName: m['creator_name'],
-              groupId: m['group_id'],
-              collabType: m['collab_type'] ?? 0,
-              recurrence: RecurrenceType.values[
-                  (_parseNullableInt(m['recurrence']) ?? 0)
-                      .clamp(0, RecurrenceType.values.length - 1)],
-              recurrenceSeriesId: m['recurrence_series_id']?.toString(),
-              customIntervalDays: _parseNullableInt(m['custom_interval_days']),
-              recurrenceEndDate: (m['recurrence_end_date'] != null &&
-                      m['recurrence_end_date'].toString() != '0')
-                  ? DateTime.fromMillisecondsSinceEpoch(
-                      int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
-                  : null,
-              reminderMinutes: (m['reminder_minutes'] != null &&
-                      m['reminder_minutes'].toString() != '-1')
-                  ? int.tryParse(m['reminder_minutes'].toString())
-                  : null,
-              imagePath: m['image_path']?.toString(),
-              originalText: m['original_text']?.toString(),
-              isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
-              hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
-              serverVersionData: m['conflict_data'] != null
-                  ? (m['conflict_data'] is String
-                      ? Map<String, dynamic>.from(
-                          jsonDecode(m['conflict_data']))
-                      : Map<String, dynamic>.from(m['conflict_data']))
-                  : null,
-            ))
-        .toList();
-  }
-
-  List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList) {
-    return jsonList
-        .map((e) {
-          try {
-            return TodoItem.fromJson(jsonDecode(e));
-          } catch (_) {
-            return null;
-          }
-        })
-        .whereType<TodoItem>()
-        .toList();
   }
 
   Future<void> clearTeamItems(String teamUuid) async {

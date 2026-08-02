@@ -1,6 +1,11 @@
 part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
+List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
+    List<Map<String, dynamic>> maps) {
+  return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
+}
+
 mixin _StorageFixed on _StorageServiceBase {
   bool isRecentlyResolved(String uuid) {
     if (!recentlyResolvedUuids.contains(uuid)) return false;
@@ -279,11 +284,6 @@ mixin _StorageFixed on _StorageServiceBase {
       debugPrint("⚠️ PlanBlocks SQL 引擎异常: $e");
     }
     return [];
-  }
-
-  List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
-      List<Map<String, dynamic>> maps) {
-    return maps.map((m) => TodoPlanBlock.fromJson(m)).toList();
   }
 
   Future<void> deletePlanBlockGlobally(

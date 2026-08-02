@@ -226,8 +226,6 @@ abstract class _StorageServiceBase {
       {bool sync = true, bool isSyncSource = false});
   Future<List<TodoPlanBlock>> getPlanBlocks(String username,
       {bool includeDeleted = false});
-  List<TodoPlanBlock> _parsePlanBlockItemsIsolate(
-      List<Map<String, dynamic>> maps);
   Future<void> deletePlanBlockGlobally(String username, String idToDelete);
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
       String username, String todoId);
@@ -320,8 +318,6 @@ abstract class _StorageServiceBase {
       {bool includeDeleted = false, int? limit});
   Future<List<TodoItem>> _getTodosInternal(String username,
       {bool includeDeleted = false, int? limit});
-  List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps);
-  List<TodoItem> _parseTodoJsonItemsIsolate(List<String> jsonList);
   Future<void> clearTeamItems(String teamUuid);
   Future<List<TodoItem>> _handleRecurrenceLogic(
       String username, List<TodoItem> todos);
