@@ -18,4 +18,7 @@
     <color name="focus_tag_text">#10B981</color>
     <color name="widget_recurrence_completed">#16A34A</color>
     <color name="widget_recurrence_overdue">#DC2626</color>
+    <color name="widget_progress_bg">#22111827</color>
+    <color name="widget_accent">#3B82F6</color>
+    <color name="widget_success">#16A34A</color>
 </resources>

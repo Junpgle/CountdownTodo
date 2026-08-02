@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "5.5.27",
+  "version_name": "5.6.5",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 5.5.27",
-    "description": "v5.5\n【修复】循环待办在同步时被异常拆分的问题\n【重构】重构一些代码\n【优化】个人总结界面针对循环待办（习惯）做优化\n【新增】支持查看当前数据库版本\n【重构】重构待办语义\n【优化】增加待办界面\n【优化】macOS灵动岛闲置状态显示内容\n【修复】循环待办同步相互覆盖的问题\n【新增】Mac、Android桌面小组件新增“循环待办”\n【新增】支持本地 MCP 待办服务\n【优化】AI适配待办与日程语义",
+    "title": "版本更新 5.6.5",
+    "description": "【优化】完善习惯归档入口与日历历史\n【修复】完善习惯记录编辑与详情统计\n【修复】修复 SQL isolate 解析异常\n【新增】macOS 桌面今日习惯小组件支持\n【新增】Android 桌面今日习惯小组件支持\n【新增】习惯打卡历史、快捷打卡与业务逻辑优化\n【新增】关于页面增加 “获取尝鲜版” 快捷入口，跳转 GitHub Release\n【新增】GitHub Actions 自动构建 Debug APK，并按版本号发布到 Dev Release\n【优化】统一各平台专属设置页面的 UI 风格\n【修复】在桌面端的系统与外观页面补充获取尝鲜版入口\n【修复】修复 Android 今日习惯小组件进度文本显示为 Closure 乱码的问题\n【修复】修复在 GitHub Actions CI 环境下缺少密钥文件导致 Debug 编译失败的问题\n【配置】更新版本及构建信息\n【新增】习惯中心\n【新增】已有循环待办加入习惯追踪\n【新增】习惯模块 - 习惯中心 UI 与首页接入\n【新增】习惯模块 - 业务层与单元测试\n【新增】习惯模块 - 模型与数据层\n【新增】习惯模块 - 云同步客户端接入\n【优化】拆分巨量单文件代码\n【优化】侧边栏图标大小\n【优化】拆分存储服务、聊天页与课表页\n【优化】拆分待办区与编辑页\n【修复】习惯卡片浅色主题按钮与背景适配\n【修复】习惯模块 - 审计修复与边界收敛\n【修复】在桌面端的系统与外观页面补充获取尝鲜版入口\n【修正】修整一些代码的格式\n【优化】习惯板块的优化\n【修复】习惯幽灵冲突的问题",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -38,6 +38,24 @@
   },
   "changelog_history": [
     {
+      "version_name": "5.6.5",
+      "date": "2026-08-02",
+      "items": [
+        "【新增】1. 全新【习惯中心】模块，支持将现有循环待办转为习惯追踪",
+        "【新增】2. macOS、Android 新增「今日习惯」桌面小组件",
+        "【新增】3. 习惯快捷打卡、打卡历史功能上线",
+        "【新增】4. 设置页面新增尝鲜版下载快捷入口",
+        "【优化】1. 重构拆分大量代码文件，提升项目可维护性",
+        "【优化】2. 统一多平台设置界面UI风格，调整侧边栏图标尺寸",
+        "【优化】3. 完善习惯归档入口、历史日历视图",
+        "【优化】4. 优化习惯相关交互与展示效果",
+        "【修复】1. 修复习惯数据幽灵冲突问题",
+        "【修复】2. 修复习惯记录编辑、统计详情异常",
+        "【修复】3. 修复浅色主题下习惯卡片按钮显示适配问题",
+        "【修复】4. 修复Android小组件进度文本乱码问题",
+        "【修复】5. 修复底层SQL解析异常"
+      ]
+    },{
       "version_name": "5.5.27",
       "date": "2026-07-31",
       "items": [

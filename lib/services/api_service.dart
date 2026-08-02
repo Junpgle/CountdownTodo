@@ -284,6 +284,10 @@ class ApiService {
     bool fixedSchedulesFullSync = false,
     List<Map<String, dynamic>> pomodoroChanges = const [],
     List<Map<String, dynamic>> tagChanges = const [],
+    List<Map<String, dynamic>> habitGoalsChanges = const [],
+    List<Map<String, dynamic>> habitRuleChanges = const [],
+    List<Map<String, dynamic>> habitCheckInChanges = const [],
+    bool habitFullSync = false,
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -299,6 +303,10 @@ class ApiService {
         'fixed_schedules_full_sync': fixedSchedulesFullSync,
         'pomodoro_records_changes': pomodoroChanges,
         'pomodoro_tags_changes': tagChanges,
+        'habit_goals_changes': habitGoalsChanges,
+        'habit_goal_rules_changes': habitRuleChanges,
+        'habit_checkins_changes': habitCheckInChanges,
+        'habit_full_sync': habitFullSync,
         'force_full_sync': forceFullSync,
       };
 
@@ -330,6 +338,9 @@ class ApiService {
           'server_tags': data['server_pomodoro_tags'] ?? [],
           'server_plan_blocks': data['server_plan_blocks'] ?? [],
           'server_fixed_schedules': data['server_fixed_schedules'] ?? [],
+          'server_habit_goals': data['server_habit_goals'] ?? [],
+          'server_habit_goal_rules': data['server_habit_goal_rules'] ?? [],
+          'server_habit_checkins': data['server_habit_checkins'] ?? [],
           'sync_capabilities': data['sync_capabilities'],
           'joined_team_uuids': data['joined_team_uuids'],
           'independent_completions':

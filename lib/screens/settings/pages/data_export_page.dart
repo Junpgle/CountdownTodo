@@ -269,8 +269,8 @@ class _DataExportPageState extends State<DataExportPage> {
                 children: [
                   RadioListTile<bool>(
                     title: Text(AppPlatform.isWeb ? '浏览器下载' : '保存到文件'),
-                    subtitle: Text(
-                        AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
+                    subtitle:
+                        Text(AppPlatform.isWeb ? '下载 JSON 备份文件' : '保存到本地文档目录'),
                     value: true,
                     contentPadding: EdgeInsets.zero,
                   ),

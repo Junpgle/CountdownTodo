@@ -311,6 +311,16 @@ class _AboutSectionState extends State<AboutSection> {
         ),
         const AppSettingsDivider(),
         ListTile(
+          leading: Icon(Icons.rocket_launch, color: colorScheme.primary),
+          title: const Text('获取尝鲜版'),
+          subtitle: const Text('前往 GitHub 下载最新开发版 (Dev)'),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () {
+            _launchURL('https://github.com/Junpgle/CountdownTodo/releases');
+          },
+        ),
+        const AppSettingsDivider(),
+        ListTile(
           leading: Icon(Icons.description, color: colorScheme.secondary),
           title: const Text('更新日志'),
           trailing: const Icon(Icons.chevron_right),

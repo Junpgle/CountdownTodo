@@ -1,0 +1,72 @@
+name: Build Debug
+
+on:
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch:
+
+jobs:
+  build-android-debug:
+    name: Build Android Debug APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要拉取历史记录以便对比上一个版本的代码
+
+      - name: Check if version changed
+        id: check_version
+        if: github.event_name == 'push'
+        run: |
+          # 获取之前的版本号和当前的版本号
+          OLD_VERSION=$(git show ${{ github.event.before }}:pubspec.yaml 2>/dev/null | grep '^version:' | awk '{print $2}' || echo "none")
+          NEW_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' || echo "none")
+          
+          if [ "$OLD_VERSION" != "$NEW_VERSION" ] && [ "$NEW_VERSION" != "none" ]; then
+            echo "Version changed from $OLD_VERSION to $NEW_VERSION"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version did not change (or it's not a push event). Current: $NEW_VERSION"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Java
+        if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: flutter pub get
+
+      - name: Build Android APK (Debug)
+        if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: flutter build apk --debug
+
+      - name: Publish to Dev Release
+        if: steps.check_version.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: Dev
+          name: Development Build
+          body: "跟随代码更新发布，不保证稳定，可尝鲜"
+          prerelease: true
+          files: build/app/outputs/flutter-apk/app-debug.apk

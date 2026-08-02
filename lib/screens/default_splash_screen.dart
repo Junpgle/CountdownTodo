@@ -47,8 +47,9 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isWide = size.width > 600;
-    final assetName =
-        isWide ? 'assets/splash/default_pad.webp' : 'assets/splash/default.webp';
+    final assetName = isWide
+        ? 'assets/splash/default_pad.webp'
+        : 'assets/splash/default.webp';
 
     return Scaffold(
       body: SizedBox(

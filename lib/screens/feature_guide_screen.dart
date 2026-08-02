@@ -18,10 +18,11 @@ import '../utils/page_transitions.dart';
 import 'course_screens.dart';
 import 'personal_timeline_screen.dart';
 import '../widgets/global_search_overlay.dart';
-import 'home_settings_screen.dart';
+import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../models.dart';
+import '../features/habits/screens/habit_center_screen.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -81,6 +82,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (AppPlatform.isWeb) {
       return [
         _RecentFeature(
+          Icons.track_changes_rounded,
+          scheme.tertiary,
+          '习惯中心',
+          '打卡·历史·统计·归档·同步',
+          destinationBuilder: () =>
+              HabitCenterScreen(username: widget.loggedInUser ?? ''),
+        ),
+        _RecentFeature(
           Icons.install_desktop_rounded,
           scheme.primary,
           'PWA 网页应用',
@@ -114,19 +123,44 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
 
     return [
       _RecentFeature(
-          Icons.format_paint_rounded, Colors.indigo, '全局动态主题色彩', '设置->偏好设置',
-          destinationBuilder: () =>
-              const SettingsPage(initialTarget: 'theme_color')),
+        Icons.track_changes_rounded,
+        scheme.tertiary,
+        '习惯中心',
+        '打卡·历史·统计·归档·同步',
+        destinationBuilder: () =>
+            HabitCenterScreen(username: widget.loggedInUser ?? ''),
+      ),
       _RecentFeature(
-          Icons.view_week_rounded, scheme.primary, '周视图午休折叠', '课程->周视图',
-          destinationBuilder: () =>
-              WeeklyCourseScreen(username: widget.loggedInUser ?? '')),
+        Icons.view_week_rounded,
+        scheme.primary,
+        '周视图午休折叠',
+        '课程->周视图',
+        destinationBuilder: () =>
+            WeeklyCourseScreen(username: widget.loggedInUser ?? ''),
+      ),
       _RecentFeature(
-          Icons.timeline_rounded, Colors.purple, '个人时间轴报表', '专注->个人时间轴',
-          destinationBuilder: () =>
-              PersonalTimelineScreen(username: widget.loggedInUser ?? '')),
-      _RecentFeature(Icons.search_rounded, Colors.teal, '全局搜索', '首页->右上角搜索',
-          destinationBuilder: () => const GlobalSearchOverlay()),
+        Icons.format_paint_rounded,
+        Colors.indigo,
+        '全局动态主题色彩',
+        '设置->偏好设置',
+        destinationBuilder: () =>
+            const PreferenceSettingsPage(initialTarget: 'theme_color'),
+      ),
+      _RecentFeature(
+        Icons.timeline_rounded,
+        Colors.purple,
+        '个人时间轴报表',
+        '专注->个人时间轴',
+        destinationBuilder: () =>
+            PersonalTimelineScreen(username: widget.loggedInUser ?? ''),
+      ),
+      _RecentFeature(
+        Icons.search_rounded,
+        Colors.teal,
+        '全局搜索',
+        '首页->右上角搜索',
+        destinationBuilder: () => const GlobalSearchOverlay(),
+      ),
     ];
   }
 
@@ -347,8 +381,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(StorageService.keySemesterStart,
           _cloudSemesterStart!.toIso8601String());
-      await prefs.setString(StorageService.keySemesterEnd,
-          _cloudSemesterEnd!.toIso8601String());
+      await prefs.setString(
+          StorageService.keySemesterEnd, _cloudSemesterEnd!.toIso8601String());
       if (mounted) {
         setState(() {
           _semesterStart = _cloudSemesterStart;
@@ -1017,14 +1051,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   color: scheme.onSurface.withValues(alpha: 0.45))),
         ]),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            for (int i = 0; i < _recentFeatures.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(
-                  child: _buildRecentFeatureCard(_recentFeatures[i], scheme)),
-            ],
-          ],
+        Column(
+          children: _recentFeatures
+              .map((feature) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildRecentFeatureCard(feature, scheme),
+                  ))
+              .toList(),
         ),
       ],
     );
@@ -1036,7 +1069,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       onTap: () {
         if (canNavigate) {
           // 更新后查看：直接跳转
-          Navigator.of(context).push(
+          Navigator.of(context, rootNavigator: true).push(
             PageTransitions.material(
                 builder: (_) => feature.destinationBuilder!()),
           );
@@ -1052,35 +1085,61 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: feature.color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: feature.color.withValues(alpha: 0.2)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Icon(feature.icon, size: 28, color: feature.color),
-            const SizedBox(height: 8),
-            Text(feature.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface.withValues(alpha: 0.85))),
-            const SizedBox(height: 2),
-            Text(feature.subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 10,
-                    color: scheme.onSurface.withValues(alpha: 0.45))),
-            const SizedBox(height: 8),
-            Text('立即体验',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: feature.color)),
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: feature.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(feature.icon, size: 25, color: feature.color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    feature.title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    feature.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '立即体验',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: feature.color,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, size: 20, color: feature.color),
           ],
         ),
       ),

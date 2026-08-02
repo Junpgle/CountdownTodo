@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -39,6 +40,13 @@ class SystemSection extends StatelessWidget {
       itemKeys: itemKeys,
       child: child,
     );
+  }
+
+  void _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -128,6 +136,20 @@ class SystemSection extends StatelessWidget {
                     ),
             ),
             onTap: isCheckingUpdate ? null : onCheckUpdates,
+          ),
+        ),
+        const AppSettingsDivider(),
+        _buildTile(
+          context: context,
+          targetId: 'get_beta',
+          child: ListTile(
+            leading: Icon(Icons.rocket_launch, color: colorScheme.primary),
+            title: const Text('获取尝鲜版'),
+            subtitle: const Text('前往 GitHub 下载最新开发版，体验最新功能'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () {
+              _launchURL('https://github.com/Junpgle/CountdownTodo/releases');
+            },
           ),
         ),
       ],

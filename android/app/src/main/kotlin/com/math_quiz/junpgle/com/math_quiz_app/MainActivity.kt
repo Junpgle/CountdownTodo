@@ -295,6 +295,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         intent.removeExtra("plan_block_notif_id")
         intent.removeExtra("plan_block_id")
         intent.removeExtra("todo_id")
+        intent.removeExtra("open_habit_center")
+        intent.removeExtra("habit_notif_id")
     }
 
     private fun dispatchDeepLink(data: String) {
@@ -387,6 +389,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private var pendingShortcut: String? = null
     private var pendingOpenPomodoro: Boolean = false
     private var pendingOpenTodoList: Boolean = false
+    private var pendingHabitCenter: Boolean = false
     private var dartReady: Boolean = false
 
     // savedInstanceState 持久化 key
@@ -437,6 +440,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         handleAnalysisImageFromIntent(intent)
         handleOriginalTextFromIntent(intent)
         handlePlanBlockFromIntent(intent)
+        handleHabitCenterFromIntent(intent)
+    }
+
+    /// 习惯目标提醒 (notifId 42001-49999)：点击打开习惯中心
+    private fun handleHabitCenterFromIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra("open_habit_center", false) != true) return
+        Log.d(TAG, "🎯 handleHabitCenterFromIntent")
+        intent.removeExtra("open_habit_center")
+        intent.removeExtra("habit_notif_id")
+
+        if (dartReady) {
+            methodChannel?.invokeMethod("openHabitCenter", null)
+            Log.d(TAG, "🎯 Invoked openHabitCenter to Flutter")
+        } else {
+            pendingHabitCenter = true
+            Log.d(TAG, "🎯 Saved pending openHabitCenter")
+        }
     }
 
     private fun handlePomodoroResumeFromIntent(intent: Intent?) {
@@ -478,6 +498,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "📋 Flushing pending openTodoList")
             methodChannel?.invokeMethod("openTodoList", null)
             pendingOpenTodoList = false
+        }
+        if (pendingHabitCenter) {
+            Log.d(TAG, "🎯 Flushing pending openHabitCenter")
+            methodChannel?.invokeMethod("openHabitCenter", null)
+            pendingHabitCenter = false
         }
         pendingPomodoroAction?.let { action ->
             Log.d(TAG, "🍅 Flushing pending pomodoroAction: $action")

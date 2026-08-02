@@ -41,6 +41,27 @@ void main() {
     );
   });
 
+  test('habit-only recurring series is removed from the todo section', () {
+    final hidden = TodoItem(
+      title: '习惯待办',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'habit-only-series',
+    );
+    final visible = TodoItem(
+      title: '普通待办',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'normal-series',
+    );
+
+    final filtered =
+        TodoSectionWidgetState.filterHabitOnlyRecurringTodosForTest(
+      [hidden, visible],
+      {'habit-only-series'},
+    );
+
+    expect(filtered.map((todo) => todo.id), [visible.id]);
+  });
+
   test('ended recurrence series uses its latest occurrence as aggregate card',
       () {
     final previous = TodoItem(

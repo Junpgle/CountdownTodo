@@ -14,6 +14,7 @@ class HomeDrawerMenu extends StatelessWidget {
   final VoidCallback onTimeline;
   final VoidCallback onScreenTime;
   final VoidCallback onPlanCenter;
+  final VoidCallback onHabits;
   final int teamPendingCount;
   final bool hasTeamConflictDot;
 
@@ -29,6 +30,7 @@ class HomeDrawerMenu extends StatelessWidget {
     required this.onTimeline,
     required this.onScreenTime,
     required this.onPlanCenter,
+    required this.onHabits,
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
   });
@@ -183,7 +185,7 @@ class HomeDrawerMenu extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
                   // Features Group
                   Expanded(
@@ -237,6 +239,15 @@ class HomeDrawerMenu extends StatelessWidget {
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
                               onPlanCenter();
+                            },
+                          ),
+                          _buildMenuItem(
+                            context,
+                            icon: Icons.repeat_rounded,
+                            title: '习惯中心',
+                            onTap: () {
+                              ZoomDrawer.of(context)?.close();
+                              onHabits();
                             },
                           ),
                         ],
@@ -346,7 +357,7 @@ class HomeDrawerMenu extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.symmetric(
-          vertical: isCompact ? 2.0 : 4.0, horizontal: 8.0),
+          vertical: isCompact ? 0.0 : 2.0, horizontal: 8.0),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -356,7 +367,7 @@ class HomeDrawerMenu extends StatelessWidget {
           highlightColor: colorScheme.primary.withValues(alpha: 0.05),
           child: Padding(
             padding: EdgeInsets.symmetric(
-                vertical: isCompact ? 10.0 : 12.0, horizontal: 12.0),
+                vertical: isCompact ? 8.0 : 10.0, horizontal: 12.0),
             child: Row(
               children: [
                 // Icon inside a rounded squircle

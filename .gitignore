@@ -118,6 +118,7 @@ todo.md
 !/test/services/todo_lww_service_test.dart
 !/test/services/database_schema_history_test.dart
 !/test/services/fixed_schedule_recurrence_service_test.dart
+!/test/services/habit_sync_conflict_service_test.dart
 !/test/models/
 /test/models/*
 !/test/models/todo_recurrence_series_test.dart
@@ -135,6 +136,15 @@ todo.md
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
+!/test/features/
+/test/features/*
+!/test/features/habits/
+/test/features/habits/*
+!/test/features/habits/habit_models_test.dart
+!/test/features/habits/habit_progress_calculator_test.dart
+!/test/features/habits/habit_rule_resolver_test.dart
+!/test/features/habits/habit_streak_service_test.dart
+!/test/features/habits/habit_repository_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md

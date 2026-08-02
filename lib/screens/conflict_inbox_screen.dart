@@ -11,6 +11,9 @@ import '../services/pomodoro_service.dart';
 import '../utils/page_transitions.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/models/habit_goal_rule.dart';
+import '../services/storage/habit_storage.dart';
 
 enum _ConflictFilter { all, time, other }
 
@@ -49,6 +52,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (item is TodoItem) return 'todo_${item.id}';
     if (item is TodoGroup) return 'group_${item.id}';
     if (item is CountdownItem) return 'countdown_${item.id}';
+    if (item is HabitGoal) return 'goal_${item.uuid}';
+    if (item is HabitGoalRuleRevision) return 'rule_${item.uuid}';
     return '';
   }
 
@@ -77,11 +82,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       StorageService.getTodos(widget.username, includeDeleted: true),
       StorageService.getTodoGroups(widget.username, includeDeleted: true),
       StorageService.getCountdowns(widget.username, includeDeleted: true),
+      HabitStorage.getHabitGoals(includeDeleted: true),
+      HabitStorage.getRuleRevisions(includeDeleted: true),
     ]);
 
     final todos = results[0] as List<TodoItem>;
     final groups = results[1] as List<TodoGroup>;
     final countdowns = results[2] as List<CountdownItem>;
+    final habitGoals = results[3] as List<HabitGoal>;
+    final habitRules = results[4] as List<HabitGoalRuleRevision>;
 
     final List<dynamic> items = [];
     items.addAll(todos.where((t) {
@@ -105,14 +114,28 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     }));
     items.addAll(groups.where((g) => !g.isDeleted && g.hasConflict));
     items.addAll(countdowns.where((c) => !c.isDeleted && c.hasConflict));
+    items.addAll(habitGoals.where((g) => !g.isDeleted && g.hasConflict));
+    items.addAll(habitRules.where((r) => !r.isDeleted && r.hasConflict));
 
     items.sort((a, b) {
       int timeA = (a is TodoItem)
           ? a.updatedAt
-          : (a is TodoGroup ? a.updatedAt : (a as CountdownItem).updatedAt);
+          : (a is TodoGroup)
+              ? a.updatedAt
+              : (a is CountdownItem)
+                  ? a.updatedAt
+                  : (a is HabitGoal)
+                      ? a.updatedAt
+                      : (a as HabitGoalRuleRevision).updatedAt;
       int timeB = (b is TodoItem)
           ? b.updatedAt
-          : (b is TodoGroup ? b.updatedAt : (b as CountdownItem).updatedAt);
+          : (b is TodoGroup)
+              ? b.updatedAt
+              : (b is CountdownItem)
+                  ? b.updatedAt
+                  : (b is HabitGoal)
+                      ? b.updatedAt
+                      : (b as HabitGoalRuleRevision).updatedAt;
       return timeB.compareTo(timeA);
     });
 
@@ -190,6 +213,18 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         _sameItem(item.conflictData!, itemId)) {
       return item.conflictData;
     }
+    if (item is HabitGoal &&
+        item.conflictData != null &&
+        item.conflictData!.isNotEmpty &&
+        _sameItem(item.conflictData!, itemId)) {
+      return item.conflictData;
+    }
+    if (item is HabitGoalRuleRevision &&
+        item.conflictData != null &&
+        item.conflictData!.isNotEmpty &&
+        _sameItem(item.conflictData!, itemId)) {
+      return item.conflictData;
+    }
 
     if (widget.syncConflicts == null) return null;
 
@@ -206,6 +241,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (item is TodoItem) return item.serverVersionData;
     if (item is TodoGroup) return item.conflictData;
     if (item is CountdownItem) return item.conflictData;
+    if (item is HabitGoal) return item.conflictData;
+    if (item is HabitGoalRuleRevision) return item.conflictData;
     return null;
   }
 
@@ -336,6 +373,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (item is TodoItem) return item.id;
     if (item is TodoGroup) return item.id;
     if (item is CountdownItem) return item.id;
+    if (item is HabitGoal) return item.uuid;
+    if (item is HabitGoalRuleRevision) return item.uuid;
     return null;
   }
 
@@ -348,6 +387,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (item is TodoItem) return 'todos';
     if (item is TodoGroup) return 'todo_groups';
     if (item is CountdownItem) return 'countdowns';
+    if (item is HabitGoal) return 'habit_goals';
+    if (item is HabitGoalRuleRevision) return 'habit_goal_rule_revisions';
     return '';
   }
 
@@ -355,6 +396,8 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     if (item is TodoItem) return item.toJson();
     if (item is TodoGroup) return item.toJson();
     if (item is CountdownItem) return item.toJson();
+    if (item is HabitGoal) return item.toJson();
+    if (item is HabitGoalRuleRevision) return item.toJson();
     return {};
   }
 
@@ -671,6 +714,22 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
             conflictWith: item.conflictData!,
           ),
         );
+      } else if (item is HabitGoal && item.conflictData != null) {
+        conflicts.add(
+          ConflictInfo(
+            type: 'habit_goals',
+            item: item.toJson(),
+            conflictWith: item.conflictData!,
+          ),
+        );
+      } else if (item is HabitGoalRuleRevision && item.conflictData != null) {
+        conflicts.add(
+          ConflictInfo(
+            type: 'habit_goal_rule_revisions',
+            item: item.toJson(),
+            conflictWith: item.conflictData!,
+          ),
+        );
       }
     }
     return conflicts;
@@ -903,6 +962,10 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       title = item.name;
     } else if (item is CountdownItem) {
       title = item.title;
+    } else if (item is HabitGoal) {
+      title = '习惯目标：${item.name}';
+    } else if (item is HabitGoalRuleRevision) {
+      title = '习惯规则（${_habitRuleLabel(item)}）';
     }
 
     final conflictColor = _conflictColor(item);
@@ -1033,6 +1096,15 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         ),
       ),
     );
+  }
+
+  String _habitRuleLabel(HabitGoalRuleRevision rule) {
+    final target = rule.targetValue;
+    final unit = rule.unit;
+    if (target > 0) {
+      return unit.isNotEmpty ? '$target $unit/次' : '$target/次';
+    }
+    return '规则 v${rule.version}';
   }
 
   Widget _buildMiniBadge(String text, Color bgColor, Color textColor) {
@@ -3374,6 +3446,8 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
     final version = data['version'] ?? '?';
     final isCompleted =
         data['is_completed'] == 1 || data['is_completed'] == true;
+    final targetValue = data['target_value'] ?? data['targetValue'];
+    final unit = data['unit']?.toString() ?? '';
 
     String? timeStr;
     final start = data['start_time'] ??
@@ -3439,6 +3513,9 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
           _buildFieldRow("标题", title),
           if (isDeleted) _buildFieldRow("状态", "已删除", valueColor: Colors.red),
           if (isCompleted) _buildFieldRow("完成", "是"),
+          if (targetValue != null)
+            _buildFieldRow(
+                "目标值", unit.isNotEmpty ? '$targetValue $unit' : '$targetValue'),
           if (timeStr != null) _buildFieldRow("时间", timeStr),
           if (data['remark'] != null && data['remark'].toString().isNotEmpty)
             _buildFieldRow("备注", data['remark'].toString()),
@@ -3546,6 +3623,90 @@ class _ConflictResolutionSheetState extends State<_ConflictResolutionSheet> {
       _ConflictFieldSpec(
         label: '课名',
         keys: const ['course_name', 'courseName'],
+      ),
+      _ConflictFieldSpec(
+        label: '图标',
+        keys: const ['icon'],
+      ),
+      _ConflictFieldSpec(
+        label: '来源类型',
+        keys: const ['source_type', 'sourceType'],
+      ),
+      _ConflictFieldSpec(
+        label: '来源列表',
+        keys: const ['source_ids', 'sourceIds'],
+      ),
+      _ConflictFieldSpec(
+        label: '显示模式',
+        keys: const ['display_mode', 'displayMode'],
+      ),
+      _ConflictFieldSpec(
+        label: '默认专注',
+        keys: const ['default_focus_minutes', 'defaultFocusMinutes'],
+      ),
+      _ConflictFieldSpec(
+        label: '排序',
+        keys: const ['sort_order', 'sortOrder'],
+      ),
+      _ConflictFieldSpec(
+        label: '归档',
+        keys: const ['is_archived', 'isArchived'],
+      ),
+      _ConflictFieldSpec(
+        label: '所属目标',
+        keys: const ['habit_uuid', 'habitUuid'],
+      ),
+      _ConflictFieldSpec(
+        label: '生效日期',
+        keys: const ['effective_from_date', 'effectiveFromDate'],
+      ),
+      _ConflictFieldSpec(
+        label: '结束日期',
+        keys: const ['effective_to_date', 'effectiveToDate'],
+      ),
+      _ConflictFieldSpec(
+        label: '周期类型',
+        keys: const ['period_type', 'periodType'],
+      ),
+      _ConflictFieldSpec(
+        label: '星期掩码',
+        keys: const ['weekdays_mask', 'weekdaysMask'],
+      ),
+      _ConflictFieldSpec(
+        label: '间隔天数',
+        keys: const ['custom_interval_days', 'customIntervalDays'],
+      ),
+      _ConflictFieldSpec(
+        label: '目标值',
+        keys: const ['target_value', 'targetValue'],
+      ),
+      _ConflictFieldSpec(
+        label: '单位',
+        keys: const ['unit'],
+      ),
+      _ConflictFieldSpec(
+        label: '目标时刻',
+        keys: const ['target_time_minute', 'targetTimeMinute'],
+      ),
+      _ConflictFieldSpec(
+        label: '比较方式',
+        keys: const ['time_comparison', 'timeComparison'],
+      ),
+      _ConflictFieldSpec(
+        label: '容差分钟',
+        keys: const ['time_tolerance_minutes', 'timeToleranceMinutes'],
+      ),
+      _ConflictFieldSpec(
+        label: '日界分钟',
+        keys: const ['day_boundary_minute', 'dayBoundaryMinute'],
+      ),
+      _ConflictFieldSpec(
+        label: '快捷值',
+        keys: const ['quick_values_json', 'quickValuesJson'],
+      ),
+      _ConflictFieldSpec(
+        label: '提醒策略',
+        keys: const ['reminder_policy_json', 'reminderPolicyJson'],
       ),
     ];
 

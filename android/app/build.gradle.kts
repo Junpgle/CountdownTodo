@@ -79,8 +79,12 @@ android {
             // 🚀 测试版包名增加 .debug 后缀，实现生产/测试环境共存
             applicationIdSuffix = ".debug"
 
-            // 调试模式引用正式签名
-            signingConfig = signingConfigs.getByName("release")
+            // 调试模式引用正式签名 (仅当配置了正式签名时)
+            if (keystoreProperties.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
 
             // 调试模式下关闭混淆和资源压缩以加快构建并解决冲突
             isMinifyEnabled = false
