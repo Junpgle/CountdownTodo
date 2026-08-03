@@ -33,6 +33,9 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             ACTION_RESCHEDULE -> {
+                // WorkManager 会在重启后恢复任务；这里再次确保更新检查任务存在，
+                // 也覆盖应用更新后系统重新初始化调度的场景。
+                AppUpdateScheduler.scheduleDailyCheck(context)
                 // 开机/更新后：重新注册所有 Alarm（由 ReminderService 负责读取本地数据并调度）
                 val svcIntent = Intent(context, ReminderService::class.java).apply {
                     action = ReminderService.ACTION_RESCHEDULE
@@ -42,4 +45,3 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
     }
 }
-
