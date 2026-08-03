@@ -2031,19 +2031,16 @@ mixin _StorageTodos on _StorageServiceBase {
       // initially saw only a subset of the duplicates.
       occurrences.sort(_compareRecurrenceOccurrenceIdentity);
       final canonical = occurrences.first;
-      liveOccurrences.sort((a, b) {
-        final versionOrder = b.version.compareTo(a.version);
-        if (versionOrder != 0) return versionOrder;
-        final updatedAtOrder = b.updatedAt.compareTo(a.updatedAt);
-        if (updatedAtOrder != 0) return updatedAtOrder;
-        return a.id.compareTo(b.id);
-      });
+      // 复用普通待办的严格 LWW 顺序：updated_at 优先，只有时间相同才比较
+      // version。旧设备可能因为本地重复实例修复而拥有更高 version，但这
+      // 不代表它的完成状态比服务器上较新的实例更可信。
+      liveOccurrences.sort(_compareRecurrenceOccurrenceLwwDescending);
       final dataWinner = liveOccurrences.first;
       final completionWinner = dataWinner;
       final activeOccurrences = liveOccurrences
           .where((todo) => todo.recurrence != RecurrenceType.none)
           .toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        ..sort(_compareRecurrenceOccurrenceLwwDescending);
       final mergedRecurrence = activeOccurrences.isEmpty
           ? RecurrenceType.none
           : activeOccurrences.first.recurrence;
@@ -2067,13 +2064,10 @@ mixin _StorageTodos on _StorageServiceBase {
         canonicalChanged = true;
       }
       if (canonicalChanged) {
-        canonical.version = canonical.version < dataWinner.version
-            ? dataWinner.version
-            : canonical.version;
-        canonical.updatedAt = canonical.updatedAt < dataWinner.updatedAt
-            ? dataWinner.updatedAt
-            : canonical.updatedAt;
-        canonical.markAsChanged();
+        // 这是结构性去重，不是用户的新编辑。沿用获胜实例的 LWW 元数据，
+        // 避免把旧的未完成副本通过 markAsChanged() 伪装成当前新写入。
+        canonical.version = dataWinner.version;
+        canonical.updatedAt = dataWinner.updatedAt;
         _recurrenceDedupeTombstoneIds.remove(canonical.id);
         changedIds?.add(canonical.id);
         changed = true;
@@ -2094,6 +2088,17 @@ mixin _StorageTodos on _StorageServiceBase {
       }
     }
     return changed;
+  }
+
+  int _compareRecurrenceOccurrenceLwwDescending(TodoItem a, TodoItem b) {
+    final lwwOrder = TodoLwwService.compare(
+      incomingUpdatedAt: a.updatedAt,
+      incomingVersion: a.version,
+      currentUpdatedAt: b.updatedAt,
+      currentVersion: b.version,
+    );
+    if (lwwOrder != 0) return -lwwOrder;
+    return a.id.compareTo(b.id);
   }
 
   int _compareRecurrenceOccurrenceIdentity(TodoItem a, TodoItem b) {

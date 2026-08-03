@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
@@ -55,9 +54,6 @@ class HabitRemoteViewsFactory(
             return RemoteViews(context.packageName, R.layout.widget_item_habit)
         }
         val data = itemsData[position]
-        val isDarkMode =
-            (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                Configuration.UI_MODE_NIGHT_YES
         val primaryTextColor = context.getColor(R.color.widget_text_primary)
         val secondaryTextColor = context.getColor(R.color.widget_text_secondary)
         val successColor = context.getColor(R.color.widget_success)
@@ -114,10 +110,10 @@ class HabitRemoteViewsFactory(
             views.setOnClickPendingIntent(R.id.habit_met, pendingIntent)
         }
 
-        // 进度条：XML 默认主题色；达标时覆盖为绿色（RemoteViews 反射调用）
-        if (isMet) {
-            views.setInt(R.id.habit_progress_bar, "setProgressTint", successColor)
-        }
+        // 进度条使用 XML 中的主题色。不要通过 setInt 反射调用
+        // ProgressBar.setProgressTint：该方法并不存在，真实 API 是
+        // setProgressTintList(ColorStateList)，错误的 RemoteViews action 会在
+        // 桌面启动器渲染已达标条目时抛出异常，导致整个小部件显示“无法添加”。
         views.setInt(R.id.habit_progress_bar, "setProgress", data.getInt("pct", 0))
         return views
     }
