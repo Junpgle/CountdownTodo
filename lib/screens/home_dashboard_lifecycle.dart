@@ -116,6 +116,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       // 首次进入首页的交互按固定顺序串行，避免公告、操作指引和
       // 系统权限弹窗同时出现。
       unawaited(_runStartupPrompts());
+      unawaited(_checkClipboardShareAfterStartup());
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) _initScreenTime();
       });
@@ -306,6 +307,209 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     }
   }
 
+  Future<void> _checkClipboardShareAfterStartup() async {
+    try {
+      await _runStartupPrompts();
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (mounted) await _checkClipboardShare();
+    } catch (_) {
+      // 剪贴板识别不能阻断首页启动。
+    }
+  }
+
+  Future<void> _checkClipboardShareAfterResume() async {
+    try {
+      if (!_startupPromptsCompleted) await _runStartupPrompts();
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (mounted) await _checkClipboardShare();
+    } catch (_) {
+      // 剪贴板识别不能影响从后台恢复。
+    }
+  }
+
+  Future<void> _checkClipboardShare() async {
+    if (!mounted ||
+        _isCheckingClipboardShare ||
+        _isClipboardShareDialogVisible) {
+      return;
+    }
+    _isCheckingClipboardShare = true;
+
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim();
+      if (text == null || text.isEmpty) return;
+
+      final payload = ClipboardSharePayload.tryDecode(text);
+      if (payload == null) return;
+
+      final signature = ClipboardSharePayload.signature(text);
+      final prefs = await SharedPreferences.getInstance();
+      final handledKey =
+          'home_clipboard_share_handled_v1_${widget.username.trim()}';
+      if (prefs.getString(ClipboardSharePayload.locallyGeneratedSignatureKey) ==
+          signature) {
+        await prefs.setString(handledKey, signature);
+        return;
+      }
+      if (_lastClipboardShareSignature == signature ||
+          prefs.getString(handledKey) == signature) {
+        return;
+      }
+      _lastClipboardShareSignature = signature;
+      await prefs.setString(handledKey, signature);
+
+      // 已识别的邀请/挑战由应用消费，避免团队页或下一次恢复时重复弹出。
+      try {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      } catch (_) {}
+      if (!mounted) return;
+
+      _isClipboardShareDialogVisible = true;
+      try {
+        if (payload.kind == ClipboardShareKind.challenge) {
+          final draft = payload.challenge;
+          if (draft != null) await _showClipboardChallengeDialog(draft);
+        } else {
+          final inviteCode = payload.inviteCode;
+          if (inviteCode != null) {
+            await _showClipboardTeamInviteDialog(
+              inviteCode,
+              teamName: payload.teamName,
+            );
+          }
+        }
+      } finally {
+        _isClipboardShareDialogVisible = false;
+      }
+    } catch (_) {
+      // 平台可能限制后台读取剪贴板，静默忽略即可。
+    } finally {
+      _isCheckingClipboardShare = false;
+    }
+  }
+
+  Future<void> _showClipboardChallengeDialog(ChallengeDraft draft) async {
+    final shouldImport = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.auto_awesome_rounded, color: scheme.primary),
+          title: const Text('发现挑战分享'),
+          content: Text(
+            '检测到挑战「${draft.title}」的分享内容，共 ${draft.taskTitles.length} 项任务。是否导入并查看？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('暂不导入'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('导入挑战'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldImport != true || !mounted) return;
+
+    final editedDraft = await Navigator.of(context).push<ChallengeDraft>(
+      MaterialPageRoute(
+        builder: (_) => NewChallengeScreen(initialDraft: draft),
+      ),
+    );
+    if (editedDraft != null && mounted) {
+      await _startImportedChallenge(editedDraft);
+    }
+  }
+
+  Future<void> _startImportedChallenge(ChallengeDraft draft) async {
+    if (_isThirtyDayChallengeActive && mounted) {
+      final shouldReplace = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('开启导入的挑战？'),
+          content: Text(
+            '当前正在进行「$_thirtyDayChallengeTitle」。开始新挑战后，当前挑战会被替换。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('继续当前挑战'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('开启新挑战'),
+            ),
+          ],
+        ),
+      );
+      if (shouldReplace != true || !mounted) return;
+    }
+
+    try {
+      await ThirtyDayChallengeRepository.startNewChallenge(
+        title: draft.title,
+        taskTitles: draft.taskTitles,
+      );
+      await _loadThirtyDayChallengeStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已开启「${draft.title}」')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('挑战导入失败，请稍后再试')),
+      );
+    }
+  }
+
+  Future<void> _showClipboardTeamInviteDialog(
+    String inviteCode, {
+    String? teamName,
+  }) async {
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.groups_rounded),
+        title: const Text('发现团队邀请'),
+        content: Text(
+          teamName == null
+              ? '检测到一个团队邀请码，是否申请加入？'
+              : '检测到来自「$teamName」的团队邀请，是否申请加入？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('暂不加入'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('加入团队'),
+          ),
+        ],
+      ),
+    );
+    if (shouldJoin != true || !mounted) return;
+
+    final result = await ApiService.requestJoinTeam(inviteCode);
+    if (!mounted) return;
+    if (result['success'] == true) {
+      unawaited(_loadAllData(deferred: true));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('加入申请已提交，请等待管理员审核')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(result['error'] ?? result['message'] ?? '加入团队失败')),
+      );
+    }
+  }
+
   Future<void> _loadSemesterSettings() async {
     bool enabled = await StorageService.getSemesterEnabled();
     DateTime? start = await StorageService.getSemesterStart();
@@ -392,6 +596,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       }
       // 平板/手机从后台唤醒时，强制重连触发服务器推送最新跨端专注状态
       _syncService.resumeSync();
+      unawaited(_checkClipboardShareAfterResume());
       // 清理残留的一次性通知
       NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
       NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知

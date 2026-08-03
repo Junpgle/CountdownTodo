@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
+import '../services/challenge_share_codec.dart';
+import '../services/clipboard_share_detector.dart';
 import '../services/challenge_text_parser.dart';
 import 'cloud_challenge_picker_screen.dart';
 
@@ -49,10 +51,60 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
 
   void _refreshPreview() => setState(() {});
 
+  void _applyDraft(ChallengeDraft draft) {
+    _titleController.text = draft.title;
+    _tasksController.text = draft.taskTitles.join('\n');
+    _tasksController.selection = TextSelection.collapsed(
+      offset: _tasksController.text.length,
+    );
+  }
+
+  Future<void> _shareChallenge() async {
+    final title = _titleController.text.trim();
+    final tasks = _taskTitles;
+    if (title.isEmpty || tasks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写挑战名称和至少一项任务，再分享挑战')),
+      );
+      return;
+    }
+
+    try {
+      final sharedText = ChallengeShareCodec.encode(
+        ChallengeDraft(title: title, taskTitles: tasks),
+      );
+      await Clipboard.setData(
+        ClipboardData(text: sharedText),
+      );
+      await ClipboardSharePayload.markLocallyGenerated(sharedText);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已复制分享内容，朋友可在新建挑战页点击“识别剪贴板”导入'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('分享内容复制失败，请稍后再试')),
+      );
+    }
+  }
+
   Future<void> _pasteText() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
     if (text == null || text.trim().isEmpty || !mounted) return;
+
+    final sharedDraft = ChallengeShareCodec.tryDecode(text);
+    if (sharedDraft != null) {
+      _applyDraft(sharedDraft);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已识别并导入挑战「${sharedDraft.title}」')),
+      );
+      return;
+    }
+
     _tasksController.text = text;
     _tasksController.selection = TextSelection.collapsed(
       offset: _tasksController.text.length,
@@ -68,7 +120,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['txt', 'md', 'csv'],
+        allowedExtensions: ['txt', 'md', 'csv', 'json'],
         withData: true,
       );
       if (!mounted || result == null || result.files.isEmpty) return;
@@ -77,13 +129,22 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       if (bytes == null || bytes.isEmpty) {
         throw StateError('文件内容为空或当前平台无法读取文件');
       }
-      _tasksController.text = utf8.decode(bytes, allowMalformed: true);
-      _tasksController.selection = TextSelection.collapsed(
-        offset: _tasksController.text.length,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入 ${_taskTitles.length} 项任务')),
-      );
+      final text = utf8.decode(bytes, allowMalformed: true);
+      final sharedDraft = ChallengeShareCodec.tryDecode(text);
+      if (sharedDraft != null) {
+        _applyDraft(sharedDraft);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导入挑战「${sharedDraft.title}」')),
+        );
+      } else {
+        _tasksController.text = text;
+        _tasksController.selection = TextSelection.collapsed(
+          offset: _tasksController.text.length,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导入 ${_taskTitles.length} 项任务')),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,11 +162,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     final selected = result?.challenge;
     if (selected == null || !mounted) return;
 
-    _titleController.text = selected.title;
-    _tasksController.text = selected.tasks.join('\n');
-    _tasksController.selection = TextSelection.collapsed(
-      offset: _tasksController.text.length,
-    );
+    _applyDraft(selected.toDraft());
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已填入云端挑战「${selected.title}」')),
     );
@@ -135,6 +192,11 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
       appBar: AppBar(
         title: const Text('新建打卡挑战'),
         actions: [
+          IconButton(
+            tooltip: '分享挑战',
+            onPressed: _isImporting ? null : _shareChallenge,
+            icon: const Icon(Icons.ios_share_rounded),
+          ),
           TextButton(
             onPressed: _isImporting ? null : _createChallenge,
             child: const Text('开始挑战'),
@@ -216,7 +278,7 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                   OutlinedButton.icon(
                     onPressed: _isImporting ? null : _pasteText,
                     icon: const Icon(Icons.content_paste_rounded),
-                    label: const Text('从剪贴板粘贴'),
+                    label: const Text('识别剪贴板'),
                   ),
                   OutlinedButton.icon(
                     onPressed: _isImporting ? null : _importTextFile,
@@ -227,9 +289,21 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.upload_file_rounded),
-                    label: Text(_isImporting ? '导入中…' : '导入文本文件'),
+                    label: Text(_isImporting ? '导入中…' : '导入挑战文件'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _isImporting ? null : _shareChallenge,
+                    icon: const Icon(Icons.ios_share_rounded),
+                    label: const Text('分享挑战'),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '分享内容会自动识别标题和任务；普通文本仍会按行导入。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
               ),
               const SizedBox(height: 20),
               Card(

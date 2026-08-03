@@ -74,6 +74,8 @@ import '../features/habits/widgets/habit_today_section.dart';
 import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../features/thirty_day_challenge/models/thirty_day_challenge.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../features/thirty_day_challenge/screens/new_challenge_screen.dart';
+import '../features/thirty_day_challenge/services/clipboard_share_detector.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
@@ -310,6 +312,9 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   List<String> _randomWallpaperUrls = [];
   bool _isWallpaperLoadingError = false;
   bool _isSearchOpen = false;
+  bool _isCheckingClipboardShare = false;
+  bool _isClipboardShareDialogVisible = false;
+  String? _lastClipboardShareSignature;
 }
 
 class _HomeDashboardState extends _HomeDashboardStateBase

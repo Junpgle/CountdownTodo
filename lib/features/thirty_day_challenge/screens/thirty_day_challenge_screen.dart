@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +15,8 @@ import '../../../services/browser_file_service.dart';
 import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
+import '../services/challenge_share_codec.dart';
+import '../services/clipboard_share_detector.dart';
 import 'cloud_challenge_picker_screen.dart';
 import 'new_challenge_screen.dart';
 
@@ -455,6 +458,38 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     } finally {
       entry?.remove();
       if (mounted) setState(() => _isExportingReport = false);
+    }
+  }
+
+  Future<void> _shareChallengeTemplate(ThirtyDayChallengeState state) async {
+    final tasks = state.tasks
+        .map((task) => task.title.trim())
+        .where((task) => task.isNotEmpty)
+        .toList(growable: false);
+    if (tasks.isEmpty) return;
+
+    try {
+      final sharedText = ChallengeShareCodec.encode(
+        ChallengeDraft(
+          title: state.challengeTitle,
+          taskTitles: tasks,
+        ),
+      );
+      await Clipboard.setData(
+        ClipboardData(text: sharedText),
+      );
+      await ClipboardSharePayload.markLocallyGenerated(sharedText);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已复制挑战分享内容，朋友可通过剪贴板识别并导入'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('分享内容复制失败，请稍后再试')),
+      );
     }
   }
 
@@ -1948,6 +1983,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                TextButton.icon(
+                  onPressed: _isExportingReport || _isShuffling
+                      ? null
+                      : () => _shareChallengeTemplate(state),
+                  icon: const Icon(Icons.copy_all_rounded),
+                  label: const Text('分享挑战'),
+                ),
+                const SizedBox(width: 8),
                 FilledButton.tonalIcon(
                   onPressed: _isExportingReport
                       ? null
