@@ -133,13 +133,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         ];
 
         final bodyTabs = [
-          KeyedSubtree(
-            key: _todayContentKey,
-            child: HabitTodayTab(
-              username: widget.username,
-              reloadTick: _reloadTick,
-              onChanged: () => setState(() => _reloadTick++),
-            ),
+          HabitTodayTab(
+            username: widget.username,
+            coachTargetKey: _todayContentKey,
+            reloadTick: _reloadTick,
+            onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
             username: widget.username,
