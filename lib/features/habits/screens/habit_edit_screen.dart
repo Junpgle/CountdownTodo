@@ -128,15 +128,18 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     _HabitTemplate('运动', '🏃', HabitSourceType.pomodoroTag,
         targetValue: 30 * 60),
     _HabitTemplate('学习', '📚', HabitSourceType.pomodoroTag,
-        targetValue: 60 * 60),
+        targetValue: 45 * 60, adaptationKind: HabitAdaptationKind.learning),
     _HabitTemplate('冥想', '🧘', HabitSourceType.pomodoroTag,
-        targetValue: 10 * 60),
+        targetValue: 10 * 60, adaptationKind: HabitAdaptationKind.meditation),
     _HabitTemplate('维生素', '💊', HabitSourceType.quantityCheckIn,
         targetValue: 1, unit: '粒', quickValues: [1]),
     _HabitTemplate('整理', '🧹', HabitSourceType.quantityCheckIn,
         targetValue: 1, unit: '次', quickValues: [1]),
     _HabitTemplate('单词', '🔤', HabitSourceType.quantityCheckIn,
-        targetValue: 30, unit: '个', quickValues: [10, 20]),
+        targetValue: 30,
+        unit: '个',
+        quickValues: [10, 20, 30],
+        adaptationKind: HabitAdaptationKind.vocabulary),
     _HabitTemplate('跑步', '🏃', HabitSourceType.quantityCheckIn,
         targetValue: 30,
         unit: '分钟',
@@ -362,6 +365,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _nearEndReminder = false;
       _dailySummaryReminder = false;
       _toleranceMinutes = 0;
+      _defaultFocusMinutes = null;
       if (template.adaptationKind == HabitAdaptationKind.hydration) {
         // 饮水适合少量多次；默认提供 3 个分散时段，用户仍可在下一步修改。
         _reminderEnabled = true;
@@ -389,6 +393,14 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       if (template.adaptationKind == HabitAdaptationKind.reading) {
         // 阅读默认以一个 25 分钟专注块起步，目标时长仍可单独调整。
         _defaultFocusMinutes = 25;
+      }
+      if (template.adaptationKind == HabitAdaptationKind.learning) {
+        // 学习默认用 25 分钟专注块，结束后做一次主动回忆。
+        _defaultFocusMinutes = 25;
+      }
+      if (template.adaptationKind == HabitAdaptationKind.meditation) {
+        // 冥想从短时、可持续的 10 分钟开始。
+        _defaultFocusMinutes = 10;
       }
       if (adaptation?.kind == HabitAdaptationKind.earlyWake ||
           adaptation?.kind == HabitAdaptationKind.earlySleep) {
@@ -485,6 +497,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       HabitAdaptationKind.pushUp => null,
       HabitAdaptationKind.running => null,
       HabitAdaptationKind.reading => null,
+      HabitAdaptationKind.learning => null,
+      HabitAdaptationKind.vocabulary => null,
+      HabitAdaptationKind.meditation => null,
     };
     if (anchor == null) return null;
     return HabitAdaptationService.pairSuggestionFor(
@@ -1866,6 +1881,12 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     if (adaptation?.kind == HabitAdaptationKind.reading) {
       return _buildReadingTarget(colorScheme, adaptation);
     }
+    if (adaptation?.kind == HabitAdaptationKind.learning) {
+      return _buildLearningTarget(colorScheme, adaptation);
+    }
+    if (adaptation?.kind == HabitAdaptationKind.meditation) {
+      return _buildMeditationTarget(colorScheme, adaptation);
+    }
     return _buildGenericDurationTarget(colorScheme);
   }
 
@@ -1914,7 +1935,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: [25, 30, 45, 50, 60].map((minutes) {
+          children: [5, 10, 15, 20, 25, 30, 45, 50, 60].map((minutes) {
             final selected = _defaultFocusMinutes == minutes;
             return ChoiceChip(
               label: Text('$minutes 分钟'),
@@ -2003,6 +2024,63 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     );
   }
 
+  Widget _buildLearningTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    final targetMinutes = _targetMinutes > 0 ? _targetMinutes : 45;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: targetMinutes.toDouble(),
+          targetUnitOverride: '分钟',
+          onTargetSelected: _applyLearningTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitLearningGuide(
+          targetMinutes: targetMinutes,
+          defaultFocusMinutes: _defaultFocusMinutes,
+          periodType: _periodType,
+          weekdaysMask: _weekdaysMask,
+        ),
+        const SizedBox(height: 14),
+        _buildGenericDurationTarget(colorScheme),
+      ],
+    );
+  }
+
+  Widget _buildMeditationTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    final targetMinutes = _targetMinutes > 0 ? _targetMinutes : 10;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: targetMinutes.toDouble(),
+          targetUnitOverride: '分钟',
+          onTargetSelected: _applyMeditationTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitMeditationGuide(
+          targetMinutes: targetMinutes,
+          periodType: _periodType,
+          weekdaysMask: _weekdaysMask,
+        ),
+        const SizedBox(height: 14),
+        _buildGenericDurationTarget(colorScheme),
+      ],
+    );
+  }
+
   Widget _buildQuantityTarget(ColorScheme colorScheme) {
     final adaptation = HabitAdaptationService.forDraft(
       sourceType: _sourceType,
@@ -2016,6 +2094,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     }
     if (adaptation?.kind == HabitAdaptationKind.hydration) {
       return _buildHydrationTarget(colorScheme, adaptation);
+    }
+    if (adaptation?.kind == HabitAdaptationKind.vocabulary) {
+      return _buildVocabularyTarget(colorScheme, adaptation);
     }
     final parsedTarget = double.tryParse(_targetController.text.trim());
 
@@ -2122,6 +2203,80 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVocabularyTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    _ensureVocabularyDefaults(adaptation);
+    final parsedTarget = int.tryParse(_targetController.text.trim()) ?? 30;
+    final unit = _unitController.text.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: parsedTarget.toDouble(),
+          targetUnitOverride: unit,
+          onTargetSelected: _applyAdaptationTarget,
+        ),
+        const SizedBox(height: 14),
+        HabitVocabularyGuide(
+          targetValue: parsedTarget,
+          periodType: _periodType,
+          weekdaysMask: _weekdaysMask,
+          unit: unit,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _targetController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _periodType == HabitPeriodType.weekly
+                      ? '每周单词目标'
+                      : '每日单词目标',
+                  suffixText: unit,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _unitController,
+                decoration: const InputDecoration(
+                  labelText: '单位',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '快捷增加（逗号分隔，最多 4 个）',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _quickValuesController,
+          onChanged: (v) => _quickValuesText = v,
+          decoration: const InputDecoration(
+            hintText: '如：10,20,30',
+            border: OutlineInputBorder(),
+            isDense: true,
           ),
         ),
       ],
@@ -2309,6 +2464,19 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     }
   }
 
+  void _ensureVocabularyDefaults(HabitAdaptation adaptation) {
+    if (_targetController.text.trim().isEmpty) {
+      _targetController.text = '30';
+    }
+    if (_unitController.text.trim().isEmpty) {
+      _unitController.text = adaptation.targetUnit;
+    }
+    if (_quickValuesController.text.trim().isEmpty) {
+      _quickValuesText = adaptation.suggestedQuickValues.join(',');
+      _quickValuesController.text = _quickValuesText;
+    }
+  }
+
   void _applyAdaptationTarget(int target) {
     final adaptation = HabitAdaptationService.forDraft(
       sourceType: _sourceType,
@@ -2333,6 +2501,34 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       _targetMinutes = target;
       if (_defaultFocusMinutes == null || _defaultFocusMinutes! > target) {
         _defaultFocusMinutes = target >= 25 ? 25 : target;
+      }
+    });
+  }
+
+  void _applyLearningTarget(int target) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    if (adaptation?.kind != HabitAdaptationKind.learning) return;
+    setState(() {
+      _targetMinutes = target;
+      if (_defaultFocusMinutes == null || _defaultFocusMinutes! > target) {
+        _defaultFocusMinutes = target >= 25 ? 25 : target;
+      }
+    });
+  }
+
+  void _applyMeditationTarget(int target) {
+    final adaptation = HabitAdaptationService.forDraft(
+      sourceType: _sourceType,
+      name: _nameController.text,
+    );
+    if (adaptation?.kind != HabitAdaptationKind.meditation) return;
+    setState(() {
+      _targetMinutes = target;
+      if (_defaultFocusMinutes == null || _defaultFocusMinutes! > target) {
+        _defaultFocusMinutes = target >= 10 ? 10 : target;
       }
     });
   }

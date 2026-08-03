@@ -162,6 +162,17 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
             ),
           ),
         ],
+        if (adaptation?.kind == HabitAdaptationKind.vocabulary) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议先完成到期复习，再添加新词；可在详情页查看新增与复习的拆分提示。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         TextField(
           controller: _controller,
@@ -437,6 +448,28 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
         if (adaptation?.kind == HabitAdaptationKind.reading) ...[
           Text(
             '建议先专注 25–30 分钟，读前明确一个问题，结束后用自己的话回忆 3 个要点。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.learning) ...[
+          Text(
+            '建议用 25 分钟专注块，结束后合上资料回忆 3 个要点，再安排间隔复习。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.meditation) ...[
+          Text(
+            '建议从 5–10 分钟开始，以呼吸或声音为锚点；走神后温和地回来即可。',
             style: TextStyle(
               fontSize: 13,
               height: 1.5,

@@ -33,6 +33,9 @@ class HabitAdaptationPanel extends StatelessWidget {
       HabitAdaptationKind.pushUp => Icons.fitness_center_rounded,
       HabitAdaptationKind.running => Icons.directions_run_rounded,
       HabitAdaptationKind.reading => Icons.menu_book_rounded,
+      HabitAdaptationKind.learning => Icons.school_rounded,
+      HabitAdaptationKind.vocabulary => Icons.translate_rounded,
+      HabitAdaptationKind.meditation => Icons.self_improvement_rounded,
       HabitAdaptationKind.earlyWake => Icons.wb_sunny_rounded,
       HabitAdaptationKind.earlySleep => Icons.bedtime_rounded,
     };
@@ -420,6 +423,18 @@ class _HabitGuideMetric extends StatelessWidget {
     required this.value,
     required this.colorScheme,
   });
+
+  factory _HabitGuideMetric.fromData(
+    _HabitGuideMetricData data,
+    ColorScheme colorScheme,
+  ) {
+    return _HabitGuideMetric(
+      icon: data.icon,
+      title: data.title,
+      value: data.value,
+      colorScheme: colorScheme,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -927,6 +942,326 @@ class _ReadingFaqItem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 学习、单词和冥想共用的轻量领域指导卡，避免把建议硬编码进通用目标控件。
+class _HabitDomainGuide extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String targetLabel;
+  final List<_HabitGuideMetricData> metrics;
+  final String sectionTitle;
+  final List<_HabitGuideTipData> tips;
+
+  const _HabitDomainGuide({
+    required this.icon,
+    required this.title,
+    required this.targetLabel,
+    required this.metrics,
+    required this.sectionTitle,
+    required this.tips,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 19, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                targetLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < metrics.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(
+                    child: _HabitGuideMetric.fromData(metrics[i], colorScheme)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            sectionTitle,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final tip in tips)
+            _HabitGuideTip(
+              icon: tip.icon,
+              text: tip.text,
+              colorScheme: colorScheme,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HabitGuideMetricData {
+  final IconData icon;
+  final String title;
+  final String value;
+
+  const _HabitGuideMetricData({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+}
+
+class _HabitGuideTipData {
+  final IconData icon;
+  final String text;
+
+  const _HabitGuideTipData({required this.icon, required this.text});
+}
+
+/// 主动回忆、间隔复习和专注块的学习安排。
+class HabitLearningGuide extends StatelessWidget {
+  final int targetMinutes;
+  final int? defaultFocusMinutes;
+  final HabitPeriodType periodType;
+  final int weekdaysMask;
+
+  const HabitLearningGuide({
+    super.key,
+    required this.targetMinutes,
+    this.defaultFocusMinutes,
+    required this.periodType,
+    this.weekdaysMask = 127,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final target = targetMinutes > 0 ? targetMinutes : 45;
+    final focus = math.min(defaultFocusMinutes ?? 25, target);
+    return _HabitDomainGuide(
+      icon: Icons.school_rounded,
+      title: '学习安排',
+      targetLabel: _habitPeriodTargetLabel(target, periodType, '分钟'),
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.timer_outlined,
+          title: '专注节奏',
+          value: _habitBlockLabel(target, focus),
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.event_repeat_rounded,
+          title: '学习安排',
+          value: _habitScheduleLabel(periodType, weekdaysMask),
+        ),
+      ],
+      sectionTitle: '把学习变成记忆闭环',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.flag_outlined,
+          text: '开始前：写下这一块要解决的一个问题或产出。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.visibility_off_outlined,
+          text: '结束后：合上资料，先凭记忆说出 3 个要点，再查看遗漏。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.event_repeat_outlined,
+          text: '之后：把困难内容安排到后续间隔复习，不要只在当天反复重读。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.pause_circle_outline_rounded,
+          text: '专注块之间可以短暂走动、喝水或远眺；总时长不必一次完成。',
+        ),
+      ],
+    );
+  }
+}
+
+/// 将新增和复习拆开，避免单词目标退化成只追求新增量。
+class HabitVocabularyGuide extends StatelessWidget {
+  final int targetValue;
+  final HabitPeriodType periodType;
+  final int weekdaysMask;
+  final String unit;
+
+  const HabitVocabularyGuide({
+    super.key,
+    required this.targetValue,
+    required this.periodType,
+    this.weekdaysMask = 127,
+    this.unit = '个',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final target = targetValue > 0 ? targetValue : 30;
+    final displayUnit = unit.trim().isEmpty ? '个' : unit.trim();
+    return _HabitDomainGuide(
+      icon: Icons.translate_rounded,
+      title: '单词安排',
+      targetLabel: _habitPeriodTargetLabel(target, periodType, displayUnit),
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.format_list_numbered_rounded,
+          title: '每日目标',
+          value: '$target $displayUnit',
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.sync_rounded,
+          title: '建议拆分',
+          value: _vocabularySplitLabel(target),
+        ),
+      ],
+      sectionTitle: '让词汇进入长期记忆',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.replay_rounded,
+          text: '先完成到期复习，再添加新词；复习时遮住释义主动回忆。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.edit_note_rounded,
+          text: '对容易混淆的词补一个短语或例句，不必为每个词制作很长笔记。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.event_repeat_outlined,
+          text: '当天、隔天和更晚时间都安排短暂回忆，按实际记忆表现调整间隔。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.tune_rounded,
+          text: '连续几天遗忘较多时，先减少新增量，不要用更快刷词来掩盖复习不足。',
+        ),
+      ],
+    );
+  }
+}
+
+/// 以短时、稳定和不评判的练习方式呈现冥想建议。
+class HabitMeditationGuide extends StatelessWidget {
+  final int targetMinutes;
+  final HabitPeriodType periodType;
+  final int weekdaysMask;
+
+  const HabitMeditationGuide({
+    super.key,
+    required this.targetMinutes,
+    required this.periodType,
+    this.weekdaysMask = 127,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final target = targetMinutes > 0 ? targetMinutes : 10;
+    return _HabitDomainGuide(
+      icon: Icons.self_improvement_rounded,
+      title: '冥想安排',
+      targetLabel: _habitPeriodTargetLabel(target, periodType, '分钟'),
+      metrics: [
+        _HabitGuideMetricData(
+          icon: Icons.timer_outlined,
+          title: '练习时长',
+          value: '$target 分钟',
+        ),
+        _HabitGuideMetricData(
+          icon: Icons.event_repeat_rounded,
+          title: '练习安排',
+          value: _habitScheduleLabel(periodType, weekdaysMask),
+        ),
+      ],
+      sectionTitle: '用一个锚点完成练习',
+      tips: const [
+        _HabitGuideTipData(
+          icon: Icons.air_rounded,
+          text: '选择呼吸、声音或身体感受作为锚点，坐姿以舒适和稳定为先。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.refresh_rounded,
+          text: '注意力走神很正常；发现后温和地回到锚点，不把走神当成失败。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.directions_walk_rounded,
+          text: '结束后先活动一下再进入下一件事，让练习和日常生活自然衔接。',
+        ),
+        _HabitGuideTipData(
+          icon: Icons.warning_amber_rounded,
+          text: '若练习引发明显恐慌、解离或持续低落，先停止并寻求专业帮助。',
+        ),
+      ],
+    );
+  }
+}
+
+String _habitPeriodTargetLabel(
+  int target,
+  HabitPeriodType periodType,
+  String unit,
+) {
+  final suffix = periodType == HabitPeriodType.weekly ? '/周' : '/天';
+  return '$target $unit$suffix';
+}
+
+String _habitBlockLabel(int target, int focus) {
+  final safeFocus = math.max(1, focus);
+  if (target <= safeFocus) return '$target 分钟 × 1 块';
+  final fullBlocks = target ~/ safeFocus;
+  final remainder = target % safeFocus;
+  if (remainder == 0) return '$safeFocus 分钟 × $fullBlocks 块';
+  return '$safeFocus 分钟 × $fullBlocks + $remainder 分钟';
+}
+
+String _habitScheduleLabel(HabitPeriodType periodType, int weekdaysMask) {
+  switch (periodType) {
+    case HabitPeriodType.daily:
+      return '每天 · 7 次/周';
+    case HabitPeriodType.weekdays:
+      var count = 0;
+      for (var i = 0; i < 7; i++) {
+        if ((weekdaysMask & (1 << i)) != 0) count++;
+      }
+      return '$count 次/周';
+    case HabitPeriodType.weekly:
+      return '每周累计';
+    case HabitPeriodType.monthly:
+      return '按月安排';
+    case HabitPeriodType.custom:
+      return '自定义周期';
+  }
+}
+
+String _vocabularySplitLabel(int target) {
+  if (target >= 30) return '10 新 + ${target - 10} 复习';
+  if (target >= 20) return '5 新 + ${target - 5} 复习';
+  return '以复习为主';
 }
 
 /// 早起 / 早睡的时间关系提示。

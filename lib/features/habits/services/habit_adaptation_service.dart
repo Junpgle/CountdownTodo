@@ -62,6 +62,26 @@ class HabitAdaptation {
           60 => '沉浸 · 60 分钟',
           _ => '$value 分钟',
         },
+      HabitAdaptationKind.learning => switch (value) {
+          25 => '专注 · 25 分钟',
+          45 => '基础 · 45 分钟',
+          60 => '深入 · 60 分钟',
+          _ => '$value 分钟',
+        },
+      HabitAdaptationKind.meditation => switch (value) {
+          5 => '起步 · 5 分钟',
+          10 => '温和 · 10 分钟',
+          15 => '稳定 · 15 分钟',
+          20 => '深入 · 20 分钟',
+          _ => '$value 分钟',
+        },
+      HabitAdaptationKind.vocabulary => switch (value) {
+          10 => '轻量 · 10 个',
+          20 => '基础 · 20 个',
+          30 => '标准 · 30 个',
+          40 => '进阶 · 40 个',
+          _ => '$value 个',
+        },
       HabitAdaptationKind.earlyWake ||
       HabitAdaptationKind.earlySleep =>
         '$value',
@@ -83,6 +103,9 @@ enum HabitAdaptationKind {
   pushUp,
   running,
   reading,
+  learning,
+  vocabulary,
+  meditation,
   earlyWake,
   earlySleep,
 }
@@ -421,6 +444,170 @@ abstract final class HabitAdaptationService {
     targetUnit: '分钟',
   );
 
+  static const _learning = HabitAdaptation(
+    kind: HabitAdaptationKind.learning,
+    title: '科学学习',
+    headline: '学习不只看专注时长：每次 25–45 分钟，结束后主动回忆并间隔复习',
+    explanation:
+        '没有适合所有人的统一每日学习处方。这里把 45 分钟作为可编辑起点，可以拆成 25 分钟专注块；每块结束后合上资料回忆要点，再把困难内容安排到之后复习。研究支持主动回忆和间隔再学习有助于长期保留，但目标仍应按课程、时间和精力调整。',
+    safetyNote:
+        '不要用熬夜换取学习时长。连续专注时安排短暂休息，保护眼睛和身体；如果学习伴随持续的焦虑、失眠、头痛或明显身心不适，应先降低负荷并寻求专业帮助。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '专注',
+        description: '一个 25 分钟专注块，适合刚开始',
+        value: 25,
+        displayValue: '25 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '适合作为稳定的每日起点',
+        value: 45,
+        displayValue: '45 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '深入',
+        description: '可拆成两个专注块',
+        value: 60,
+        displayValue: '60 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '进阶',
+        description: '已有稳定节奏后再逐步增加',
+        value: 90,
+        displayValue: '90 分钟/天',
+      ),
+    ],
+    suggestedQuickValues: [25, 45, 60],
+    citations: [
+      HabitCitation(
+        title:
+            'Optimizing schedules of retrieval practice for durable and efficient learning',
+        publisher: 'Psychological Science · PubMed',
+        url: 'https://pubmed.ncbi.nlm.nih.gov/21707204/',
+        takeaway: '研究支持先主动回忆，再在间隔开的后续学习中重新学习；这说明学习目标不应只计算坐在书桌前的时间。',
+      ),
+      HabitCitation(
+        title: 'Retrieval practice over the long term',
+        publisher: 'Applied Cognitive Psychology · PubMed',
+        url: 'https://pubmed.ncbi.nlm.nih.gov/24744260/',
+        takeaway: '关于外语词汇的研究显示，分散安排的回忆练习有助于长期保持；具体间隔可以根据材料难度和个人表现调整。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每日学习目标',
+    targetUnit: '分钟',
+  );
+
+  static const _vocabulary = HabitAdaptation(
+    kind: HabitAdaptationKind.vocabulary,
+    title: '科学单词',
+    headline: '单词不只看新增量：先从每天 10–20 个新词开始，把复习放在前面',
+    explanation:
+        '这里把目标定义为每天完成的词条总量，便于快速记录；更推荐把它拆成“少量新增 + 充分复习”，例如 10 个新词加 20 个旧词。主动回忆和间隔复习通常比只看单词表更利于长期保留，新增量应按记忆表现和可用时间调整。',
+    safetyNote:
+        '单词数量不是能力评价，也不需要为了达标一次性硬背。出现明显疲劳时先缩小批次；如果备考压力持续影响睡眠、情绪或日常功能，应降低目标并寻求支持。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '轻量',
+        description: '约 5 个新词 + 5 个复习词',
+        value: 10,
+        displayValue: '10 个/天',
+      ),
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '约 10 个新词 + 10 个复习词',
+        value: 20,
+        displayValue: '20 个/天',
+      ),
+      HabitTargetSuggestion(
+        label: '标准',
+        description: '约 10 个新词 + 20 个复习词',
+        value: 30,
+        displayValue: '30 个/天',
+      ),
+      HabitTargetSuggestion(
+        label: '进阶',
+        description: '已有稳定复习节奏后再增加',
+        value: 40,
+        displayValue: '40 个/天',
+      ),
+      HabitTargetSuggestion(
+        label: '冲刺',
+        description: '适合短期冲刺，仍需优先复习',
+        value: 60,
+        displayValue: '60 个/天',
+      ),
+    ],
+    suggestedQuickValues: [10, 20, 30],
+    citations: [
+      HabitCitation(
+        title:
+            'Retrieval practice over the long term: should spacing be expanding or equal-interval?',
+        publisher: 'Applied Cognitive Psychology · PubMed',
+        url: 'https://pubmed.ncbi.nlm.nih.gov/24744260/',
+        takeaway: '外语词汇研究比较了不同间隔的回忆练习，提示分散练习对长期保持重要，实际间隔可按个人表现调整。',
+      ),
+      HabitCitation(
+        title:
+            'Optimizing schedules of retrieval practice for durable and efficient learning',
+        publisher: 'Psychological Science · PubMed',
+        url: 'https://pubmed.ncbi.nlm.nih.gov/21707204/',
+        takeaway: '研究提示主动回忆并在后续以间隔方式重新学习，比单纯增加一次学习时长更适合长期保留。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每日单词目标',
+    targetUnit: '个',
+  );
+
+  static const _meditation = HabitAdaptation(
+    kind: HabitAdaptationKind.meditation,
+    title: '科学冥想',
+    headline: '从 5–10 分钟起步：固定练习比追求更长时间重要',
+    explanation:
+        '冥想和正念包含多种练习形式，没有适合所有人的统一时长或疗效保证。这里把 10 分钟作为可编辑起点：选择呼吸、声音或身体感受作为锚点，注意力走神时温和地带回，不把“完全清空大脑”当作完成标准。',
+    safetyNote:
+        '冥想通常风险较少，但研究也报告过焦虑、抑郁等负面体验。练习中若出现明显恐慌、解离、持续低落或不适，请停止并寻求专业帮助；冥想不能替代常规医疗，也不要因此推迟就医。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '起步',
+        description: '适合第一次建立练习节奏',
+        value: 5,
+        displayValue: '5 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '温和',
+        description: '默认可编辑起点',
+        value: 10,
+        displayValue: '10 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '稳定',
+        description: '已有练习习惯后再增加',
+        value: 15,
+        displayValue: '15 分钟/天',
+      ),
+      HabitTargetSuggestion(
+        label: '深入',
+        description: '保持舒适，不以时长评价效果',
+        value: 20,
+        displayValue: '20 分钟/天',
+      ),
+    ],
+    suggestedQuickValues: [5, 10, 15],
+    citations: [
+      HabitCitation(
+        title: 'Meditation and Mindfulness: Effectiveness and Safety',
+        publisher:
+            'National Center for Complementary and Integrative Health (NIH)',
+        url:
+            'https://www.nccih.nih.gov/health/meditation-and-mindfulness-effectiveness-and-safety',
+        takeaway: '不同冥想研究的效果并不一致，通常风险较少但并非没有负面体验；不应以冥想替代常规医疗或推迟就医。',
+      ),
+    ],
+    targetSuggestionTitle: '快速选择每日冥想目标',
+    targetUnit: '分钟',
+  );
+
   static const _sleepCitations = <HabitCitation>[
     HabitCitation(
       title: 'Recommended Amount of Sleep for a Healthy Adult',
@@ -582,6 +769,16 @@ abstract final class HabitAdaptationService {
           'jog',
         ];
         if (runningWords.any(normalized.contains)) return _running;
+        const vocabularyWords = [
+          '单词',
+          '词汇',
+          '背词',
+          '词汇量',
+          'vocabulary',
+          'vocab',
+          'flashcard',
+        ];
+        if (vocabularyWords.any(normalized.contains)) return _vocabulary;
       case HabitSourceType.timeCheckIn:
         const sleepWords = [
           '早睡',
@@ -617,6 +814,30 @@ abstract final class HabitAdaptationService {
           'book',
         ];
         if (readingWords.any(normalized.contains)) return _reading;
+        const learningWords = [
+          '学习',
+          '学业',
+          '备考',
+          '复习',
+          '功课',
+          'study',
+          'studying',
+          'learn',
+          'learning',
+          'exam',
+          'homework',
+        ];
+        if (learningWords.any(normalized.contains)) return _learning;
+        const meditationWords = [
+          '冥想',
+          '正念',
+          '静坐',
+          '静心',
+          'meditation',
+          'mindfulness',
+          'mindful',
+        ];
+        if (meditationWords.any(normalized.contains)) return _meditation;
       case HabitSourceType.recurringTodo:
         break;
     }
