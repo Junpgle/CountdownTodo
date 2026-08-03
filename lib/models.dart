@@ -23,6 +23,7 @@ enum TimelineEventType {
   searchQuery,
   timeLog,
   planBlock,
+  habitCheckIn,
 }
 
 class TimelineEvent {

@@ -3,6 +3,11 @@ import 'package:intl/intl.dart';
 import 'database_helper.dart';
 import 'course_service.dart';
 import '../models.dart';
+import '../features/habits/models/habit_checkin.dart';
+import '../features/habits/models/habit_goal.dart';
+import '../features/habits/repositories/habit_repository.dart';
+import '../features/habits/services/habit_progress_calculator.dart';
+import 'storage/habit_storage.dart';
 
 class TimelineService {
   static final TimelineService instance = TimelineService._();
@@ -197,6 +202,39 @@ class TimelineService {
               '$displayTitle ($plannedMinutes分钟 · ${_planStatusLabel(status)})',
         ));
       }
+
+      // 7. 独立打卡型习惯：数量 / 时间点习惯没有对应的待办事件，单独纳入时间轴。
+      final habitGoals = await HabitStorage.getHabitGoals(
+        includeArchived: true,
+      );
+      final logicalDate = DateFormat('yyyy-MM-dd').format(startOfDay);
+      for (final habit in habitGoals.where((goal) =>
+          goal.sourceType == HabitSourceType.quantityCheckIn ||
+          goal.sourceType == HabitSourceType.timeCheckIn)) {
+        final checkIns = await HabitRepository.getCheckIns(
+          habitUuid: habit.uuid,
+          fromDate: logicalDate,
+          toDate: logicalDate,
+        );
+        for (final checkIn in checkIns) {
+          if (checkIn.isDeleted || checkIn.source == HabitCheckInSource.skip) {
+            continue;
+          }
+          final value = checkIn.value == checkIn.value.roundToDouble()
+              ? checkIn.value.toInt().toString()
+              : checkIn.value.toStringAsFixed(1);
+          final detail = habit.sourceType == HabitSourceType.quantityCheckIn
+              ? ' · $value'
+              : '';
+          events.add(TimelineEvent(
+            id: 'habit_checkin_${checkIn.uuid}',
+            timestamp: checkIn.localOccurredAt,
+            type: TimelineEventType.habitCheckIn,
+            title: '习惯打卡',
+            subtitle: '${habit.icon} ${habit.name}$detail',
+          ));
+        }
+      }
     } catch (e) {
       debugPrint('❌ getEventsForDay error: $e');
     }
@@ -324,6 +362,12 @@ class TimelineService {
         [startMs, endMs],
       );
       final int earlyCount = taskQualityStats.first['early'] as int? ?? 0;
+
+      final habitSummary = await _calculateHabitSummary(
+        start: start,
+        end: end,
+        now: DateTime.now(),
+      );
 
       final pomoTop = await db.rawQuery(
         'SELECT * FROM ('
@@ -962,6 +1006,7 @@ class TimelineService {
         interruptionCount: interruptedPomos,
         interruptionRate: interruptionRate,
         earlyCompletionCount: earlyCount,
+        habitSummary: habitSummary,
       );
     } catch (e) {
       debugPrint('❌ getSummaryForRange error: $e');
@@ -977,6 +1022,62 @@ class TimelineService {
         pomodoroCount: 0,
       );
     }
+  }
+
+  Future<TimelineHabitSummary> _calculateHabitSummary({
+    required DateTime start,
+    required DateTime end,
+    required DateTime now,
+  }) async {
+    final goals = await HabitStorage.getHabitGoals(includeArchived: true);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day)
+        .subtract(const Duration(days: 1));
+    if (endDay.isBefore(startDay)) return const TimelineHabitSummary();
+
+    var habitCount = 0;
+    var plannedCount = 0;
+    var completedCount = 0;
+    var missedCount = 0;
+    var recordedCount = 0;
+
+    for (final habit in goals) {
+      try {
+        final rules = await HabitRepository.getRules(habitUuid: habit.uuid);
+        if (rules.isEmpty) continue;
+        final progress = await HabitProgressCalculator.computeRange(
+          habit: habit,
+          rules: rules,
+          from: startDay,
+          to: endDay,
+          now: now,
+          periodLevel: true,
+        );
+        if (progress.isEmpty) continue;
+        habitCount++;
+        for (final item in progress) {
+          final value = item.progress;
+          if (!value.isPlanned) continue;
+          plannedCount++;
+          if (value.goalMet) {
+            completedCount++;
+          } else if (value.isFinished && !value.isSkipped) {
+            missedCount++;
+          }
+          if (value.hasRecord) recordedCount++;
+        }
+      } catch (_) {
+        // 单个习惯数据异常时不影响整份时间轴报告。
+      }
+    }
+
+    return TimelineHabitSummary(
+      habitCount: habitCount,
+      plannedCount: plannedCount,
+      completedCount: completedCount,
+      missedCount: missedCount,
+      recordedCount: recordedCount,
+    );
   }
 
   Future<int> _calculateConsecutiveActiveDays(
@@ -1078,6 +1179,7 @@ class TimelineSummary {
   final int countdownCompletedCount;
   final List<String> attendedCourses;
   final int pomodoroCount;
+  final TimelineHabitSummary habitSummary;
 
   final int longestPomodoroMinutes;
   final String? longestPomodoroTitle;
@@ -1126,6 +1228,7 @@ class TimelineSummary {
     required this.countdownCompletedCount,
     required this.attendedCourses,
     required this.pomodoroCount,
+    this.habitSummary = const TimelineHabitSummary(),
     this.longestPomodoroMinutes = 0,
     this.longestPomodoroTitle,
     this.longestPomodoroDate,
@@ -1173,4 +1276,23 @@ class TimelineSummary {
         .reduce((a, b) => a.value > b.value ? a : b)
         .key;
   }
+}
+
+class TimelineHabitSummary {
+  final int habitCount;
+  final int plannedCount;
+  final int completedCount;
+  final int missedCount;
+  final int recordedCount;
+
+  const TimelineHabitSummary({
+    this.habitCount = 0,
+    this.plannedCount = 0,
+    this.completedCount = 0,
+    this.missedCount = 0,
+    this.recordedCount = 0,
+  });
+
+  double get completionRate =>
+      plannedCount > 0 ? completedCount / plannedCount : 0;
 }

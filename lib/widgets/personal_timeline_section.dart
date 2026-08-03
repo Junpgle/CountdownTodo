@@ -221,6 +221,21 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       ));
     }
 
+    // 2.5 习惯打卡
+    final habitSummary = _summary!.habitSummary;
+    if (habitSummary.habitCount > 0) {
+      if (rows.isNotEmpty) rows.add(const Divider(height: 24, thickness: 0.5));
+      rows.add(_buildSummaryRow(
+        icon: Icons.self_improvement_outlined,
+        color: Theme.of(context).colorScheme.tertiary,
+        title: '习惯打卡',
+        content:
+            '完成 ${habitSummary.completedCount}/${habitSummary.plannedCount} 个周期，记录 ${habitSummary.recordedCount} 次',
+        subColor: subColor,
+        textColor: textColor,
+      ));
+    }
+
     // 3. 倒计时
     if (_summary!.countdownCreatedCount > 0 ||
         _summary!.countdownEditedCount > 0 ||
@@ -304,6 +319,10 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
       summary.countdownEditedCount,
       summary.countdownCompletedCount,
       summary.pomodoroCount,
+      summary.habitSummary.habitCount,
+      summary.habitSummary.plannedCount,
+      summary.habitSummary.completedCount,
+      summary.habitSummary.recordedCount,
       summary.attendedCourses.join('|'),
       summary.lastSearchTime?.millisecondsSinceEpoch ?? 0,
     ].join('_');
