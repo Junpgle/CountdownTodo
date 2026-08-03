@@ -13,6 +13,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _loadSectionPreferences();
     _loadSemesterSettings();
     _loadHomeTextConfig();
+    ThirtyDayChallengeRepository.activityRevision
+        .addListener(_onThirtyDayChallengeActivityChanged);
+    unawaited(_loadThirtyDayChallengeStatus());
     _generateGreeting();
     _initManifestWallpaper();
     WidgetService.init();
@@ -192,6 +195,8 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     }
     StorageService.dataRefreshNotifier.removeListener(_loadAllData);
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
+    ThirtyDayChallengeRepository.activityRevision
+        .removeListener(_onThirtyDayChallengeActivityChanged);
     _todosNotifier.dispose();
     _groupsNotifier.dispose();
     _courseDataNotifier.dispose();
@@ -223,6 +228,36 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  Future<void> _loadThirtyDayChallengeStatus() async {
+    try {
+      final hasStarted = await ThirtyDayChallengeRepository.hasStarted();
+      final isActive =
+          hasStarted && !await ThirtyDayChallengeRepository.isPaused();
+      var completedCount = 0;
+      if (isActive) {
+        final state = await ThirtyDayChallengeRepository.load();
+        completedCount = state.completedCount;
+      }
+      if (!mounted ||
+          (isActive == _isThirtyDayChallengeActive &&
+              completedCount == _thirtyDayChallengeCompletedCount)) {
+        return;
+      }
+      setState(() {
+        _isThirtyDayChallengeActive = isActive;
+        _thirtyDayChallengeCompletedCount = completedCount;
+      });
+    } catch (_) {
+      // 首页 Banner 不应影响首页主体加载。
+    }
+  }
+
+  @override
+  void _onThirtyDayChallengeActivityChanged() {
+    unawaited(_loadThirtyDayChallengeStatus());
   }
 
   /// 检查 Android 12+ 精确闹钟权限，未授权时弹一次引导 SnackBar

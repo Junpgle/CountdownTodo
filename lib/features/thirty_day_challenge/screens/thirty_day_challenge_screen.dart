@@ -34,6 +34,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   bool _isExportingReport = false;
   bool _showWelcome = false;
   bool _showOverview = false;
+  bool _isPaused = false;
   int? _imageTaskId;
 
   @override
@@ -60,10 +61,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _load() async {
     final state = await ThirtyDayChallengeRepository.load();
     final introSeen = await ThirtyDayChallengeRepository.hasSeenIntro();
+    final isPaused = await ThirtyDayChallengeRepository.isPaused();
     if (!mounted) return;
     setState(() {
       _state = state;
       _showWelcome = !introSeen;
+      _isPaused = isPaused;
     });
     _entranceController.forward();
   }
@@ -72,11 +75,98 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     try {
       await ThirtyDayChallengeRepository.markIntroSeen();
       if (!mounted) return;
-      setState(() => _showWelcome = false);
+      setState(() {
+        _showWelcome = false;
+        _isPaused = false;
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('欢迎页保存失败，请稍后再试')),
+      );
+    }
+  }
+
+  Future<void> _deferChallenge() async {
+    final didPop = await Navigator.of(context).maybePop();
+    if (!didPop && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('可以稍后从帮助与反馈再次进入挑战')),
+      );
+    }
+  }
+
+  Future<void> _toggleChallengePause() async {
+    if (_isShuffling) return;
+    final nextPaused = !_isPaused;
+    try {
+      await ThirtyDayChallengeRepository.setPaused(nextPaused);
+      if (!mounted) return;
+      setState(() => _isPaused = nextPaused);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nextPaused ? '已暂停首页活动 Banner，记录仍然保留' : '已恢复参与，首页 Banner 已显示',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('操作失败，请稍后再试')),
+      );
+    }
+  }
+
+  Future<void> _abandonChallenge() async {
+    if (_isShuffling) return;
+
+    final shouldAbandon = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final scheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.delete_sweep_rounded, color: scheme.error),
+          title: const Text('放弃这次挑战？'),
+          content: const Text(
+            '放弃后会清空 30 项任务的完成状态、任务调整、感受和图片记录，之后可以重新开始。此操作无法恢复。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('继续挑战'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('放弃并清空'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldAbandon != true) return;
+
+    try {
+      await ThirtyDayChallengeRepository.abandonChallenge();
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() {
+          _state = ThirtyDayChallengeState.initial();
+          _showWelcome = true;
+          _isPaused = false;
+          _currentIndex = 0;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('放弃失败，请稍后再试')),
       );
     }
   }
@@ -436,15 +526,38 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       builder: (context, constraints) {
         final isLandscape = constraints.maxWidth > constraints.maxHeight &&
             constraints.maxHeight > 0;
+        final titleStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w900,
+                  height: 1.15,
+                  letterSpacing: -1,
+                ) ??
+            TextStyle(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w900,
+              height: 1.15,
+              letterSpacing: -1,
+            );
+        Color vividWelcomeColor(Color source, double shift) {
+          final hsl = HSLColor.fromColor(source);
+          final hue = (hsl.hue + shift) % 360;
+          final isDark = scheme.brightness == Brightness.dark;
+          return HSLColor.fromAHSL(1, hue, 0.85, isDark ? 0.70 : 0.40).toColor();
+        }
+        
+        final welcomePrimary = vividWelcomeColor(scheme.primary, 8);
+        final welcomeSecondary = vividWelcomeColor(scheme.secondary, -12);
+        final welcomeTertiary = vividWelcomeColor(scheme.tertiary, 10);
         return DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
+                welcomePrimary.withValues(alpha: 0.24),
                 scheme.surface,
-                scheme.primaryContainer.withValues(alpha: 0.5),
-                scheme.tertiaryContainer.withValues(alpha: 0.3),
+                welcomeTertiary.withValues(alpha: 0.2),
+                welcomeSecondary.withValues(alpha: 0.14),
               ],
             ),
           ),
@@ -459,7 +572,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   height: 300,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: scheme.primary.withValues(alpha: 0.2),
+                    color: welcomePrimary.withValues(alpha: 0.34),
                   ),
                 ),
               ),
@@ -471,7 +584,19 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   height: 250,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: scheme.tertiary.withValues(alpha: 0.2),
+                    color: welcomeTertiary.withValues(alpha: 0.32),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 96,
+                right: -34,
+                child: Container(
+                  width: 132,
+                  height: 132,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: welcomeSecondary.withValues(alpha: 0.24),
                   ),
                 ),
               ),
@@ -505,10 +630,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: scheme.primary.withValues(alpha: 0.15),
+                              gradient: LinearGradient(
+                                colors: [
+                                  welcomePrimary.withValues(alpha: 0.28),
+                                  welcomeTertiary.withValues(alpha: 0.2),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(99),
                               border: Border.all(
-                                color: scheme.primary.withValues(alpha: 0.3),
+                                color: welcomePrimary.withValues(alpha: 0.58),
                               ),
                             ),
                             child: Text(
@@ -517,7 +647,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                   .textTheme
                                   .labelMedium
                                   ?.copyWith(
-                                    color: scheme.primary,
+                                    color: welcomePrimary,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.5,
                                   ),
@@ -536,24 +666,61 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                 colors: [scheme.primary, scheme.tertiary],
                               ),
                               shape: BoxShape.circle,
+                              border: Border.all(
+                                color: scheme.onSurface.withValues(alpha: 0.14),
+                                width: 6,
+                              ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: scheme.primary.withValues(alpha: 0.3),
+                                  color: welcomePrimary.withValues(alpha: 0.42),
                                   blurRadius: 32,
                                   offset: const Offset(0, 16),
                                 ),
+                                BoxShadow(
+                                  color:
+                                      scheme.tertiary.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  spreadRadius: 4,
+                                ),
                               ],
                             ),
-                            child: Icon(
-                              Icons.auto_awesome_rounded,
-                              size: isLandscape ? 50 : 60,
-                              color: scheme.onPrimary,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome_rounded,
+                                  size: isLandscape ? 50 : 60,
+                                  color: scheme.onPrimary,
+                                ),
+                                Positioned(
+                                  right: isLandscape ? 10 : 12,
+                                  top: isLandscape ? 10 : 12,
+                                  child: Icon(
+                                    Icons.star_rounded,
+                                    size: isLandscape ? 16 : 20,
+                                    color: scheme.onPrimary.withValues(
+                                      alpha: 0.75,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                         const SizedBox(height: 32),
-                        Text(
-                          '欢迎来到\n30天找到全新自我',
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: '欢迎来到\n', style: titleStyle),
+                              TextSpan(text: '30天找到', style: titleStyle),
+                              TextSpan(
+                                text: '全新自我',
+                                style: titleStyle.copyWith(
+                                  color: welcomePrimary,
+                                ),
+                              ),
+                            ],
+                          ),
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
@@ -580,29 +747,82 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         Container(
                           padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
-                            color: scheme.surface.withValues(alpha: 0.6),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.alphaBlend(
+                                  welcomePrimary.withValues(alpha: 0.28),
+                                  scheme.surface,
+                                ),
+                                Color.alphaBlend(
+                                  welcomeTertiary.withValues(alpha: 0.22),
+                                  scheme.surface,
+                                ),
+                              ],
+                            ),
                             borderRadius: BorderRadius.circular(32),
                             border: Border.all(
-                                color: scheme.outlineVariant
-                                    .withValues(alpha: 0.5)),
+                              color: welcomePrimary.withValues(alpha: 0.48),
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: scheme.shadow.withValues(alpha: 0.05),
+                                color: scheme.primary.withValues(alpha: 0.1),
                                 blurRadius: 24,
                                 offset: const Offset(0, 8),
                               ),
                             ],
                           ),
-                          child: Text(
-                            '你有多久没尝试过做打破常规的事情了？\n\n'
-                            '每天两点一线的生活实在枯燥，休假的时间要么被工作填满，'
-                            '要么宅在家里玩手机，好久没做一些新奇的事情了。\n\n'
-                            '做新事情会减缓我们对时间流逝的主观感觉，并破坏根深蒂固的思维模式。',
-                            style:
-                                Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          scheme.primary,
+                                          scheme.tertiary,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Icon(
+                                      Icons.explore_rounded,
+                                      color: scheme.onPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Text(
+                                    '从一个新鲜念头开始',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          color: welcomePrimary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                '你有多久没尝试过做打破常规的事情了？\n'
+                                '每天两点一线的生活实在枯燥，休假的时间要么被工作填满，'
+                                '要么宅在家里玩手机，好久没做一些新奇的事情了。\n'
+                                '做新事情会减缓我们对时间流逝的主观感觉，并破坏根深蒂固的思维模式。',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
                                       color: scheme.onSurface,
                                       height: 1.8,
                                     ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -613,37 +833,67 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                scheme.primaryContainer.withValues(alpha: 0.8),
-                                scheme.secondaryContainer
-                                    .withValues(alpha: 0.6),
+                                Color.alphaBlend(
+                                  welcomePrimary.withValues(alpha: 0.4),
+                                  scheme.surface,
+                                ),
+                                Color.alphaBlend(
+                                  welcomeSecondary.withValues(alpha: 0.3),
+                                  scheme.surface,
+                                ),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(32),
                             border: Border.all(
-                              color: scheme.primary.withValues(alpha: 0.2),
+                              color: welcomePrimary.withValues(alpha: 0.58),
                             ),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                Icons.format_quote_rounded,
-                                color: scheme.primary,
-                                size: 36,
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: scheme.primary.withValues(alpha: 0.16),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.format_quote_rounded,
+                                  color: scheme.primary,
+                                  size: 30,
+                                ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: Text(
-                                  '“单调瓦解了时间，而新奇展开了时间。”\n\n——乔舒亚·福尔《与爱因斯坦月球漫步》',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: scheme.onPrimaryContainer,
-                                        height: 1.6,
-                                        fontWeight: FontWeight.w700,
-                                        fontStyle: FontStyle.italic,
-                                      ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '一句话提醒',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelLarge
+                                          ?.copyWith(
+                                            color: scheme.primary,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.5,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '“单调瓦解了时间，而新奇展开了时间。”\n——乔舒亚·福尔《与爱因斯坦月球漫步》',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: scheme.onPrimaryContainer,
+                                            height: 1.6,
+                                            fontWeight: FontWeight.w700,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -653,31 +903,57 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         Container(
                           padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest.withValues(
-                              alpha: 0.6,
+                            gradient: LinearGradient(
+                              colors: [
+                                Color.alphaBlend(
+                                  welcomeSecondary.withValues(alpha: 0.32),
+                                  scheme.surface,
+                                ),
+                                Color.alphaBlend(
+                                  welcomeTertiary.withValues(alpha: 0.22),
+                                  scheme.surface,
+                                ),
+                              ],
                             ),
                             borderRadius: BorderRadius.circular(32),
                             border: Border.all(
-                                color: scheme.outlineVariant
-                                    .withValues(alpha: 0.5)),
+                              color: welcomeSecondary.withValues(alpha: 0.38),
+                            ),
                           ),
-                          child: Text(
-                            '如果你也想在乏味的生活中来点不一样的调味剂，不妨看看这份火爆外网的自我挑战人生清单。\n\n'
-                            '📍 清单里有 30 件小事，顺序随意，你自己调整，也不需要连续 30 天打卡。空闲时间挑一件事去尝试就好。',
-                            style:
-                                Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                      color: scheme.onSurface,
-                                      height: 1.8,
-                                    ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.local_activity_rounded,
+                                color: scheme.secondary,
+                                size: 30,
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Text(
+                                  '如果你也想在乏味的生活中来点不一样的调味剂，不妨看看这份火爆外网的自我挑战人生清单。\n'
+                                  '📍 清单里有 30 件小事，顺序随意，你自己调整，也不需要连续 30 天打卡。空闲时间挑一件事去尝试就好。',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyLarge
+                                      ?.copyWith(
+                                        color: scheme.onSurface,
+                                        height: 1.8,
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         SizedBox(height: isLandscape ? 32 : 48),
                         FilledButton.icon(
                           onPressed: _enterChallenge,
-                          icon: const Icon(Icons.arrow_forward_rounded),
+                          icon: const Icon(Icons.bolt_rounded),
                           label: const Text('开始这场挑战'),
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(64),
+                            elevation: 6,
+                            shadowColor: scheme.primary.withValues(alpha: 0.35),
                             textStyle: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -687,7 +963,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _deferChallenge,
+                          icon: const Icon(Icons.schedule_outlined),
+                          label: const Text('暂不参与'),
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           '记录感受和照片，让这段改变真正留下来。',
                           textAlign: TextAlign.center,
@@ -798,6 +1080,20 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         final isSelected = _currentIndex == index;
         final hasImage =
             task.imageBase64 != null && task.imageBase64!.isNotEmpty;
+        final taskColors = _challengeTaskGradientColors(task, scheme);
+        final overviewColors = task.isCompleted
+            ? [
+                Color.alphaBlend(
+                  scheme.primary.withValues(alpha: 0.12),
+                  taskColors[0],
+                ),
+                Color.alphaBlend(
+                  scheme.primary.withValues(alpha: 0.08),
+                  taskColors[1],
+                ),
+                taskColors[2],
+              ]
+            : taskColors;
 
         return InkWell(
           onTap: () {
@@ -825,18 +1121,18 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? scheme.primaryContainer
-                  : task.isCompleted
-                      ? scheme.secondaryContainer
-                      : scheme.surfaceContainerHighest,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: overviewColors,
+              ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isSelected
-                    ? scheme.primary
+                    ? taskColors.first
                     : task.isCompleted
-                        ? scheme.secondary.withValues(alpha: 0.5)
-                        : Colors.transparent,
+                        ? taskColors[1].withValues(alpha: 0.62)
+                        : taskColors.first.withValues(alpha: 0.32),
                 width: isSelected ? 2 : 1,
               ),
               boxShadow: isSelected
@@ -874,9 +1170,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           '${task.id}',
                           style:
                               Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: isSelected
-                                        ? scheme.onPrimaryContainer
-                                        : scheme.onSurfaceVariant,
+                                    color: scheme.onSurface,
                                     fontWeight: FontWeight.bold,
                                   ),
                         ),
@@ -923,16 +1217,18 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Widget _buildHeader(ThirtyDayChallengeState state,
       {bool isLandscape = false}) {
     final scheme = Theme.of(context).colorScheme;
+    final headerColors = [
+      _vividChallengeColor(scheme.primary, scheme, hueShift: 6),
+      _vividChallengeColor(scheme.secondary, scheme, hueShift: -10),
+      _vividChallengeColor(scheme.tertiary, scheme, hueShift: 8),
+    ];
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            scheme.primaryContainer.withValues(alpha: 0.8),
-            scheme.secondaryContainer.withValues(alpha: 0.8)
-          ],
+          colors: headerColors,
         ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: scheme.primary.withValues(alpha: 0.1)),
@@ -947,7 +1243,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      state.isCompleted ? '挑战完成！' : '今天想做点不一样的事',
+                      state.isCompleted
+                          ? '挑战完成！'
+                          : _isPaused
+                              ? '挑战已暂停'
+                              : '今天想做点不一样的事',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w900,
                             color: scheme.onPrimaryContainer,
@@ -956,7 +1256,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '左右滑动，找一件让生活重新有感觉的小事。',
+                      _isPaused
+                          ? '首页 Banner 已隐藏，记录仍然保留。'
+                          : '左右滑动，找一件让生活重新有感觉的小事。',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: scheme.onPrimaryContainer.withValues(
                               alpha: 0.8,
@@ -1055,13 +1357,31 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.ios_share_rounded),
-                label: Text(_isExportingReport ? '生成中…' : '导出分享'),
+                label: Text(_isExportingReport ? '生成中…' : '导出并分享'),
               ),
               TextButton.icon(
                 onPressed:
                     _isExportingReport || _isShuffling ? null : _resetProgress,
                 icon: const Icon(Icons.restart_alt_rounded),
                 label: const Text('重置状态'),
+              ),
+              TextButton.icon(
+                onPressed: _isExportingReport || _isShuffling
+                    ? null
+                    : _toggleChallengePause,
+                icon: Icon(
+                  _isPaused
+                      ? Icons.play_circle_outline_rounded
+                      : Icons.pause_circle_outline_rounded,
+                ),
+                label: Text(_isPaused ? '恢复参与' : '暂停挑战'),
+              ),
+              TextButton.icon(
+                onPressed: _isExportingReport || _isShuffling
+                    ? null
+                    : _abandonChallenge,
+                icon: const Icon(Icons.delete_sweep_outlined),
+                label: const Text('放弃挑战'),
               ),
             ],
           ),
@@ -1403,6 +1723,20 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   ) {
     final imageBytes = _decodeChallengeImage(task.imageBase64);
     final hasImage = imageBytes != null;
+    final taskColors = _challengeTaskGradientColors(task, scheme);
+    final cardColors = task.isCompleted
+        ? [
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.12),
+              taskColors[0],
+            ),
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.08),
+              taskColors[1],
+            ),
+            taskColors[2],
+          ]
+        : taskColors;
     final foreground = hasImage ? scheme.onInverseSurface : scheme.onSurface;
     final mutedForeground = hasImage
         ? scheme.onInverseSurface.withValues(alpha: 0.78)
@@ -1413,9 +1747,17 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       margin: const EdgeInsets.only(bottom: 16),
       constraints: const BoxConstraints(minHeight: 168),
       decoration: BoxDecoration(
-        color: task.isCompleted
-            ? scheme.primaryContainer.withValues(alpha: 0.48)
-            : scheme.surfaceContainerLow,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: hasImage
+              ? [
+                  taskColors[0].withValues(alpha: 0.28),
+                  taskColors[1].withValues(alpha: 0.16),
+                  taskColors[2].withValues(alpha: 0.42),
+                ]
+              : cardColors,
+        ),
         image: imageBytes == null
             ? null
             : DecorationImage(
@@ -1423,24 +1765,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 fit: BoxFit.cover,
                 filterQuality: FilterQuality.medium,
               ),
-        gradient: imageBytes == null
-            ? null
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  scheme.scrim.withValues(alpha: 0.38),
-                  scheme.scrim.withValues(alpha: 0.22),
-                  scheme.scrim.withValues(alpha: 0.56),
-                ],
-              ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: task.isCompleted
               ? (hasImage
                   ? scheme.onInverseSurface.withValues(alpha: 0.64)
-                  : scheme.primary.withValues(alpha: 0.52))
-              : scheme.outlineVariant,
+                  : taskColors.first.withValues(alpha: 0.66))
+              : taskColors.first.withValues(alpha: 0.42),
           width: task.isCompleted ? 1.5 : 1,
         ),
       ),
@@ -1722,11 +2053,21 @@ class _ShuffleCardSurface extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isCompact =
         MediaQuery.of(context).orientation == Orientation.landscape;
+    final taskColors = _challengeTaskGradientColors(task, scheme);
     final cardTextColor =
         isFront ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
     final colors = isFront
-        ? [scheme.primaryContainer, scheme.tertiaryContainer]
-        : [scheme.surfaceContainerHighest, scheme.surfaceContainerLow];
+        ? taskColors
+        : [
+            Color.alphaBlend(
+              taskColors.first.withValues(alpha: 0.18),
+              scheme.surface,
+            ),
+            Color.alphaBlend(
+              taskColors[1].withValues(alpha: 0.12),
+              scheme.surface,
+            ),
+          ];
     return Container(
       padding: EdgeInsets.all(isCompact ? 18 : 26),
       decoration: BoxDecoration(
@@ -1738,7 +2079,7 @@ class _ShuffleCardSurface extends StatelessWidget {
         borderRadius: BorderRadius.circular(30),
         border: Border.all(
           color: isFront
-              ? scheme.primary.withValues(alpha: 0.32)
+              ? taskColors.first.withValues(alpha: 0.62)
               : scheme.outlineVariant,
         ),
         boxShadow: [
@@ -1841,6 +2182,131 @@ Uint8List? _decodeChallengeImage(String? encoded) {
   }
 }
 
+/// 为每项挑战分配一组有语义倾向的主题色：餐饮、交通、自然、社交、
+/// 创作和情绪表达会使用不同的 Material 主题角色，再通过 HSL 提高饱和度，
+/// 避免动态主题生成的浅灰色容器让卡片失去活力。
+List<Color> _challengeTaskGradientColors(
+  ThirtyDayChallengeTask task,
+  ColorScheme scheme,
+) {
+  final starts = <Color>[
+    scheme.secondary, // 餐厅
+    scheme.primary, // 交通
+    scheme.tertiary, // 老友
+    scheme.primary, // 阅读
+    scheme.secondary, // 离开网络
+    scheme.tertiary, // 早餐
+    scheme.tertiary, // 家人
+    scheme.primary, // 饮料
+    scheme.primary, // 电影
+    scheme.secondary, // 跟点
+    scheme.tertiary, // 写信
+    scheme.secondary, // 手工
+    scheme.tertiary, // 自然
+    scheme.primary, // 陌生人
+    scheme.tertiary, // 回忆
+    scheme.secondary, // 整理
+    scheme.primary, // 慢跑
+    scheme.primary, // 早睡
+    scheme.error, // 爱与表达
+    scheme.tertiary, // 花
+    scheme.secondary, // 野餐
+    scheme.error, // 拒绝
+    scheme.secondary, // KTV
+    scheme.error, // 不加班
+    scheme.primary, // 新朋友
+    scheme.tertiary, // 礼物
+    scheme.primary, // 过夜
+    scheme.secondary, // 购物
+    scheme.tertiary, // 妆容
+    scheme.primary, // 总结
+  ];
+  final ends = <Color>[
+    scheme.tertiary,
+    scheme.secondary,
+    scheme.primary,
+    scheme.tertiary,
+    scheme.primary,
+    scheme.secondary,
+    scheme.secondary,
+    scheme.secondary,
+    scheme.tertiary,
+    scheme.tertiary,
+    scheme.primary,
+    scheme.tertiary,
+    scheme.primary,
+    scheme.secondary,
+    scheme.primary,
+    scheme.primary,
+    scheme.tertiary,
+    scheme.secondary,
+    scheme.tertiary,
+    scheme.secondary,
+    scheme.tertiary,
+    scheme.primary,
+    scheme.primary,
+    scheme.secondary,
+    scheme.tertiary,
+    scheme.secondary,
+    scheme.tertiary,
+    scheme.primary,
+    scheme.secondary,
+    scheme.tertiary,
+  ];
+  final hueShifts = <double>[
+    16,
+    -18,
+    10,
+    -8,
+    24,
+    -14,
+    8,
+    20,
+    -12,
+    14,
+    -20,
+    12,
+    -10,
+    18,
+    -16,
+    8,
+    -14,
+    18,
+    0,
+    -12,
+    14,
+    0,
+    20,
+    4,
+    -18,
+    12,
+    -10,
+    18,
+    -14,
+    8,
+  ];
+  final index = (task.id - 1).clamp(0, starts.length - 1).toInt();
+  final shift = hueShifts[index];
+  return [
+    _vividChallengeColor(starts[index], scheme, hueShift: shift),
+    _vividChallengeColor(ends[index], scheme, hueShift: shift - 8),
+    _vividChallengeColor(starts[index], scheme, hueShift: shift + 10),
+  ];
+}
+
+Color _vividChallengeColor(
+  Color source,
+  ColorScheme scheme, {
+  double hueShift = 0,
+}) {
+  final hsl = HSLColor.fromColor(source);
+  final hue = (hsl.hue + hueShift) % 360;
+  
+  final vibrantColor = HSLColor.fromAHSL(1, hue, 0.85, 0.5).toColor();
+  final opacity = scheme.brightness == Brightness.dark ? 0.35 : 0.18;
+  return Color.alphaBlend(vibrantColor.withValues(alpha: opacity), scheme.surface);
+}
+
 class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
   late final TextEditingController _feelingController;
   bool _expanded = false;
@@ -1881,6 +2347,20 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     final task = widget.task;
     final imageBytes = _decodeChallengeImage(task.imageBase64);
     final hasImage = imageBytes != null;
+    final taskColors = _challengeTaskGradientColors(task, scheme);
+    final cardColors = task.isCompleted
+        ? [
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.12),
+              taskColors[0],
+            ),
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.08),
+              taskColors[1],
+            ),
+            taskColors[2],
+          ]
+        : taskColors;
     final cardForeground = hasImage ? Colors.white : scheme.onSurface;
     final mutedForeground = hasImage
         ? Colors.white.withValues(alpha: 0.8)
@@ -1888,8 +2368,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     final borderColor = task.isCompleted
         ? (hasImage
             ? Colors.white.withValues(alpha: 0.5)
-            : scheme.primary.withValues(alpha: 0.4))
-        : scheme.outlineVariant;
+            : taskColors.first.withValues(alpha: 0.66))
+        : taskColors.first.withValues(alpha: 0.48);
 
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
@@ -1903,10 +2383,17 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
-              color: task.isCompleted
-                  ? scheme.primaryContainer
-                      .withValues(alpha: hasImage ? 0.2 : 0.6)
-                  : scheme.surface,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: hasImage
+                    ? [
+                        taskColors[0].withValues(alpha: 0.3),
+                        taskColors[1].withValues(alpha: 0.18),
+                        taskColors[2].withValues(alpha: 0.42),
+                      ]
+                    : cardColors,
+              ),
               image: hasImage
                   ? DecorationImage(
                       image: MemoryImage(imageBytes),
@@ -1940,9 +2427,9 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.black.withValues(alpha: 0.5),
-                                Colors.black.withValues(alpha: 0.2),
-                                Colors.black.withValues(alpha: 0.6),
+                                scheme.scrim.withValues(alpha: 0.4),
+                                taskColors[1].withValues(alpha: 0.12),
+                                scheme.scrim.withValues(alpha: 0.52),
                               ],
                             ),
                           ),
@@ -1968,9 +2455,19 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                               decoration: BoxDecoration(
                                 color: task.isCompleted
                                     ? scheme.primary
-                                    : (hasImage
+                                    : hasImage
                                         ? Colors.white.withValues(alpha: 0.2)
-                                        : scheme.secondaryContainer),
+                                        : null,
+                                gradient: !task.isCompleted && !hasImage
+                                    ? LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          taskColors[0],
+                                          taskColors[1],
+                                        ],
+                                      )
+                                    : null,
                                 shape: BoxShape.circle,
                                 border: hasImage && !task.isCompleted
                                     ? Border.all(
@@ -1998,7 +2495,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                         style: TextStyle(
                                           color: hasImage
                                               ? Colors.white
-                                              : scheme.onSecondaryContainer,
+                                              : scheme.onSurface,
                                           fontSize: 24,
                                           fontWeight: FontWeight.w900,
                                         ),
@@ -2038,8 +2535,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                             color: hasImage
                                                 ? Colors.white
                                                     .withValues(alpha: 0.2)
-                                                : scheme.primary
-                                                    .withValues(alpha: 0.1),
+                                                : taskColors.first
+                                                    .withValues(alpha: 0.18),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
@@ -2051,7 +2548,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                                 ?.copyWith(
                                                   color: hasImage
                                                       ? Colors.white
-                                                      : scheme.primary,
+                                                      : taskColors.first,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                           ),
@@ -2075,8 +2572,8 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                             color: hasImage
                                                 ? Colors.white
                                                     .withValues(alpha: 0.2)
-                                                : scheme.tertiary
-                                                    .withValues(alpha: 0.1),
+                                                : taskColors[1]
+                                                    .withValues(alpha: 0.18),
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
@@ -2088,7 +2585,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                                 ?.copyWith(
                                                   color: hasImage
                                                       ? Colors.white
-                                                      : scheme.tertiary,
+                                                      : taskColors[1],
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                           ),
@@ -2168,7 +2665,9 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                   Divider(
                                       color: hasImage
                                           ? Colors.white.withValues(alpha: 0.2)
-                                          : scheme.outlineVariant),
+                                          : taskColors.first.withValues(
+                                              alpha: 0.32,
+                                            )),
                                   const SizedBox(height: 12),
                                   Text(
                                     '记下这次的感受',
@@ -2201,8 +2700,12 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                                       filled: true,
                                       fillColor: hasImage
                                           ? Colors.white.withValues(alpha: 0.1)
-                                          : scheme.surfaceContainerHighest
-                                              .withValues(alpha: 0.3),
+                                          : Color.alphaBlend(
+                                              taskColors.first.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                              scheme.surfaceContainerHighest,
+                                            ),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(16),
                                         borderSide: BorderSide(
@@ -2313,6 +2816,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     bool hasImage,
   ) {
     final foreground = hasImage ? scheme.onInverseSurface : scheme.onSurface;
+    final taskColors = _challengeTaskGradientColors(task, scheme);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
       child: Container(
@@ -2321,12 +2825,15 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         decoration: BoxDecoration(
           color: hasImage
               ? scheme.scrim.withValues(alpha: 0.42)
-              : scheme.surfaceContainerHighest.withValues(alpha: 0.76),
+              : Color.alphaBlend(
+                  taskColors[1].withValues(alpha: 0.16),
+                  scheme.surfaceContainerHighest,
+                ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: hasImage
                 ? scheme.onInverseSurface.withValues(alpha: 0.24)
-                : scheme.outlineVariant,
+                : taskColors.first.withValues(alpha: 0.36),
           ),
         ),
         child: Row(

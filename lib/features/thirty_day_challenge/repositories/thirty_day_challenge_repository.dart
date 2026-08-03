@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/storage/user_session_storage.dart';
@@ -11,6 +12,7 @@ import '../models/thirty_day_challenge.dart';
 /// 目前不接入云端同步；数据格式独立，后续可以在不改动页面的前提下扩展同步。
 abstract final class ThirtyDayChallengeRepository {
   static const String _storageKey = 'thirty_day_self_challenge_v1';
+  static final ValueNotifier<int> activityRevision = ValueNotifier<int>(0);
 
   static Future<ThirtyDayChallengeState> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,6 +42,37 @@ abstract final class ThirtyDayChallengeRepository {
   static Future<void> markIntroSeen() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(await _scopedIntroKey(), true);
+    await prefs.setBool(await _scopedStartedKey(), true);
+    await prefs.setBool(await _scopedPausedKey(), false);
+    activityRevision.value++;
+  }
+
+  static Future<bool> hasStarted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(await _scopedStartedKey()) ??
+        prefs.getBool(await _scopedIntroKey()) ??
+        false;
+  }
+
+  static Future<bool> isPaused() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(await _scopedPausedKey()) ?? false;
+  }
+
+  static Future<void> setPaused(bool paused) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(await _scopedPausedKey(), paused);
+    activityRevision.value++;
+  }
+
+  /// 放弃当前挑战并清除本地保存的全部任务记录。
+  static Future<void> abandonChallenge() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(await _scopedKey());
+    await prefs.remove(await _scopedIntroKey());
+    await prefs.remove(await _scopedStartedKey());
+    await prefs.remove(await _scopedPausedKey());
+    activityRevision.value++;
   }
 
   static Future<void> save(ThirtyDayChallengeState state) async {
@@ -72,6 +105,7 @@ abstract final class ThirtyDayChallengeRepository {
       task.imageUpdatedAt = trimmed.isEmpty ? null : DateTime.now();
     }
     await save(state);
+    activityRevision.value++;
   }
 
   static Future<void> setCompleted(
@@ -86,6 +120,7 @@ abstract final class ThirtyDayChallengeRepository {
     task.isCompleted = completed;
     task.completedAt = completed ? (completedAt ?? DateTime.now()) : null;
     await save(state);
+    activityRevision.value++;
   }
 
   /// 重新开始这一轮挑战，但保留用户调整过的任务、感受和图片记录。
@@ -95,6 +130,7 @@ abstract final class ThirtyDayChallengeRepository {
       task.completedAt = null;
     }
     await save(state);
+    activityRevision.value++;
   }
 
   static Future<String> _scopedKey() async {
@@ -105,6 +141,14 @@ abstract final class ThirtyDayChallengeRepository {
 
   static Future<String> _scopedIntroKey() async {
     return '${await _scopedKey()}_intro_seen';
+  }
+
+  static Future<String> _scopedStartedKey() async {
+    return '${await _scopedKey()}_started';
+  }
+
+  static Future<String> _scopedPausedKey() async {
+    return '${await _scopedKey()}_paused';
   }
 
   static Future<void> _save(

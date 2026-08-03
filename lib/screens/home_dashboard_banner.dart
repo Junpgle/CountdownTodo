@@ -2,6 +2,117 @@ part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
+  Widget _buildChallengeParticipationBanner(bool isLight) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Material(
+        color: scheme.tertiaryContainer.withValues(
+          alpha: isLight ? 0.9 : 0.72,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            await Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                const ThirtyDayChallengeScreen(),
+              ),
+            );
+            if (mounted) {
+              _loadThirtyDayChallengeStatus();
+            }
+          },
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: isLandscape ? 8 : 10,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: scheme.tertiary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.explore_rounded,
+                    color: scheme.onTertiary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: isLandscape
+                      ? Text(
+                          '您正在参与「30天找到全新自我」活动',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    color: scheme.onTertiaryContainer,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '您正在参与活动',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: scheme.onTertiaryContainer
+                                        .withValues(alpha: 0.76),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              '30天找到全新自我',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
+                                    color: scheme.onTertiaryContainer,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                            ),
+                          ],
+                        ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '$_thirtyDayChallengeCompletedCount/30',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: scheme.onTertiaryContainer,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPendingTodoConfirmCard(bool isLight) {
     if (_pendingTodoConfirm == null) return const SizedBox.shrink();
 

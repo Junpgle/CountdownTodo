@@ -23,6 +23,7 @@ import '../services/course_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../models.dart';
 import '../features/habits/screens/habit_center_screen.dart';
+import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
@@ -82,6 +83,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (AppPlatform.isWeb) {
       return [
         _RecentFeature(
+          Icons.auto_awesome_rounded,
+          scheme.primary,
+          '30天找到全新自我',
+          '设置->帮助与反馈->30天找到全新自我',
+          destinationBuilder: () => const ThirtyDayChallengeScreen(),
+        ),
+        _RecentFeature(
           Icons.track_changes_rounded,
           scheme.tertiary,
           '习惯中心',
@@ -122,6 +130,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     return [
+      _RecentFeature(
+        Icons.auto_awesome_rounded,
+        scheme.primary,
+        '30天找到全新自我',
+        '设置->帮助与反馈->30天找到全新自我',
+        destinationBuilder: () => const ThirtyDayChallengeScreen(),
+      ),
       _RecentFeature(
         Icons.track_changes_rounded,
         scheme.tertiary,
