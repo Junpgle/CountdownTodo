@@ -59,6 +59,16 @@ abstract final class ThirtyDayChallengeRepository {
     return prefs.getBool(await _scopedPausedKey()) ?? false;
   }
 
+  static Future<bool> isHabitCenterPromotionDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(await _scopedHabitCenterPromotionKey()) ?? false;
+  }
+
+  static Future<void> dismissHabitCenterPromotion() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(await _scopedHabitCenterPromotionKey(), true);
+  }
+
   static Future<void> setPaused(bool paused) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(await _scopedPausedKey(), paused);
@@ -167,6 +177,10 @@ abstract final class ThirtyDayChallengeRepository {
 
   static Future<String> _scopedPausedKey() async {
     return '${await _scopedKey()}_paused';
+  }
+
+  static Future<String> _scopedHabitCenterPromotionKey() async {
+    return '${await _scopedKey()}_habit_center_promotion_dismissed';
   }
 
   static Future<void> _save(

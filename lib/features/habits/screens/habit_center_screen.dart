@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
+import '../../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../../../services/feature_tip_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
@@ -30,6 +32,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   final GlobalKey _navigationKey = GlobalKey();
   final GlobalKey _todayContentKey = GlobalKey();
   bool _showCoachMarks = false;
+  bool _showChallengePromotion = false;
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       if (!mounted) return;
       setState(() {});
     });
+    _loadChallengePromotion();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
   }
 
@@ -47,6 +51,107 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadChallengePromotion() async {
+    final dismissed =
+        await ThirtyDayChallengeRepository.isHabitCenterPromotionDismissed();
+    if (!mounted) return;
+    setState(() => _showChallengePromotion = !dismissed);
+  }
+
+  Future<void> _openChallengePromotion() async {
+    await Navigator.of(context).push(
+      PageTransitions.material(
+        builder: (_) => const ThirtyDayChallengeScreen(),
+      ),
+    );
+    if (mounted) _loadChallengePromotion();
+  }
+
+  Future<void> _dismissChallengePromotion() async {
+    if (!mounted) return;
+    setState(() => _showChallengePromotion = false);
+    await ThirtyDayChallengeRepository.dismissHabitCenterPromotion();
+  }
+
+  Widget _buildChallengePromotionBanner(ColorScheme colorScheme) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 840),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Material(
+            color: colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              onTap: _openChallengePromotion,
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: colorScheme.onPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '30天找到全新自我',
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '给平淡生活加一点新鲜感，开启一次小小的自我挑战',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer
+                                  .withValues(alpha: 0.78),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                    IconButton(
+                      tooltip: '关闭推广',
+                      onPressed: _dismissChallengePromotion,
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openCreateHabit() async {
@@ -137,6 +242,9 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
+            topBanner: _showChallengePromotion
+                ? _buildChallengePromotionBanner(colorScheme)
+                : null,
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
