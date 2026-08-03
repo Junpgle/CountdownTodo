@@ -656,6 +656,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     final state = _state;
     final isCompactMobile = MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
+      // Keep the challenge cards in place while the keyboard opens or closes.
+      // The card content already scrolls independently when the input is
+      // focused, so resizing the whole page only makes the saved feeling jump
+      // around and become difficult to read.
+      resizeToAvoidBottomInset: false,
       appBar: _showWelcome
           ? null
           : AppBar(
@@ -3030,7 +3035,12 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
   @override
   void didUpdateWidget(covariant _ChallengeTaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.task.feeling != _feelingController.text && !_saving) {
+
+    // Keyboard visibility changes rebuild the parent, but they do not mean
+    // that the task changed. Only replace the draft when this card starts
+    // displaying a different task; otherwise an unsaved feeling gets reset to
+    // the persisted value while the user is still editing it.
+    if (!identical(oldWidget.task, widget.task)) {
       _feelingController.text = widget.task.feeling;
     }
   }
@@ -3045,8 +3055,13 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     setState(() => _saving = true);
     try {
       await widget.onSaveFeeling(_feelingController.text);
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _expanded = false;
+      });
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted && _saving) setState(() => _saving = false);
     }
   }
 
@@ -3506,8 +3521,12 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                       if (!_expanded)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
+                          child: IconButton(
+                            tooltip: '展开记录感受',
+                            onPressed: () => setState(() => _expanded = true),
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                            ),
                             color: mutedForeground,
                           ),
                         ),
@@ -3533,7 +3552,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
     ColorScheme scheme,
     bool hasImage,
   ) {
-    final foreground = hasImage ? scheme.onInverseSurface : scheme.onSurface;
+    final foreground = hasImage ? Colors.white : scheme.onSurface;
     final taskColors = _challengeTaskGradientColors(task, scheme);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -3542,7 +3561,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
         decoration: BoxDecoration(
           color: hasImage
-              ? scheme.scrim.withValues(alpha: 0.42)
+              ? scheme.scrim.withValues(alpha: 0.52)
               : Color.alphaBlend(
                   taskColors[1].withValues(alpha: 0.16),
                   scheme.surfaceContainerHighest,
@@ -3566,6 +3585,7 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: foreground,
+                      fontWeight: FontWeight.w600,
                       height: 1.35,
                     ),
               ),
