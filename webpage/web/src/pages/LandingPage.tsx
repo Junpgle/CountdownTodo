@@ -15,6 +15,8 @@ import { BandShowcase } from './landing/BandShowcase';
 import { AnalyticsPreview } from './landing/AnalyticsPreview';
 import { CollaborationSearchShowcase } from './landing/CollaborationSearchShowcase';
 import { PersonalTimelineShowcase } from './landing/PersonalTimelineShowcase';
+import { ThirtyDayChallengeShowcase } from './landing/ThirtyDayChallengeShowcase';
+import { HabitTrackingShowcase } from './landing/HabitTrackingShowcase';
 import { LANSyncShowcase } from './landing/LANSyncShowcase';
 import { DownloadSection } from './landing/DownloadSection';
 import { Footer } from './landing/Footer';
@@ -105,6 +107,8 @@ export const LandingPage = ({ onOpenWeb }: { onOpenWeb: () => void }) => {
           <Features />
           <CollaborationSearchShowcase />
           <PersonalTimelineShowcase />
+          <ThirtyDayChallengeShowcase />
+          <HabitTrackingShowcase />
           <LANSyncShowcase />
           <WindowsShowcase />
           <AndroidShowcase />

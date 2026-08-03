@@ -1,4 +1,4 @@
-import { Monitor, Smartphone, CloudLightning, Brain, MessageSquare, BellRing, Search, Users, Wifi } from 'lucide-react';
+import { Monitor, Smartphone, CloudLightning, Brain, MessageSquare, BellRing, Search, Users, Wifi, Activity, CheckSquare, Sparkles } from 'lucide-react';
 
 export const Features = () => {
   const features = [
@@ -8,6 +8,9 @@ export const Features = () => {
     { title: "全局搜索", desc: "毫秒级全维度索引。支持自然语言日期解析，一键触达任务详情、时间统计与应用历史。", icon: <Search className="w-6 h-6" />, color: "bg-rose-50 text-rose-600" },
     { title: "团队协作", desc: "实时共享清单。内置 LWW 冲突解决算法与操作审计，让团队配合从未如此简单、透明。", icon: <Users className="w-6 h-6" />, color: "bg-indigo-50 text-indigo-600" },
     { title: "局域网同步", desc: "免流量 P2P 极速传输。只要在同一网络，即可实现免外网的数据瞬间对齐与文件互传。", icon: <Wifi className="w-6 h-6" />, color: "bg-emerald-50 text-emerald-600" },
+    { title: "个人时间轴", desc: "全维度复盘。自动识别“提前完成”与“死线冲刺”，区分生产力与干扰，洞察每一秒的价值。", icon: <Activity className="w-6 h-6" />, color: "bg-fuchsia-50 text-fuchsia-600" },
+    { title: "全面习惯养成", desc: "四维打卡体系。涵盖完成、时长、数量、时间点打卡，完美适配你的每一个小习惯。", icon: <CheckSquare className="w-6 h-6" />, color: "bg-cyan-50 text-cyan-600" },
+    { title: "30天生活实验", desc: "找回生命感受力。每天抽取一件新鲜小事，写下感悟，记录影像，生成专属纪念海报。", icon: <Sparkles className="w-6 h-6" />, color: "bg-orange-50 text-orange-600" },
   ];
 
   return (
