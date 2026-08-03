@@ -541,6 +541,11 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
             title: '屏幕时间',
             description: '授权后，这里将统计你每日的手机应用使用情况，帮助你减少分心。',
           ),
+          CoachMarkStep(
+            targetKey: _habitsCardKey,
+            title: '今日习惯',
+            description: '这里会展示今天需要完成的习惯，点击卡片即可进入习惯中心，查看打卡、历史和统计。',
+          ),
         ],
         onFinish: () {
           _dismissCoachMarks(tipId: 'coach_focus_tab');

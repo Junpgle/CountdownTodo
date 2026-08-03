@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/feature_tip_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/coach_mark_overlay.dart';
 import 'habit_analysis_tab.dart';
 import 'habit_archived_screen.dart';
 import 'habit_calendar_tab.dart';
@@ -25,6 +27,9 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   int _reloadTick = 0;
   final GlobalKey _archiveActionKey = GlobalKey();
   final GlobalKey _createActionKey = GlobalKey();
+  final GlobalKey _navigationKey = GlobalKey();
+  final GlobalKey _todayContentKey = GlobalKey();
+  bool _showCoachMarks = false;
 
   @override
   void initState() {
@@ -35,6 +40,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       if (!mounted) return;
       setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
   }
 
   @override
@@ -67,6 +73,47 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     }
   }
 
+  Future<void> _checkCoachMarks() async {
+    if (_showCoachMarks || !mounted) return;
+    final hasSeenCoachMarks =
+        await FeatureTipService.hasTipBeenShown('coach_habit_center');
+    if (hasSeenCoachMarks || !mounted) return;
+
+    _showCoachMarks = true;
+    await CoachMarkOverlay.show(
+      context: context,
+      steps: [
+        CoachMarkStep(
+          targetKey: _createActionKey,
+          title: '新建习惯',
+          description: '从这里创建一个想长期坚持的目标，可以设置打卡方式、周期和提醒。',
+        ),
+        CoachMarkStep(
+          targetKey: _navigationKey,
+          title: '切换视图',
+          description: '在“今日”“日历”和“分析”之间切换，分别查看今天的执行情况、历史记录和趋势。',
+        ),
+        CoachMarkStep(
+          targetKey: _todayContentKey,
+          title: '今日习惯',
+          description: '这里会按时间段展示今天的习惯，完成后可以直接打卡，也可以点进详情记录更多信息。',
+        ),
+        CoachMarkStep(
+          targetKey: _archiveActionKey,
+          title: '归档习惯',
+          description: '暂时不想继续的习惯可以归档，历史记录仍会保留，之后也能恢复。',
+        ),
+      ],
+      onFinish: _dismissCoachMarks,
+      onSkip: _dismissCoachMarks,
+    );
+  }
+
+  Future<void> _dismissCoachMarks() async {
+    _showCoachMarks = false;
+    await FeatureTipService.markTipShown('coach_habit_center');
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -86,10 +133,13 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         ];
 
         final bodyTabs = [
-          HabitTodayTab(
-            username: widget.username,
-            reloadTick: _reloadTick,
-            onChanged: () => setState(() => _reloadTick++),
+          KeyedSubtree(
+            key: _todayContentKey,
+            child: HabitTodayTab(
+              username: widget.username,
+              reloadTick: _reloadTick,
+              onChanged: () => setState(() => _reloadTick++),
+            ),
           ),
           HabitCalendarTab(
             username: widget.username,
@@ -121,6 +171,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             body: Row(
               children: [
                 NavigationRail(
+                  key: _navigationKey,
                   selectedIndex: _tabController.index,
                   onDestinationSelected: (index) {
                     _tabController.animateTo(index);
@@ -171,6 +222,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 600),
                   child: TabBar(
+                    key: _navigationKey,
                     controller: _tabController,
                     indicatorSize: TabBarIndicatorSize.tab,
                     dividerColor:

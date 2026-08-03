@@ -96,19 +96,30 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
       );
       if (!mounted || !context.mounted) return;
 
+      // 某些页面使用容器变换动画进入。目标控件在动画期间会跟着整页
+      // 从来源位置移动到最终位置，必须等路由动画完成后再读取坐标。
+      await _waitForRouteAnimation(context);
+      if (!mounted || !context.mounted) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !context.mounted) return;
+
       final RenderBox renderBox = context.findRenderObject() as RenderBox;
 
-      // 🚀 获取根 Overlay 的 RenderBox 作为坐标系参考
-      final OverlayState overlay = Overlay.of(context, rootOverlay: true);
-      final RenderBox overlayRenderBox =
-          overlay.context.findRenderObject() as RenderBox;
-
-      // 计算相对于根 Overlay 的精确坐标
-      final offset =
-          renderBox.localToGlobal(Offset.zero, ancestor: overlayRenderBox);
+      // 教程遮罩铺满根 Overlay，而目标控件可能位于嵌套路由、侧边栏或
+      // 带 Transform 的页面中，因此直接使用相对 Flutter 视图的全局坐标。
+      // 不要再减去 Overlay RenderBox 的 origin：桌面端 Overlay 的布局原点
+      // 可能已经是窗口原点，但其 RenderBox 的 global origin 会带有页面内边距。
+      final targetTopLeft = renderBox.localToGlobal(Offset.zero);
+      final targetBottomRight = renderBox.localToGlobal(
+        renderBox.size.bottomRight(Offset.zero),
+      );
+      final targetRect = Rect.fromPoints(
+        targetTopLeft,
+        targetBottomRight,
+      );
 
       setState(() {
-        _targetRect = offset & renderBox.size;
+        _targetRect = targetRect;
         _isCalculating = false;
       });
     } else {
@@ -118,6 +129,30 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         _isCalculating = false;
       });
     }
+  }
+
+  Future<void> _waitForRouteAnimation(BuildContext targetContext) async {
+    final animation = ModalRoute.of(targetContext)?.animation;
+    if (animation == null || animation.status == AnimationStatus.completed) {
+      return;
+    }
+
+    final settled = Completer<void>();
+    late final AnimationStatusListener listener;
+    listener = (status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        animation.removeStatusListener(listener);
+        if (!settled.isCompleted) settled.complete();
+      }
+    };
+    animation.addStatusListener(listener);
+    if (animation.status == AnimationStatus.completed ||
+        animation.status == AnimationStatus.dismissed) {
+      animation.removeStatusListener(listener);
+      if (!settled.isCompleted) settled.complete();
+    }
+    await settled.future;
   }
 
   void _nextStep() {
@@ -172,28 +207,15 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
   }
 
   Widget _buildTooltip(CoachMarkStep step, Rect? targetRect) {
-    final screenSize = MediaQuery.of(context).size;
-    final isBottomSpaceAvailable = targetRect != null
-        ? ((screenSize.height - targetRect.bottom) > 220)
-        : true;
-
-    return Positioned(
-      top: targetRect != null
-          ? (isBottomSpaceAvailable ? targetRect.bottom + 16 : null)
-          : screenSize.height / 2 - 100, // 默认居中显示
-      bottom: targetRect != null
-          ? (!isBottomSpaceAvailable
-              ? screenSize.height - targetRect.top + 16
-              : null)
-          : null,
-      left: 16,
-      right: 16,
-      child: Center(
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned.fill(
+      child: CustomSingleChildLayout(
+        delegate: _CoachMarkTooltipLayoutDelegate(targetRect: targetRect),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 340),
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -212,7 +234,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
@@ -220,10 +242,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                 step.description,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.75),
+                  color: scheme.onSurface.withValues(alpha: 0.75),
                   height: 1.5,
                 ),
               ),
@@ -236,10 +255,7 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.4),
+                      color: scheme.onSurface.withValues(alpha: 0.4),
                     ),
                   ),
                   Row(
@@ -276,6 +292,57 @@ class _CoachMarkOverlayWidgetState extends State<_CoachMarkOverlayWidget> {
         ),
       ),
     );
+  }
+}
+
+class _CoachMarkTooltipLayoutDelegate extends SingleChildLayoutDelegate {
+  final Rect? targetRect;
+  static const double _margin = 16;
+  static const double _gap = 16;
+
+  const _CoachMarkTooltipLayoutDelegate({required this.targetRect});
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    return BoxConstraints(
+      minWidth: 0,
+      maxWidth: constraints.maxWidth - _margin * 2,
+      minHeight: 0,
+      maxHeight: constraints.maxHeight - _margin * 2,
+    );
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final maxLeft = size.width - childSize.width - _margin;
+    final centeredLeft = (size.width - childSize.width) / 2;
+    final left = centeredLeft.clamp(_margin, maxLeft).toDouble();
+
+    if (targetRect == null) {
+      final centeredTop = (size.height - childSize.height) / 2;
+      return Offset(left, centeredTop.clamp(_margin, _maxTop(size, childSize)));
+    }
+
+    final topSpace = targetRect!.top - _gap - childSize.height;
+    final bottomSpace = targetRect!.bottom + _gap;
+    final maxTop = _maxTop(size, childSize);
+
+    final top = bottomSpace + childSize.height <= size.height - _margin
+        ? bottomSpace
+        : topSpace >= _margin
+            ? topSpace
+            : (targetRect!.center.dy - childSize.height / 2)
+                .clamp(_margin, maxTop)
+                .toDouble();
+    return Offset(left, top.clamp(_margin, maxTop).toDouble());
+  }
+
+  double _maxTop(Size size, Size childSize) =>
+      (size.height - childSize.height - _margin).clamp(_margin, size.height);
+
+  @override
+  bool shouldRelayout(covariant _CoachMarkTooltipLayoutDelegate oldDelegate) {
+    return oldDelegate.targetRect != targetRect;
   }
 }
 
