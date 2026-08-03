@@ -237,18 +237,26 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       final isActive =
           hasStarted && !await ThirtyDayChallengeRepository.isPaused();
       var completedCount = 0;
+      var taskCount = 30;
+      var challengeTitle = ThirtyDayChallengeState.defaultTitle;
       if (isActive) {
         final state = await ThirtyDayChallengeRepository.load();
         completedCount = state.completedCount;
+        taskCount = state.tasks.length;
+        challengeTitle = state.challengeTitle;
       }
       if (!mounted ||
           (isActive == _isThirtyDayChallengeActive &&
-              completedCount == _thirtyDayChallengeCompletedCount)) {
+              completedCount == _thirtyDayChallengeCompletedCount &&
+              taskCount == _thirtyDayChallengeTaskCount &&
+              challengeTitle == _thirtyDayChallengeTitle)) {
         return;
       }
       setState(() {
         _isThirtyDayChallengeActive = isActive;
         _thirtyDayChallengeCompletedCount = completedCount;
+        _thirtyDayChallengeTaskCount = taskCount;
+        _thirtyDayChallengeTitle = challengeTitle;
       });
     } catch (_) {
       // 首页 Banner 不应影响首页主体加载。

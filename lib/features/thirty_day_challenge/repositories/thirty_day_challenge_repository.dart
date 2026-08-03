@@ -80,6 +80,24 @@ abstract final class ThirtyDayChallengeRepository {
     await _save(prefs, state);
   }
 
+  /// 用新的自定义内容开启一场挑战，并将其设为当前设备上的活动挑战。
+  static Future<ThirtyDayChallengeState> startNewChallenge({
+    required String title,
+    required Iterable<String> taskTitles,
+  }) async {
+    final state = ThirtyDayChallengeState.custom(
+      title: title,
+      taskTitles: taskTitles,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await _save(prefs, state);
+    await prefs.setBool(await _scopedIntroKey(), true);
+    await prefs.setBool(await _scopedStartedKey(), true);
+    await prefs.setBool(await _scopedPausedKey(), false);
+    activityRevision.value++;
+    return state;
+  }
+
   static Future<void> updateTask(
     ThirtyDayChallengeState state,
     int taskId, {

@@ -13,6 +13,20 @@ import 'package:image_picker/image_picker.dart';
 import '../../../services/browser_file_service.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
+import 'new_challenge_screen.dart';
+
+String _safeFileName(String value) {
+  final sanitized = value
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+      .replaceAll(RegExp(r'\s+'), '_')
+      .trim();
+  return sanitized.isEmpty ? '我的挑战' : sanitized;
+}
+
+String _safeHashTag(String value) {
+  final sanitized = value.replaceAll(RegExp(r'\s+'), '');
+  return sanitized.isEmpty ? '我的挑战' : sanitized;
+}
 
 class ThirtyDayChallengeScreen extends StatefulWidget {
   const ThirtyDayChallengeScreen({super.key});
@@ -71,7 +85,71 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     _entranceController.forward();
   }
 
+  Future<void> _openNewChallenge() async {
+    if (_isShuffling || _isExportingReport) return;
+
+    final draft = await Navigator.of(context).push<ChallengeDraft>(
+      MaterialPageRoute(builder: (_) => const NewChallengeScreen()),
+    );
+    if (draft == null || !mounted) return;
+
+    if (!_showWelcome) {
+      final currentState = _state;
+      final shouldReplace = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.auto_awesome_rounded),
+          title: const Text('开启新的挑战？'),
+          content: Text(
+            '当前正在进行「${currentState?.challengeTitle ?? '当前挑战'}」。开始新挑战后，当前挑战的完成状态、感受和图片将被替换，无法恢复。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('继续当前挑战'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('开启新挑战'),
+            ),
+          ],
+        ),
+      );
+      if (shouldReplace != true || !mounted) return;
+    }
+
+    try {
+      final state = await ThirtyDayChallengeRepository.startNewChallenge(
+        title: draft.title,
+        taskTitles: draft.taskTitles,
+      );
+      if (!mounted) return;
+      setState(() {
+        _state = state;
+        _showWelcome = false;
+        _showOverview = false;
+        _isPaused = false;
+        _currentIndex = 0;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _pageController.jumpToPage(0);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已开启「${state.challengeTitle}」')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('新挑战创建失败，请稍后再试')),
+      );
+    }
+  }
+
   Future<void> _enterChallenge() async {
+    final challengeTitle =
+        _state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
     final shouldStart = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -79,8 +157,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         return AlertDialog(
           icon: Icon(Icons.cloud_off_rounded, color: scheme.primary),
           title: const Text('本活动仅保存在当前设备'),
-          content: const Text(
-            '“30天找到全新自我”目前不支持跨端同步。完成状态、任务调整、感受和图片记录只会保存在当前设备。',
+          content: Text(
+            '“$challengeTitle”目前不支持跨端同步。完成状态、任务调整、感受和图片记录只会保存在当前设备。',
           ),
           actions: [
             TextButton(
@@ -146,15 +224,20 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _abandonChallenge() async {
     if (_isShuffling) return;
 
+    final state = _state;
+    final taskCount = state?.tasks.length ?? 0;
+    final challengeTitle =
+        state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle;
+
     final shouldAbandon = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final scheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           icon: Icon(Icons.delete_sweep_rounded, color: scheme.error),
-          title: const Text('放弃这次挑战？'),
-          content: const Text(
-            '放弃后会清空 30 项任务的完成状态、任务调整、感受和图片记录，之后可以重新开始。此操作无法恢复。',
+          title: Text('放弃「$challengeTitle」？'),
+          content: Text(
+            '放弃后会清空 $taskCount 项任务的完成状态、任务调整、感受和图片记录，之后可以重新开始。此操作无法恢复。',
           ),
           actions: [
             TextButton(
@@ -205,8 +288,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.restart_alt_rounded),
         title: const Text('重置全部打卡状态？'),
-        content: const Text(
-          '这会清除 30 项任务的完成标记和完成时间，但会保留你调整过的任务、感受和图片记录。',
+        content: Text(
+          '这会清除 ${state.tasks.length} 项任务的完成标记和完成时间，但会保留你调整过的任务、感受和图片记录。',
         ),
         actions: [
           TextButton(
@@ -304,7 +387,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
 
       final pngBytes = byteData.buffer.asUint8List();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'CountDownTodo_30天找到全新自我_$timestamp.png';
+      final fileName =
+          'CountDownTodo_${_safeFileName(state.challengeTitle)}_$timestamp.png';
       if (!kIsWeb) {
         await BrowserFileService.saveBytesFile(
           pngBytes,
@@ -316,7 +400,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
         pngBytes,
         fileName,
         mimeType: 'image/png',
-        text: '我的 30 天找到全新自我报告\n#30天找到全新自我 #生活实验 #CountDownTodo',
+        text:
+            '我的「${state.challengeTitle}」报告\n#${_safeHashTag(state.challengeTitle)} #打卡挑战 #CountDownTodo',
       );
 
       if (!mounted) return;
@@ -352,8 +437,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       setState(() {});
       if (completed) {
         final message = state.isCompleted
-            ? '30 项挑战全部完成了，恭喜你遇见新的自己！'
-            : '已完成 ${state.completedCount}/30，继续感受生活吧';
+            ? '${state.tasks.length} 项挑战全部完成了，恭喜你遇见新的自己！'
+            : '已完成 ${state.completedCount}/${state.tasks.length}，继续感受生活吧';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
@@ -505,7 +590,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           ? null
           : AppBar(
               title: Text(
-                '30天找到全新自我',
+                state?.challengeTitle ?? ThirtyDayChallengeState.defaultTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: isCompactMobile
                     ? Theme.of(context)
                         .textTheme
@@ -513,6 +600,13 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         ?.copyWith(fontSize: 18)
                     : null,
               ),
+              actions: [
+                IconButton(
+                  tooltip: '新建挑战',
+                  onPressed: _openNewChallenge,
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ],
             ),
       body: state == null
           ? const Center(child: CircularProgressIndicator())
@@ -941,6 +1035,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _openNewChallenge,
+                            icon: const Icon(Icons.edit_note_rounded),
+                            label: const Text('创建自己的挑战'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(64),
+                              textStyle: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: _deferChallenge,
                             icon: const Icon(Icons.schedule_outlined),
@@ -1226,6 +1336,22 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         icon: const Icon(Icons.bolt_rounded, size: 18),
                         label: const Text('开始这场挑战'),
                         style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          textStyle: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      OutlinedButton.icon(
+                        onPressed: _openNewChallenge,
+                        icon: const Icon(Icons.edit_note_rounded, size: 18),
+                        label: const Text('创建自己的挑战'),
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(50),
                           textStyle: const TextStyle(
                             fontSize: 15,
@@ -1652,7 +1778,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                     Text(
                       _isPaused
                           ? '首页 Banner 已隐藏，记录仍然保留。'
-                          : '左右滑动，找一件让生活重新有感觉的小事。',
+                          : state.isBuiltIn
+                              ? '左右滑动，找一件让生活重新有感觉的小事。'
+                              : '左右滑动，按自己的节奏完成这一项挑战。',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontSize: isCompactMobile ? 12 : null,
                             color: scheme.onPrimaryContainer.withValues(
@@ -1735,7 +1863,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   child: child,
                 ),
                 child: Text(
-                  '${state.completedCount}/30',
+                  '${state.completedCount}/${state.tasks.length}',
                   key: ValueKey(state.completedCount),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w900,
@@ -1938,7 +2066,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  '我的 30 天',
+                  '我的「${state.challengeTitle}」',
                   style: TextStyle(
                     color: scheme.onPrimaryContainer,
                     fontSize: 64,
@@ -2041,7 +2169,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           ),
           const SizedBox(height: 40),
           Text(
-            '30 项生活体验',
+            '${state.tasks.length} 项挑战内容',
             style: TextStyle(
               color: scheme.onSurface,
               fontSize: 32,
@@ -2907,361 +3035,374 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
                         : 450,
                   ),
                   child: Column(
-                  children: [
-                    InkWell(
-                      onTap: () => setState(() => _expanded = !_expanded),
-                      borderRadius: BorderRadius.circular(32),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 32, 24, 28),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: task.isCompleted
-                                        ? scheme.primary
-                                        : hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.25)
-                                            : scheme.surface
-                                                .withValues(alpha: 0.4),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: hasImage && !task.isCompleted
-                                        ? Border.all(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.5))
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (task.isCompleted) ...[
-                                        Icon(
-                                          Icons.check_rounded,
-                                          size: 18,
-                                          color: scheme.onPrimary,
-                                        ),
-                                        const SizedBox(width: 6),
-                                      ],
-                                      Text(
-                                        task.isCompleted
-                                            ? '已完成'
-                                            : 'DAY ${task.id}',
-                                        style: TextStyle(
-                                          color: task.isCompleted
-                                              ? scheme.onPrimary
-                                              : (hasImage
-                                                  ? Colors.white
-                                                  : scheme.onSurface),
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      tooltip: '调整任务',
-                                      onPressed: widget.onEdit,
-                                      icon: const Icon(Icons.edit_note_rounded),
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.25)
-                                            : scheme.surface
-                                                .withValues(alpha: 0.4),
-                                        foregroundColor: hasImage
-                                            ? Colors.white
-                                            : scheme.onSurface,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      tooltip: task.imageBase64 == null
-                                          ? '添加背景图'
-                                          : '更换背景图',
-                                      onPressed: widget.isImageLoading
-                                          ? null
-                                          : widget.onPickImage,
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: hasImage
-                                            ? Colors.white
-                                                .withValues(alpha: 0.25)
-                                            : scheme.surface
-                                                .withValues(alpha: 0.4),
-                                        foregroundColor: hasImage
-                                            ? Colors.white
-                                            : scheme.onSurface,
-                                      ),
-                                      icon: widget.isImageLoading
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : Icon(
-                                              task.imageBase64 == null
-                                                  ? Icons
-                                                      .add_photo_alternate_outlined
-                                                  : Icons.image_outlined,
-                                            ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              task.title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineMedium
-                                  ?.copyWith(
-                                    fontSize: isCompactMobile ? 22 : null,
-                                    fontWeight: FontWeight.w900,
-                                    color: cardForeground,
-                                    height: 1.35,
-                                    decoration: task.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    decorationColor: mutedForeground,
-                                  ),
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                if (task.isCompleted)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: hasImage
-                                          ? Colors.white.withValues(alpha: 0.2)
-                                          : scheme.surface
-                                              .withValues(alpha: 0.4),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '完成于 ${_formatDate(task.completedAt)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: hasImage
-                                                ? Colors.white
-                                                : scheme.onSurfaceVariant,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  )
-                                else
-                                  Text(
-                                    '点击下方展开 · 记录这次感受',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                          color: mutedForeground,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
-                                if (task.isCustomized)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: hasImage
-                                          ? Colors.white.withValues(alpha: 0.2)
-                                          : scheme.surface
-                                              .withValues(alpha: 0.4),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '已调整',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: hasImage
-                                                ? Colors.white
-                                                : scheme.onSurfaceVariant,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (task.feeling.trim().isNotEmpty)
-                      _buildFeelingPreview(
-                        context,
-                        task,
-                        scheme,
-                        hasImage,
-                      ),
-                    AnimatedSize(
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeOutCubic,
-                      alignment: Alignment.topCenter,
-                      child: _expanded
-                          ? Padding(
-                              padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      InkWell(
+                        onTap: () => setState(() => _expanded = !_expanded),
+                        borderRadius: BorderRadius.circular(32),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 32, 24, 28),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Divider(
-                                      color: hasImage
-                                          ? Colors.white.withValues(alpha: 0.2)
-                                          : taskColors.first.withValues(
-                                              alpha: 0.32,
-                                            )),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    '记下这次的感受',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          color: mutedForeground,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _feelingController,
-                                    minLines: 3,
-                                    maxLines: 6,
-                                    textCapitalization:
-                                        TextCapitalization.sentences,
-                                    style: TextStyle(
-                                        color: hasImage
-                                            ? Colors.white
-                                            : scheme.onSurface),
-                                    decoration: InputDecoration(
-                                      hintText: '当时发生了什么？你有什么感觉？',
-                                      hintStyle: TextStyle(
-                                          color: hasImage
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: task.isCompleted
+                                          ? scheme.primary
+                                          : hasImage
                                               ? Colors.white
-                                                  .withValues(alpha: 0.6)
-                                              : null),
-                                      filled: true,
-                                      fillColor: hasImage
-                                          ? Colors.white.withValues(alpha: 0.1)
-                                          : Color.alphaBlend(
-                                              taskColors.first.withValues(
-                                                alpha: 0.12,
-                                              ),
-                                              scheme.surfaceContainerHighest,
-                                            ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                        borderSide: BorderSide(
-                                          color: hasImage
-                                              ? Colors.transparent
-                                              : scheme.outlineVariant,
+                                                  .withValues(alpha: 0.25)
+                                              : scheme.surface
+                                                  .withValues(alpha: 0.4),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: hasImage && !task.isCompleted
+                                          ? Border.all(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.5))
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (task.isCompleted) ...[
+                                          Icon(
+                                            Icons.check_rounded,
+                                            size: 18,
+                                            color: scheme.onPrimary,
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
+                                        Text(
+                                          task.isCompleted
+                                              ? '已完成'
+                                              : 'DAY ${task.id}',
+                                          style: TextStyle(
+                                            color: task.isCompleted
+                                                ? scheme.onPrimary
+                                                : (hasImage
+                                                    ? Colors.white
+                                                    : scheme.onSurface),
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 0.5,
+                                          ),
                                         ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                        borderSide: BorderSide(
-                                          color: hasImage
-                                              ? Colors.white
-                                                  .withValues(alpha: 0.3)
-                                              : scheme.outlineVariant,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                        borderSide: BorderSide(
-                                          color: hasImage
-                                              ? Colors.white
-                                              : scheme.primary,
-                                        ),
-                                      ),
-                                      alignLabelWithHint: true,
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
                                   Row(
                                     children: [
-                                      OutlinedButton.icon(
-                                        onPressed:
-                                            _saving ? null : _saveFeeling,
-                                        icon: _saving
+                                      IconButton(
+                                        tooltip: '调整任务',
+                                        onPressed: widget.onEdit,
+                                        icon:
+                                            const Icon(Icons.edit_note_rounded),
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: hasImage
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.25)
+                                              : scheme.surface
+                                                  .withValues(alpha: 0.4),
+                                          foregroundColor: hasImage
+                                              ? Colors.white
+                                              : scheme.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        tooltip: task.imageBase64 == null
+                                            ? '添加背景图'
+                                            : '更换背景图',
+                                        onPressed: widget.isImageLoading
+                                            ? null
+                                            : widget.onPickImage,
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: hasImage
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.25)
+                                              : scheme.surface
+                                                  .withValues(alpha: 0.4),
+                                          foregroundColor: hasImage
+                                              ? Colors.white
+                                              : scheme.onSurface,
+                                        ),
+                                        icon: widget.isImageLoading
                                             ? const SizedBox(
-                                                width: 16,
-                                                height: 16,
+                                                width: 18,
+                                                height: 18,
                                                 child:
                                                     CircularProgressIndicator(
                                                   strokeWidth: 2,
                                                 ),
                                               )
-                                            : const Icon(
-                                                Icons.bookmark_add_outlined),
-                                        label: const Text('保存感受'),
-                                        style: hasImage
-                                            ? OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.white,
-                                                side: BorderSide(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                            alpha: 0.5)),
-                                              )
-                                            : null,
-                                      ),
-                                      const Spacer(),
-                                      FilledButton.icon(
-                                        onPressed: () => widget
-                                            .onComplete(!task.isCompleted),
-                                        icon: Icon(task.isCompleted
-                                            ? Icons.undo_rounded
-                                            : Icons.check_rounded),
-                                        label: Text(
-                                            task.isCompleted ? '撤销完成' : '完成打卡'),
-                                        style: hasImage
-                                            ? FilledButton.styleFrom(
-                                                backgroundColor: Colors.white,
-                                                foregroundColor: Colors.black,
-                                              )
-                                            : null,
+                                            : Icon(
+                                                task.imageBase64 == null
+                                                    ? Icons
+                                                        .add_photo_alternate_outlined
+                                                    : Icons.image_outlined,
+                                              ),
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    const SizedBox(height: 12),
-                    if (!_expanded)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: mutedForeground,
+                              const SizedBox(height: 24),
+                              Text(
+                                task.title,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineMedium
+                                    ?.copyWith(
+                                      fontSize: isCompactMobile ? 22 : null,
+                                      fontWeight: FontWeight.w900,
+                                      color: cardForeground,
+                                      height: 1.35,
+                                      decoration: task.isCompleted
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      decorationColor: mutedForeground,
+                                    ),
+                              ),
+                              const SizedBox(height: 16),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  if (task.isCompleted)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: hasImage
+                                            ? Colors.white
+                                                .withValues(alpha: 0.2)
+                                            : scheme.surface
+                                                .withValues(alpha: 0.4),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        '完成于 ${_formatDate(task.completedAt)}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: hasImage
+                                                  ? Colors.white
+                                                  : scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    )
+                                  else
+                                    Text(
+                                      '点击下方展开 · 记录这次感受',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: mutedForeground,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  if (task.isCustomized)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: hasImage
+                                            ? Colors.white
+                                                .withValues(alpha: 0.2)
+                                            : scheme.surface
+                                                .withValues(alpha: 0.4),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        '已调整',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: hasImage
+                                                  ? Colors.white
+                                                  : scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                  ],
+                      if (task.feeling.trim().isNotEmpty)
+                        _buildFeelingPreview(
+                          context,
+                          task,
+                          scheme,
+                          hasImage,
+                        ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: _expanded
+                            ? Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Divider(
+                                        color: hasImage
+                                            ? Colors.white
+                                                .withValues(alpha: 0.2)
+                                            : taskColors.first.withValues(
+                                                alpha: 0.32,
+                                              )),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      '记下这次的感受',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: mutedForeground,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _feelingController,
+                                      minLines: 3,
+                                      maxLines: 6,
+                                      textCapitalization:
+                                          TextCapitalization.sentences,
+                                      style: TextStyle(
+                                          color: hasImage
+                                              ? Colors.white
+                                              : scheme.onSurface),
+                                      decoration: InputDecoration(
+                                        hintText: '当时发生了什么？你有什么感觉？',
+                                        hintStyle: TextStyle(
+                                            color: hasImage
+                                                ? Colors.white
+                                                    .withValues(alpha: 0.6)
+                                                : null),
+                                        filled: true,
+                                        fillColor: hasImage
+                                            ? Colors.white
+                                                .withValues(alpha: 0.1)
+                                            : Color.alphaBlend(
+                                                taskColors.first.withValues(
+                                                  alpha: 0.12,
+                                                ),
+                                                scheme.surfaceContainerHighest,
+                                              ),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          borderSide: BorderSide(
+                                            color: hasImage
+                                                ? Colors.transparent
+                                                : scheme.outlineVariant,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          borderSide: BorderSide(
+                                            color: hasImage
+                                                ? Colors.white
+                                                    .withValues(alpha: 0.3)
+                                                : scheme.outlineVariant,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          borderSide: BorderSide(
+                                            color: hasImage
+                                                ? Colors.white
+                                                : scheme.primary,
+                                          ),
+                                        ),
+                                        alignLabelWithHint: true,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              _saving ? null : _saveFeeling,
+                                          icon: _saving
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.bookmark_add_outlined),
+                                          label: const Text('保存感受'),
+                                          style: hasImage
+                                              ? OutlinedButton.styleFrom(
+                                                  foregroundColor: Colors.white,
+                                                  side: BorderSide(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                              alpha: 0.5)),
+                                                )
+                                              : null,
+                                        ),
+                                        const Spacer(),
+                                        FilledButton.icon(
+                                          onPressed: () => widget
+                                              .onComplete(!task.isCompleted),
+                                          icon: Icon(task.isCompleted
+                                              ? Icons.undo_rounded
+                                              : Icons.check_rounded),
+                                          label: Text(task.isCompleted
+                                              ? '撤销完成'
+                                              : '完成打卡'),
+                                          style: hasImage
+                                              ? FilledButton.styleFrom(
+                                                  backgroundColor: Colors.white,
+                                                  foregroundColor: Colors.black,
+                                                )
+                                              : null,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                      const SizedBox(height: 12),
+                      if (!_expanded)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: mutedForeground,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           ],
         ),
       ),

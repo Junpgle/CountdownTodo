@@ -1,5 +1,15 @@
 import 'dart:math';
 
+class ChallengeDraft {
+  final String title;
+  final List<String> taskTitles;
+
+  const ChallengeDraft({
+    required this.title,
+    required this.taskTitles,
+  });
+}
+
 /// 一次性挑战中的单项任务。
 ///
 /// 任务可以按任意顺序完成，每项最多记录一次完成时间；感受记录与完成状态
@@ -76,17 +86,22 @@ class ThirtyDayChallengeTask {
 }
 
 class ThirtyDayChallengeState {
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
+  static const String defaultTitle = '30天找到全新自我';
 
   final int version;
+  final String challengeTitle;
   final DateTime startedAt;
   final List<ThirtyDayChallengeTask> tasks;
 
   ThirtyDayChallengeState({
     required this.startedAt,
     required this.tasks,
+    this.challengeTitle = defaultTitle,
     this.version = currentVersion,
   });
+
+  bool get isBuiltIn => challengeTitle == defaultTitle && tasks.length == 30;
 
   int get completedCount => tasks.where((task) => task.isCompleted).length;
 
@@ -105,6 +120,7 @@ class ThirtyDayChallengeState {
 
   Map<String, dynamic> toJson() => {
         'version': version,
+        'challenge_title': challengeTitle,
         'started_at': startedAt.toIso8601String(),
         'tasks': tasks.map((task) => task.toJson()).toList(),
       };
@@ -121,21 +137,95 @@ class ThirtyDayChallengeState {
             .toList()
         : <ThirtyDayChallengeTask>[];
 
-    final defaults = ThirtyDayChallengeState.initial().tasks;
-    final tasksById = <int, ThirtyDayChallengeTask>{
-      for (final task in tasks) task.id: task,
-    };
-    final normalizedTasks = defaults
-        .map((defaultTask) => tasksById[defaultTask.id] ?? defaultTask)
-        .toList();
+    // v1 没有挑战标题，且任务列表可能只有用户修改过的部分；继续按旧逻辑
+    // 合并默认的 30 项任务，避免升级后丢失已有进度。v2 起任务清单完全由
+    // 保存内容决定，可以是任意数量。
+    final hasCustomSchema = json.containsKey('challenge_title');
+    final normalizedTasks =
+        hasCustomSchema ? _normalizeTaskIds(tasks) : _restoreLegacyTasks(tasks);
+    final safeTasks = normalizedTasks.isEmpty
+        ? ThirtyDayChallengeState.initial().tasks
+        : normalizedTasks;
+    final rawTitle = json['challenge_title']?.toString().trim();
 
     return ThirtyDayChallengeState(
       version: json['version'] is int
           ? json['version'] as int
           : int.tryParse(json['version']?.toString() ?? '') ?? currentVersion,
+      challengeTitle:
+          rawTitle == null || rawTitle.isEmpty ? defaultTitle : rawTitle,
       startedAt: DateTime.tryParse(json['started_at']?.toString() ?? '') ??
           DateTime.now(),
-      tasks: normalizedTasks,
+      tasks: safeTasks,
+    );
+  }
+
+  /// 创建一份完全自定义的挑战。空白行由调用方或文本解析器过滤后再传入。
+  static ThirtyDayChallengeState custom({
+    required String title,
+    required Iterable<String> taskTitles,
+    DateTime? startedAt,
+  }) {
+    final normalizedTitle = title.trim();
+    final normalizedTasks = taskTitles
+        .map((task) => task.trim())
+        .where((task) => task.isNotEmpty)
+        .toList(growable: false);
+    if (normalizedTitle.isEmpty) {
+      throw ArgumentError.value(title, 'title', '挑战标题不能为空');
+    }
+    if (normalizedTasks.isEmpty) {
+      throw ArgumentError.value(taskTitles, 'taskTitles', '至少需要一项任务');
+    }
+
+    return ThirtyDayChallengeState(
+      challengeTitle: normalizedTitle,
+      startedAt: startedAt ?? DateTime.now(),
+      tasks: [
+        for (var index = 0; index < normalizedTasks.length; index++)
+          ThirtyDayChallengeTask(
+            id: index + 1,
+            originalTitle: normalizedTasks[index],
+          ),
+      ],
+    );
+  }
+
+  static List<ThirtyDayChallengeTask> _normalizeTaskIds(
+    List<ThirtyDayChallengeTask> tasks,
+  ) {
+    return [
+      for (var index = 0; index < tasks.length; index++)
+        _copyTaskWithId(tasks[index], index + 1),
+    ];
+  }
+
+  static List<ThirtyDayChallengeTask> _restoreLegacyTasks(
+    List<ThirtyDayChallengeTask> tasks,
+  ) {
+    final defaults = ThirtyDayChallengeState.initial().tasks;
+    final tasksById = <int, ThirtyDayChallengeTask>{
+      for (final task in tasks) task.id: task,
+    };
+    return defaults
+        .map((defaultTask) => tasksById[defaultTask.id] ?? defaultTask)
+        .toList();
+  }
+
+  static ThirtyDayChallengeTask _copyTaskWithId(
+    ThirtyDayChallengeTask task,
+    int id,
+  ) {
+    return ThirtyDayChallengeTask(
+      id: id,
+      originalTitle: task.originalTitle,
+      customTitle: task.customTitle,
+      isCompleted: task.isCompleted,
+      completedAt: task.completedAt,
+      feeling: task.feeling,
+      feelingUpdatedAt: task.feelingUpdatedAt,
+      imageBase64: task.imageBase64,
+      imageUpdatedAt: task.imageUpdatedAt,
     );
   }
 
@@ -174,6 +264,7 @@ class ThirtyDayChallengeState {
     ];
 
     return ThirtyDayChallengeState(
+      challengeTitle: defaultTitle,
       startedAt: startedAt ?? DateTime.now(),
       tasks: [
         for (var index = 0; index < titles.length; index++)
