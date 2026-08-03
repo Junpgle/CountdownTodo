@@ -2,6 +2,54 @@ part of 'home_dashboard.dart';
 // ignore_for_file: annotate_overrides
 
 mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
+  Widget _buildChallengeParticipationBanner(bool isLight) {
+    final scheme = Theme.of(context).colorScheme;
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final banner = _buildBannerCard(
+      HomeBannerEvent(
+        type: 'challenge',
+        title: _thirtyDayChallengeTitle,
+        label: '正在参与挑战',
+        timeInfo:
+            '$_thirtyDayChallengeCompletedCount/$_thirtyDayChallengeTaskCount',
+        baseColor: scheme.tertiary,
+        icon: '🧭',
+        priority: -1,
+        onTap: () async {
+          await Navigator.of(context, rootNavigator: true).push(
+            PageTransitions.slideHorizontal(
+              const ThirtyDayChallengeScreen(),
+            ),
+          );
+          if (mounted) {
+            _loadThirtyDayChallengeStatus();
+          }
+        },
+      ),
+      isLight,
+    );
+    final positionedBanner = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: banner,
+    );
+
+    final topBanner = isLandscape
+        ? SizedBox(
+            width: MediaQuery.sizeOf(context).width * 0.5,
+            child: positionedBanner,
+          )
+        : SizedBox(
+            width: double.infinity,
+            child: positionedBanner,
+          );
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: topBanner,
+    );
+  }
+
   Widget _buildPendingTodoConfirmCard(bool isLight) {
     if (_pendingTodoConfirm == null) return const SizedBox.shrink();
 

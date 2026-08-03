@@ -152,6 +152,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     },
                   ),
 
+                if (_isThirtyDayChallengeActive &&
+                    (_selectedTabIndex != 1 || isTablet))
+                  _buildChallengeParticipationBanner(isLight),
+
                 // 待确认事项入口卡片（从图片识别来）
                 _buildPendingTodoConfirmCard(isLight),
 

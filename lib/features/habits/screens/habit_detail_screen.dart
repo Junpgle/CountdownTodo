@@ -5,6 +5,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
@@ -12,6 +13,8 @@ import '../services/habit_streak_service.dart';
 import '../widgets/habit_card.dart';
 import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
+import '../widgets/habit_adaptation_panel.dart';
+import '../widgets/habit_water_progress_card.dart';
 import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
@@ -203,46 +206,146 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 840),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  children: [
-                    _buildHeader(colorScheme),
-                    if (_todayProgress != null) ...[
-                      const SizedBox(height: 16),
-                      _buildTodayCard(colorScheme),
-                    ],
-                    if (_todayCheckIns.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      _buildRecordSection(colorScheme),
-                    ],
-                    if (_todayFocusRecords.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      _buildFocusRecordSection(colorScheme),
-                    ],
-                    if (_goal.sourceType == HabitSourceType.timeCheckIn &&
-                        (_summary != null || _timeTrend.isNotEmpty)) ...[
-                      const SizedBox(height: 20),
-                      _buildTimePointSection(colorScheme),
-                    ],
-                    const SizedBox(height: 20),
-                    _buildRuleSection(colorScheme),
-                    if (_summary != null &&
-                        _goal.sourceType != HabitSourceType.timeCheckIn) ...[
-                      const SizedBox(height: 20),
-                      _goal.sourceType == HabitSourceType.pomodoroTag
-                          ? _buildDurationSummarySection(colorScheme)
-                          : _buildSummarySection(colorScheme),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+      body: _buildBody(colorScheme),
     );
+  }
+
+  Widget _buildBody(ColorScheme colorScheme) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 900;
+        final maxWidth = isWide ? 1200.0 : 840.0;
+        final horizontalPadding = isWide ? 28.0 : 16.0;
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                16,
+                horizontalPadding,
+                32,
+              ),
+              children: [
+                _buildHeader(colorScheme),
+                const SizedBox(height: 16),
+                isWide
+                    ? _buildWideSections(colorScheme)
+                    : _buildNarrowSections(colorScheme),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNarrowSections(ColorScheme colorScheme) {
+    final children = <Widget>[];
+
+    void addSection(Widget section, {double gap = 20}) {
+      if (children.isNotEmpty) {
+        children.add(SizedBox(height: gap));
+      }
+      children.add(section);
+    }
+
+    if (_todayProgress != null) {
+      addSection(_buildTodayCard(colorScheme), gap: 0);
+    }
+    if (HabitAdaptationService.forHabit(_goal) != null) {
+      addSection(_buildAdaptationSection(colorScheme), gap: 16);
+    }
+    if (_todayCheckIns.isNotEmpty) {
+      addSection(_buildRecordSection(colorScheme));
+    }
+    if (_todayFocusRecords.isNotEmpty) {
+      addSection(_buildFocusRecordSection(colorScheme));
+    }
+    if (_goal.sourceType == HabitSourceType.timeCheckIn &&
+        (_summary != null || _timeTrend.isNotEmpty)) {
+      addSection(_buildTimePointSection(colorScheme));
+    }
+    addSection(_buildRuleSection(colorScheme));
+    if (_summary != null && _goal.sourceType != HabitSourceType.timeCheckIn) {
+      addSection(
+        _goal.sourceType == HabitSourceType.pomodoroTag
+            ? _buildDurationSummarySection(colorScheme)
+            : _buildSummarySection(colorScheme),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+
+  Widget _buildWideSections(ColorScheme colorScheme) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 3,
+            child: _buildSectionColumn(_buildPrimarySections(colorScheme)),
+          ),
+          const SizedBox(width: 24),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 2,
+            child: _buildSectionColumn(_buildInsightSections(colorScheme)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionColumn(List<Widget> sections) {
+    if (sections.isEmpty) return const SizedBox.shrink();
+
+    final children = <Widget>[];
+    for (var index = 0; index < sections.length; index++) {
+      if (index > 0) children.add(const SizedBox(height: 20));
+      children.add(sections[index]);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+  }
+
+  List<Widget> _buildPrimarySections(ColorScheme colorScheme) {
+    return [
+      if (_todayProgress != null) _buildTodayCard(colorScheme),
+      if (HabitAdaptationService.forHabit(_goal) != null)
+        _buildAdaptationSection(colorScheme),
+      if (_todayCheckIns.isNotEmpty) _buildRecordSection(colorScheme),
+      if (_todayFocusRecords.isNotEmpty) _buildFocusRecordSection(colorScheme),
+    ];
+  }
+
+  List<Widget> _buildInsightSections(ColorScheme colorScheme) {
+    return [
+      if (_goal.sourceType == HabitSourceType.timeCheckIn &&
+          (_summary != null || _timeTrend.isNotEmpty))
+        _buildTimePointSection(colorScheme),
+      _buildRuleSection(colorScheme),
+      if (_summary != null && _goal.sourceType != HabitSourceType.timeCheckIn)
+        _goal.sourceType == HabitSourceType.pomodoroTag
+            ? _buildDurationSummarySection(colorScheme)
+            : _buildSummarySection(colorScheme),
+    ];
   }
 
   // ── 时间点型：打卡趋势、实际时间与统计 ─────────────────
@@ -620,6 +723,8 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   // ── 今日进度卡 ──────────────────────────────────────
   Widget _buildTodayCard(ColorScheme colorScheme) {
     final progress = _todayProgress!;
+    final isHydration = HabitAdaptationService.forHabit(_goal)?.kind ==
+        HabitAdaptationKind.hydration;
     final dayProgress = HabitDayProgress(
       habit: _goal,
       logicalDate: DateTime.now(),
@@ -640,6 +745,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
           animationKey: _detailCardKey,
           onViewRecords: () => _openHistory(sourceKey: _detailCardKey),
         ),
+        if (isHydration)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: HabitWaterProgressCard(
+              currentValue: progress.currentValue,
+              targetValue: progress.targetValue,
+              unit: _rule.unit.isEmpty ? 'ml' : _rule.unit,
+              recordCount: progress.recordCount,
+            ),
+          ),
         if (_goal.sourceType == HabitSourceType.quantityCheckIn ||
             _goal.sourceType == HabitSourceType.timeCheckIn)
           Padding(
@@ -843,6 +958,104 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
               ],
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildAdaptationSection(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(_goal);
+    if (adaptation == null) return const SizedBox.shrink();
+    final isSleepAdaptation =
+        adaptation.kind == HabitAdaptationKind.earlyWake ||
+            adaptation.kind == HabitAdaptationKind.earlySleep;
+    final isPushUpAdaptation = adaptation.kind == HabitAdaptationKind.pushUp;
+    final isRunningAdaptation = adaptation.kind == HabitAdaptationKind.running;
+    final isReadingAdaptation = adaptation.kind == HabitAdaptationKind.reading;
+    final isLearningAdaptation =
+        adaptation.kind == HabitAdaptationKind.learning;
+    final isVocabularyAdaptation =
+        adaptation.kind == HabitAdaptationKind.vocabulary;
+    final isMeditationAdaptation =
+        adaptation.kind == HabitAdaptationKind.meditation;
+    final isFocusDurationAdaptation =
+        isReadingAdaptation || isLearningAdaptation || isMeditationAdaptation;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          currentValue: isSleepAdaptation
+              ? null
+              : isFocusDurationAdaptation
+                  ? _todayProgress == null
+                      ? null
+                      : _todayProgress!.currentValue / 60
+                  : _todayProgress?.currentValue,
+          targetValue: isSleepAdaptation
+              ? null
+              : isFocusDurationAdaptation
+                  ? _rule.targetValue / 60
+                  : _rule.targetValue,
+          targetUnitOverride: _rule.unit.isEmpty ? null : _rule.unit,
+        ),
+        if (isSleepAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitSleepTimingGuide(
+            adaptation: adaptation,
+            targetMinute: _rule.targetTimeMinute ?? 0,
+          ),
+        ],
+        if (isPushUpAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitPushUpGuide(
+            targetValue: _rule.targetValue.round(),
+            periodType: _rule.periodType,
+          ),
+        ],
+        if (isRunningAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitRunningGuide(
+            targetValue: _rule.targetValue.round(),
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+            unit: _rule.unit,
+          ),
+        ],
+        if (isReadingAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitReadingGuide(
+            targetMinutes: (_rule.targetValue / 60).round(),
+            defaultFocusMinutes: _goal.defaultFocusMinutes,
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+          ),
+        ],
+        if (isLearningAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitLearningGuide(
+            targetMinutes: (_rule.targetValue / 60).round(),
+            defaultFocusMinutes: _goal.defaultFocusMinutes,
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+          ),
+        ],
+        if (isVocabularyAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitVocabularyGuide(
+            targetValue: _rule.targetValue.round(),
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+            unit: _rule.unit,
+          ),
+        ],
+        if (isMeditationAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitMeditationGuide(
+            targetMinutes: (_rule.targetValue / 60).round(),
+            periodType: _rule.periodType,
+            weekdaysMask: _rule.weekdaysMask,
+          ),
+        ],
       ],
     );
   }

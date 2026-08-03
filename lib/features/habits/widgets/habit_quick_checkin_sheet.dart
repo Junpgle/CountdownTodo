@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import 'habit_format.dart';
+import 'habit_adaptation_panel.dart';
 
 /// 快捷打卡底部弹窗（设计文档第十五节 `habit_quick_checkin_sheet.dart`）。
 ///
@@ -106,9 +108,10 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
 
   // ── 数量型 ──────────────────────────────────────────
   Widget _buildQuantity(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
     final quickValues = widget.rule.quickValues.isNotEmpty
         ? widget.rule.quickValues
-        : const [1];
+        : adaptation?.suggestedQuickValues ?? const [1];
     final unit = widget.rule.unit;
 
     return Column(
@@ -118,9 +121,58 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           spacing: 8,
           runSpacing: 8,
           children: quickValues
-              .map((v) => _valueChip(v.toDouble(), unit, colorScheme))
+              .map((v) => _valueChip(
+                    v.toDouble(),
+                    unit,
+                    colorScheme,
+                    label: adaptation?.quickLabel(v, unit: unit),
+                  ))
               .toList(),
         ),
+        if (adaptation?.kind == HabitAdaptationKind.hydration) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议少量多次，每次约 200 ml；可在详情页查看参考文献。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.pushUp) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议按组完成，动作质量优先；可在详情页查看每组次数、训练频率和动作提示。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.running) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议按分钟记录；默认每周 3 次、每次 30 分钟，可在详情页查看每周运动量和强度提示。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.vocabulary) ...[
+          const SizedBox(height: 8),
+          Text(
+            '建议先完成到期复习，再添加新词；可在详情页查看新增与复习的拆分提示。',
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         TextField(
           controller: _controller,
@@ -156,7 +208,12 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
     );
   }
 
-  Widget _valueChip(double value, String unit, ColorScheme colorScheme) {
+  Widget _valueChip(
+    double value,
+    String unit,
+    ColorScheme colorScheme, {
+    String? label,
+  }) {
     final text = value == value.roundToDouble()
         ? value.round().toString()
         : value.toString();
@@ -169,7 +226,7 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
           borderRadius: BorderRadius.circular(20),
         ),
       ),
-      child: Text(unit.isNotEmpty ? '$text $unit' : text),
+      child: Text(label ?? (unit.isNotEmpty ? '$text $unit' : text)),
     );
   }
 
@@ -223,10 +280,23 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
   Widget _buildTimePoint(ColorScheme colorScheme) {
     final now = DateTime.now();
     var time = TimeOfDay(hour: now.hour, minute: now.minute);
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
+    final isSleepAdaptation =
+        adaptation?.kind == HabitAdaptationKind.earlyWake ||
+            adaptation?.kind == HabitAdaptationKind.earlySleep;
     return StatefulBuilder(
       builder: (context, setSheetState) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (adaptation != null && isSleepAdaptation) ...[
+            HabitAdaptationPanel(adaptation: adaptation),
+            const SizedBox(height: 12),
+            HabitSleepTimingGuide(
+              adaptation: adaptation,
+              targetMinute: widget.rule.targetTimeMinute ?? 0,
+            ),
+            const SizedBox(height: 16),
+          ],
           Text(
             '实际时间',
             style: TextStyle(
@@ -371,9 +441,43 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
 
   // ── 时长型 ──────────────────────────────────────────
   Widget _buildFocusHint(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (adaptation?.kind == HabitAdaptationKind.reading) ...[
+          Text(
+            '建议先专注 25–30 分钟，读前明确一个问题，结束后用自己的话回忆 3 个要点。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.learning) ...[
+          Text(
+            '建议用 25 分钟专注块，结束后合上资料回忆 3 个要点，再安排间隔复习。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (adaptation?.kind == HabitAdaptationKind.meditation) ...[
+          Text(
+            '建议从 5–10 分钟开始，以呼吸或声音为锚点；走神后温和地回来即可。',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         Text(
           '时长型习惯通过在专注中累计时长达标，回到卡片点击「开始专注」即可。',
           style: TextStyle(

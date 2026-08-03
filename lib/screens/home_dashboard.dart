@@ -71,6 +71,9 @@ import '../widgets/plan_block_today_section.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/habits/services/habit_reminder_service.dart';
 import '../features/habits/widgets/habit_today_section.dart';
+import '../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
+import '../features/thirty_day_challenge/models/thirty_day_challenge.dart';
+import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/conflict_alert_dialog.dart';
 import '../widgets/sync_status_banner.dart'; // 🚀 引入
 import '../widgets/sticky_announcement_banner.dart'; // 🚀 引入
@@ -136,6 +139,10 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   String? _wallpaperCopyright;
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
+  bool _isThirtyDayChallengeActive = false;
+  int _thirtyDayChallengeCompletedCount = 0;
+  int _thirtyDayChallengeTaskCount = 30;
+  String _thirtyDayChallengeTitle = ThirtyDayChallengeState.defaultTitle;
   DateTime? _lastScreenTimeSync;
   String _currentGreeting = "";
   bool _semesterEnabled = false;

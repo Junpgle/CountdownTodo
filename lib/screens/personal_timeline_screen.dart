@@ -1863,6 +1863,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final subRatio = _subjectRatio(summary, topSub);
     final subjectName = topSub != '全能型' ? topSub : '多主题任务';
     final keywordText = _buildKeywordText(summary);
+    final habitSummary = summary.habitSummary;
     final qualityLine = focusSessionCount > 0
         ? '平均每段 ${summary.avgPomodoroMinutes.toStringAsFixed(0)} 分钟，深度投入占 ${_formatPercent(summary.deepWorkCount / focusSessionCount)}。'
         : '暂时没有可统计的专注质量数据。';
@@ -1872,6 +1873,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       if (_completedCount > 0 || _recurringCompletedCount == 0)
         '完成 $_completedCount 个任务',
       if (_recurringCompletedCount > 0) '完成 $_recurringCompletedCount 期重复任务',
+      if (habitSummary.completedCount > 0)
+        '完成 ${habitSummary.completedCount} 个习惯周期',
     ].join('，');
 
     final hero = Container(
@@ -1928,6 +1931,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                     '重复完成 ${_formatPercent(_recurringResolvedCount > 0 ? _recurringCompletedCount / _recurringResolvedCount : 0)}',
                     Icons.repeat_rounded,
                     cs.secondary,
+                    cs),
+              if (habitSummary.habitCount > 0)
+                _buildInsightPill(
+                    '习惯完成 ${_formatPercent(habitSummary.completionRate)}',
+                    Icons.self_improvement_outlined,
+                    cs.tertiary,
                     cs),
               if (_pauseCount > 0)
                 _buildInsightPill(
@@ -2447,7 +2456,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final isImportant = event.type == TimelineEventType.pomodoroEnd ||
         event.type == TimelineEventType.todoCompleted ||
         event.type == TimelineEventType.timeLog ||
-        event.type == TimelineEventType.planBlock;
+        event.type == TimelineEventType.planBlock ||
+        event.type == TimelineEventType.habitCheckIn;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24.0),
       child: Row(
@@ -2484,6 +2494,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildRangeSummary(ColorScheme cs, bool isWide) {
     if (_summary == null) return _buildEmptyState(cs);
+    final summary = _summary!;
 
     final List<Widget> cards = [
       _buildTrendCard(
@@ -2602,6 +2613,30 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
                 cs,
               );
             }),
+          ],
+        ),
+      if (summary.habitSummary.habitCount > 0)
+        _buildStatCard(
+          '习惯坚持',
+          '${summary.habitSummary.completedCount}/${summary.habitSummary.plannedCount}',
+          '${summary.habitSummary.habitCount} 个习惯 · 打卡 ${summary.habitSummary.recordedCount} 次',
+          Icons.self_improvement_outlined,
+          cs.tertiary,
+          cs,
+          extraItems: [
+            const SizedBox(height: 8),
+            _buildRankItem(
+              0,
+              '完成率',
+              _formatPercent(summary.habitSummary.completionRate),
+              cs,
+            ),
+            _buildRankItem(
+              0,
+              '未达标',
+              '${summary.habitSummary.missedCount} 个周期',
+              cs,
+            ),
           ],
         ),
       if (_planBlockCount > 0)
@@ -3822,6 +3857,8 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         return pick(['补全了一段真实投入', '为时间留下了记录', '把做过的事写进时间', '记录一段实际行动']);
       case TimelineEventType.planBlock:
         return pick(['按计划进入行动时段', '赴一场与目标的约定', '规划开始落地', '进入预定任务时间']);
+      case TimelineEventType.habitCheckIn:
+        return pick(['习惯按计划落地', '为坚持再添一格', '今天也和目标见面了', '把小事做成日常']);
       default:
         return event.title;
     }

@@ -17,8 +17,14 @@ import 'habit_edit_screen.dart';
 class HabitTodayTab extends StatefulWidget {
   final String username;
 
+  /// 教程要高亮的第一张习惯卡片。
+  final GlobalKey? coachTargetKey;
+
   /// 数据变化后自增，触发重新加载。
   final int reloadTick;
+
+  /// 今日板块顶部的推广 Banner。
+  final Widget? topBanner;
 
   /// 内部数据变化回调（如快速打卡）。
   final VoidCallback? onChanged;
@@ -26,7 +32,9 @@ class HabitTodayTab extends StatefulWidget {
   const HabitTodayTab({
     super.key,
     required this.username,
+    this.coachTargetKey,
     this.reloadTick = 0,
+    this.topBanner,
     this.onChanged,
   });
 
@@ -145,31 +153,40 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget content;
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    final snapshot = _snapshot;
-    if (snapshot == null) {
-      return const SizedBox.shrink();
-    }
-    if (snapshot.isEmpty) {
-      return _buildEmpty();
-    }
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 840),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              _buildSummaryCard(snapshot),
-              const SizedBox(height: 16),
-              ..._buildGroupedCards(snapshot),
-            ],
+      content = const Center(child: CircularProgressIndicator());
+    } else {
+      final snapshot = _snapshot;
+      if (snapshot == null) {
+        content = const SizedBox.shrink();
+      } else if (snapshot.isEmpty) {
+        content = _buildEmpty();
+      } else {
+        content = RefreshIndicator(
+          onRefresh: _loadData,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 840),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                children: [
+                  _buildSummaryCard(snapshot),
+                  const SizedBox(height: 16),
+                  ..._buildGroupedCards(snapshot),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      }
+    }
+
+    return Column(
+      children: [
+        if (widget.topBanner != null) widget.topBanner!,
+        Expanded(child: content),
+      ],
     );
   }
 
@@ -189,6 +206,8 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     }
 
     final colorScheme = Theme.of(context).colorScheme;
+    final firstGoalUuid =
+        snapshot.goals.isEmpty ? null : snapshot.goals.first.uuid;
     final children = <Widget>[];
     for (final (label, icon, goals) in groups) {
       if (goals.isEmpty) continue;
@@ -238,7 +257,9 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
               runSpacing: spacing,
               children: goals
                   .map((goal) => SizedBox(
-                        key: ValueKey(goal.uuid),
+                        key: goal.uuid == firstGoalUuid
+                            ? widget.coachTargetKey ?? ValueKey(goal.uuid)
+                            : ValueKey(goal.uuid),
                         width: width,
                         child: HabitCard(
                           goal: goal,

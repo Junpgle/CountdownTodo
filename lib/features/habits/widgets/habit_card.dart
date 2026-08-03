@@ -5,6 +5,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import 'habit_format.dart';
 import 'habit_quick_checkin_sheet.dart';
@@ -372,9 +373,12 @@ class _HabitCardState extends State<HabitCard> {
   }
 
   Widget _buildQuantityAction(HabitDayStatus status) {
+    final adaptation = HabitAdaptationService.forHabit(
+      widget.goal,
+    );
     final quickValues = widget.rule.quickValues.isNotEmpty
         ? widget.rule.quickValues
-        : const [1];
+        : adaptation?.suggestedQuickValues ?? const [1];
     final unit = widget.rule.unit;
 
     return Wrap(
@@ -382,7 +386,13 @@ class _HabitCardState extends State<HabitCard> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        ...quickValues.take(3).map((v) => _quickValueChip(v.toDouble(), unit)),
+        ...quickValues.take(3).map(
+              (v) => _quickValueChip(
+                v.toDouble(),
+                unit,
+                label: adaptation?.quickLabel(v, unit: unit),
+              ),
+            ),
         TextButton(
           onPressed: _busy ? null : () => _openQuantityCustomDialog(),
           style: TextButton.styleFrom(
@@ -395,7 +405,7 @@ class _HabitCardState extends State<HabitCard> {
     );
   }
 
-  Widget _quickValueChip(double value, String unit) {
+  Widget _quickValueChip(double value, String unit, {String? label}) {
     final text = value == value.roundToDouble()
         ? value.round().toString()
         : value.toString();
@@ -408,7 +418,7 @@ class _HabitCardState extends State<HabitCard> {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      child: Text(unit.isNotEmpty ? '$text $unit' : text),
+      child: Text(label ?? (unit.isNotEmpty ? '$text $unit' : text)),
     );
   }
 

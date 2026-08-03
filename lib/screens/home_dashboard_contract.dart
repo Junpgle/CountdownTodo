@@ -110,6 +110,8 @@ mixin _HomeDashboardContract {
 
   Widget _buildUniversalBanner(bool isLight);
 
+  Widget _buildChallengeParticipationBanner(bool isLight);
+
   Widget _buildBannerCard(HomeBannerEvent event, bool isLight);
 
   List<HomeBannerEvent> _collectBannerEvents();
@@ -137,6 +139,10 @@ mixin _HomeDashboardContract {
   void _generateGreeting();
 
   Future<void> _loadHomeTextConfig();
+
+  Future<void> _loadThirtyDayChallengeStatus();
+
+  void _onThirtyDayChallengeActivityChanged();
 
   Future<void> _initNotifications();
 

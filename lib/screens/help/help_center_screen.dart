@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/help_article.dart';
+import '../../features/habits/screens/habit_center_screen.dart';
+import '../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../../services/feature_tip_service.dart';
 import '../../update_service.dart';
 import '../../utils/app_platform.dart';
@@ -48,6 +50,28 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
                 Icons.tips_and_updates_rounded,
                 Colors.amber,
                 () => _resetTips(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildSection(
+            scheme,
+            Icons.explore_rounded,
+            '生活挑战',
+            scheme.tertiary,
+            [
+              _HelpEntry(
+                '30天找到全新自我',
+                '用 30 个小任务，重新找回生活中的兴奋感',
+                Icons.auto_awesome_rounded,
+                scheme.tertiary,
+                () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    PageTransitions.slideHorizontal(
+                      const ThirtyDayChallengeScreen(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -102,6 +126,65 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
 
   List<_HelpEntry> _buildArticleEntries() {
     return [
+      _HelpEntry(
+        '习惯中心',
+        '记录习惯打卡，查看日历、连续记录和完成趋势',
+        Icons.track_changes_rounded,
+        Colors.teal,
+        () => _openArticle(HelpArticle(
+          id: 'habits',
+          title: '习惯中心',
+          summary: '把想坚持的事情变成可执行的习惯，用每天的打卡积累长期变化。',
+          icon: Icons.track_changes_rounded,
+          iconColor: Colors.teal,
+          steps: [
+            '从首页的“今日习惯”卡片，或侧边栏进入“习惯中心”。',
+            '点击“新建习惯”，设置习惯名称、打卡方式、周期和提醒。',
+            '在“今日”页面完成打卡；数量型、时长型和时间点型习惯都可以记录。',
+            '切换到“日历”查看每天的完成情况，切换到“分析”查看连续记录和趋势。',
+            '暂时不想继续的习惯可以归档，历史记录会保留；登录后还可以在设备间同步。',
+          ],
+          actionLabel: '打开习惯中心',
+          onAction: () {
+            Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                HabitCenterScreen(username: widget.username ?? ''),
+              ),
+            );
+          },
+        )),
+      ),
+      _HelpEntry(
+        '挑战自定义与记录',
+        '导入自己的任务清单，创建并记录一场专属挑战',
+        Icons.auto_awesome_rounded,
+        Colors.deepOrange,
+        () => _openArticle(HelpArticle(
+          id: 'thirty_day_challenge',
+          title: '挑战自定义与记录',
+          summary: '可以直接输入或导入文本清单，按自己的节奏完成任意数量的挑战任务。',
+          icon: Icons.auto_awesome_rounded,
+          iconColor: Colors.deepOrange,
+          steps: [
+            '从设置 > 帮助与反馈 > 30天找到全新自我进入挑战中心。',
+            '30 个任务顺序可以自由调整，不需要连续 30 天，每项任务完成一次即可。',
+            '点击“创建自己的挑战”，输入挑战名称和任务清单；文本按行拆分，也可以导入 .txt / .md 文件。',
+            '新建页还可以从 GitHub 云端挑战清单获取公共挑战内容，再按自己的需要修改。',
+            '不知道做什么时，点击随机按钮，从未完成的任务中抽取一张卡片。',
+            '完成任务后可以在卡片下记录当下的感受，并上传一张图片作为生活记录。',
+            '完成后可以生成带有任务、感受和图片的挑战报告，导出成图片并分享给朋友。',
+            '挑战可以暂时暂停；放弃挑战会清空之前的完成状态、感受和图片记录。',
+          ],
+          actionLabel: '打开 30 天挑战',
+          onAction: () {
+            Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                const ThirtyDayChallengeScreen(),
+              ),
+            );
+          },
+        )),
+      ),
       _HelpEntry(
         '待办与倒数日',
         '创建、管理和跟踪你的待办事项和重要日期',

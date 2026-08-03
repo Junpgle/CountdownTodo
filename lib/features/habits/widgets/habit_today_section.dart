@@ -318,6 +318,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         onChanged: _loadData,
         onStartFocus: widget.onStartFocus ?? _startFocus,
         onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),
+        onTap: () => _viewRecords(goal),
       ),
     );
   }
