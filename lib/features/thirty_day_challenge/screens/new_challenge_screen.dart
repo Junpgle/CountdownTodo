@@ -95,9 +95,10 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
   }
 
   Future<void> _openCloudChallenges() async {
-    final selected = await Navigator.of(context).push<CloudChallengeTemplate>(
+    final result = await Navigator.of(context).push<CloudChallengePickerResult>(
       MaterialPageRoute(builder: (_) => const CloudChallengePickerScreen()),
     );
+    final selected = result?.challenge;
     if (selected == null || !mounted) return;
 
     _titleController.text = selected.title;

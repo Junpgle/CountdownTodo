@@ -4,6 +4,18 @@ import 'package:http/http.dart' as http;
 
 import 'thirty_day_challenge.dart';
 
+enum CloudChallengePickerAction { start, customize }
+
+class CloudChallengePickerResult {
+  final CloudChallengeTemplate? challenge;
+  final CloudChallengePickerAction action;
+
+  const CloudChallengePickerResult({
+    required this.challenge,
+    required this.action,
+  });
+}
+
 /// GitHub 根目录 challenge_catalog.json 中的一份挑战模板。
 class CloudChallengeTemplate {
   final String id;
@@ -19,6 +31,14 @@ class CloudChallengeTemplate {
     this.tags = const [],
     required this.tasks,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'tags': tags,
+        'tasks': tasks,
+      };
 
   factory CloudChallengeTemplate.fromJson(Map<String, dynamic> json) {
     final rawId = json['id']?.toString().trim() ?? '';
@@ -69,6 +89,14 @@ class CloudChallengeCatalog {
     required this.updatedAt,
     required this.challenges,
   });
+
+  Map<String, dynamic> toJson() => {
+        'format': 'countdowntodo.challenge_catalog',
+        'version': version,
+        'updated_at': updatedAt,
+        'challenges':
+            challenges.map((challenge) => challenge.toJson()).toList(),
+      };
 
   factory CloudChallengeCatalog.fromJson(Map<String, dynamic> json) {
     final rawChallenges = json['challenges'];

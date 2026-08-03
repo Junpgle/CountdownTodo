@@ -101,14 +101,23 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
   Future<void> _openCloudChallengeCatalog() async {
     if (_isShuffling || _isExportingReport) return;
 
-    final selected = await Navigator.of(context).push<CloudChallengeTemplate>(
+    final result = await Navigator.of(context).push<CloudChallengePickerResult>(
       MaterialPageRoute(builder: (_) => const CloudChallengePickerScreen()),
     );
-    if (selected == null || !mounted) return;
+    if (result == null || !mounted) return;
+
+    if (result.action == CloudChallengePickerAction.start) {
+      final selected = result.challenge;
+      if (selected == null) return;
+      await _startNewChallenge(selected.toDraft());
+      return;
+    }
 
     final draft = await Navigator.of(context).push<ChallengeDraft>(
       MaterialPageRoute(
-        builder: (_) => NewChallengeScreen(initialDraft: selected.toDraft()),
+        builder: (_) => NewChallengeScreen(
+          initialDraft: result.challenge?.toDraft(),
+        ),
       ),
     );
     if (draft == null || !mounted) return;
@@ -776,8 +785,6 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 20),
-                          _buildOtherChallengesCard(scheme),
                           SizedBox(height: isLandscape ? 30 : 40),
                           Center(
                             child: Container(
@@ -1062,6 +1069,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                           ),
+                          const SizedBox(height: 20),
+                          _buildOtherChallengesCard(scheme),
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: _deferChallenge,
@@ -1259,8 +1268,6 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _buildOtherChallengesCard(scheme, compact: true),
-                      const SizedBox(height: 12),
                       Center(
                         child: Container(
                           width: 68,
@@ -1423,6 +1430,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      _buildOtherChallengesCard(scheme, compact: true),
                       const SizedBox(height: 4),
                       TextButton.icon(
                         onPressed: _deferChallenge,
