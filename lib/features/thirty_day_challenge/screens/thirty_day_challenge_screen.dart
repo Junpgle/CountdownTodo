@@ -11,8 +11,10 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
+import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
+import 'cloud_challenge_picker_screen.dart';
 import 'new_challenge_screen.dart';
 
 String _safeFileName(String value) {
@@ -92,6 +94,30 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
       MaterialPageRoute(builder: (_) => const NewChallengeScreen()),
     );
     if (draft == null || !mounted) return;
+
+    await _startNewChallenge(draft);
+  }
+
+  Future<void> _openCloudChallengeCatalog() async {
+    if (_isShuffling || _isExportingReport) return;
+
+    final selected = await Navigator.of(context).push<CloudChallengeTemplate>(
+      MaterialPageRoute(builder: (_) => const CloudChallengePickerScreen()),
+    );
+    if (selected == null || !mounted) return;
+
+    final draft = await Navigator.of(context).push<ChallengeDraft>(
+      MaterialPageRoute(
+        builder: (_) => NewChallengeScreen(initialDraft: selected.toDraft()),
+      ),
+    );
+    if (draft == null || !mounted) return;
+
+    await _startNewChallenge(draft);
+  }
+
+  Future<void> _startNewChallenge(ChallengeDraft draft) async {
+    if (!mounted) return;
 
     if (!_showWelcome) {
       final currentState = _state;
@@ -750,6 +776,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                           ),
+                          const SizedBox(height: 20),
+                          _buildOtherChallengesCard(scheme),
                           SizedBox(height: isLandscape ? 30 : 40),
                           Center(
                             child: Container(
@@ -1035,22 +1063,6 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _openNewChallenge,
-                            icon: const Icon(Icons.edit_note_rounded),
-                            label: const Text('创建自己的挑战'),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(64),
-                              textStyle: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: _deferChallenge,
                             icon: const Icon(Icons.schedule_outlined),
@@ -1077,6 +1089,69 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildOtherChallengesCard(
+    ColorScheme scheme, {
+    bool compact = false,
+  }) {
+    final buttonHeight = compact ? 50.0 : 64.0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.explore_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '其他挑战',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '先从云端挑战库挑一份，也可以完全从零创建自己的挑战。',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  height: 1.45,
+                ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.tonalIcon(
+            onPressed: _openCloudChallengeCatalog,
+            icon: const Icon(Icons.cloud_download_rounded),
+            label: const Text('浏览云端挑战'),
+            style: FilledButton.styleFrom(
+              minimumSize: Size.fromHeight(buttonHeight),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _openNewChallenge,
+            icon: const Icon(Icons.edit_note_rounded),
+            label: const Text('创建自定义挑战'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: Size.fromHeight(buttonHeight),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1183,6 +1258,8 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      _buildOtherChallengesCard(scheme, compact: true),
                       const SizedBox(height: 12),
                       Center(
                         child: Container(
@@ -1347,22 +1424,6 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                         ),
                       ),
                       const SizedBox(height: 4),
-                      OutlinedButton.icon(
-                        onPressed: _openNewChallenge,
-                        icon: const Icon(Icons.edit_note_rounded, size: 18),
-                        label: const Text('创建自己的挑战'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(50),
-                          textStyle: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 0),
                       TextButton.icon(
                         onPressed: _deferChallenge,
                         icon: const Icon(Icons.schedule_outlined, size: 18),

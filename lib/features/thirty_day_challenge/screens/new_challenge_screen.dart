@@ -4,11 +4,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../services/challenge_text_parser.dart';
+import 'cloud_challenge_picker_screen.dart';
 
 class NewChallengeScreen extends StatefulWidget {
-  const NewChallengeScreen({super.key});
+  final ChallengeDraft? initialDraft;
+
+  const NewChallengeScreen({super.key, this.initialDraft});
 
   @override
   State<NewChallengeScreen> createState() => _NewChallengeScreenState();
@@ -26,6 +30,11 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
   @override
   void initState() {
     super.initState();
+    final initialDraft = widget.initialDraft;
+    if (initialDraft != null) {
+      _titleController.text = initialDraft.title;
+      _tasksController.text = initialDraft.taskTitles.join('\n');
+    }
     _tasksController.addListener(_refreshPreview);
   }
 
@@ -85,6 +94,22 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
     }
   }
 
+  Future<void> _openCloudChallenges() async {
+    final selected = await Navigator.of(context).push<CloudChallengeTemplate>(
+      MaterialPageRoute(builder: (_) => const CloudChallengePickerScreen()),
+    );
+    if (selected == null || !mounted) return;
+
+    _titleController.text = selected.title;
+    _tasksController.text = selected.tasks.join('\n');
+    _tasksController.selection = TextSelection.collapsed(
+      offset: _tasksController.text.length,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已填入云端挑战「${selected.title}」')),
+    );
+  }
+
   void _createChallenge() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final titles = _taskTitles;
@@ -136,6 +161,15 @@ class _NewChallengeScreenState extends State<NewChallengeScreen> {
                     ),
               ),
               const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: _isImporting ? null : _openCloudChallenges,
+                icon: const Icon(Icons.cloud_download_rounded),
+                label: const Text('从 GitHub 获取云端挑战'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _titleController,
                 textInputAction: TextInputAction.next,
