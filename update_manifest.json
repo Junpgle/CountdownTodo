@@ -1,10 +1,10 @@
 {
   "version_code": 1,
-  "version_name": "5.6.14",
+  "version_name": "5.6.18",
   "force_update": false,
   "update_info": {
-    "title": "版本更新 5.6.14",
-    "description": "【优化】对喝水习惯进行深度适配\n【优化】对早睡早起习惯进行深度适配\n【优化】对跑步习惯进行深度适配\n【优化】对俯卧撑习惯进行深度适配\n【优化】对阅读习惯进行深度适配\n【优化】对学习习惯进行深度适配\n【优化】对冥想习惯进行深度适配\n【优化】对单词习惯进行深度适配\n【新增】对以上功能新增教程适配和网页介绍\n【新增】30天找到全新自我-适配移动端\n【新增】支持自定义挑战打卡\n【新增】个人时间轴适配习惯\n【新增】挑战支持从云端下放\n【新增】自定义挑战支持分享",
+    "title": "版本更新 5.6.18",
+    "description": "v5.7\n【修复】Android小部件桌面显示异常的问题\n【修复】循环待办被旧客户端覆盖的问题\n【修复】挑战记录的感受被异常清空的问题\n【新增】后台自动检查更新\n【新增】支持从时间日志迁移睡眠记录到习惯\n【优化】完善习惯打卡统计并支持睡眠记录迁移\n【新增】支持自定义首页布局与组件顺序\n【新增】扩展全局搜索入口与习惯挑战搜索\n【优化】移动端挑战界面舒适布局\n【新增】阿里云服务器代理应用内部分GitHub资源访问\n【优化】首页优先展示未完成的习惯\n【优化】拆分更新日志和引导",
     "full_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/app-arm64-v8a-release.apk",
     "PC_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodoPro_Setup.exe",
     "mac_package_url": "https://gitee.com/Junpgle/CountdownTodo/releases/download/%E6%9C%80%E6%96%B0release/CountDownTodo-macOS-arm64.zip",
@@ -16,7 +16,7 @@
   },
   "announcements": [
     {
-      "show": true,
+      "show": false,
       "id": "ann_20260416_001",
       "title": "缓更通知",
       "content": "主播最近忙的快die了，缓慢更新",
@@ -38,6 +38,23 @@
   },
   "changelog_history": [
     {
+      "version_name": "5.6.18",
+      "date": "2026-08-04",
+      "items": [
+        "【修复】Android小部件桌面显示异常的问题",
+        "【修复】循环待办被旧客户端覆盖的问题",
+        "【修复】挑战记录的感受被异常清空的问题",
+        "【新增】后台自动检查更新",
+        "【新增】支持从时间日志迁移睡眠记录到习惯",
+        "【优化】完善习惯打卡统计并支持睡眠记录迁移",
+        "【新增】支持自定义首页布局与组件顺序",
+        "【新增】扩展全局搜索入口与习惯挑战搜索",
+        "【优化】移动端挑战界面舒适布局",
+        "【新增】阿里云服务器代理应用内部分GitHub资源访问",
+        "【优化】首页优先展示未完成的习惯",
+        "【优化】拆分更新日志和引导"
+      ]
+    },{
       "version_name": "5.6.14",
       "date": "2026-08-03",
       "items": [
