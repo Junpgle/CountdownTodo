@@ -38,6 +38,7 @@ class HabitAdaptationPanel extends StatelessWidget {
       HabitAdaptationKind.meditation => Icons.self_improvement_rounded,
       HabitAdaptationKind.earlyWake => Icons.wb_sunny_rounded,
       HabitAdaptationKind.earlySleep => Icons.bedtime_rounded,
+      HabitAdaptationKind.sleepDuration => Icons.hotel_rounded,
     };
     final displayUnit = (targetUnitOverride ?? adaptation.targetUnit).trim();
     final progress =

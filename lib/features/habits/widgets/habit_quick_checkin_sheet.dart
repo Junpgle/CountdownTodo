@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_rule_resolver.dart';
 import 'habit_format.dart';
 import 'habit_adaptation_panel.dart';
 
@@ -21,6 +23,7 @@ class HabitQuickCheckInSheet {
     required BuildContext context,
     required HabitGoal goal,
     required HabitGoalRuleRevision rule,
+    DateTime? logicalDate,
     required VoidCallback onChanged,
   }) {
     return showModalBottomSheet<void>(
@@ -30,6 +33,7 @@ class HabitQuickCheckInSheet {
       builder: (context) => _QuickCheckInSheet(
         goal: goal,
         rule: rule,
+        logicalDate: logicalDate,
         onChanged: onChanged,
       ),
     );
@@ -39,11 +43,13 @@ class HabitQuickCheckInSheet {
 class _QuickCheckInSheet extends StatefulWidget {
   final HabitGoal goal;
   final HabitGoalRuleRevision rule;
+  final DateTime? logicalDate;
   final VoidCallback onChanged;
 
   const _QuickCheckInSheet({
     required this.goal,
     required this.rule,
+    this.logicalDate,
     required this.onChanged,
   });
 
@@ -53,12 +59,24 @@ class _QuickCheckInSheet extends StatefulWidget {
 
 class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
   final _controller = TextEditingController();
+  final _durationMinutesController = TextEditingController();
   final _noteController = TextEditingController();
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.goal.sourceType == HabitSourceType.durationCheckIn) {
+      final targetMinutes = (widget.rule.targetValue / 60).round();
+      _controller.text = (targetMinutes ~/ 60).toString();
+      _durationMinutesController.text = (targetMinutes % 60).toString();
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
+    _durationMinutesController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -96,6 +114,8 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
             const SizedBox(height: 16),
             switch (widget.goal.sourceType) {
               HabitSourceType.quantityCheckIn => _buildQuantity(colorScheme),
+              HabitSourceType.durationCheckIn =>
+                _buildSleepDuration(colorScheme),
               HabitSourceType.timeCheckIn => _buildTimePoint(colorScheme),
               HabitSourceType.recurringTodo => _buildCompletion(colorScheme),
               HabitSourceType.pomodoroTag => _buildFocusHint(colorScheme),
@@ -104,6 +124,143 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
         ),
       ),
     );
+  }
+
+  // ── 数量型 ──────────────────────────────────────────
+  Widget _buildSleepDuration(ColorScheme colorScheme) {
+    final adaptation = HabitAdaptationService.forHabit(widget.goal);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (adaptation != null) ...[
+          HabitAdaptationPanel(
+            adaptation: adaptation,
+            targetValue: widget.rule.targetValue / 3600,
+            targetUnitOverride: '小时',
+          ),
+          const SizedBox(height: 12),
+        ],
+        Text(
+          '早睡和早起打卡会自动生成；这里用于缺失记录或手动修正。',
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.45,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: '小时',
+                  suffixText: '小时',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _durationMinutesController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  labelText: '分钟',
+                  suffixText: '分钟',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _noteController,
+          decoration: const InputDecoration(
+            labelText: '备注（可选）',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _busy ? null : _submitSleepDuration,
+            child: const Text('保存睡眠时长'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _submitSleepDuration() async {
+    final hours = int.tryParse(_controller.text.trim()) ?? 0;
+    final minutes = int.tryParse(_durationMinutesController.text.trim()) ?? 0;
+    if (hours < 0 ||
+        minutes < 0 ||
+        minutes >= 60 ||
+        hours + minutes / 60 <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入有效的睡眠时长')),
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      // 首页的睡眠卡展示前一晚；手动修正也必须写入同一逻辑日。
+      final targetDate = widget.logicalDate;
+      final occurredAt = targetDate == null
+          ? DateTime.now()
+          : DateTime(targetDate.year, targetDate.month, targetDate.day, 23, 59);
+      final logicalDate = HabitRuleResolver.dayKey(
+        HabitRuleResolver.logicalDateFor(
+          occurredAt,
+          widget.rule.dayBoundaryMinute,
+        ),
+      );
+      final existing = (await HabitRepository.getCheckIns(
+        habitUuid: widget.goal.uuid,
+      ))
+          .where((checkIn) =>
+              !checkIn.isDeleted && checkIn.logicalDate == logicalDate)
+          .firstOrNull;
+      final value = (hours * 60 + minutes) * 60.0;
+      final note = _noteController.text.trim();
+      if (existing != null) {
+        final edited = HabitCheckIn.fromJson(existing.toJson())
+          ..value = value
+          ..source = HabitCheckInSource.manual
+          ..note = note.isEmpty ? '手动修正睡眠时长' : note;
+        await HabitRepository.updateCheckIn(edited);
+      } else {
+        await HabitRepository.addCheckIn(
+          goal: widget.goal,
+          rule: widget.rule,
+          localOccurredAt: occurredAt,
+          value: value,
+          note: note.isEmpty ? '手动记录睡眠时长' : note,
+          source: HabitCheckInSource.manual,
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      widget.onChanged();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text('已保存 $hours 小时 ${minutes.toString().padLeft(2, '0')} 分钟')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   // ── 数量型 ──────────────────────────────────────────
@@ -377,12 +534,18 @@ class _QuickCheckInSheetState extends State<_QuickCheckInSheet> {
                         widget.onChanged();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('已记录 ${widget.goal.name}'),
-                            action: SnackBarAction(
-                              label: '撤销',
-                              onPressed: () =>
-                                  HabitRepository.deleteCheckIn(checkIn),
+                            content: Text(
+                              checkIn.replacedPrevious
+                                  ? '已记录 ${widget.goal.name}（已覆盖上一条记录）'
+                                  : '已记录 ${widget.goal.name}',
                             ),
+                            action: checkIn.replacedPrevious
+                                ? null
+                                : SnackBarAction(
+                                    label: '撤销',
+                                    onPressed: () =>
+                                        HabitRepository.deleteCheckIn(checkIn),
+                                  ),
                           ),
                         );
                       } finally {

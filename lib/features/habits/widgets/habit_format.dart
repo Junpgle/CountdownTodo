@@ -1,6 +1,7 @@
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
+import '../services/habit_adaptation_service.dart';
 import '../services/habit_rule_resolver.dart';
 
 /// 习惯文案格式化工具。
@@ -46,6 +47,22 @@ abstract final class HabitText {
     final currentMin = (progress.currentValue / 60).ceil();
     final targetMin = (progress.targetValue / 60).ceil();
     return '$currentMin / $targetMin 分钟';
+  }
+
+  /// 根据深度适配的习惯类型显示时长进度。
+  ///
+  /// 睡眠时长的底层值同样是秒，但用户更适合看到「7 小时 30 分 / 8 小时」；
+  /// 普通时长习惯继续使用分钟口径。
+  static String durationProgressForGoal(
+    HabitGoal goal,
+    HabitProgress progress,
+  ) {
+    if (HabitAdaptationService.forHabit(goal)?.kind ==
+        HabitAdaptationKind.sleepDuration) {
+      return '${formatDuration(progress.currentValue.round())} / '
+          '${formatDuration(progress.targetValue.round())}';
+    }
+    return durationProgress(progress);
   }
 
   /// 时间点型：实际时间。
@@ -125,6 +142,8 @@ abstract final class HabitText {
         return '完成一次';
       case HabitSourceType.pomodoroTag:
         return '累计时长';
+      case HabitSourceType.durationCheckIn:
+        return '时长打卡';
       case HabitSourceType.quantityCheckIn:
         return '累计数量';
       case HabitSourceType.timeCheckIn:

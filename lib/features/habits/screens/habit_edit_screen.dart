@@ -117,6 +117,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         targetTimeMinute: 23 * 60 + 30,
         crossMidnight: true,
         adaptationKind: HabitAdaptationKind.earlySleep),
+    _HabitTemplate('睡眠时长', '🛌', HabitSourceType.durationCheckIn,
+        targetValue: 8 * 60 * 60,
+        adaptationKind: HabitAdaptationKind.sleepDuration),
     _HabitTemplate('每日签到', '✅', HabitSourceType.recurringTodo),
     _HabitTemplate('俯卧撑', '💪', HabitSourceType.quantityCheckIn,
         targetValue: 24,
@@ -223,6 +226,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             }
             _timeComparison = rule.timeComparison;
             _toleranceMinutes = rule.timeToleranceMinutes;
+          case HabitSourceType.durationCheckIn:
+            _targetMinutes = (rule.targetValue / 60).round().clamp(60, 960);
           case HabitSourceType.recurringTodo:
             break;
         }
@@ -425,6 +430,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
             hour: (template.targetTimeMinute ~/ 60) % 24,
             minute: template.targetTimeMinute % 60,
           );
+        case HabitSourceType.durationCheckIn:
+          _targetMinutes = (template.targetValue / 60).round();
         case HabitSourceType.recurringTodo:
           break;
       }
@@ -500,6 +507,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       HabitAdaptationKind.learning => null,
       HabitAdaptationKind.vocabulary => null,
       HabitAdaptationKind.meditation => null,
+      HabitAdaptationKind.sleepDuration => null,
     };
     if (anchor == null) return null;
     return HabitAdaptationService.pairSuggestionFor(
@@ -564,6 +572,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           case HabitSourceType.timeCheckIn:
           case HabitSourceType.recurringTodo:
             break;
+          case HabitSourceType.durationCheckIn:
+            if (_targetMinutes <= 0) return '请填写有效的目标时长';
         }
     }
     return null;
@@ -594,6 +604,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       case HabitSourceType.pomodoroTag:
         targetValue = (_targetMinutes * 60).toDouble();
       case HabitSourceType.timeCheckIn:
+        break;
+      case HabitSourceType.durationCheckIn:
+        targetValue = (_targetMinutes * 60).toDouble();
       case HabitSourceType.recurringTodo:
         break;
     }
@@ -609,16 +622,26 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
       customIntervalDays:
           _periodType == HabitPeriodType.custom ? _customIntervalDays : null,
       targetValue: targetValue,
-      unit: _sourceType == HabitSourceType.quantityCheckIn ? unit : '',
+      unit: _sourceType == HabitSourceType.quantityCheckIn
+          ? unit
+          : _sourceType == HabitSourceType.durationCheckIn
+              ? '小时'
+              : '',
       targetTimeMinute: _sourceType == HabitSourceType.timeCheckIn
           ? _targetTime.hour * 60 + _targetTime.minute
           : null,
       timeComparison: _timeComparison,
       timeToleranceMinutes: _toleranceMinutes,
-      dayBoundaryMinute:
-          _sourceType == HabitSourceType.timeCheckIn && _crossMidnightBoundary
-              ? 4 * 60
-              : 0,
+      dayBoundaryMinute: (_sourceType == HabitSourceType.timeCheckIn &&
+                  _crossMidnightBoundary) ||
+              (_sourceType == HabitSourceType.durationCheckIn &&
+                  HabitAdaptationService.forDraft(
+                        sourceType: _sourceType,
+                        name: _nameController.text,
+                      )?.kind ==
+                      HabitAdaptationKind.sleepDuration)
+          ? 4 * 60
+          : 0,
       quickValues: _sourceType == HabitSourceType.quantityCheckIn
           ? quickValues
           : const [],
@@ -667,7 +690,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
           sourceType: _sourceType,
           sourceIds: _sourceType == HabitSourceType.recurringTodo
               ? recurringSourceIds
-              : _selectedTagUuids,
+              : _sourceType == HabitSourceType.pomodoroTag
+                  ? _selectedTagUuids
+                  : const <String>[],
           rule: rule,
           displayMode: _displayMode,
           defaultFocusMinutes: _sourceType == HabitSourceType.pomodoroTag
@@ -682,6 +707,9 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
         if (goal.sourceType == HabitSourceType.pomodoroTag) {
           goal.sourceIds = List.from(_selectedTagUuids);
           goal.defaultFocusMinutes = _defaultFocusMinutes;
+        } else if (goal.sourceType == HabitSourceType.durationCheckIn) {
+          goal.sourceIds = [];
+          goal.defaultFocusMinutes = null;
         } else if (goal.sourceType == HabitSourceType.recurringTodo &&
             recurringSourceIds.isNotEmpty) {
           goal.sourceIds = recurringSourceIds;
@@ -1460,6 +1488,8 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               selected: _sourceType == HabitSourceType.quantityCheckIn),
           _typeCard(HabitSourceType.timeCheckIn,
               selected: _sourceType == HabitSourceType.timeCheckIn),
+          _typeCard(HabitSourceType.durationCheckIn,
+              selected: _sourceType == HabitSourceType.durationCheckIn),
         ],
         const SizedBox(height: 20),
         _buildPeriodSection(),
@@ -1521,6 +1551,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     final (String title, String desc) = switch (type) {
       HabitSourceType.recurringTodo => ('完成型', '每天完成一次，如打卡签到'),
       HabitSourceType.pomodoroTag => ('时长型', '累计专注时长，如阅读 30 分钟'),
+      HabitSourceType.durationCheckIn => ('时长型', '累计独立时长，如每晚睡眠 8 小时'),
       HabitSourceType.quantityCheckIn => ('数量型', '记录累计数量，如饮水量、步数或次数'),
       HabitSourceType.timeCheckIn => ('时间点型', '记录发生时间，如 7 点前起床'),
     };
@@ -1722,6 +1753,7 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
               ],
             ),
           HabitSourceType.pomodoroTag => _buildDurationTarget(colorScheme),
+          HabitSourceType.durationCheckIn => _buildDurationTarget(colorScheme),
           HabitSourceType.quantityCheckIn => _buildQuantityTarget(colorScheme),
           HabitSourceType.timeCheckIn => _buildTimeTarget(colorScheme),
         },
@@ -1887,7 +1919,72 @@ class _HabitEditScreenState extends State<HabitEditScreen> {
     if (adaptation?.kind == HabitAdaptationKind.meditation) {
       return _buildMeditationTarget(colorScheme, adaptation);
     }
+    if (adaptation?.kind == HabitAdaptationKind.sleepDuration) {
+      return _buildSleepDurationTarget(colorScheme, adaptation);
+    }
     return _buildGenericDurationTarget(colorScheme);
+  }
+
+  Widget _buildSleepDurationTarget(
+    ColorScheme colorScheme,
+    HabitAdaptation? adaptation,
+  ) {
+    if (adaptation == null) return const SizedBox.shrink();
+    final targetHours = (_targetMinutes / 60).clamp(1, 16).toDouble();
+    final targetLabel = _targetMinutes % 60 == 0
+        ? '${_targetMinutes ~/ 60} 小时'
+        : '${_targetMinutes ~/ 60} 小时 ${_targetMinutes % 60} 分钟';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HabitAdaptationPanel(
+          adaptation: adaptation,
+          targetValue: targetHours,
+          targetUnitOverride: '小时',
+          onTargetSelected: (hours) => setState(
+            () => _targetMinutes = hours * 60,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          '睡眠时长会由早睡与早起打卡自动生成；在历史记录中编辑即可手动修正。',
+          style: TextStyle(
+            fontSize: 12.5,
+            height: 1.5,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Text(
+              '每晚目标',
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              targetLabel,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: _targetMinutes.toDouble().clamp(6 * 60, 12 * 60),
+          min: 6 * 60,
+          max: 12 * 60,
+          divisions: 12,
+          label: targetLabel,
+          onChanged: (value) => setState(() => _targetMinutes = value.round()),
+        ),
+      ],
+    );
   }
 
   Widget _buildGenericDurationTarget(ColorScheme colorScheme) {

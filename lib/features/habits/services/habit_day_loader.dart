@@ -6,6 +6,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
+import 'habit_sleep_duration_service.dart';
 
 /// 某个日期（或所在周期）全部习惯的快照，供今日视图复用。
 class HabitDaySnapshot {
@@ -39,6 +40,8 @@ class HabitDaySnapshot {
 abstract final class HabitDayLoader {
   /// 加载 [date]（逻辑日期）当天全部未归档习惯的进度。
   static Future<HabitDaySnapshot> loadForDate(DateTime date) async {
+    // 早睡/早起新增或修正后，睡眠时长在下一次刷新首页时自动重算。
+    await HabitSleepDurationService.syncAll();
     final goals = await HabitRepository.getActiveGoals();
     final allRules = await HabitRepository.getRules();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
@@ -46,24 +49,26 @@ abstract final class HabitDayLoader {
     final progress = <String, HabitProgress>{};
 
     for (final goal in goals) {
+      final progressDate =
+          HabitSleepDurationService.displayLogicalDateFor(goal, date);
       final rules = allRules.where((r) => r.habitUuid == goal.uuid).toList()
         ..sort((a, b) =>
             (a.effectiveFromDate ?? '').compareTo(b.effectiveFromDate ?? ''));
       rulesByHabit[goal.uuid] = rules;
-      final rule = HabitRuleResolver.effectiveRule(rules, date);
+      final rule = HabitRuleResolver.effectiveRule(rules, progressDate);
       if (rule == null) continue;
       effective[goal.uuid] = rule;
       try {
         progress[goal.uuid] = await HabitProgressCalculator.computePeriod(
           habit: goal,
           rules: rules,
-          logicalDate: date,
+          logicalDate: progressDate,
         );
       } catch (e) {
         // 单个习惯计算失败不阻塞整个快照：降级为空进度，
         // 该习惯今天按无记录展示，其余习惯不受影响。
         debugPrint('⚠️ 习惯 ${goal.name} 进度计算失败: $e');
-        progress[goal.uuid] = HabitProgress.empty(date);
+        progress[goal.uuid] = HabitProgress.empty(progressDate);
       }
     }
 

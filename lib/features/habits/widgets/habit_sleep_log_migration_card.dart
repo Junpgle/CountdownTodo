@@ -86,8 +86,9 @@ class HabitSleepLogMigrationCard extends StatelessWidget {
                               ),
                               _TimeChip(
                                 icon: Icons.wb_twilight_rounded,
-                                label:
-                                    '早起 ${HabitSleepLogMigrationService.formatMinute(proposal.wakeMinute)}',
+                                label: proposal.hasReliableWakeTime
+                                    ? '早起 ${HabitSleepLogMigrationService.formatMinute(proposal.wakeMinute)}'
+                                    : '早起 暂无可靠结束时间',
                                 colorScheme: colorScheme,
                               ),
                             ],

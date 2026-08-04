@@ -17,6 +17,7 @@ import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import '../services/feature_tip_service.dart';
+import '../features/habits/screens/habit_center_screen.dart';
 import '../widgets/coach_mark_overlay.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
 
@@ -369,6 +370,13 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   List<Widget> _buildActions() {
     final acts = <Widget>[];
+    acts.add(
+      IconButton(
+        icon: const Icon(Icons.bedtime_outlined, size: 20),
+        tooltip: '迁移睡眠日志到早睡早起习惯',
+        onPressed: _openHabitSleepMigration,
+      ),
+    );
     if (_view == _ViewMode.day) {
       // 只保留标签管理，不再有切换图标
       if (_dayMode == _DayMode.edit) {
@@ -386,6 +394,17 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         icon: const Icon(Icons.refresh, size: 20),
         onPressed: () => _loadData(forceSync: true)));
     return acts;
+  }
+
+  Future<void> _openHabitSleepMigration() async {
+    await Navigator.of(context).push(
+      PageTransitions.material(
+        builder: (_) => HabitCenterScreen(
+          username: widget.username,
+          openSleepMigration: true,
+        ),
+      ),
+    );
   }
 
   Future<void> _openAiAssistant() async {

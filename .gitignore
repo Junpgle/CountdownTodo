@@ -145,6 +145,7 @@ todo.md
 !/test/features/habits/habit_rule_resolver_test.dart
 !/test/features/habits/habit_streak_service_test.dart
 !/test/features/habits/habit_repository_test.dart
+!/test/features/habits/habit_time_point_chart_test.dart
 !/test/utils/todo_widget_visibility_test.dart
 /macos/build/
 /globalize.md

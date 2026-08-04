@@ -21,8 +21,13 @@ import 'habit_today_tab.dart';
 /// 习惯中心：今日 / 日历 / 分析 三个标签页。
 class HabitCenterScreen extends StatefulWidget {
   final String username;
+  final bool openSleepMigration;
 
-  const HabitCenterScreen({super.key, required this.username});
+  const HabitCenterScreen({
+    super.key,
+    required this.username,
+    this.openSleepMigration = false,
+  });
 
   @override
   State<HabitCenterScreen> createState() => _HabitCenterScreenState();
@@ -53,7 +58,12 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     });
     _loadChallengePromotion();
     _loadSleepLogMigration();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
+    if (widget.openSleepMigration) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _openSleepLogMigrationEntry());
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
+    }
   }
 
   @override
@@ -88,8 +98,15 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       'habit_sleep_log_migration_${widget.username}';
 
   Future<void> _loadSleepLogMigration() async {
+    await _loadSleepLogMigrationData();
+  }
+
+  Future<void> _loadSleepLogMigrationData({bool bypassTip = false}) async {
     try {
-      if (await FeatureTipService.hasTipBeenShown(_sleepMigrationTipId)) return;
+      if (!bypassTip &&
+          await FeatureTipService.hasTipBeenShown(_sleepMigrationTipId)) {
+        return;
+      }
       final results = await Future.wait<dynamic>([
         StorageService.getTimeLogs(widget.username),
         HabitRepository.getGoals(),
@@ -108,80 +125,234 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     }
   }
 
-  Future<void> _openSleepLogMigration() async {
-    final proposal = _sleepLogMigration;
-    if (proposal == null) return;
-    final shouldCreate = await showDialog<bool>(
+  Future<void> _openSleepLogMigrationEntry() async {
+    await _loadSleepLogMigrationData(bypassTip: true);
+    if (!mounted) return;
+    if (_sleepLogMigration != null) {
+      await _openSleepLogMigration();
+      return;
+    }
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Row(
           children: [
             Text('🌙'),
             SizedBox(width: 8),
-            Expanded(child: Text('迁移到早睡早起')),
+            Expanded(child: Text('从时间日志迁移')),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '根据近 ${proposal.observedNights} 晚睡眠日志，系统建议把规律作息变成每天可打卡的时间点：',
-              ),
-              const SizedBox(height: 14),
-              _buildMigrationSuggestionRow(
-                context,
-                icon: Icons.nightlight_round,
-                title: '早睡',
-                value: HabitSleepLogMigrationService.formatMinute(
-                  proposal.bedtimeMinute,
-                ),
-                enabled: proposal.createsEarlySleep,
-                existingText: proposal.hasEarlySleep ? '已有习惯' : null,
-              ),
-              const SizedBox(height: 8),
-              _buildMigrationSuggestionRow(
-                context,
-                icon: Icons.wb_twilight_rounded,
-                title: '早起',
-                value: HabitSleepLogMigrationService.formatMinute(
-                  proposal.wakeMinute,
-                ),
-                enabled: proposal.createsEarlyWake,
-                existingText: proposal.hasEarlyWake ? '已有习惯' : null,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                '日志中位睡眠时长约 ${proposal.sleepDurationLabel}。创建后从今天开始记录，不会修改或删除历史时间日志，也不会补造过去的打卡。目标时间和提醒都可以在习惯详情中继续编辑。',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
+        content: const Text(
+          '暂时没有找到足够的夜间睡眠记录。请在时间日志中使用“睡眠、睡觉、作息、入睡、起床”等标题或标签，连续记录至少两晚完整睡眠时段；回到习惯中心后即可生成早睡和早起建议。',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('稍后'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.add_task_rounded),
-            label: Text(
-                '创建 ${proposal.createsEarlySleep && proposal.createsEarlyWake ? '两个' : '缺少的'}习惯'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
           ),
         ],
       ),
     );
-    if (shouldCreate != true || !mounted) return;
+  }
+
+  Future<void> _openSleepLogMigration() async {
+    final proposal = _sleepLogMigration;
+    if (proposal == null) return;
+    var timeSelection = HabitSleepLogTimeSelection.startTime;
+    var sleepKind = HabitSleepLogKind.fullSleep;
+    final options = await showDialog<HabitSleepLogMigrationOptions>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedOptions = HabitSleepLogMigrationOptions(
+            timeSelection: timeSelection,
+            kind: sleepKind,
+          );
+          final selectedProposal = proposal.forOptions(selectedOptions);
+          final displayProposal = selectedProposal ?? proposal;
+          final canImport = selectedProposal?.canMigrate == true;
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Text('🌙'),
+                SizedBox(width: 8),
+                Expanded(child: Text('迁移到早睡早起')),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '根据近 ${displayProposal.observedNights} 晚睡眠日志，系统建议把规律作息变成每天可打卡的时间点：',
+                  ),
+                  const SizedBox(height: 14),
+                  _buildMigrationSuggestionRow(
+                    context,
+                    icon: Icons.nightlight_round,
+                    title: '早睡',
+                    value: HabitSleepLogMigrationService.formatMinute(
+                      displayProposal.bedtimeMinute,
+                    ),
+                    enabled: displayProposal.createsEarlySleep,
+                    existingText: displayProposal.hasEarlySleep ? '已有习惯' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildMigrationSuggestionRow(
+                    context,
+                    icon: Icons.wb_twilight_rounded,
+                    title: '早起',
+                    value: displayProposal.hasReliableWakeTime
+                        ? HabitSleepLogMigrationService.formatMinute(
+                            displayProposal.wakeMinute,
+                          )
+                        : '暂无可靠结束时间',
+                    enabled: displayProposal.createsEarlyWake,
+                    existingText: displayProposal.hasEarlyWake
+                        ? '已有习惯'
+                        : displayProposal.hasReliableWakeTime
+                            ? null
+                            : '需手动补录',
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    proposal.hasGridOnlyLogs
+                        ? '检测到 15 / 30 分钟的时间格记录。请确认这些记录是整段睡眠的入睡标记，还是小睡；整段睡眠才会进入早睡迁移。'
+                        : '请确认这些记录代表整段夜间睡眠，而不是小睡。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '记录类型',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('整段睡眠'),
+                        selected: sleepKind == HabitSleepLogKind.fullSleep,
+                        onSelected: (_) => setDialogState(
+                          () => sleepKind = HabitSleepLogKind.fullSleep,
+                        ),
+                      ),
+                      ChoiceChip(
+                        label: const Text('小睡'),
+                        selected: sleepKind == HabitSleepLogKind.nap,
+                        onSelected: (_) => setDialogState(
+                          () => sleepKind = HabitSleepLogKind.nap,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    sleepKind == HabitSleepLogKind.fullSleep
+                        ? '短时间格仅作为入睡时间标记。'
+                        : '短时间格会被视为小睡，不导入早睡早起。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '时间点取法（仅影响短时间格）',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('取开始时间'),
+                        selected: timeSelection ==
+                            HabitSleepLogTimeSelection.startTime,
+                        onSelected: (_) => setDialogState(
+                          () => timeSelection =
+                              HabitSleepLogTimeSelection.startTime,
+                        ),
+                      ),
+                      ChoiceChip(
+                        label: const Text('取平均时间'),
+                        selected: timeSelection ==
+                            HabitSleepLogTimeSelection.midpoint,
+                        onSelected: (_) => setDialogState(
+                          () => timeSelection =
+                              HabitSleepLogTimeSelection.midpoint,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    timeSelection == HabitSleepLogTimeSelection.startTime
+                        ? '例如 23:00–23:30 取 23:00。'
+                        : '例如 23:00–23:30 取 23:15。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '日志中位睡眠时长约 ${displayProposal.sleepDurationLabel}。完整睡眠会把结束时间导入早起并自动生成睡眠时长；只有入睡时间格时不会伪造早起时间。',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (!canImport) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '当前选择下没有可迁移的整段睡眠记录。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('稍后'),
+              ),
+              FilledButton.icon(
+                onPressed: canImport
+                    ? () => Navigator.of(dialogContext).pop(selectedOptions)
+                    : null,
+                icon: const Icon(Icons.add_task_rounded),
+                label: Text(
+                  displayProposal.createsEarlySleep ||
+                          displayProposal.createsEarlyWake
+                      ? '创建并导入'
+                      : '导入历史打卡',
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (options == null || !mounted) return;
 
     try {
-      final created = await HabitSleepLogMigrationService.createHabits(
+      final result = await HabitSleepLogMigrationService.migrateProposal(
         proposal: proposal,
         username: widget.username,
+        options: options,
       );
       if (!mounted) return;
       await FeatureTipService.markTipShown(_sleepMigrationTipId);
@@ -191,7 +362,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         _reloadTick++;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已创建 ${created.length} 个睡眠习惯')),
+        SnackBar(
+          content: Text(
+            '已创建 ${result.createdGoals.length} 个习惯，导入 ${result.totalImported} 条节点，生成 ${result.generatedSleepDurationCount} 条睡眠时长',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -434,6 +609,11 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         final isWide = constraints.maxWidth > 600;
 
         final actions = [
+          IconButton(
+            tooltip: '从时间日志迁移早睡早起',
+            onPressed: _openSleepLogMigrationEntry,
+            icon: const Icon(Icons.bedtime_outlined),
+          ),
           IconButton(
             key: _archiveActionKey,
             tooltip: '已归档习惯',

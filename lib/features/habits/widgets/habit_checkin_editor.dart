@@ -13,14 +13,17 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
   required HabitGoalRuleRevision rule,
   required HabitCheckIn checkIn,
 }) async {
+  final isTimeType = goal.sourceType == HabitSourceType.timeCheckIn;
+  final isDurationType = goal.sourceType == HabitSourceType.durationCheckIn;
   final valueController = TextEditingController(
-    text: checkIn.value == checkIn.value.roundToDouble()
-        ? checkIn.value.round().toString()
-        : checkIn.value.toString(),
+    text: isDurationType
+        ? (checkIn.value / 3600).toStringAsFixed(2)
+        : checkIn.value == checkIn.value.roundToDouble()
+            ? checkIn.value.round().toString()
+            : checkIn.value.toString(),
   );
   final noteController = TextEditingController(text: checkIn.note ?? '');
   final formKey = GlobalKey<FormState>();
-  final isTimeType = goal.sourceType == HabitSourceType.timeCheckIn;
 
   // localOccurredAt 是按历史时区还原出的“墙上时间”，其 DateTime 标记为 UTC。
   // 转成当前设备的本地 DateTime 后，toUtc() 才会得到正确的保存时间。
@@ -41,7 +44,13 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(isTimeType ? '编辑打卡时间' : '编辑记录'),
+          title: Text(
+            isTimeType
+                ? '编辑打卡时间'
+                : isDurationType
+                    ? '修正睡眠时长'
+                    : '编辑记录',
+          ),
           content: Form(
             key: formKey,
             child: Column(
@@ -53,8 +62,9 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
-                      labelText:
-                          '数量${rule.unit.isNotEmpty ? '（${rule.unit}）' : ''}',
+                      labelText: isDurationType
+                          ? '睡眠时长（小时）'
+                          : '数量${rule.unit.isNotEmpty ? '（${rule.unit}）' : ''}',
                       border: const OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -137,6 +147,10 @@ Future<HabitCheckIn?> showHabitCheckInEditor({
           ),
         )
         ..timezoneOffsetMinutes = editedTime.timeZoneOffset.inMinutes;
+    } else if (isDurationType) {
+      edited
+        ..value = double.parse(valueController.text.trim()) * 3600
+        ..source = HabitCheckInSource.manual;
     } else {
       edited.value = double.parse(valueController.text.trim());
     }

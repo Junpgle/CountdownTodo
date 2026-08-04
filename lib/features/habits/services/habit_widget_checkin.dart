@@ -87,6 +87,8 @@ abstract final class HabitWidgetCheckIn {
 
       case HabitSourceType.pomodoroTag:
         return const HabitWidgetCheckInOpenApp();
+      case HabitSourceType.durationCheckIn:
+        return const HabitWidgetCheckInOpenApp();
     }
   }
 }

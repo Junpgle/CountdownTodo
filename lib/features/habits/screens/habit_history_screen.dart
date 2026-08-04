@@ -6,7 +6,9 @@ import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_adaptation_service.dart';
 import '../services/habit_source_resolver.dart';
+import '../services/habit_sleep_duration_service.dart';
 import '../widgets/habit_checkin_editor.dart';
 import '../widgets/habit_format.dart';
 
@@ -42,6 +44,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
   }
 
   Future<void> _loadData() async {
+    if (HabitSleepDurationService.isSleepDurationGoal(widget.goal)) {
+      await HabitSleepDurationService.syncAll();
+    }
     final checkIns = await HabitRepository.getCheckIns(
       habitUuid: widget.goal.uuid,
     );
@@ -468,6 +473,9 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
     final valueText = switch (widget.goal.sourceType) {
       HabitSourceType.quantityCheckIn =>
         '+${_trimNumber(checkIn.value)}${unit.isNotEmpty ? ' $unit' : ''}',
+      HabitSourceType.durationCheckIn =>
+        '${HabitAdaptationService.forHabit(widget.goal)?.kind == HabitAdaptationKind.sleepDuration ? '睡眠' : '时长'} '
+            '${HabitText.formatDuration(checkIn.value.round())}',
       HabitSourceType.timeCheckIn => '打卡 ${HabitText.timeOfDay(local)}',
       HabitSourceType.recurringTodo ||
       HabitSourceType.pomodoroTag =>
@@ -523,7 +531,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
           ),
           if (checkIn.source != HabitCheckInSource.skip &&
               (widget.goal.sourceType == HabitSourceType.quantityCheckIn ||
-                  widget.goal.sourceType == HabitSourceType.timeCheckIn))
+                  widget.goal.sourceType == HabitSourceType.timeCheckIn ||
+                  widget.goal.sourceType == HabitSourceType.durationCheckIn))
             IconButton(
               tooltip: '编辑',
               onPressed: () => _editCheckIn(checkIn),
@@ -574,6 +583,8 @@ class _HabitHistoryScreenState extends State<HabitHistoryScreen> {
           '${rule.unit.isNotEmpty ? ' ${rule.unit}' : ''}',
       HabitSourceType.pomodoroTag =>
         HabitText.formatDuration(rule.targetValue.round()),
+      HabitSourceType.durationCheckIn =>
+        '${(rule.targetValue / 3600).toStringAsFixed(1)} 小时',
       HabitSourceType.timeCheckIn =>
         HabitText.targetTime(rule.targetTimeMinute),
       HabitSourceType.recurringTodo => '完成一次',

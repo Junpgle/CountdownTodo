@@ -104,6 +104,35 @@ void main() {
     });
   });
 
+  group('独立时长打卡型习惯', () {
+    test('按打卡事件累计秒数并使用睡眠目标判断达标', () async {
+      final habit = goal(HabitSourceType.durationCheckIn, []);
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-1',
+        habitUuid: 'goal-1',
+        effectiveFromDate: '2026-07-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 8 * 60 * 60,
+        unit: '小时',
+        dayBoundaryMinute: 4 * 60,
+      );
+      final results = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: DateTime(2026, 8, 5),
+        to: DateTime(2026, 8, 5),
+        now: now,
+        checkIns: [
+          checkIn(DateTime(2026, 8, 5, 23), 8 * 60 * 60),
+        ],
+      );
+
+      expect(results.first.progress.currentValue, 8 * 60 * 60);
+      expect(results.first.progress.goalMet, isTrue);
+      expect(results.first.progress.checkIns, hasLength(1));
+    });
+  });
+
   group('时间点型习惯', () {
     test('最早一次打卡决定达标与否', () async {
       final habit = goal(HabitSourceType.timeCheckIn, []);
@@ -158,6 +187,43 @@ void main() {
       expect(progress.onTime, false);
       expect(progress.hasRecord, true);
       expect(progress.dayStatus, HabitDayStatus.inProgress);
+    });
+
+    test('早睡同一晚重复打卡时只展示并判断最后一次', () async {
+      final habit = HabitGoal(
+        uuid: 'goal-1',
+        name: '早睡',
+        sourceType: HabitSourceType.timeCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'rule-1',
+        habitUuid: 'goal-1',
+        effectiveFromDate: '2026-07-01',
+        periodType: HabitPeriodType.daily,
+        targetValue: 1,
+        targetTimeMinute: 23 * 60 + 30,
+        timeComparison: HabitTimeComparison.before,
+        dayBoundaryMinute: 4 * 60,
+      );
+      final results = await HabitProgressCalculator.computeRange(
+        habit: habit,
+        rules: [rule],
+        from: DateTime(2026, 8, 4),
+        to: DateTime(2026, 8, 4),
+        now: now,
+        checkIns: [
+          checkIn(DateTime(2026, 8, 4, 22, 50), 0),
+          checkIn(DateTime(2026, 8, 4, 23, 45), 0),
+        ],
+      );
+
+      final progress = results.first.progress;
+      expect(progress.goalMet, isFalse);
+      expect(progress.firstRecordAt!.hour, 23);
+      expect(progress.firstRecordAt!.minute, 45);
+      expect(progress.lastRecordAt!.minute, 45);
+      expect(progress.recordCount, 1);
+      expect(progress.checkIns, hasLength(1));
     });
   });
 
