@@ -228,6 +228,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _todoWidgetDebouncer?.cancel();
     _reminderScheduleDebouncer?.cancel();
     _pomodoroTickNotifier.dispose();
+    _githubResourceService.dispose();
     MacPomodoroStatusBarService.dispose();
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     WidgetsBinding.instance.removeObserver(this);

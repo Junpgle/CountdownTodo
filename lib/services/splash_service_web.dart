@@ -1,9 +1,10 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'github_resource_service.dart';
 
 class SplashService {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String splashConfigUrl =
       'https://raw.githubusercontent.com/Junpgle/CountDownTodo/master/splash/config.json';
 
@@ -174,7 +175,7 @@ class SplashService {
 
   static Future<Map<String, dynamic>?> _fetchConfig() async {
     try {
-      final response = await http.get(Uri.parse(splashConfigUrl));
+      final response = await _resourceService.get(Uri.parse(splashConfigUrl));
       if (response.statusCode == 200) {
         return (jsonDecode(response.body) as Map).cast<String, dynamic>();
       }

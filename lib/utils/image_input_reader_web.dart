@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:http/http.dart' as http;
-
 import 'image_input_data.dart';
+import '../services/github_resource_service.dart';
+
+final GitHubResourceService _githubResourceService = GitHubResourceService();
 
 Future<ImageInputData> readImageInput(String imagePath) async {
   if (imagePath.startsWith('data:')) {
@@ -13,7 +14,7 @@ Future<ImageInputData> readImageInput(String imagePath) async {
   final uri = Uri.tryParse(imagePath);
   if (uri != null &&
       (uri.scheme == 'http' || uri.scheme == 'https' || uri.scheme == 'blob')) {
-    final response = await http.get(uri);
+    final response = await _githubResourceService.get(uri);
     if (response.statusCode != 200) {
       throw Exception('图片读取失败: HTTP ${response.statusCode}');
     }

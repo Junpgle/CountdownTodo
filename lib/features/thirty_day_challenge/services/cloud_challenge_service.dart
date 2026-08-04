@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cloud_challenge.dart';
+import '../../../services/github_resource_service.dart';
 
 class CachedCloudChallengeCatalog {
   final CloudChallengeCatalog catalog;
@@ -21,10 +22,10 @@ class CloudChallengeService {
   static const String _cacheKey = 'thirty_day_cloud_challenge_catalog_v1';
   static const Duration cacheLifetime = Duration(days: 1);
 
-  final http.Client _client;
+  final GitHubResourceService _resourceService;
 
   CloudChallengeService({http.Client? client})
-      : _client = client ?? http.Client();
+      : _resourceService = GitHubResourceService(client: client);
 
   Future<CachedCloudChallengeCatalog?> readCachedCatalog() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,7 +61,7 @@ class CloudChallengeService {
   }
 
   Future<CloudChallengeCatalog> fetchCatalog() async {
-    final response = await _client.get(
+    final response = await _resourceService.get(
       Uri.parse(catalogUrl),
       headers: const {
         'Accept': 'application/json',
@@ -87,5 +88,5 @@ class CloudChallengeService {
     );
   }
 
-  void dispose() => _client.close();
+  void dispose() => _resourceService.dispose();
 }

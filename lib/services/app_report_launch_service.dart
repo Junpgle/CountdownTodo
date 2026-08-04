@@ -2,16 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../screens/personal_timeline_screen.dart';
 import 'app_deep_link_service.dart';
+import 'github_resource_service.dart';
 import 'app_report_launch_visibility_stub.dart'
     if (dart.library.html) 'app_report_launch_visibility_web.dart';
 
 class AppReportLaunchService {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String _manifestUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json';
   static const String _releasePageUrl =
@@ -54,7 +55,7 @@ class AppReportLaunchService {
 
   static Future<String> _resolveDownloadUrlForCurrentVisitor() async {
     try {
-      final response = await http.get(Uri.parse(_manifestUrl));
+      final response = await _resourceService.get(Uri.parse(_manifestUrl));
       if (response.statusCode == 200) {
         final data =
             jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -64,28 +65,38 @@ class AppReportLaunchService {
         final apkUrl = info['full_package_url']?.toString() ?? '';
         final archPackages =
             (info['android_arch_packages'] as Map?) ?? const {};
-        final firstArchApk = archPackages.values
-            .map((value) => value.toString())
-            .where((value) => value.isNotEmpty)
-            .cast<String?>()
-            .firstWhere((value) => value != null, orElse: () => null);
+        String? firstArchApk;
+        for (final value in archPackages.values) {
+          final candidate = _giteePackageUrl(value.toString());
+          if (candidate != null) {
+            firstArchApk = candidate;
+            break;
+          }
+        }
+        final giteePcUrl = _giteePackageUrl(pcUrl);
+        final giteeMacUrl = _giteePackageUrl(macUrl);
+        final giteeApkUrl = _giteePackageUrl(apkUrl);
 
         if (defaultTargetPlatform == TargetPlatform.android) {
-          return firstArchApk ?? apkUrl.ifNotEmpty ?? _releasePageUrl;
+          return firstArchApk ?? giteeApkUrl ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.macOS) {
-          return macUrl.ifNotEmpty ?? _releasePageUrl;
+          return giteeMacUrl ?? _releasePageUrl;
         }
         if (defaultTargetPlatform == TargetPlatform.windows) {
-          return pcUrl.ifNotEmpty ?? _releasePageUrl;
+          return giteePcUrl ?? _releasePageUrl;
         }
-        return pcUrl.ifNotEmpty ?? apkUrl.ifNotEmpty ?? _releasePageUrl;
+        return giteePcUrl ?? giteeApkUrl ?? _releasePageUrl;
       }
     } catch (_) {}
     return _releasePageUrl;
   }
-}
 
-extension on String {
-  String? get ifNotEmpty => isEmpty ? null : this;
+  static String? _giteePackageUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri?.scheme == 'https' && uri?.host.toLowerCase() == 'gitee.com') {
+      return url;
+    }
+    return null;
+  }
 }

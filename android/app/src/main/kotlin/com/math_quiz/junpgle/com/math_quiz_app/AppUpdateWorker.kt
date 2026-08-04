@@ -35,8 +35,11 @@ class AppUpdateWorker(
         private const val PREFS_NAME = "app_update_check"
         private const val KEY_LAST_NOTIFIED_VERSION = "last_notified_version"
 
+        // 后台任务也遵循直连优先，中转和服务器 manifest 作为兜底。
         private const val GITHUB_MANIFEST_URL =
             "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json"
+        private const val PROXY_GITHUB_MANIFEST_URL =
+            "http://101.200.13.100:8082/api/github/resource?url=https%3A%2F%2Fraw.githubusercontent.com%2FJunpgle%2FCountdownTodo%2Frefs%2Fheads%2Fmaster%2Fupdate_manifest.json"
         private const val SERVER_MANIFEST_URL =
             "http://101.200.13.100:8082/api/manifest"
     }
@@ -77,7 +80,8 @@ class AppUpdateWorker(
     }
 
     private fun fetchManifest(): JSONObject? {
-        listOf(GITHUB_MANIFEST_URL, SERVER_MANIFEST_URL).forEach { endpoint ->
+        listOf(GITHUB_MANIFEST_URL, PROXY_GITHUB_MANIFEST_URL, SERVER_MANIFEST_URL)
+            .forEach { endpoint ->
             try {
                 val connection = URL(endpoint).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"

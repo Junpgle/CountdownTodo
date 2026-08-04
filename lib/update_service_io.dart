@@ -5,14 +5,13 @@ import 'package:countdown_todo/services/band_sync_service.dart';
 import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/permission_request_coordinator.dart';
+import 'services/github_resource_service.dart';
 
 // 数据模型类
 class ChangelogEntry {
@@ -252,6 +251,7 @@ class _AnnouncementCarouselDialogState
 }
 
 class UpdateService {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
   static const String fallbackManifestUrl =
@@ -516,26 +516,39 @@ class UpdateService {
   }
 
   // 🚀 根据设备架构获取对应的下载链接
-  static String getDownloadUrlForArch(AppManifest manifest) {
+  static Future<String> getDownloadUrlForArch(AppManifest manifest) async {
     debugPrint(
         '[UpdateService] getDownloadUrlForArch: macPackageUrl=${manifest.updateInfo.macPackageUrl}, pcPackageUrl=${manifest.updateInfo.pcPackageUrl}');
     if (Platform.isMacOS && manifest.updateInfo.macPackageUrl.isNotEmpty) {
       debugPrint(
           '[UpdateService] Using macPackageUrl: ${manifest.updateInfo.macPackageUrl}');
-      return manifest.updateInfo.macPackageUrl;
+      return _giteePackageUrl(manifest.updateInfo.macPackageUrl);
     }
     if (Platform.isWindows && manifest.updateInfo.pcPackageUrl.isNotEmpty) {
-      return manifest.updateInfo.pcPackageUrl;
+      return _giteePackageUrl(manifest.updateInfo.pcPackageUrl);
     }
     final archPackages = manifest.updateInfo.androidArchPackages;
     if (archPackages.isNotEmpty) {
+      final architecture = await getDeviceArchitecture();
+      final packageUrl = archPackages[architecture];
       debugPrint(
-          '[UpdateService] Using androidArchPackages: ${archPackages.values.first}');
-      return archPackages.values.first;
+          '[UpdateService] Android architecture: $architecture, package: $packageUrl');
+      if (packageUrl != null && packageUrl.isNotEmpty) {
+        return _giteePackageUrl(packageUrl);
+      }
     }
     debugPrint(
         '[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}');
-    return manifest.updateInfo.fullPackageUrl;
+    return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
+  }
+
+  static String _giteePackageUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri?.scheme == 'https' && uri?.host.toLowerCase() == 'gitee.com') {
+      return url;
+    }
+    debugPrint('[UpdateService] 忽略非 Gitee 安装包地址: $url');
+    return '';
   }
 
   static Future<AppManifest?> _readManifestCache() async {
@@ -585,7 +598,7 @@ class UpdateService {
   static Future<AppManifest?> _fetchFromGitHubFirst() async {
     // 优先从 GitHub 获取
     try {
-      final response = await http
+      final response = await _resourceService
           .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
@@ -603,7 +616,7 @@ class UpdateService {
     // GitHub 失败，降级到服务器获取
     try {
       debugPrint('[UpdateService] 降级到服务器获取 manifest...');
-      final response = await http
+      final response = await _resourceService
           .get(Uri.parse(fallbackManifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
@@ -625,7 +638,7 @@ class UpdateService {
   static Future<AppManifest?> _fetchFromServerFirst() async {
     // 优先从服务器获取
     try {
-      final response = await http
+      final response = await _resourceService
           .get(Uri.parse(fallbackManifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
@@ -643,7 +656,7 @@ class UpdateService {
     // 服务器失败，降级到 GitHub 获取
     try {
       debugPrint('[UpdateService] 降级到 GitHub 获取 manifest...');
-      final response = await http
+      final response = await _resourceService
           .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
@@ -718,7 +731,7 @@ class UpdateService {
     }
 
     try {
-      final response = await http.get(Uri.parse(archiveUrl));
+      final response = await _resourceService.get(Uri.parse(archiveUrl));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
         final archive = _parseChangelogArchive(body);
@@ -925,7 +938,7 @@ class UpdateService {
       return;
     }
 
-    final downloadUrl = getDownloadUrlForArch(manifest);
+    final downloadUrl = await getDownloadUrlForArch(manifest);
     if (downloadUrl.isEmpty) {
       onError('未找到可用的下载链接');
       return;
@@ -962,16 +975,14 @@ class UpdateService {
     File tempFile = File(tempPath);
 
     try {
-      var client = HttpClient();
-      var request = await client.getUrl(Uri.parse(downloadUrl));
-      var response = await request.close();
+      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
 
       if (response.statusCode == 200) {
-        int totalBytes = response.contentLength;
+        int totalBytes = response.contentLength ?? 0;
         int receivedBytes = 0;
         var sink = tempFile.openWrite();
 
-        _downloadSubscription = response.listen(
+        _downloadSubscription = response.stream.listen(
           (List<int> chunk) {
             receivedBytes += chunk.length;
             sink.add(chunk);
@@ -1279,11 +1290,11 @@ class UpdateService {
                       ClipRRect(
                           borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(20)),
-                          child: CachedNetworkImage(
-                            imageUrl: manifest.wallpaper.imageUrl,
+                          child: GitHubResourceImage(
+                            url: manifest.wallpaper.imageUrl,
                             height: 200,
                             fit: BoxFit.cover,
-                            errorWidget: (context, url, error) =>
+                            errorBuilder: (context, error, stackTrace) =>
                                 Container(color: Colors.grey[200]),
                           )),
                     Padding(
@@ -1505,19 +1516,17 @@ class UpdateService {
     String tempPath = "$savePath.download";
     File tempFile = File(tempPath);
 
-    final String downloadUrl = getDownloadUrlForArch(manifest);
+    final String downloadUrl = await getDownloadUrlForArch(manifest);
 
     try {
-      var client = HttpClient();
-      var request = await client.getUrl(Uri.parse(downloadUrl));
-      var response = await request.close();
+      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
 
       if (response.statusCode == 200) {
-        int totalBytes = response.contentLength;
+        int totalBytes = response.contentLength ?? 0;
         int receivedBytes = 0;
         var sink = tempFile.openWrite();
 
-        _downloadSubscription = response.listen(
+        _downloadSubscription = response.stream.listen(
           (List<int> chunk) {
             receivedBytes += chunk.length;
             sink.add(chunk);

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
@@ -15,6 +14,7 @@ import '../services/local_migration_service.dart';
 import '../services/database_helper.dart';
 import '../services/database_schema_history.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/github_resource_service.dart';
 
 class AboutScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -25,6 +25,7 @@ class AboutScreen extends StatefulWidget {
 }
 
 class _AboutScreenState extends State<AboutScreen> {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   String _version = '加载中...';
   List<ChangelogEntry> _changelogEntries = [];
   bool _isLoadingChangelog = true;
@@ -243,7 +244,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _fetchPrivacyPolicy() async {
     try {
-      final response = await http.get(Uri.parse(privacyRawUrl));
+      final response = await _resourceService.get(Uri.parse(privacyRawUrl));
       if (response.statusCode == 200) {
         final content = response.body;
         String? date;

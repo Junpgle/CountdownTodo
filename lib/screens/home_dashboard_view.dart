@@ -1010,7 +1010,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
       if (_wallpaperUrl!.startsWith('http://') ||
           _wallpaperUrl!.startsWith('https://')) {
-        final response = await http.get(Uri.parse(wallpaperUrl));
+        final response =
+            await _githubResourceService.get(Uri.parse(wallpaperUrl));
         if (response.statusCode != 200) {
           throw Exception('HTTP ${response.statusCode}');
         }

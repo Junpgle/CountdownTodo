@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:http/http.dart' as http;
+import '../services/github_resource_service.dart';
 
 class PrivacyPolicyDialog extends StatefulWidget {
   final bool isUpdate;
@@ -21,6 +21,7 @@ class PrivacyPolicyDialog extends StatefulWidget {
 }
 
 class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   String? _content;
   bool _isLoading = true;
 
@@ -40,7 +41,7 @@ class _PrivacyPolicyDialogState extends State<PrivacyPolicyDialog> {
 
   Future<void> _fetchContent() async {
     try {
-      final response = await http.get(Uri.parse(privacyRawUrl));
+      final response = await _resourceService.get(Uri.parse(privacyRawUrl));
       if (response.statusCode == 200) {
         if (mounted) {
           setState(() {

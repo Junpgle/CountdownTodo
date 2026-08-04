@@ -6,11 +6,11 @@ import 'dart:js_interop_unsafe';
 import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:web/web.dart' as web;
+import 'services/github_resource_service.dart';
 
 class ChangelogEntry {
   final String versionName;
@@ -247,6 +247,7 @@ class _AnnouncementCarouselDialogState
 }
 
 class UpdateService {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String manifestUrl =
       'https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json';
   static const String fallbackManifestUrl =
@@ -440,16 +441,25 @@ class UpdateService {
 
   static String getDownloadUrlForArch(AppManifest manifest) {
     if (manifest.updateInfo.fullPackageUrl.isNotEmpty) {
-      return manifest.updateInfo.fullPackageUrl;
+      return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
     }
     if (manifest.updateInfo.pcPackageUrl.isNotEmpty) {
-      return manifest.updateInfo.pcPackageUrl;
+      return _giteePackageUrl(manifest.updateInfo.pcPackageUrl);
     }
     if (manifest.updateInfo.macPackageUrl.isNotEmpty) {
-      return manifest.updateInfo.macPackageUrl;
+      return _giteePackageUrl(manifest.updateInfo.macPackageUrl);
     }
     if (manifest.updateInfo.androidArchPackages.isNotEmpty) {
-      return manifest.updateInfo.androidArchPackages.values.first;
+      return _giteePackageUrl(
+          manifest.updateInfo.androidArchPackages.values.first);
+    }
+    return '';
+  }
+
+  static String _giteePackageUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri?.scheme == 'https' && uri?.host.toLowerCase() == 'gitee.com') {
+      return url;
     }
     return '';
   }
@@ -511,8 +521,9 @@ class UpdateService {
 
   static Future<AppManifest?> _fetchManifestUrl(String url) async {
     try {
-      final response =
-          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final response = await _resourceService
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return null;
       final body = utf8.decode(response.bodyBytes);
       final manifest = AppManifest.fromJson(
@@ -583,7 +594,7 @@ class UpdateService {
     }
 
     try {
-      final response = await http.get(Uri.parse(archiveUrl));
+      final response = await _resourceService.get(Uri.parse(archiveUrl));
       if (response.statusCode == 200) {
         final body = utf8.decode(response.bodyBytes);
         final archive = _parseChangelogArchive(body);
@@ -898,8 +909,8 @@ class UpdateService {
                     ClipRRect(
                       borderRadius:
                           const BorderRadius.vertical(top: Radius.circular(20)),
-                      child: Image.network(
-                        manifest.wallpaper.imageUrl,
+                      child: GitHubResourceImage(
+                        url: manifest.wallpaper.imageUrl,
                         height: 200,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
