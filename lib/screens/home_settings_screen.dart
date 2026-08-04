@@ -98,6 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final preferenceTargets = [
       'theme',
       'theme_color',
+      'home_layout',
       'wallpaper',
       'home_text'
     ];
@@ -112,7 +113,8 @@ class _SettingsPageState extends State<SettingsPage> {
       'semester_progress',
       'semester_start',
       'semester_end',
-      'semester_sync'
+      'semester_sync',
+      'semester_management'
     ];
     final interconnectTargets = [
       'lan_sync',
@@ -125,12 +127,16 @@ class _SettingsPageState extends State<SettingsPage> {
       'data_import',
     ];
     final advancedTargets = [
-      'llm_config',
       'llm_retry',
       'migration',
       'cache',
       'storage',
       'update',
+      'get_beta',
+      'force_download',
+      'update_source',
+      'help_center',
+      'changelog',
       'feature_guide'
     ];
     final platformTargets = [
@@ -141,7 +147,12 @@ class _SettingsPageState extends State<SettingsPage> {
       'live_updates',
       'island_support',
       'test_notification',
-      'mac_island_shortcut'
+      'mac_island_shortcut',
+      'mac_status_bar',
+      'mac_island_reminders',
+      'mac_island_clipboard_links',
+      'mac_island_test',
+      'mac_island_without_notch'
     ];
 
     if (accountTargets.contains(target)) {
@@ -660,11 +671,12 @@ class _SettingsPageState extends State<SettingsPage> {
         breadcrumbs.add(
           InkWell(
             onTap: () {
-              // 返回到对应层级
-              int popsNeeded = _nestedRouteNames.length - 1 - i;
-              for (int j = 0; j < popsNeeded; j++) {
-                _nestedNavigatorKey.currentState?.pop();
-              }
+              // 直接回到被点击的路由。连续调用 pop() 会受到页面转场锁的影响，
+              // 导致多层面包屑点击时实际上只返回一层。
+              final routeName = _nestedRouteNames[i];
+              _nestedNavigatorKey.currentState?.popUntil(
+                (route) => route.settings.name == routeName,
+              );
             },
             child: Text(_nestedRouteNames[i],
                 style: const TextStyle(fontSize: 18)),

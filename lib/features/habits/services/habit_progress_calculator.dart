@@ -5,6 +5,7 @@ import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
+import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_source_resolver.dart';
 
@@ -223,6 +224,13 @@ abstract final class HabitProgressCalculator {
             now: now,
             checkIns: checkIns,
           ),
+        HabitSourceType.durationCheckIn => _computeCheckInDuration(
+            habit: habit,
+            rule: rule,
+            logicalDate: logicalDate,
+            now: now,
+            checkIns: checkIns,
+          ),
       };
       periodCache[key] = computed;
       return computed;
@@ -255,6 +263,14 @@ abstract final class HabitProgressCalculator {
         );
       case HabitSourceType.timeCheckIn:
         return _computeTimePoint(
+          habit: habit,
+          rule: rule,
+          logicalDate: logicalDate,
+          now: now,
+          checkIns: checkIns,
+        );
+      case HabitSourceType.durationCheckIn:
+        return _computeCheckInDuration(
           habit: habit,
           rule: rule,
           logicalDate: logicalDate,
@@ -426,6 +442,62 @@ abstract final class HabitProgressCalculator {
     );
   }
 
+  // ── 时长打卡型：独立打卡事件累计秒数 ────────────────
+
+  static HabitProgress _computeCheckInDuration({
+    required HabitGoal habit,
+    required HabitGoalRuleRevision rule,
+    required DateTime logicalDate,
+    required DateTime now,
+    required List<HabitCheckIn> checkIns,
+  }) {
+    final planned = HabitRuleResolver.isPlannedDay(rule, logicalDate);
+    final finished = HabitRuleResolver.isPeriodFinished(rule, logicalDate, now);
+    final start = HabitRuleResolver.periodStart(rule, logicalDate);
+    final end = HabitRuleResolver.periodEndExclusive(rule, logicalDate);
+    final startKey = HabitRuleResolver.dayKey(start);
+    final endKey =
+        HabitRuleResolver.dayKey(end.subtract(const Duration(days: 1)));
+    final dayCheckIns = checkIns.where((checkIn) {
+      if (checkIn.isDeleted || checkIn.source == HabitCheckInSource.skip) {
+        return false;
+      }
+      if (checkIn.logicalDate.compareTo(startKey) < 0) return false;
+      return checkIn.logicalDate.compareTo(endKey) <= 0;
+    }).toList();
+
+    double totalSeconds = 0;
+    DateTime? firstRecordAt;
+    DateTime? lastRecordAt;
+    for (final checkIn in dayCheckIns) {
+      totalSeconds += checkIn.value;
+      final local = checkIn.localOccurredAt;
+      if (firstRecordAt == null || local.isBefore(firstRecordAt)) {
+        firstRecordAt = local;
+      }
+      if (lastRecordAt == null || local.isAfter(lastRecordAt)) {
+        lastRecordAt = local;
+      }
+    }
+
+    final target = rule.targetValue <= 0 ? 0.0 : rule.targetValue;
+    final met = target > 0 && totalSeconds >= target;
+    return HabitProgress(
+      period: start,
+      currentValue: totalSeconds,
+      targetValue: target,
+      completionRatio: target <= 0 ? 0 : totalSeconds / target,
+      hasRecord: dayCheckIns.isNotEmpty,
+      goalMet: met,
+      isPlanned: planned,
+      isFinished: finished,
+      recordCount: dayCheckIns.length,
+      firstRecordAt: firstRecordAt,
+      lastRecordAt: lastRecordAt,
+      checkIns: dayCheckIns,
+    );
+  }
+
   // ── 时间点型：实际发生时间判断 ───────────────────────
 
   static HabitProgress _computeTimePoint({
@@ -450,36 +522,48 @@ abstract final class HabitProgressCalculator {
       return c.logicalDate.compareTo(endKey) <= 0;
     }).toList();
 
-    HabitCheckIn? earliest;
+    final latestOnly = _usesLatestSleepCheckIn(habit);
+    HabitCheckIn? selected;
     for (final c in dayCheckIns) {
-      final current = earliest;
-      if (current == null || c.occurredAt < current.occurredAt) {
-        earliest = c;
+      final current = selected;
+      if (current == null ||
+          (latestOnly
+              ? c.occurredAt > current.occurredAt
+              : c.occurredAt < current.occurredAt)) {
+        selected = c;
       }
     }
+    final displayCheckIns =
+        latestOnly && selected != null ? <HabitCheckIn>[selected] : dayCheckIns;
 
-    final onTime = earliest != null &&
-        HabitRuleResolver.isTimePointMet(rule, earliest.localOccurredAt);
+    final onTime = selected != null &&
+        HabitRuleResolver.isTimePointMet(rule, selected.localOccurredAt);
     final target = rule.targetValue <= 0 ? 1.0 : rule.targetValue;
     return HabitProgress(
       period: start,
       currentValue: 0,
       targetValue: target,
       completionRatio: onTime ? 1.0 : 0.0,
-      hasRecord: earliest != null,
+      hasRecord: selected != null,
       goalMet: onTime,
       isPlanned: planned,
       isFinished: finished,
       onTime: onTime,
-      recordCount: dayCheckIns.length,
-      firstRecordAt: earliest?.localOccurredAt,
-      lastRecordAt: dayCheckIns.isNotEmpty
-          ? dayCheckIns
+      recordCount: displayCheckIns.length,
+      firstRecordAt: selected?.localOccurredAt,
+      lastRecordAt: displayCheckIns.isNotEmpty
+          ? displayCheckIns
               .reduce((a, b) => a.occurredAt > b.occurredAt ? a : b)
               .localOccurredAt
           : null,
-      checkIns: dayCheckIns,
+      checkIns: displayCheckIns,
     );
+  }
+
+  static bool _usesLatestSleepCheckIn(HabitGoal habit) {
+    final kind = HabitAdaptationService.forHabit(habit)?.kind;
+    return kind == HabitAdaptationKind.earlySleep ||
+        kind == HabitAdaptationKind.earlyWake;
   }
 
   static DateTime? _todoLocalDay(TodoItem todo) {

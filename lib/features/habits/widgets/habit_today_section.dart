@@ -8,6 +8,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_progress.dart';
 import '../screens/habit_detail_screen.dart';
 import '../services/habit_day_loader.dart';
+import '../services/habit_sleep_duration_service.dart';
 import 'habit_card.dart';
 
 /// 首页「今日习惯」卡片。
@@ -16,6 +17,12 @@ import 'habit_card.dart';
 class HabitTodaySection extends StatefulWidget {
   final String username;
   final bool isLight;
+
+  /// 首页使用紧凑布局，其他场景可保留完整卡片尺寸。
+  final bool compact;
+
+  /// 首页展示的习惯数量，超出后通过「查看全部」进入习惯中心。
+  final int displayLimit;
 
   /// 每次自增时触发重新加载（由首页 resumed 回调驱动）。
   final int refreshTrigger;
@@ -33,6 +40,8 @@ class HabitTodaySection extends StatefulWidget {
     super.key,
     required this.username,
     this.isLight = false,
+    this.compact = false,
+    this.displayLimit = 3,
     this.refreshTrigger = 0,
     this.onTap,
     this.onStartFocus,
@@ -132,6 +141,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final displayLimit = widget.displayLimit.clamp(1, 5).toInt();
     final textColor = widget.isLight ? Colors.white : null;
     final subColor = widget.isLight
         ? Colors.white.withValues(alpha: 0.7)
@@ -145,11 +155,11 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           onTap: widget.onTap,
           borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: EdgeInsets.symmetric(vertical: widget.compact ? 4 : 8),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: EdgeInsets.all(widget.compact ? 5 : 6),
                   decoration: BoxDecoration(
                     color: widget.isLight
                         ? Colors.white.withValues(alpha: 0.15)
@@ -157,15 +167,15 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(Icons.repeat_rounded,
-                      size: 20,
+                      size: widget.compact ? 18 : 20,
                       color:
                           widget.isLight ? Colors.white : colorScheme.tertiary),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: widget.compact ? 8 : 10),
                 Text(
                   '今日习惯',
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: widget.compact ? 16 : 18,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                     color: textColor,
@@ -184,25 +194,31 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
             ),
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: widget.compact ? 2 : 4),
 
         // ── 内容 ──
         if (_loading)
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(widget.compact ? 16 : 24),
               child: CircularProgressIndicator(),
             ),
           )
         else if (_snapshot == null || _snapshot!.isEmpty)
           _buildEmpty(subColor)
         else ...[
-          // 首页仅展示前 5 个，超出通过「查看全部」进入习惯中心。
-          ..._snapshot!.goals.take(5).map((goal) => _buildCard(goal)),
-          if (_snapshot!.goals.length > 5)
+          // 首页仅展示配置数量，超出通过「查看全部」进入习惯中心。
+          ..._snapshot!.goalsForDisplay
+              .take(displayLimit)
+              .map((goal) => _buildCard(goal)),
+          if (_snapshot!.goals.length > displayLimit)
             Center(
               child: TextButton.icon(
                 onPressed: widget.onTap,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
                 icon: Icon(Icons.apps_rounded, size: 16, color: subColor),
                 label: Text(
                   '查看全部习惯（共 ${_snapshot!.goals.length} 个）',
@@ -269,7 +285,10 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   Widget _buildEmpty(Color subColor) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      padding: EdgeInsets.symmetric(
+        vertical: widget.compact ? 14 : 20,
+        horizontal: 16,
+      ),
       decoration: BoxDecoration(
         color: widget.isLight
             ? Colors.white.withValues(alpha: 0.15)
@@ -303,14 +322,18 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     final rule = _snapshot!.ruleOf(goal);
     final dayProgress = HabitDayProgress(
       habit: goal,
-      logicalDate: DateTime.now(),
+      logicalDate: HabitSleepDurationService.displayLogicalDateFor(
+        goal,
+        DateTime.now(),
+      ),
       status: progress.dayStatus,
       progress: progress,
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: widget.compact ? 4 : 10),
       child: HabitCard(
         animationKey: _cardKeyFor(goal),
+        compact: widget.compact,
         goal: goal,
         rule: rule,
         dayProgress: dayProgress,

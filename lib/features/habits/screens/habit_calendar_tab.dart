@@ -4,6 +4,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
+import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
 import '../widgets/habit_format.dart';
@@ -50,6 +51,7 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
+    await HabitSleepDurationService.syncAll();
     // 日历是历史视图，归档习惯仍需参与计算；今日 / 分析页仍只加载未归档习惯。
     final goals = await HabitRepository.getGoals();
     final allRules = await HabitRepository.getRules();
@@ -342,7 +344,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                         heightFactor: ratio,
                         widthFactor: 1.0,
                         child: Container(
-                          color: colorScheme.tertiaryContainer.withValues(alpha: 0.6),
+                          color: colorScheme.tertiaryContainer
+                              .withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -354,7 +357,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
                           '$day',
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
+                            fontWeight:
+                                isToday ? FontWeight.w800 : FontWeight.w500,
                             color: isSelected
                                 ? colorScheme.primary
                                 : colorScheme.onSurface,
@@ -622,6 +626,8 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
         return '';
       case HabitSourceType.pomodoroTag:
         return HabitText.durationProgress(progress);
+      case HabitSourceType.durationCheckIn:
+        return HabitText.durationProgressForGoal(goal, progress);
       case HabitSourceType.quantityCheckIn:
         return HabitText.amountProgress(progress, _unitOf(goal));
       case HabitSourceType.timeCheckIn:

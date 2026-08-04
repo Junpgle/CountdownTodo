@@ -347,7 +347,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
     final today = DateTime(now.year, now.month, now.day);
     final first = today.subtract(const Duration(days: 29));
     final firstWeekday = first.weekday; // 1 = Monday, 7 = Sunday
-    
+
     // We arrange the 30 days into columns of 7 (Mon-Sun).
     // Pad empty spaces before the first day.
     final leadingEmpty = firstWeekday - 1;
@@ -360,7 +360,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       for (int row = 0; row < 7; row++) {
         final cellIndex = col * 7 + row;
         final dayIndex = cellIndex - leadingEmpty;
-        
+
         if (dayIndex < 0 || dayIndex >= 30) {
           // Empty placeholder
           cells.add(Container(
@@ -372,33 +372,33 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
         } else {
           final value = _monthTrend[dayIndex];
           final isToday = dayIndex == 29;
-          
+
           Color cellColor;
           if (value == 0) {
-            cellColor = colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+            cellColor =
+                colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
           } else {
             // Calculate opacity based on intensity
-            final intensity = maxCount == 0 ? 1.0 : (value / maxCount).clamp(0.2, 1.0);
+            final intensity =
+                maxCount == 0 ? 1.0 : (value / maxCount).clamp(0.2, 1.0);
             cellColor = colorScheme.primary.withValues(alpha: intensity);
           }
           if (isToday) {
             cellColor = colorScheme.tertiary; // Highlight today
           }
-          
-          cells.add(
-            Container(
-              width: 12,
-              height: 12,
-              margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: cellColor,
-                borderRadius: BorderRadius.circular(3),
-                border: isToday 
-                    ? Border.all(color: colorScheme.onTertiary, width: 1) 
-                    : null,
-              ),
-            )
-          );
+
+          cells.add(Container(
+            width: 12,
+            height: 12,
+            margin: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: cellColor,
+              borderRadius: BorderRadius.circular(3),
+              border: isToday
+                  ? Border.all(color: colorScheme.onTertiary, width: 1)
+                  : null,
+            ),
+          ));
         }
       }
       columns.add(Column(
@@ -438,7 +438,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 8),
                       child: Text(
-                        i % 2 == 0 ? ['一', '二', '三', '四', '五', '六', '日'][i] : '',
+                        i % 2 == 0
+                            ? ['一', '二', '三', '四', '五', '六', '日'][i]
+                            : '',
                         style: TextStyle(
                           fontSize: 9,
                           color: colorScheme.onSurfaceVariant,
@@ -656,6 +658,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       case HabitSourceType.pomodoroTag:
         return summary.averageDuration != null ||
             summary.weakestWeekday != null;
+      case HabitSourceType.durationCheckIn:
+        return summary.averageDuration != null ||
+            summary.weakestWeekday != null;
       case HabitSourceType.quantityCheckIn:
         return summary.averageValue != null || summary.weakestWeekday != null;
       case HabitSourceType.timeCheckIn:
@@ -675,6 +680,11 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
       case HabitSourceType.pomodoroTag:
         if (summary.averageDuration != null) {
           extras.add('日均 ${(summary.averageDuration! / 60).round()} 分钟');
+        }
+      case HabitSourceType.durationCheckIn:
+        if (summary.averageDuration != null) {
+          extras.add(
+              '平均 ${(summary.averageDuration! / 3600).toStringAsFixed(1)} 小时');
         }
       case HabitSourceType.quantityCheckIn:
         if (summary.averageValue != null) {
@@ -735,7 +745,7 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   Widget _buildInsightText(HabitGoal goal, HabitStreakSummary summary) {
     final colorScheme = Theme.of(context).colorScheme;
     String insight = '';
-    
+
     if (summary.currentStreak > 7) {
       insight = '太棒了！你已经连续坚持超过一周，继续保持！🔥';
     } else if (summary.weakestWeekday != null) {

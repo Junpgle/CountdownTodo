@@ -306,6 +306,46 @@ void main() {
           closeTo((7 * 60 + 10 + 8 * 60 + 5) / 2, 1e-9));
       expect(summary.onTimeRate, 0.5);
     });
+
+    test('早睡跨午夜平均时间保持在凌晨附近', () async {
+      final habit = HabitGoal(
+        uuid: 'sleep',
+        name: '早睡',
+        sourceType: HabitSourceType.timeCheckIn,
+      );
+      final rule = HabitGoalRuleRevision(
+        uuid: 'sleep-rule',
+        habitUuid: 'sleep',
+        effectiveFromDate: '2026-07-01',
+        periodType: HabitPeriodType.daily,
+        targetTimeMinute: 30,
+        timeComparison: HabitTimeComparison.before,
+        dayBoundaryMinute: 240,
+      );
+      final days = [
+        _day(
+          DateTime(2026, 8, 3),
+          met: true,
+          hasRecord: true,
+          firstAt: DateTime(2026, 8, 3, 23, 50),
+        ),
+        _day(
+          DateTime(2026, 8, 4),
+          met: true,
+          hasRecord: true,
+          firstAt: DateTime(2026, 8, 4, 0, 10),
+        ),
+      ];
+
+      final summary = HabitStreakService.summarizeFromDays(
+        habit: habit,
+        days: days,
+        rule: rule,
+        now: DateTime(2026, 8, 5, 14, 0),
+      );
+
+      expect(summary.averageTimeMinute, closeTo(0, 1e-9));
+    });
   });
 }
 

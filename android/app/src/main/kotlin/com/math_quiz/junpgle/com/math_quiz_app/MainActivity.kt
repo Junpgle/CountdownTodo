@@ -192,6 +192,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         super.onCreate(savedInstanceState)
+        // 确保每日更新检查已注册。任务由 WorkManager 持久化，App 退出后仍可执行。
+        AppUpdateScheduler.scheduleDailyCheck(applicationContext)
         HomeWidgetPlugin.getData(this)
 
         // 每个 handler 自行检查对应 extra 并在缺失时 early return，

@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'github_resource_service.dart';
 
 class SplashService {
+  static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String splashConfigUrl =
       'https://raw.githubusercontent.com/Junpgle/CountDownTodo/master/splash/config.json';
 
@@ -205,7 +206,7 @@ class SplashService {
 
   static Future<Map<String, dynamic>?> _fetchConfig() async {
     try {
-      final response = await http.get(Uri.parse(splashConfigUrl));
+      final response = await _resourceService.get(Uri.parse(splashConfigUrl));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -218,7 +219,7 @@ class SplashService {
 
   static Future<String?> _downloadImage(String url) async {
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await _resourceService.getUrl(url);
       if (response.statusCode == 200) {
         final dir = await getApplicationCacheDirectory();
         final filePath =

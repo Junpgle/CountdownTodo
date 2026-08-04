@@ -714,8 +714,11 @@ enum HabitSourceType {
   pomodoroTag,
   quantityCheckIn,
   timeCheckIn,
+  durationCheckIn,
 }
 ```
+
+其中 `durationCheckIn` 使用独立打卡事件累计秒数，睡眠时长习惯可由早睡与早起时间点自动配对生成，用户编辑后保留手动修正。
 
 建议字段：
 

@@ -9,6 +9,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../services/habit_day_loader.dart';
+import '../services/habit_sleep_duration_service.dart';
 import '../widgets/habit_card.dart';
 import 'habit_detail_screen.dart';
 import 'habit_edit_screen.dart';
@@ -288,7 +289,8 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
   /// 目标时间分组：清晨 05:00-10:00，晚间 >= 21:00 或 < 05:00（深夜），其余归白天；
   /// 时长型按统计周期归入本周/本月目标。
   int _groupIndex(HabitGoal goal, HabitGoalRuleRevision rule) {
-    if (goal.sourceType == HabitSourceType.pomodoroTag) {
+    if (goal.sourceType == HabitSourceType.pomodoroTag ||
+        goal.sourceType == HabitSourceType.durationCheckIn) {
       switch (rule.periodType) {
         case HabitPeriodType.weekly:
           return 3;
@@ -312,7 +314,10 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
     final progress = snapshot.progressOf(goal);
     return HabitDayProgress(
       habit: goal,
-      logicalDate: DateTime.now(),
+      logicalDate: HabitSleepDurationService.displayLogicalDateFor(
+        goal,
+        DateTime.now(),
+      ),
       status: progress.dayStatus,
       progress: progress,
     );

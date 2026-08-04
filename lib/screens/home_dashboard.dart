@@ -20,6 +20,7 @@ import '../models.dart';
 import '../storage_service.dart';
 import '../update_service.dart';
 import '../services/api_service.dart';
+import '../services/github_resource_service.dart';
 import '../services/background_notification_service.dart';
 import '../services/notification_service.dart';
 import '../services/todo_notification_policy.dart';
@@ -87,6 +88,7 @@ import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../services/feature_tip_service.dart';
+import '../services/home_layout_service.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -113,6 +115,7 @@ class HomeDashboard extends StatefulWidget {
 abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     with WidgetsBindingObserver, _HomeDashboardContract {
   late final PermissionRequestCoordinator _permissionCoordinator;
+  final GitHubResourceService _githubResourceService = GitHubResourceService();
 
   bool _isSameDay(DateTime date1, DateTime date2) {
     return date1.year == date2.year &&
@@ -159,6 +162,11 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'timeline',
     'pomodoro'
   ];
+  List<String> _mobileHomeSections =
+      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
+  List<String> _mobileFocusSections =
+      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileFocus);
+  int _habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
 
   Map<String, bool> _sectionVisibility = {
     'courses': true,
@@ -382,6 +390,7 @@ class _WallpaperNetworkImage extends StatefulWidget {
 
 class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
     with SingleTickerProviderStateMixin {
+  late final GitHubResourceService _resourceService;
   Uint8List? _imageBytes;
   bool _loading = true;
   bool _reported = false;
@@ -391,6 +400,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
   @override
   void initState() {
     super.initState();
+    _resourceService = GitHubResourceService();
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -404,6 +414,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
 
   @override
   void dispose() {
+    _resourceService.dispose();
     _fadeController.dispose();
     super.dispose();
   }
@@ -422,7 +433,7 @@ class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
 
   Future<void> _load() async {
     try {
-      final resp = await http.get(
+      final resp = await _resourceService.get(
         Uri.parse(widget.url),
         headers: const {
           'User-Agent':

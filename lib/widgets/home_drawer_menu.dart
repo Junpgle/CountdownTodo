@@ -2,14 +2,67 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class HomeDrawerMenu extends StatelessWidget {
+import '../services/api_service.dart';
+import '../update_service.dart';
+
+DateTime? _parseRegistrationDate(dynamic raw) {
+  if (raw is num) {
+    final value = raw.toInt();
+    final milliseconds = value.abs() < 100000000000 ? value * 1000 : value;
+    return DateTime.fromMillisecondsSinceEpoch(milliseconds, isUtc: true)
+        .toLocal();
+  }
+  if (raw is! String || raw.trim().isEmpty) return null;
+
+  final value = raw.trim();
+  final numeric = num.tryParse(value);
+  if (numeric != null) return _parseRegistrationDate(numeric);
+
+  final hasTimezone =
+      value.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(value);
+  final normalized = value.replaceFirst(' ', 'T');
+  final parseValue = hasTimezone
+      ? normalized
+      : normalized.padRight(normalized.length + 1, 'Z');
+  return DateTime.tryParse(parseValue)?.toLocal();
+}
+
+Future<int?> _loadCompanionDays() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getInt('current_user_id') ?? ApiService.currentUserId;
+  if (userId <= 0) return null;
+
+  final status = await ApiService.fetchUserStatus(userId);
+  final registeredAt = _parseRegistrationDate(
+    status?['created_at'] ?? status?['createdAt'],
+  );
+  if (registeredAt == null) return null;
+
+  final registeredDay =
+      DateTime(registeredAt.year, registeredAt.month, registeredAt.day);
+  final today = DateTime.now();
+  final todayDay = DateTime(today.year, today.month, today.day);
+  final days = todayDay.difference(registeredDay).inDays + 1;
+  return days > 0 ? days : 1;
+}
+
+class _VersionReleaseInfo {
+  final String? date;
+  final bool isInternalBuild;
+
+  const _VersionReleaseInfo({this.date, this.isInternalBuild = false});
+}
+
+class HomeDrawerMenu extends StatefulWidget {
   final String username;
   final String timeSalutation;
   final VoidCallback onSettings;
   final VoidCallback onAiAssistant;
   final VoidCallback onTeams;
-  final VoidCallback onGuide;
+  final VoidCallback onChangelog;
+  final VoidCallback onChallengeCenter;
   final VoidCallback onUpdate;
   final VoidCallback onTimeline;
   final VoidCallback onScreenTime;
@@ -25,7 +78,8 @@ class HomeDrawerMenu extends StatelessWidget {
     required this.onSettings,
     required this.onAiAssistant,
     required this.onTeams,
-    required this.onGuide,
+    required this.onChangelog,
+    required this.onChallengeCenter,
     required this.onUpdate,
     required this.onTimeline,
     required this.onScreenTime,
@@ -34,6 +88,54 @@ class HomeDrawerMenu extends StatelessWidget {
     this.teamPendingCount = 0,
     this.hasTeamConflictDot = false,
   });
+
+  @override
+  State<HomeDrawerMenu> createState() => _HomeDrawerMenuState();
+}
+
+class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
+  late final Future<PackageInfo> _packageInfoFuture;
+  late final Future<int?> _companionDaysFuture;
+  // 可为空以兼容热重载保留的旧 State；初始化完成前只显示版本号。
+  Future<_VersionReleaseInfo>? _versionReleaseInfoFuture;
+
+  Future<_VersionReleaseInfo> get _releaseInfoFuture =>
+      _versionReleaseInfoFuture ??= _loadVersionReleaseInfo();
+
+  @override
+  void initState() {
+    super.initState();
+    _packageInfoFuture = PackageInfo.fromPlatform();
+    _companionDaysFuture = _loadCompanionDays();
+    _versionReleaseInfoFuture = _loadVersionReleaseInfo();
+  }
+
+  Future<_VersionReleaseInfo> _loadVersionReleaseInfo() async {
+    try {
+      final packageInfo = await _packageInfoFuture;
+      final manifest = await UpdateService.checkManifest(
+        preferCache: true,
+        refreshInBackground: true,
+      );
+      if (manifest == null) return const _VersionReleaseInfo();
+
+      final currentVersion =
+          packageInfo.version.trim().split('+').first.split('-').first;
+      for (final entry in manifest.changelogHistory) {
+        final entryVersion =
+            entry.versionName.trim().split('+').first.split('-').first;
+        if (entryVersion == currentVersion) {
+          return _VersionReleaseInfo(
+            date: entry.date.isNotEmpty ? entry.date : null,
+          );
+        }
+      }
+      return const _VersionReleaseInfo(isInternalBuild: true);
+    } catch (_) {
+      // 清单不可用时无法判断版本是否为内部测试版，保留纯版本号显示。
+      return const _VersionReleaseInfo();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,8 +232,8 @@ class HomeDrawerMenu extends StatelessWidget {
                               ? colorScheme.surfaceContainerHighest
                               : colorScheme.surface,
                           child: Text(
-                            username.isNotEmpty
-                                ? username.substring(0, 1).toUpperCase()
+                            widget.username.isNotEmpty
+                                ? widget.username.substring(0, 1).toUpperCase()
                                 : '?',
                             style: TextStyle(
                               fontSize: 24,
@@ -161,7 +263,7 @@ class HomeDrawerMenu extends StatelessWidget {
                                 ),
                               ),
                               child: Text(
-                                timeSalutation,
+                                widget.timeSalutation,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -171,7 +273,7 @@ class HomeDrawerMenu extends StatelessWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              username,
+                              widget.username,
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900,
@@ -179,6 +281,26 @@ class HomeDrawerMenu extends StatelessWidget {
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                            ),
+                            FutureBuilder<int?>(
+                              future: _companionDaysFuture,
+                              builder: (context, snapshot) {
+                                final days = snapshot.data;
+                                if (days == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text(
+                                    '已陪伴您${days.toString()}天',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurface
+                                          .withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -200,10 +322,11 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: '群组团队',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onTeams();
+                              widget.onTeams();
                             },
-                            badgeCount: teamPendingCount,
-                            showAlertDot: hasTeamConflictDot,
+                            badgeCount: widget.teamPendingCount,
+                            showAlertDot: widget.hasTeamConflictDot,
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -211,8 +334,9 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: 'AI 助手',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onAiAssistant();
+                              widget.onAiAssistant();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -220,8 +344,9 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: '个人报告',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onTimeline();
+                              widget.onTimeline();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -229,8 +354,9 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: '时间日志',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onScreenTime();
+                              widget.onScreenTime();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -238,8 +364,9 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: '规划中心',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onPlanCenter();
+                              widget.onPlanCenter();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -247,8 +374,19 @@ class HomeDrawerMenu extends StatelessWidget {
                             title: '习惯中心',
                             onTap: () {
                               ZoomDrawer.of(context)?.close();
-                              onHabits();
+                              widget.onHabits();
                             },
+                            isCompact: true,
+                          ),
+                          _buildMenuItem(
+                            context,
+                            icon: Icons.auto_awesome_rounded,
+                            title: '挑战中心',
+                            onTap: () {
+                              ZoomDrawer.of(context)?.close();
+                              widget.onChallengeCenter();
+                            },
+                            isCompact: true,
                           ),
                         ],
                       ),
@@ -272,11 +410,11 @@ class HomeDrawerMenu extends StatelessWidget {
                       children: [
                         _buildMenuItem(
                           context,
-                          icon: Icons.lightbulb_outline_rounded,
-                          title: '查看引导',
+                          icon: Icons.system_update_rounded,
+                          title: '更新日志',
                           onTap: () {
                             ZoomDrawer.of(context)?.close();
-                            onGuide();
+                            widget.onChangelog();
                           },
                           isCompact: true,
                         ),
@@ -286,7 +424,7 @@ class HomeDrawerMenu extends StatelessWidget {
                           title: '检查更新',
                           onTap: () {
                             ZoomDrawer.of(context)?.close();
-                            onUpdate();
+                            widget.onUpdate();
                           },
                           isCompact: true,
                         ),
@@ -296,7 +434,7 @@ class HomeDrawerMenu extends StatelessWidget {
                           title: '设置中心',
                           onTap: () {
                             ZoomDrawer.of(context)?.close();
-                            onSettings();
+                            widget.onSettings();
                           },
                           isCompact: true,
                         ),
@@ -308,7 +446,7 @@ class HomeDrawerMenu extends StatelessWidget {
 
                   // Version Info Badge
                   FutureBuilder<PackageInfo>(
-                    future: PackageInfo.fromPlatform(),
+                    future: _packageInfoFuture,
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const SizedBox();
                       return Padding(
@@ -321,15 +459,47 @@ class HomeDrawerMenu extends StatelessWidget {
                                 colorScheme.onSurface.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(
-                            'v${snapshot.data!.version}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.5),
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                            ),
+                          child: FutureBuilder<_VersionReleaseInfo>(
+                            future: _releaseInfoFuture,
+                            builder: (context, dateSnapshot) {
+                              final versionColor =
+                                  colorScheme.onSurface.withValues(alpha: 0.5);
+                              final versionStyle = TextStyle(
+                                fontSize: 11,
+                                color: versionColor,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.0,
+                              );
+                              final releaseInfo = dateSnapshot.data;
+                              final updateLabel = releaseInfo == null
+                                  ? null
+                                  : releaseInfo.isInternalBuild
+                                      ? '内部测试版'
+                                      : releaseInfo.date;
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('v${snapshot.data!.version}',
+                                      style: versionStyle),
+                                  if (updateLabel != null) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      width: 1,
+                                      height: 12,
+                                      color: versionColor,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      updateLabel,
+                                      style: versionStyle.copyWith(
+                                        fontWeight: FontWeight.normal,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
                           ),
                         ),
                       );

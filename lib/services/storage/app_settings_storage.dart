@@ -1,11 +1,13 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../github_resource_service.dart';
 
 class AppSettingsStorage {
   const AppSettingsStorage._();
+
+  static final GitHubResourceService _resourceService = GitHubResourceService();
 
   static const String _notifyLiveEnabled = "notify_live_activity_enabled";
   static const String _notifyNormalEnabled = "notify_normal_enabled";
@@ -214,7 +216,7 @@ class AppSettingsStorage {
     }
 
     try {
-      final response = await http
+      final response = await _resourceService
           .get(Uri.parse(_privacyRawUrl))
           .timeout(const Duration(seconds: 10));
 

@@ -561,6 +561,22 @@ class ApiService {
     }
   }
 
+  /// 获取账户状态及注册时间。
+  static Future<Map<String, dynamic>?> fetchUserStatus(int userId) async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$_effectiveBaseUrl/api/user/status?user_id=$userId'),
+        headers: _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ==========================================
   // 8. 番茄钟 (Pomodoro)
   // ==========================================

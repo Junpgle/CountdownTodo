@@ -443,7 +443,7 @@ class MacosMenuBar extends StatelessWidget {
     if (context == null) return;
     Navigator.of(context).push(
       PageTransitions.slideHorizontal(
-        const FeatureGuideScreen(isManualReview: true),
+        const FeatureGuideScreen(mode: FeatureGuideMode.guide),
       ),
     );
   }

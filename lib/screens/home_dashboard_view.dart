@@ -435,6 +435,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               return HabitTodaySection(
                                                 username: widget.username,
                                                 isLight: isLight,
+                                                compact: true,
+                                                displayLimit:
+                                                    _habitDisplayLimit,
                                                 refreshTrigger: trigger,
                                                 onTap: () async {
                                                   await PageTransitions
@@ -506,12 +509,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     }
 
                                     if (!isTablet) {
-                                      List<String> tab1Order = [
-                                        'banners',
-                                        'countdowns',
-                                        'courses',
-                                        'todos',
-                                      ];
+                                      List<String> tab1Order =
+                                          List<String>.from(
+                                              _mobileHomeSections);
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
                                           tab1Order.remove('courses');
@@ -533,13 +533,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               child: sectionsMap[key]!))
                                           .toList();
 
-                                      List<String> tab3WidgetsConfig = [
-                                        'timeline',
-                                        'pomodoro',
-                                        'habits',
-                                        'screenTime',
-                                        'math'
-                                      ];
+                                      List<String> tab3WidgetsConfig =
+                                          List<String>.from(
+                                              _mobileFocusSections);
 
                                       List<Widget> tab3Widgets =
                                           tab3WidgetsConfig
@@ -935,17 +931,28 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             _loadAllData(deferred: true);
           });
         },
-        onGuide: () {
+        onChangelog: () {
           Future.delayed(const Duration(milliseconds: 350), () {
             if (!context.mounted) return;
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.material(
                 builder: (context) => FeatureGuideScreen(
-                  isManualReview: true,
+                  mode: FeatureGuideMode.changelog,
                   loggedInUser: widget.username,
                 ),
               ),
             );
+          });
+        },
+        onChallengeCenter: () {
+          Future.delayed(const Duration(milliseconds: 350), () async {
+            if (!context.mounted) return;
+            await Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                const ThirtyDayChallengeScreen(),
+              ),
+            );
+            if (mounted) _loadThirtyDayChallengeStatus();
           });
         },
         onUpdate: () {
@@ -1014,7 +1021,8 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
 
       if (_wallpaperUrl!.startsWith('http://') ||
           _wallpaperUrl!.startsWith('https://')) {
-        final response = await http.get(Uri.parse(wallpaperUrl));
+        final response =
+            await _githubResourceService.get(Uri.parse(wallpaperUrl));
         if (response.statusCode != 200) {
           throw Exception('HTTP ${response.statusCode}');
         }

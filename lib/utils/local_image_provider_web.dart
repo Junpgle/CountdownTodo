@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import '../services/github_resource_service.dart';
 
 bool _isBrowserImagePath(String? path) {
   if (path == null || path.isEmpty) return false;
@@ -26,10 +27,14 @@ Widget localImageWidget(
   if (!_isBrowserImagePath(path)) {
     return const SizedBox.shrink();
   }
-  return Image.network(
-    path,
-    fit: fit,
-    width: width,
-    height: height,
-  );
+  final uri = Uri.tryParse(path);
+  if (uri != null && GitHubResourceService.isGitHubUri(uri)) {
+    return GitHubResourceImage(
+      url: path,
+      fit: fit,
+      width: width,
+      height: height,
+    );
+  }
+  return Image.network(path, fit: fit, width: width, height: height);
 }

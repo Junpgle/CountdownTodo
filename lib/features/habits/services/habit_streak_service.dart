@@ -1,6 +1,7 @@
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
+import 'habit_adaptation_service.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
 
@@ -179,11 +180,20 @@ abstract final class HabitStreakService {
       if (weakestRate != null && weakestRate! <= 0) weakestWeekday = null;
 
       // 平均值与准时率（仅已结束且当日有记录的计划日）。
+      // 与完成率保持相同口径：只看最近 30 个已结束周期，避免旧记录把
+      // 详情页里的「平均时间」和近 7 / 30 周期统计拉到不同时间范围。
+      final recentPeriodKeys = rateWindow
+          .take(30)
+          .map((period) => HabitRuleResolver.periodKey(rule, period.start))
+          .toSet();
       final recordedDays = days
           .where((d) =>
               d.progress.isPlanned &&
               d.progress.isFinished &&
-              d.progress.hasRecord)
+              d.progress.hasRecord &&
+              recentPeriodKeys.contains(
+                HabitRuleResolver.periodKey(rule, d.logicalDate),
+              ))
           .toList();
       if (recordedDays.isNotEmpty) {
         switch (habit.sourceType) {
@@ -199,15 +209,36 @@ abstract final class HabitStreakService {
                     .map((d) => d.progress.currentValue)
                     .reduce((a, b) => a + b) /
                 recordedDays.length;
+          case HabitSourceType.durationCheckIn:
+            averageDuration = recordedDays
+                    .map((d) => d.progress.currentValue)
+                    .reduce((a, b) => a + b) /
+                recordedDays.length;
           case HabitSourceType.timeCheckIn:
+            final isEarlySleep = HabitAdaptationService.forHabit(habit)?.kind ==
+                HabitAdaptationKind.earlySleep;
+            final targetMinute = rule.targetTimeMinute;
+            final boundary = rule.dayBoundaryMinute > 0
+                ? rule.dayBoundaryMinute
+                : HabitRuleResolver.defaultDayBoundaryMinute;
             final times = recordedDays
                 .where((d) => d.progress.firstRecordAt != null)
-                .map((d) =>
-                    d.progress.firstRecordAt!.hour * 60 +
-                    d.progress.firstRecordAt!.minute)
-                .toList();
+                .map((d) {
+              final actual = d.progress.firstRecordAt!;
+              final minute = actual.hour * 60 + actual.minute;
+              if (!isEarlySleep || targetMinute == null) return minute;
+              // 早睡的 23:50 和次日 00:10 应相邻，而不是被平均成中午。
+              if (targetMinute < boundary && minute >= boundary) {
+                return minute - 24 * 60;
+              }
+              if (targetMinute >= boundary && minute < boundary) {
+                return minute + 24 * 60;
+              }
+              return minute;
+            }).toList();
             if (times.isNotEmpty) {
-              averageTimeMinute = times.reduce((a, b) => a + b) / times.length;
+              final average = times.reduce((a, b) => a + b) / times.length;
+              averageTimeMinute = average % (24 * 60);
               final onTimeCount =
                   recordedDays.where((d) => d.progress.goalMet).length;
               onTimeRate = onTimeCount / recordedDays.length;
@@ -217,7 +248,9 @@ abstract final class HabitStreakService {
     }
 
     // 周/月时长型习惯按周期级条目统计平均时长，详情页也能展示相同口径。
-    if (!isDailyLike && habit.sourceType == HabitSourceType.pomodoroTag) {
+    if (!isDailyLike &&
+        (habit.sourceType == HabitSourceType.pomodoroTag ||
+            habit.sourceType == HabitSourceType.durationCheckIn)) {
       final recordedPeriods = days
           .where((d) =>
               d.progress.isPlanned &&

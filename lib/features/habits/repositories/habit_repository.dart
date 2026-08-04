@@ -10,6 +10,7 @@ import '../../../storage_service.dart';
 import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
+import '../services/habit_adaptation_service.dart';
 import '../services/habit_reminder_service.dart';
 import '../services/habit_rule_resolver.dart';
 import '../services/habit_source_resolver.dart';
@@ -418,6 +419,13 @@ abstract final class HabitRepository {
       dedupeKey: dedupeKey,
       deviceId: deviceId,
     );
+    final replacedCount = _shouldReplaceSleepTimePoint(goal, source)
+        ? await _replaceSleepTimePointCheckIns(
+            goal: goal,
+            logicalDate: checkIn.logicalDate,
+          )
+        : 0;
+    checkIn.replacedPrevious = replacedCount > 0;
     await HabitStorage.saveCheckIns([checkIn]);
     StorageService.triggerRefresh();
     _rescheduleReminders(goal.uuid);
@@ -429,6 +437,51 @@ abstract final class HabitRepository {
     await HabitStorage.saveCheckIns([checkIn]);
     StorageService.triggerRefresh();
     _rescheduleReminders(checkIn.habitUuid);
+  }
+
+  /// 早睡 / 早起是一个「节点结果」，同一晚重复打卡时以后一次为准。
+  ///
+  /// 只对用户主动产生的记录生效。历史迁移、健康设备等来源保留原始
+  /// 事件，避免导入过程因为同一天存在多条日志而相互覆盖。
+  static bool _shouldReplaceSleepTimePoint(
+    HabitGoal goal,
+    HabitCheckInSource source,
+  ) {
+    if (goal.sourceType != HabitSourceType.timeCheckIn) return false;
+    if (source != HabitCheckInSource.manual &&
+        source != HabitCheckInSource.notification &&
+        source != HabitCheckInSource.widget) {
+      return false;
+    }
+    final kind = HabitAdaptationService.forHabit(goal)?.kind;
+    return kind == HabitAdaptationKind.earlySleep ||
+        kind == HabitAdaptationKind.earlyWake;
+  }
+
+  static Future<int> _replaceSleepTimePointCheckIns({
+    required HabitGoal goal,
+    required String logicalDate,
+  }) async {
+    final existing = await HabitStorage.getCheckIns(
+      habitUuid: goal.uuid,
+      fromDate: logicalDate,
+      toDate: logicalDate,
+    );
+    final replaced = existing
+        .where((checkIn) =>
+            !checkIn.isDeleted && checkIn.source != HabitCheckInSource.skip)
+        .toList(growable: false);
+    if (replaced.isEmpty) return 0;
+
+    for (final checkIn in replaced) {
+      checkIn
+        ..isDeleted = true
+        ..markAsChanged();
+    }
+    await HabitStorage.saveCheckIns(replaced);
+    StorageService.triggerRefresh();
+    _rescheduleReminders(goal.uuid);
+    return replaced.length;
   }
 
   /// 逻辑删除打卡。
@@ -549,6 +602,7 @@ abstract final class HabitRepository {
       '喝水': '💧',
       '早起': '🌅',
       '早睡': '🌙',
+      '睡眠时长': '🛌',
       '俯卧撑': '💪',
       '阅读': '📖',
       '运动': '🏃',

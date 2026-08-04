@@ -85,6 +85,12 @@ class HabitAdaptation {
       HabitAdaptationKind.earlyWake ||
       HabitAdaptationKind.earlySleep =>
         '$value',
+      HabitAdaptationKind.sleepDuration => switch (value) {
+          7 => '基础 · 7 小时',
+          8 => '平衡 · 8 小时',
+          9 => '充足 · 9 小时',
+          _ => '$value 小时',
+        },
     };
   }
 
@@ -108,6 +114,7 @@ enum HabitAdaptationKind {
   meditation,
   earlyWake,
   earlySleep,
+  sleepDuration,
 }
 
 class HabitTargetSuggestion {
@@ -728,6 +735,40 @@ abstract final class HabitAdaptationService {
     targetUnit: '',
   );
 
+  static const _sleepDuration = HabitAdaptation(
+    kind: HabitAdaptationKind.sleepDuration,
+    title: '科学睡眠时长',
+    headline: '结合早睡和早起节点，记录每晚实际睡眠时长',
+    explanation:
+        '系统会把同一晚的早睡和早起打卡配对，自动计算从入睡到起床的时长。8 小时只是可编辑起点，不代表每个人都必须睡满相同时间；你也可以手动修正自动生成的记录。',
+    safetyNote:
+        '健康成年人通常需要每晚至少 7 小时睡眠，但个体需求会变化。若长期睡不够、白天明显困倦、频繁醒来或打鼾伴随憋气，请咨询医生或睡眠专业人士，不要为了达标强行延长卧床时间。',
+    targetSuggestions: [
+      HabitTargetSuggestion(
+        label: '基础',
+        description: '健康成年人常见的最低起点',
+        value: 7,
+        displayValue: '7 小时/晚',
+      ),
+      HabitTargetSuggestion(
+        label: '平衡',
+        description: '默认可编辑起点',
+        value: 8,
+        displayValue: '8 小时/晚',
+      ),
+      HabitTargetSuggestion(
+        label: '充足',
+        description: '适合需要更长恢复时间的人',
+        value: 9,
+        displayValue: '9 小时/晚',
+      ),
+    ],
+    suggestedQuickValues: [7, 8, 9],
+    citations: _sleepCitations,
+    targetSuggestionTitle: '快速选择每晚睡眠目标',
+    targetUnit: '小时',
+  );
+
   /// 为已有目标获取适配。旧数据没有 profile 字段，先通过名称识别，
   /// 让“喝水 / 每日喝水 / hydration”等已有习惯立即获得新体验。
   static HabitAdaptation? forHabit(HabitGoal goal) {
@@ -784,6 +825,7 @@ abstract final class HabitAdaptationService {
           '早睡',
           '早点睡',
           '睡觉',
+          '睡眠',
           '入睡',
           '上床',
           '就寝',
@@ -795,6 +837,7 @@ abstract final class HabitAdaptationService {
           '早起',
           '起床',
           '早醒',
+          '醒来',
           '唤醒',
           'wake',
           'getup',
@@ -802,6 +845,18 @@ abstract final class HabitAdaptationService {
           'morning',
         ];
         if (wakeWords.any(normalized.contains)) return _earlyWake;
+      case HabitSourceType.durationCheckIn:
+        const sleepDurationWords = [
+          '睡眠时长',
+          '睡眠时间',
+          '睡多久',
+          '睡眠小时',
+          'sleepduration',
+          'sleephours',
+        ];
+        if (sleepDurationWords.any(normalized.contains)) {
+          return _sleepDuration;
+        }
       case HabitSourceType.pomodoroTag:
         const readingWords = [
           '阅读',

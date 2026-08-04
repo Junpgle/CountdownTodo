@@ -4,6 +4,7 @@ import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../widgets/habit_format.dart';
+import 'habit_adaptation_service.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
 
@@ -149,6 +150,18 @@ abstract final class HabitReminderService {
             logicalKey,
             reminders,
           );
+        case HabitSourceType.durationCheckIn:
+          _buildDurationReminders(
+            goal,
+            rule,
+            policy,
+            progress,
+            title,
+            today,
+            now,
+            logicalKey,
+            reminders,
+          );
         case HabitSourceType.timeCheckIn:
           _buildTimePointReminders(
             goal,
@@ -242,6 +255,8 @@ abstract final class HabitReminderService {
   ) {
     final currentMin = (progress.currentValue / 60).ceil();
     final targetMin = (progress.targetValue / 60).ceil();
+    final isSleepDuration = HabitAdaptationService.forHabit(goal)?.kind ==
+        HabitAdaptationKind.sleepDuration;
 
     for (final minuteOfDay in _sortedFixedTimes(policy)) {
       final remaining = progress.targetValue - progress.currentValue;
@@ -253,7 +268,9 @@ abstract final class HabitReminderService {
         now: now,
         title: title,
         text: remaining > 0
-            ? '今天还需 ${(remaining / 60).ceil()} 分钟，点击开始专注'
+            ? isSleepDuration
+                ? '等待早睡和早起打卡生成时长'
+                : '今天还需 ${(remaining / 60).ceil()} 分钟，点击开始专注'
             : '今日目标已完成',
       );
     }
@@ -265,7 +282,9 @@ abstract final class HabitReminderService {
         triggerAt: today.add(Duration(minutes: progressReminderDefaultMinute)),
         now: now,
         title: title,
-        text: '今日已专注 $currentMin/$targetMin 分钟',
+        text: isSleepDuration
+            ? '今日已记录 ${HabitText.durationProgressForGoal(goal, progress)}'
+            : '今日已专注 $currentMin/$targetMin 分钟',
       );
     }
     _addDailySummary(

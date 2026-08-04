@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 ///
 /// - [recurringTodo]：完成型，绑定循环待办系列；
 /// - [pomodoroTag]：时长型，绑定一个或多个专注标签；
+/// - [durationCheckIn]：时长型，使用独立打卡事件累计时长；
 /// - [quantityCheckIn]：数量型，使用独立打卡事件累计数量；
 /// - [timeCheckIn]：时间点型，使用独立打卡事件记录实际发生时间。
 enum HabitSourceType {
@@ -13,6 +14,7 @@ enum HabitSourceType {
   pomodoroTag,
   quantityCheckIn,
   timeCheckIn,
+  durationCheckIn,
 }
 
 /// 首页展示位置。
@@ -37,7 +39,7 @@ class HabitGoal {
   /// 来源标识（JSON 数组）：
   /// - 完成型：一个循环待办系列 ID（recurrenceSeriesId）；
   /// - 时长型：多个专注标签 UUID；
-  /// - 数量型 / 时间点型：可为空。
+  /// - 数量型 / 时间点型 / 独立时长型：可为空。
   List<String> sourceIds;
 
   /// 当前生效的规则版本 UUID。

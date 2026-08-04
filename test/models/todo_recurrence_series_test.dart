@@ -38,6 +38,44 @@ void main() {
     expect(restored.recurrenceSeriesId, isNull);
   });
 
+  test(
+      'recurrence dedupe keeps newer completion over higher-version stale copy',
+      () {
+    final occurrenceDate = DateTime(2026, 8, 3, 19).millisecondsSinceEpoch;
+    final completed = TodoItem(
+      id: 'completed-occurrence',
+      title: '每日复习',
+      isDone: true,
+      version: 2,
+      updatedAt: 2000,
+      createdAt: 1000,
+      createdDate: occurrenceDate,
+      recurrenceSeriesId: 'series-1',
+    );
+    final staleIncomplete = TodoItem(
+      id: 'stale-incomplete-occurrence',
+      title: '每日复习',
+      isDone: false,
+      version: 99,
+      updatedAt: 1000,
+      createdAt: 2000,
+      createdDate: occurrenceDate,
+      recurrenceSeriesId: 'series-1',
+    );
+    final occurrences = [completed, staleIncomplete];
+
+    final changed =
+        StorageService.deduplicatePersistedRecurrenceOccurrencesForTest(
+      occurrences,
+    );
+
+    expect(changed, isTrue);
+    expect(completed.isDone, isTrue);
+    expect(completed.updatedAt, 2000);
+    expect(completed.version, 2);
+    expect(staleIncomplete.isDeleted, isTrue);
+  });
+
   test('old cloud instances recover one recurrence series from its timeline',
       () {
     TodoItem occurrence(
@@ -760,8 +798,7 @@ void main() {
     expect(cancelled.isDeleted, isTrue);
   });
 
-  test('dedupe keeps the more edited occurrence over a newer migrated copy',
-      () {
+  test('dedupe keeps newer LWW occurrence over higher-version older copy', () {
     final edited = TodoItem(
       id: 'edited',
       title: '每日循环',
@@ -788,7 +825,7 @@ void main() {
 
     expect(changed, isTrue);
     expect(edited.isDeleted, isFalse);
-    expect(edited.dueDate, DateTime(2026, 7, 16, 22, 30));
+    expect(edited.dueDate, DateTime(2026, 7, 16, 22));
     expect(migratedCopy.isDeleted, isTrue);
   });
 

@@ -233,7 +233,7 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
     const String repoApiUrl =
         "https://api.github.com/repos/Junpgle/math_quiz_app/contents/wallpaper";
     try {
-      final response = await http.get(Uri.parse(repoApiUrl));
+      final response = await _githubResourceService.get(Uri.parse(repoApiUrl));
       if (response.statusCode == 200) {
         List<dynamic> files = jsonDecode(response.body);
         List<String> urls = files

@@ -41,6 +41,11 @@ class HabitCheckIn {
   String? dedupeKey;
 
   bool isDeleted;
+
+  /// 本次写入是否覆盖了同一逻辑日的上一条睡眠节点记录。
+  ///
+  /// 仅用于当前界面的反馈，不落库；从数据库恢复的记录默认为 false。
+  bool replacedPrevious;
   int version;
   String? deviceId;
   int createdAt;
@@ -58,6 +63,7 @@ class HabitCheckIn {
     this.source = HabitCheckInSource.manual,
     this.dedupeKey,
     this.isDeleted = false,
+    this.replacedPrevious = false,
     this.version = 1,
     this.deviceId,
     int? createdAt,

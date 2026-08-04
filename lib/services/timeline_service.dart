@@ -210,7 +210,8 @@ class TimelineService {
       final logicalDate = DateFormat('yyyy-MM-dd').format(startOfDay);
       for (final habit in habitGoals.where((goal) =>
           goal.sourceType == HabitSourceType.quantityCheckIn ||
-          goal.sourceType == HabitSourceType.timeCheckIn)) {
+          goal.sourceType == HabitSourceType.timeCheckIn ||
+          goal.sourceType == HabitSourceType.durationCheckIn)) {
         final checkIns = await HabitRepository.getCheckIns(
           habitUuid: habit.uuid,
           fromDate: logicalDate,
@@ -223,9 +224,12 @@ class TimelineService {
           final value = checkIn.value == checkIn.value.roundToDouble()
               ? checkIn.value.toInt().toString()
               : checkIn.value.toStringAsFixed(1);
-          final detail = habit.sourceType == HabitSourceType.quantityCheckIn
-              ? ' · $value'
-              : '';
+          final detail = switch (habit.sourceType) {
+            HabitSourceType.quantityCheckIn => ' · $value',
+            HabitSourceType.durationCheckIn =>
+              ' · ${(checkIn.value / 3600).toStringAsFixed(1)} 小时',
+            _ => '',
+          };
           events.add(TimelineEvent(
             id: 'habit_checkin_${checkIn.uuid}',
             timestamp: checkIn.localOccurredAt,
