@@ -40,6 +40,8 @@ const _typeMeta = <SearchResultType, _TypeMeta>{
   SearchResultType.course: _TypeMeta('课程', Icons.school_rounded),
   SearchResultType.countdown: _TypeMeta('倒计时', Icons.timer_outlined),
   SearchResultType.tag: _TypeMeta('专注标签', Icons.label_rounded),
+  SearchResultType.habit: _TypeMeta('习惯', Icons.track_changes_rounded),
+  SearchResultType.challenge: _TypeMeta('挑战', Icons.auto_awesome_rounded),
   SearchResultType.app: _TypeMeta('屏幕使用', Icons.smartphone_rounded),
   SearchResultType.log: _TypeMeta('时间日志', Icons.history_edu_rounded),
   SearchResultType.setting: _TypeMeta('设置', Icons.settings_rounded),
@@ -56,6 +58,8 @@ const _groupOrder = [
   SearchResultType.todoGroup,
   SearchResultType.countdown,
   SearchResultType.course,
+  SearchResultType.habit,
+  SearchResultType.challenge,
   SearchResultType.tag,
   SearchResultType.app,
   SearchResultType.log,
@@ -96,6 +100,8 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
       SearchResultType.course => colorScheme.cdtSuccess,
       SearchResultType.countdown => colorScheme.error,
       SearchResultType.tag => colorScheme.tertiary,
+      SearchResultType.habit => colorScheme.cdtSuccess,
+      SearchResultType.challenge => colorScheme.secondary,
       SearchResultType.app => colorScheme.secondary,
       SearchResultType.log => colorScheme.primary,
       SearchResultType.setting => colorScheme.onSurfaceVariant,
@@ -420,7 +426,17 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
   }
 
   Widget _buildSearchScopeHint(ColorScheme colorScheme, bool isDark) {
-    final items = ['待办', '倒计时', '番茄钟', '时间日志', '屏幕时间', '团队', '设置'];
+    final items = [
+      '待办',
+      '倒计时',
+      '习惯',
+      '挑战',
+      '番茄钟',
+      '时间日志',
+      '屏幕时间',
+      '团队',
+      '设置',
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Wrap(

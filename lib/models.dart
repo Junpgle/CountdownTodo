@@ -1478,6 +1478,8 @@ enum SearchResultType {
   todoGroup,
   countdown,
   course,
+  habit,
+  challenge,
   log,
   setting,
   action,
