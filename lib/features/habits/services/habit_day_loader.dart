@@ -34,6 +34,20 @@ class HabitDaySnapshot {
       );
 
   bool get isEmpty => goals.isEmpty;
+
+  /// 首页展示顺序：未完成习惯优先，完成习惯放到后面。
+  ///
+  /// 使用原始索引作为次级排序，保证同一完成状态下仍保持用户原来的顺序。
+  List<HabitGoal> get goalsForDisplay {
+    final indexedGoals = goals.asMap().entries.toList();
+    indexedGoals.sort((a, b) {
+      final aCompleted = progressOf(a.value).goalMet ? 1 : 0;
+      final bCompleted = progressOf(b.value).goalMet ? 1 : 0;
+      final completionOrder = aCompleted.compareTo(bCompleted);
+      return completionOrder != 0 ? completionOrder : a.key.compareTo(b.key);
+    });
+    return indexedGoals.map((entry) => entry.value).toList();
+  }
 }
 
 /// 今日视图统一数据加载入口。

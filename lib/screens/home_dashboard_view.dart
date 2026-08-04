@@ -931,17 +931,28 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             _loadAllData(deferred: true);
           });
         },
-        onGuide: () {
+        onChangelog: () {
           Future.delayed(const Duration(milliseconds: 350), () {
             if (!context.mounted) return;
             Navigator.of(context, rootNavigator: true).push(
               PageTransitions.material(
                 builder: (context) => FeatureGuideScreen(
-                  isManualReview: true,
+                  mode: FeatureGuideMode.changelog,
                   loggedInUser: widget.username,
                 ),
               ),
             );
+          });
+        },
+        onChallengeCenter: () {
+          Future.delayed(const Duration(milliseconds: 350), () async {
+            if (!context.mounted) return;
+            await Navigator.of(context, rootNavigator: true).push(
+              PageTransitions.slideHorizontal(
+                const ThirtyDayChallengeScreen(),
+              ),
+            );
+            if (mounted) _loadThirtyDayChallengeStatus();
           });
         },
         onUpdate: () {

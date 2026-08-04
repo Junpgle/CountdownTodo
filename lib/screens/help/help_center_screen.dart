@@ -512,7 +512,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
     Navigator.of(context, rootNavigator: true).push(
       PageTransitions.slideHorizontal(
         FeatureGuideScreen(
-          isManualReview: true,
+          mode: FeatureGuideMode.changelog,
           loggedInUser: widget.username,
           isEmbedded: widget.isEmbedded,
         ),

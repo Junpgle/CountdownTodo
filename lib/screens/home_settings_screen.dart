@@ -136,6 +136,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'force_download',
       'update_source',
       'help_center',
+      'changelog',
       'feature_guide'
     ];
     final platformTargets = [

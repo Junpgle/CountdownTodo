@@ -9,7 +9,8 @@ class HomeDrawerMenu extends StatelessWidget {
   final VoidCallback onSettings;
   final VoidCallback onAiAssistant;
   final VoidCallback onTeams;
-  final VoidCallback onGuide;
+  final VoidCallback onChangelog;
+  final VoidCallback onChallengeCenter;
   final VoidCallback onUpdate;
   final VoidCallback onTimeline;
   final VoidCallback onScreenTime;
@@ -25,7 +26,8 @@ class HomeDrawerMenu extends StatelessWidget {
     required this.onSettings,
     required this.onAiAssistant,
     required this.onTeams,
-    required this.onGuide,
+    required this.onChangelog,
+    required this.onChallengeCenter,
     required this.onUpdate,
     required this.onTimeline,
     required this.onScreenTime,
@@ -250,6 +252,15 @@ class HomeDrawerMenu extends StatelessWidget {
                               onHabits();
                             },
                           ),
+                          _buildMenuItem(
+                            context,
+                            icon: Icons.auto_awesome_rounded,
+                            title: '挑战中心',
+                            onTap: () {
+                              ZoomDrawer.of(context)?.close();
+                              onChallengeCenter();
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -272,11 +283,11 @@ class HomeDrawerMenu extends StatelessWidget {
                       children: [
                         _buildMenuItem(
                           context,
-                          icon: Icons.lightbulb_outline_rounded,
-                          title: '查看引导',
+                          icon: Icons.system_update_rounded,
+                          title: '查看更新日志',
                           onTap: () {
                             ZoomDrawer.of(context)?.close();
-                            onGuide();
+                            onChangelog();
                           },
                           isCompact: true,
                         ),

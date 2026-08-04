@@ -25,15 +25,25 @@ import '../models.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 
+/// 控制功能页的入口展示范围。
+enum FeatureGuideMode {
+  automatic,
+  changelog,
+  guide,
+}
+
 /// 首次安装或重大版本升级引导页 (v1.9.4+)
 class FeatureGuideScreen extends StatefulWidget {
   final String? loggedInUser;
+  final FeatureGuideMode mode;
+  // 保留旧参数，避免其它入口在迁移期间改变自动启动行为。
   final bool isManualReview;
   final bool isEmbedded;
 
   const FeatureGuideScreen({
     super.key,
     this.loggedInUser,
+    this.mode = FeatureGuideMode.automatic,
     this.isManualReview = false,
     this.isEmbedded = false,
   });
@@ -58,6 +68,10 @@ class FeatureGuideScreen extends StatefulWidget {
 }
 
 class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
+  bool get _isManualReview =>
+      widget.isManualReview || widget.mode != FeatureGuideMode.automatic;
+  bool get _isChangelogOnly => widget.mode == FeatureGuideMode.changelog;
+
   final PageController _pageController = PageController();
   int _currentPage = 0;
   // 标记是否为首次安装（用于决定引导结束后是否设置默认服务器）
@@ -216,13 +230,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       onResult: (_) => _checkPermissions(),
     );
 
-    if (widget.isManualReview) {
-      // 从设置页面手动查看：直接同步设置所有页面，跳过异步逻辑
+    if (_isManualReview) {
+      // 手动查看：直接同步设置页面，跳过自动启动逻辑。
       _isFirstLaunch = false;
-      _pagesBuilder = [
-        _buildChangelogPage,
-        ..._buildPlatformGuidePages(),
-      ];
+      _pagesBuilder = _isChangelogOnly
+          ? [_buildChangelogPage]
+          : [_buildChangelogPage, ..._buildPlatformGuidePages()];
       if (AppPlatform.isWindows) _loadTaiConfig();
       _loadInfo();
       _checkPermissions();
@@ -241,7 +254,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final prefs = await SharedPreferences.getInstance();
     final shownVersion = prefs.getString(FeatureGuideScreen._guideKey);
 
-    // 如果之前没有记录过版本号，则是首次安装；如果 isManualReview 为 true，则是用户在设置中主动要求查看
+    // 如果之前没有记录过版本号，则是首次安装。
     final isFirstLaunch = shownVersion == null || shownVersion.isEmpty;
     // 保存到 state，供 _done 使用
     _isFirstLaunch = isFirstLaunch;
@@ -251,13 +264,15 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     // 无论如何，第一页永远是更新日志
     pages.add(_buildChangelogPage);
 
-    // 仅当本次版本范围内确实包含数据库/存储迁移相关变更时展示。
-    if (!isFirstLaunch && !widget.isManualReview && _showDatabaseUpdatePage) {
+    // 仅自动升级流程在本次版本范围内确实包含数据库/存储迁移相关变更时展示。
+    if (!isFirstLaunch && !_isManualReview && _showDatabaseUpdatePage) {
       pages.add(_buildUniSyncMigrationPage);
     }
 
-    // 只有在首次启动，或者用户手动在设置中点击查看引导时，才展示完整特性引导
-    if (isFirstLaunch || widget.isManualReview) {
+    final shouldShowGuide = widget.mode == FeatureGuideMode.guide ||
+        (widget.mode == FeatureGuideMode.automatic &&
+            (isFirstLaunch || widget.isManualReview));
+    if (shouldShowGuide) {
       pages.addAll(_buildPlatformGuidePages());
       if (AppPlatform.isWindows) _loadTaiConfig();
     }
@@ -452,7 +467,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _loadingChangelog = false;
           _changelogNotice = null;
         });
-        if (!widget.isManualReview) await _setupPages();
+        if (!_isManualReview) await _setupPages();
         return;
       }
 
@@ -476,7 +491,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             _loadingChangelog = false;
             _changelogNotice = '当前显示离线缓存更新日志，网络恢复后会自动刷新。';
           });
-          if (!widget.isManualReview) await _setupPages();
+          if (!_isManualReview) await _setupPages();
           return;
         }
       }
@@ -490,7 +505,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _changelogFetchFailed = true; // 🚀 标记为获取失败（通常是无网络）
         _changelogNotice = null;
       });
-      if (!widget.isManualReview) await _setupPages();
+      if (!_isManualReview) await _setupPages();
     }
   }
 
@@ -662,13 +677,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   }
 
   Future<void> _done() async {
-    if (!widget.isManualReview) {
+    if (!_isManualReview) {
       await FeatureGuideScreen.markShown();
     }
     if (!mounted) return;
 
     // 如果是首次启动并且不是手动查看引导，且将要跳转到登录页，则把默认服务器切换为阿里云
-    if (!widget.isManualReview && _isFirstLaunch) {
+    if (!_isManualReview && _isFirstLaunch) {
       // 只有在未传入已登录用户的情况下我们修改登录页的默认服务器
       final username = widget.loggedInUser;
       if (username == null || username.isEmpty) {
@@ -678,7 +693,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
     if (!mounted) return;
 
-    if (widget.isManualReview) {
+    if (_isManualReview) {
       Navigator.pop(context);
     } else {
       final username = widget.loggedInUser;

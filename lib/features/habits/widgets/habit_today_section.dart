@@ -208,7 +208,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
           _buildEmpty(subColor)
         else ...[
           // 首页仅展示配置数量，超出通过「查看全部」进入习惯中心。
-          ..._snapshot!.goals
+          ..._snapshot!.goalsForDisplay
               .take(displayLimit)
               .map((goal) => _buildCard(goal)),
           if (_snapshot!.goals.length > displayLimit)

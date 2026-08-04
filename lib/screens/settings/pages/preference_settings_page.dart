@@ -50,6 +50,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'force_download': GlobalKey(),
     'update_source': GlobalKey(),
     'help_center': GlobalKey(),
+    'changelog': GlobalKey(),
     'feature_guide': GlobalKey(),
   };
 
@@ -463,16 +464,35 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           ),
           const AppSettingsDivider(indent: 72),
           _buildTile(
-            targetId: 'feature_guide',
+            targetId: 'changelog',
             child: ListTile(
-              leading: Icon(Icons.school_outlined, color: Colors.grey),
-              title: const Text('更新日志与版本引导'),
-              subtitle: const Text('查看新版本功能介绍'),
+              leading: Icon(Icons.system_update_outlined,
+                  color: colorScheme.primary),
+              title: const Text('更新日志'),
+              subtitle: const Text('查看当前版本及历史更新内容'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.of(context, rootNavigator: true).push(
                   PageTransitions.slideHorizontal(FeatureGuideScreen(
-                    isManualReview: true,
+                    mode: FeatureGuideMode.changelog,
+                    loggedInUser: _username,
+                  )),
+                );
+              },
+            ),
+          ),
+          const AppSettingsDivider(indent: 72),
+          _buildTile(
+            targetId: 'feature_guide',
+            child: ListTile(
+              leading: Icon(Icons.school_outlined, color: colorScheme.tertiary),
+              title: const Text('版本引导'),
+              subtitle: const Text('查看新版本功能介绍与使用引导'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).push(
+                  PageTransitions.slideHorizontal(FeatureGuideScreen(
+                    mode: FeatureGuideMode.guide,
                     loggedInUser: _username,
                   )),
                 );
@@ -922,24 +942,155 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   }
 
   Widget _buildHomeLayoutSection() {
+    final colorScheme = Theme.of(context).colorScheme;
     return _buildTile(
       targetId: 'home_layout',
-      child: ListTile(
-        leading: Icon(
-          Icons.dashboard_customize_outlined,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        title: const Text('首页布局与组件顺序'),
-        subtitle: const Text('调整组件分组、顺序、显示状态和首页习惯展示数量'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          Navigator.of(context).push(
-            PageTransitions.slideHorizontal(
-              const HomeLayoutSettingsPage(),
-              settings: const RouteSettings(name: '首页布局'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('首页布局',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant)),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      PageTransitions.slideHorizontal(
+                        const HomeLayoutSettingsPage(),
+                        settings: const RouteSettings(name: '首页布局'),
+                      ),
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      Text('高级设置',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.primary)),
+                      Icon(Icons.chevron_right,
+                          size: 16,
+                          color: colorScheme.primary),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          );
-        },
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  PageTransitions.slideHorizontal(
+                    const HomeLayoutSettingsPage(),
+                    settings: const RouteSettings(name: '首页布局'),
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: colorScheme.surfaceContainerHighest,
+                  border: Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colorScheme.shadow.withValues(alpha: 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          )
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.tertiary.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Container(
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.secondary.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '组件排版与顺序',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '调整组件分组、顺序、显示状态和首页习惯展示数量',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
