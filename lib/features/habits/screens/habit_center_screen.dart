@@ -8,6 +8,7 @@ import '../../../services/feature_tip_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
+import '../models/habit_checkin.dart';
 import '../models/habit_goal.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_sleep_log_migration_service.dart';
@@ -111,11 +112,13 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
         StorageService.getTimeLogs(widget.username),
         HabitRepository.getGoals(),
         PomodoroService.getTags(),
+        HabitRepository.getCheckIns(),
       ]);
       final tags = results[2] as List<PomodoroTag>;
       final proposal = HabitSleepLogMigrationService.buildProposal(
         logs: results[0] as List<TimeLogItem>,
         existingGoals: results[1] as List<HabitGoal>,
+        existingCheckIns: results[3] as List<HabitCheckIn>,
         tagNames: {for (final tag in tags) tag.uuid: tag.name},
       );
       if (!mounted) return;

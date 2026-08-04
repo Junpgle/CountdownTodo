@@ -51,6 +51,8 @@ abstract final class HabitRepository {
     required HabitSourceType sourceType,
     List<String> sourceIds = const [],
     required HabitGoalRuleRevision rule,
+    String? goalUuid,
+    String? ruleUuid,
     HabitDisplayMode displayMode = HabitDisplayMode.habitOnly,
     int? defaultFocusMinutes,
     String username = '',
@@ -74,6 +76,7 @@ abstract final class HabitRepository {
     }
 
     final goal = HabitGoal(
+      uuid: goalUuid,
       name: name,
       icon: icon,
       sourceType: sourceType,
@@ -85,7 +88,7 @@ abstract final class HabitRepository {
     );
 
     final ruleForGoal = HabitGoalRuleRevision(
-      uuid: rule.uuid,
+      uuid: ruleUuid ?? rule.uuid,
       habitUuid: goal.uuid,
       effectiveFromDate: rule.effectiveFromDate,
       effectiveToDate: rule.effectiveToDate,
