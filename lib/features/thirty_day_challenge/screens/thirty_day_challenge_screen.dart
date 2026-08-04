@@ -708,7 +708,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               constraints.maxHeight > 0;
           final isCompactMobile = !isLandscape && constraints.maxWidth < 600;
           final titleStyle = Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontSize: isCompactMobile ? 26 : null,
+                    fontSize: isCompactMobile ? 30 : null,
                     color: scheme.onSurface,
                     fontWeight: FontWeight.w900,
                     height: 1.15,
@@ -723,7 +723,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
           final welcomePrimary = scheme.primary;
           final welcomeSecondary = scheme.secondary;
           final welcomeTertiary = scheme.tertiary;
-          if (isCompactMobile) {
+          // Keep a smaller fallback for exceptionally narrow devices only.
+          // Regular phones should use the scrollable, more spacious layout.
+          if (isCompactMobile && constraints.maxWidth < 320) {
             return _buildCompactWelcomeBody(
               scheme: scheme,
               welcomePrimary: welcomePrimary,
@@ -732,6 +734,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
               availableHeight: constraints.maxHeight,
             );
           }
+          final contentHorizontalPadding =
+              isLandscape ? 48.0 : (isCompactMobile ? 20.0 : 24.0);
+          final contentTopPadding =
+              isLandscape ? 32.0 : (isCompactMobile ? 72.0 : 48.0);
           return DecoratedBox(
             decoration: BoxDecoration(
               color: scheme.surface,
@@ -784,9 +790,9 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                 // Content
                 SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
-                    isLandscape ? 48 : 24,
-                    isLandscape ? 32 : 48,
-                    isLandscape ? 48 : 24,
+                    contentHorizontalPadding,
+                    contentTopPadding,
+                    contentHorizontalPadding,
                     isLandscape ? 40 : 64,
                   ),
                   child: Center(
@@ -825,11 +831,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                           ),
-                          SizedBox(height: isLandscape ? 30 : 40),
+                          SizedBox(height: isLandscape ? 30 : 36),
                           Center(
                             child: Container(
-                              width: isLandscape ? 100 : 120,
-                              height: isLandscape ? 100 : 120,
+                              width: isLandscape
+                                  ? 100
+                                  : (isCompactMobile ? 104 : 120),
+                              height: isLandscape
+                                  ? 100
+                                  : (isCompactMobile ? 104 : 120),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
@@ -862,15 +872,23 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                 children: [
                                   Icon(
                                     Icons.auto_awesome_rounded,
-                                    size: isLandscape ? 50 : 60,
+                                    size: isLandscape
+                                        ? 50
+                                        : (isCompactMobile ? 52 : 60),
                                     color: scheme.onPrimary,
                                   ),
                                   Positioned(
-                                    right: isLandscape ? 10 : 12,
-                                    top: isLandscape ? 10 : 12,
+                                    right: isLandscape
+                                        ? 10
+                                        : (isCompactMobile ? 10 : 12),
+                                    top: isLandscape
+                                        ? 10
+                                        : (isCompactMobile ? 10 : 12),
                                     child: Icon(
                                       Icons.star_rounded,
-                                      size: isLandscape ? 16 : 20,
+                                      size: isLandscape
+                                          ? 16
+                                          : (isCompactMobile ? 18 : 20),
                                       color: scheme.onPrimary.withValues(
                                         alpha: 0.75,
                                       ),
@@ -880,7 +898,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 28),
                           Text.rich(
                             TextSpan(
                               children: [
@@ -914,15 +932,15 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                 .textTheme
                                 .titleLarge
                                 ?.copyWith(
-                                  fontSize: isCompactMobile ? 16 : null,
+                                  fontSize: isCompactMobile ? 17 : null,
                                   color: scheme.onSurfaceVariant,
                                   height: 1.5,
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
-                          SizedBox(height: isLandscape ? 32 : 48),
+                          SizedBox(height: isLandscape ? 32 : 36),
                           Container(
-                            padding: const EdgeInsets.all(28),
+                            padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
                             decoration: BoxDecoration(
                               color: scheme.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(32),
@@ -984,7 +1002,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                       .bodyLarge
                                       ?.copyWith(
                                         color: scheme.onSurface,
-                                        height: 1.8,
+                                        height: isCompactMobile ? 1.7 : 1.8,
                                       ),
                                 ),
                               ],
@@ -992,7 +1010,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                           const SizedBox(height: 16),
                           Container(
-                            padding: const EdgeInsets.all(28),
+                            padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
                             decoration: BoxDecoration(
                               color: scheme.surfaceContainer,
                               borderRadius: BorderRadius.circular(32),
@@ -1056,7 +1074,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                           ),
                           const SizedBox(height: 16),
                           Container(
-                            padding: const EdgeInsets.all(28),
+                            padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
                             decoration: BoxDecoration(
                               color: scheme.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(32),
@@ -1083,14 +1101,14 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                         .bodyLarge
                                         ?.copyWith(
                                           color: scheme.onSurface,
-                                          height: 1.8,
+                                          height: isCompactMobile ? 1.7 : 1.8,
                                         ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          SizedBox(height: isLandscape ? 32 : 48),
+                          SizedBox(height: isLandscape ? 32 : 36),
                           FilledButton.icon(
                             onPressed: _enterChallenge,
                             icon: const Icon(Icons.bolt_rounded),
