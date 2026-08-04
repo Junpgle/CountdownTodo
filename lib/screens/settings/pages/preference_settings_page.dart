@@ -962,7 +962,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   onTap: () {
                     Navigator.of(context).push(
                       PageTransitions.slideHorizontal(
-                        const HomeLayoutSettingsPage(),
+                        HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
                         settings: const RouteSettings(name: '首页布局'),
                       ),
                     );
@@ -986,7 +986,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               onTap: () {
                 Navigator.of(context).push(
                   PageTransitions.slideHorizontal(
-                    const HomeLayoutSettingsPage(),
+                    HomeLayoutSettingsPage(isEmbedded: widget.isEmbedded),
                     settings: const RouteSettings(name: '首页布局'),
                   ),
                 );
