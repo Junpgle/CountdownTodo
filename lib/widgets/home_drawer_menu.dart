@@ -48,6 +48,13 @@ Future<int?> _loadCompanionDays() async {
   return days > 0 ? days : 1;
 }
 
+class _VersionReleaseInfo {
+  final String? date;
+  final bool isInternalBuild;
+
+  const _VersionReleaseInfo({this.date, this.isInternalBuild = false});
+}
+
 class HomeDrawerMenu extends StatefulWidget {
   final String username;
   final String timeSalutation;
@@ -89,34 +96,45 @@ class HomeDrawerMenu extends StatefulWidget {
 class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
   late final Future<PackageInfo> _packageInfoFuture;
   late final Future<int?> _companionDaysFuture;
-  late final Future<String?> _versionUpdateDateFuture;
+  // 可为空以兼容热重载保留的旧 State；初始化完成前只显示版本号。
+  Future<_VersionReleaseInfo>? _versionReleaseInfoFuture;
+
+  Future<_VersionReleaseInfo> get _releaseInfoFuture =>
+      _versionReleaseInfoFuture ??= _loadVersionReleaseInfo();
 
   @override
   void initState() {
     super.initState();
     _packageInfoFuture = PackageInfo.fromPlatform();
     _companionDaysFuture = _loadCompanionDays();
-    _versionUpdateDateFuture = _loadVersionUpdateDate();
+    _versionReleaseInfoFuture = _loadVersionReleaseInfo();
   }
 
-  Future<String?> _loadVersionUpdateDate() async {
-    final packageInfo = await _packageInfoFuture;
-    final manifest = await UpdateService.checkManifest(
-      preferCache: true,
-      refreshInBackground: true,
-    );
-    if (manifest == null) return null;
+  Future<_VersionReleaseInfo> _loadVersionReleaseInfo() async {
+    try {
+      final packageInfo = await _packageInfoFuture;
+      final manifest = await UpdateService.checkManifest(
+        preferCache: true,
+        refreshInBackground: true,
+      );
+      if (manifest == null) return const _VersionReleaseInfo();
 
-    final currentVersion =
-        packageInfo.version.trim().split('+').first.split('-').first;
-    for (final entry in manifest.changelogHistory) {
-      final entryVersion =
-          entry.versionName.trim().split('+').first.split('-').first;
-      if (entryVersion == currentVersion && entry.date.isNotEmpty) {
-        return entry.date;
+      final currentVersion =
+          packageInfo.version.trim().split('+').first.split('-').first;
+      for (final entry in manifest.changelogHistory) {
+        final entryVersion =
+            entry.versionName.trim().split('+').first.split('-').first;
+        if (entryVersion == currentVersion) {
+          return _VersionReleaseInfo(
+            date: entry.date.isNotEmpty ? entry.date : null,
+          );
+        }
       }
+      return const _VersionReleaseInfo(isInternalBuild: true);
+    } catch (_) {
+      // 清单不可用时无法判断版本是否为内部测试版，保留纯版本号显示。
+      return const _VersionReleaseInfo();
     }
-    return null;
   }
 
   @override
@@ -308,6 +326,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                             },
                             badgeCount: widget.teamPendingCount,
                             showAlertDot: widget.hasTeamConflictDot,
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -317,6 +336,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onAiAssistant();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -326,6 +346,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onTimeline();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -335,6 +356,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onScreenTime();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -344,6 +366,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onPlanCenter();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -353,6 +376,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onHabits();
                             },
+                            isCompact: true,
                           ),
                           _buildMenuItem(
                             context,
@@ -362,6 +386,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                               ZoomDrawer.of(context)?.close();
                               widget.onChallengeCenter();
                             },
+                            isCompact: true,
                           ),
                         ],
                       ),
@@ -434,8 +459,8 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                 colorScheme.onSurface.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: FutureBuilder<String?>(
-                            future: _versionUpdateDateFuture,
+                          child: FutureBuilder<_VersionReleaseInfo>(
+                            future: _releaseInfoFuture,
                             builder: (context, dateSnapshot) {
                               final versionColor =
                                   colorScheme.onSurface.withValues(alpha: 0.5);
@@ -445,13 +470,18 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 1.0,
                               );
-                              final updateDate = dateSnapshot.data;
+                              final releaseInfo = dateSnapshot.data;
+                              final updateLabel = releaseInfo == null
+                                  ? null
+                                  : releaseInfo.isInternalBuild
+                                      ? '内部测试版'
+                                      : releaseInfo.date;
                               return Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text('v${snapshot.data!.version}',
                                       style: versionStyle),
-                                  if (updateDate != null) ...[
+                                  if (updateLabel != null) ...[
                                     const SizedBox(width: 8),
                                     Container(
                                       width: 1,
@@ -460,7 +490,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      updateDate,
+                                      updateLabel,
                                       style: versionStyle.copyWith(
                                         fontWeight: FontWeight.normal,
                                         letterSpacing: 0.2,

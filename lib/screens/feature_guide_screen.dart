@@ -549,19 +549,32 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       return _currentVersionOnly(merged);
     }
 
-    final inRange = merged.where((entry) {
-      final version = entry.versionName;
-      return _compareVersionNames(version, previous) > 0 &&
-          _compareVersionNames(version, currentVersion) <= 0;
-    }).toList();
+    final inRange = merged
+        .where((entry) {
+          final version = entry.versionName;
+          return _compareVersionNames(version, previous) > 0 &&
+              _compareVersionNames(version, currentVersion) <= 0;
+        })
+        .where((entry) => entry.items.isNotEmpty)
+        .toList();
 
     return inRange.isNotEmpty ? inRange : _currentVersionOnly(merged);
   }
 
   List<ChangelogEntry> _currentVersionOnly(List<ChangelogEntry> entries) {
     final current = _normalizeVersion(_currentVersion);
-    return entries
+    final currentEntries = entries
         .where((entry) => _compareVersionNames(entry.versionName, current) == 0)
+        .where((entry) => entry.items.isNotEmpty)
+        .take(1)
+        .toList();
+    if (currentEntries.isNotEmpty) return currentEntries;
+
+    // 当前版本未发布更新日志时，展示清单中最近一个有内容的旧版本。
+    return entries
+        .where((entry) =>
+            _compareVersionNames(entry.versionName, current) < 0 &&
+            entry.items.isNotEmpty)
         .take(1)
         .toList();
   }
@@ -798,6 +811,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final scheme = Theme.of(context).colorScheme;
     final previous = _normalizeVersion(_previousShownVersion);
     final currentVersion = _normalizeVersion(_currentVersion);
+    final displayVersion = current?.versionName ?? currentVersion;
     final showVersionRange = previous.isNotEmpty &&
         _compareVersionNames(previous, currentVersion) < 0 &&
         _changelogHistory.length > 1;
@@ -813,7 +827,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _loadingChangelog ? '版本更新 (Loading)' : 'v$_currentVersion 更新日志',
+                _loadingChangelog ? '版本更新 (Loading)' : 'v$displayVersion 更新日志',
                 style:
                     const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
