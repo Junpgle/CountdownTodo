@@ -10,7 +10,10 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     // 冷启动清理残留通知
     NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
     NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
-    _loadSectionPreferences();
+    // MediaQuery 需要在 initState 完成后才能安全读取。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadSectionPreferences();
+    });
     _loadSemesterSettings();
     _loadHomeTextConfig();
     ThirtyDayChallengeRepository.activityRevision
@@ -536,39 +539,51 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   }
 
   Future<void> _loadSectionPreferences() async {
+    final isWide = MediaQuery.of(context).size.width >= 768;
     final prefs = await SharedPreferences.getInstance();
 
-    // 均按照默认排序
-    // 首页: 重要日(countdowns), 课程(courses), 待办(todos)
-    // 专注页: 最近专注(pomodoro), 屏幕时间(screenTime), 测验(math)
+    final mobileLayoutFuture = HomeLayoutService.loadPair(
+      HomeLayoutTarget.mobileHome,
+      HomeLayoutTarget.mobileFocus,
+    );
+    final wideLayoutFuture = HomeLayoutService.loadPair(
+      HomeLayoutTarget.wideLeft,
+      HomeLayoutTarget.wideRight,
+    );
+    final mobileVisibilityFuture = HomeLayoutService.loadVisibility(
+      HomeLayoutTarget.mobileHome,
+      HomeLayoutTarget.mobileFocus,
+    );
+    final wideVisibilityFuture = HomeLayoutService.loadVisibility(
+      HomeLayoutTarget.wideLeft,
+      HomeLayoutTarget.wideRight,
+    );
 
-    // 平板双栏布局固定分配 (左侧重要日待办, 右侧课程最近专注\屏幕时间\测验)
-    _leftSections = ['banners', 'countdowns', 'todos'];
-    _rightSections = [
-      'courses',
-      'timeline',
-      'pomodoro',
-      'habits',
-      'screenTime',
-      'math'
-    ];
-
-    // 忽略之前的可见性设置，全部强制显示
-    _sectionVisibility = {
-      'courses': true,
-      'countdowns': true,
-      'todos': true,
-      'planBlocks': true,
-      'screenTime': true,
-      'math': true,
-      'pomodoro': true,
-      'timeline': true,
-      'habits': true,
-    };
+    final layouts = await Future.wait<HomeLayoutPair>([
+      mobileLayoutFuture,
+      wideLayoutFuture,
+    ]);
+    final mobileVisibility = await mobileVisibilityFuture;
+    final wideVisibility = await wideVisibilityFuture;
+    final habitDisplayLimit = await HomeLayoutService.loadHabitDisplayLimit();
+    final selectedVisibility = isWide ? wideVisibility : mobileVisibility;
+    final normalizedVisibility = HomeLayoutService.normalizeVisibility(
+      firstTarget:
+          isWide ? HomeLayoutTarget.wideLeft : HomeLayoutTarget.mobileHome,
+      secondTarget:
+          isWide ? HomeLayoutTarget.wideRight : HomeLayoutTarget.mobileFocus,
+      raw: Map<String, dynamic>.from(selectedVisibility),
+    )..['planBlocks'] = true;
 
     String? noCourseBehav = prefs.getString('no_course_behavior');
     if (mounted) {
       setState(() {
+        _sectionVisibility = normalizedVisibility;
+        _mobileHomeSections = layouts[0].first;
+        _mobileFocusSections = layouts[0].second;
+        _habitDisplayLimit = habitDisplayLimit;
+        _leftSections = layouts[1].first;
+        _rightSections = layouts[1].second;
         if (noCourseBehav != null) _noCourseBehavior = noCourseBehav;
       });
     }

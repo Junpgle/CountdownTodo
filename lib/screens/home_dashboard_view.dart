@@ -435,6 +435,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               return HabitTodaySection(
                                                 username: widget.username,
                                                 isLight: isLight,
+                                                compact: true,
+                                                displayLimit:
+                                                    _habitDisplayLimit,
                                                 refreshTrigger: trigger,
                                                 onTap: () async {
                                                   await PageTransitions
@@ -506,12 +509,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     }
 
                                     if (!isTablet) {
-                                      List<String> tab1Order = [
-                                        'banners',
-                                        'countdowns',
-                                        'courses',
-                                        'todos',
-                                      ];
+                                      List<String> tab1Order =
+                                          List<String>.from(
+                                              _mobileHomeSections);
                                       if (hasNoCourse) {
                                         if (_noCourseBehavior == 'hide') {
                                           tab1Order.remove('courses');
@@ -533,13 +533,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               child: sectionsMap[key]!))
                                           .toList();
 
-                                      List<String> tab3WidgetsConfig = [
-                                        'timeline',
-                                        'pomodoro',
-                                        'habits',
-                                        'screenTime',
-                                        'math'
-                                      ];
+                                      List<String> tab3WidgetsConfig =
+                                          List<String>.from(
+                                              _mobileFocusSections);
 
                                       List<Widget> tab3Widgets =
                                           tab3WidgetsConfig

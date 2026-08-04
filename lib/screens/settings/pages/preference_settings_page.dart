@@ -11,6 +11,7 @@ import '../../../utils/time_utils.dart';
 import '../../../utils/page_transitions.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
+import 'home_layout_settings_page.dart';
 import '../../feature_guide_screen.dart';
 import '../../help/help_center_screen.dart';
 import '../handlers/storage_management_handler.dart';
@@ -37,13 +38,18 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'server_choice': GlobalKey(),
     'theme': GlobalKey(),
     'theme_color': GlobalKey(),
+    'home_layout': GlobalKey(),
     'wallpaper': GlobalKey(),
     'home_text': GlobalKey(),
+    'llm_retry': GlobalKey(),
     'migration': GlobalKey(),
     'cache': GlobalKey(),
     'storage': GlobalKey(),
     'update': GlobalKey(),
+    'get_beta': GlobalKey(),
     'force_download': GlobalKey(),
+    'update_source': GlobalKey(),
+    'help_center': GlobalKey(),
     'feature_guide': GlobalKey(),
   };
 
@@ -338,6 +344,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           const AppSettingsDivider(),
           _buildHomeTextSection(),
           _buildAppearanceSection(),
+          _buildHomeLayoutSection(),
           _buildColorSection(),
           AppSettingsSectionHeader(
             title: isWeb ? '浏览器与存储' : '系统与存储',
@@ -910,6 +917,29 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHomeLayoutSection() {
+    return _buildTile(
+      targetId: 'home_layout',
+      child: ListTile(
+        leading: Icon(
+          Icons.dashboard_customize_outlined,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: const Text('首页布局与组件顺序'),
+        subtitle: const Text('调整组件分组、顺序、显示状态和首页习惯展示数量'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.of(context).push(
+            PageTransitions.slideHorizontal(
+              const HomeLayoutSettingsPage(),
+              settings: const RouteSettings(name: '首页布局'),
+            ),
+          );
+        },
       ),
     );
   }

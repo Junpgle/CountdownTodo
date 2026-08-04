@@ -87,6 +87,7 @@ import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
 import '../services/feature_tip_service.dart';
+import '../services/home_layout_service.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';
@@ -159,6 +160,11 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     'timeline',
     'pomodoro'
   ];
+  List<String> _mobileHomeSections =
+      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileHome);
+  List<String> _mobileFocusSections =
+      HomeLayoutService.defaultOrder(HomeLayoutTarget.mobileFocus);
+  int _habitDisplayLimit = HomeLayoutService.defaultHabitDisplayLimit;
 
   Map<String, bool> _sectionVisibility = {
     'courses': true,
