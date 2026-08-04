@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../../features/thirty_day_challenge/repositories/thirty_day_challenge_repository.dart';
 import '../../../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../../../models.dart';
+import '../../../services/pomodoro_service.dart';
 import '../../../services/feature_tip_service.dart';
+import '../../../storage_service.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../widgets/coach_mark_overlay.dart';
+import '../models/habit_goal.dart';
+import '../repositories/habit_repository.dart';
+import '../services/habit_sleep_log_migration_service.dart';
+import '../widgets/habit_sleep_log_migration_card.dart';
 import 'habit_analysis_tab.dart';
 import 'habit_archived_screen.dart';
 import 'habit_calendar_tab.dart';
@@ -33,6 +40,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
   final GlobalKey _todayContentKey = GlobalKey();
   bool _showCoachMarks = false;
   bool _showChallengePromotion = false;
+  HabitSleepLogMigrationProposal? _sleepLogMigration;
 
   @override
   void initState() {
@@ -44,6 +52,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
       setState(() {});
     });
     _loadChallengePromotion();
+    _loadSleepLogMigration();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkCoachMarks());
   }
 
@@ -73,6 +82,203 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
     if (!mounted) return;
     setState(() => _showChallengePromotion = false);
     await ThirtyDayChallengeRepository.dismissHabitCenterPromotion();
+  }
+
+  String get _sleepMigrationTipId =>
+      'habit_sleep_log_migration_${widget.username}';
+
+  Future<void> _loadSleepLogMigration() async {
+    try {
+      if (await FeatureTipService.hasTipBeenShown(_sleepMigrationTipId)) return;
+      final results = await Future.wait<dynamic>([
+        StorageService.getTimeLogs(widget.username),
+        HabitRepository.getGoals(),
+        PomodoroService.getTags(),
+      ]);
+      final tags = results[2] as List<PomodoroTag>;
+      final proposal = HabitSleepLogMigrationService.buildProposal(
+        logs: results[0] as List<TimeLogItem>,
+        existingGoals: results[1] as List<HabitGoal>,
+        tagNames: {for (final tag in tags) tag.uuid: tag.name},
+      );
+      if (!mounted) return;
+      setState(() => _sleepLogMigration = proposal);
+    } catch (_) {
+      // 迁移提示是增强体验，读取失败不影响习惯中心的正常使用。
+    }
+  }
+
+  Future<void> _openSleepLogMigration() async {
+    final proposal = _sleepLogMigration;
+    if (proposal == null) return;
+    final shouldCreate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Text('🌙'),
+            SizedBox(width: 8),
+            Expanded(child: Text('迁移到早睡早起')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '根据近 ${proposal.observedNights} 晚睡眠日志，系统建议把规律作息变成每天可打卡的时间点：',
+              ),
+              const SizedBox(height: 14),
+              _buildMigrationSuggestionRow(
+                context,
+                icon: Icons.nightlight_round,
+                title: '早睡',
+                value: HabitSleepLogMigrationService.formatMinute(
+                  proposal.bedtimeMinute,
+                ),
+                enabled: proposal.createsEarlySleep,
+                existingText: proposal.hasEarlySleep ? '已有习惯' : null,
+              ),
+              const SizedBox(height: 8),
+              _buildMigrationSuggestionRow(
+                context,
+                icon: Icons.wb_twilight_rounded,
+                title: '早起',
+                value: HabitSleepLogMigrationService.formatMinute(
+                  proposal.wakeMinute,
+                ),
+                enabled: proposal.createsEarlyWake,
+                existingText: proposal.hasEarlyWake ? '已有习惯' : null,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '日志中位睡眠时长约 ${proposal.sleepDurationLabel}。创建后从今天开始记录，不会修改或删除历史时间日志，也不会补造过去的打卡。目标时间和提醒都可以在习惯详情中继续编辑。',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('稍后'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.add_task_rounded),
+            label: Text(
+                '创建 ${proposal.createsEarlySleep && proposal.createsEarlyWake ? '两个' : '缺少的'}习惯'),
+          ),
+        ],
+      ),
+    );
+    if (shouldCreate != true || !mounted) return;
+
+    try {
+      final created = await HabitSleepLogMigrationService.createHabits(
+        proposal: proposal,
+        username: widget.username,
+      );
+      if (!mounted) return;
+      await FeatureTipService.markTipShown(_sleepMigrationTipId);
+      if (!mounted) return;
+      setState(() {
+        _sleepLogMigration = null;
+        _reloadTick++;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已创建 ${created.length} 个睡眠习惯')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('迁移失败：$e')),
+      );
+    }
+  }
+
+  Future<void> _dismissSleepLogMigration() async {
+    if (!mounted) return;
+    setState(() => _sleepLogMigration = null);
+    await FeatureTipService.markTipShown(_sleepMigrationTipId);
+  }
+
+  Widget _buildMigrationSuggestionRow(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String value,
+    required bool enabled,
+    String? existingText,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.primary,
+            ),
+          ),
+          if (existingText != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              existingText,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+          ] else if (enabled) ...[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.add_circle_outline_rounded,
+              size: 18,
+              color: colorScheme.primary,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildTopBanners(ColorScheme colorScheme) {
+    final banners = <Widget>[];
+    final migration = _sleepLogMigration;
+    if (migration != null) {
+      banners.add(
+        HabitSleepLogMigrationCard(
+          proposal: migration,
+          onTap: _openSleepLogMigration,
+          onDismiss: _dismissSleepLogMigration,
+        ),
+      );
+    }
+    if (_showChallengePromotion) {
+      banners.add(_buildChallengePromotionBanner(colorScheme));
+    }
+    if (banners.isEmpty) return null;
+    return Column(children: banners);
   }
 
   Widget _buildChallengePromotionBanner(ColorScheme colorScheme) {
@@ -242,9 +448,7 @@ class _HabitCenterScreenState extends State<HabitCenterScreen>
             username: widget.username,
             coachTargetKey: _todayContentKey,
             reloadTick: _reloadTick,
-            topBanner: _showChallengePromotion
-                ? _buildChallengePromotionBanner(colorScheme)
-                : null,
+            topBanner: _buildTopBanners(colorScheme),
             onChanged: () => setState(() => _reloadTick++),
           ),
           HabitCalendarTab(
