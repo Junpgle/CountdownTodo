@@ -81,7 +81,12 @@ dart format lib test
 ./scripts/build_macos.sh
 ./scripts/sync_macos_version.sh
 ./scripts/deploy_web_beta.sh
+
+# 构建并归集 Android、macOS、Web 发布产物
+./scripts/release_all.sh
 ```
+
+产物会放在 `build/release-assets/v<版本>/`，其中包含 macOS ZIP、三个 Android APK 和 arm64-v8a 差分包，可直接全选上传。Web 会通过 `deploy_web_beta.sh` 构建并发布。
 
 Cloudflare Worker 后端：
 

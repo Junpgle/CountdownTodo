@@ -9,6 +9,7 @@ set -e
 # 获取项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+FLUTTER_BIN="${FLUTTER_BIN:-flutter}"
 
 echo "=== 同步 macOS 版本号 ==="
 "$SCRIPT_DIR/sync_macos_version.sh"
@@ -16,7 +17,7 @@ echo "=== 同步 macOS 版本号 ==="
 echo ""
 echo "=== 构建 macOS 应用 ==="
 cd "$PROJECT_ROOT"
-flutter build macos "$@"
+"$FLUTTER_BIN" build macos "$@"
 
 echo ""
 echo "=== 打包 macOS 应用为 ZIP ==="

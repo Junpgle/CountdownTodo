@@ -54,6 +54,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
+    private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
@@ -935,6 +936,21 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "getInitialDeepLink" -> {
                     result.success(pendingDeepLink)
                     pendingDeepLink = null
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APP_UPDATE_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInstalledApkPath" -> {
+                    // The Flutter process can read its own base.apk. Returning
+                    // the path lets the Dart delta applier use the exact
+                    // signed APK currently installed on this device.
+                    result.success(applicationInfo.sourceDir)
                 }
                 else -> result.notImplemented()
             }

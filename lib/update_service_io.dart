@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/android_delta_service.dart';
 import 'services/permission_request_coordinator.dart';
 import 'services/github_resource_service.dart';
 
@@ -114,6 +115,7 @@ class UpdateInfo {
   final String pcPackageUrl;
   final String macPackageUrl;
   final Map<String, String> androidArchPackages;
+  final Map<String, List<AndroidDeltaPackage>> androidDeltaPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
       : title = json['title'] ?? '版本更新',
@@ -123,7 +125,30 @@ class UpdateInfo {
         macPackageUrl = json['mac_package_url'] ?? '',
         androidArchPackages = json['android_arch_packages'] != null
             ? Map<String, String>.from(json['android_arch_packages'])
-            : {};
+            : {},
+        androidDeltaPackages =
+            _parseAndroidDeltaPackages(json['android_delta_packages']);
+
+  static Map<String, List<AndroidDeltaPackage>> _parseAndroidDeltaPackages(
+      dynamic raw) {
+    if (raw is! Map) return {};
+
+    final result = <String, List<AndroidDeltaPackage>>{};
+    raw.forEach((key, value) {
+      if (value is! List) return;
+      final packages = value
+          .whereType<Map>()
+          .map((entry) => AndroidDeltaPackage.fromJson(
+                Map<String, dynamic>.from(entry),
+              ))
+          .where((entry) => entry.isUsable)
+          .toList();
+      if (packages.isNotEmpty) {
+        result[key.toString()] = packages;
+      }
+    });
+    return result;
+  }
 }
 
 class Announcement {
@@ -153,6 +178,22 @@ class WallpaperConfig {
   WallpaperConfig.fromJson(Map<String, dynamic> json)
       : show = json['show'] ?? false,
         imageUrl = json['image_url'] ?? '';
+}
+
+class _UpdateArtifact {
+  final String url;
+  final String fileName;
+  final AndroidDeltaPackage? delta;
+  final String? baseApkPath;
+
+  const _UpdateArtifact({
+    required this.url,
+    required this.fileName,
+    this.delta,
+    this.baseApkPath,
+  });
+
+  bool get isDelta => delta != null;
 }
 
 class _AnnouncementCarouselDialog extends StatefulWidget {
@@ -542,6 +583,69 @@ class UpdateService {
     return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
   }
 
+  /// Selects an arm64-v8a delta only when the exact installed APK is its base.
+  /// Every other case deliberately falls back to the complete APK.
+  static Future<_UpdateArtifact> _getUpdateArtifact(
+    AppManifest manifest, {
+    bool preferDelta = true,
+  }) async {
+    final fullUrl = await getDownloadUrlForArch(manifest);
+    final fullArtifact = _UpdateArtifact(
+      url: fullUrl,
+      fileName: getUpdateFileName(manifest.versionName),
+    );
+
+    if (!preferDelta || !Platform.isAndroid) return fullArtifact;
+
+    try {
+      final architecture = await getDeviceArchitecture();
+      if (architecture != 'arm64-v8a') return fullArtifact;
+
+      final candidates = manifest.updateInfo.androidDeltaPackages['arm64-v8a'];
+      if (candidates == null || candidates.isEmpty) return fullArtifact;
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final localVersion = _cleanVersion(packageInfo.version);
+      final basePath = await AndroidDeltaService.getInstalledApkPath();
+      if (basePath == null || basePath.isEmpty) return fullArtifact;
+
+      final baseApk = File(basePath);
+      if (!await baseApk.exists()) return fullArtifact;
+      final baseSha256 = await AndroidDeltaService.sha256Of(baseApk);
+
+      for (final candidate in candidates) {
+        if (!candidate.isUsable ||
+            _cleanVersion(candidate.fromVersion) != localVersion ||
+            _cleanVersion(candidate.toVersion) !=
+                _cleanVersion(manifest.versionName) ||
+            candidate.fromSha256.toLowerCase() != baseSha256.toLowerCase()) {
+          continue;
+        }
+
+        final patchUrl = _giteePackageUrl(candidate.patchUrl);
+        if (patchUrl.isEmpty) continue;
+
+        debugPrint(
+            '[UpdateService] Using arm64-v8a delta ${candidate.fromVersion} -> ${candidate.toVersion}');
+        return _UpdateArtifact(
+          url: patchUrl,
+          fileName:
+              'CountdownTodo_v${manifest.versionName}_from_${candidate.fromVersion}.patch',
+          delta: candidate,
+          baseApkPath: baseApk.path,
+        );
+      }
+    } catch (error) {
+      debugPrint(
+          '[UpdateService] Delta selection failed, using full APK: $error');
+    }
+
+    return fullArtifact;
+  }
+
+  static String _cleanVersion(String version) =>
+      version.split('+').first.split('-').first.trim();
+
   static String _giteePackageUrl(String url) {
     final uri = Uri.tryParse(url);
     if (uri?.scheme == 'https' && uri?.host.toLowerCase() == 'gitee.com') {
@@ -845,6 +949,7 @@ class UpdateService {
             if (name.endsWith(".apk") ||
                 name.endsWith(".exe") ||
                 name.endsWith(".zip") ||
+                name.endsWith(".patch") ||
                 name.endsWith(".download")) {
               await file.delete();
             }
@@ -938,12 +1043,6 @@ class UpdateService {
       return;
     }
 
-    final downloadUrl = await getDownloadUrlForArch(manifest);
-    if (downloadUrl.isEmpty) {
-      onError('未找到可用的下载链接');
-      return;
-    }
-
     // 检查是否已下载
     final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
     if (existingPath != null) {
@@ -969,43 +1068,131 @@ class UpdateService {
       return;
     }
 
-    String fileName = getUpdateFileName(manifest.versionName);
-    String savePath = "$path/$fileName";
-    String tempPath = "$savePath.download";
-    File tempFile = File(tempPath);
+    try {
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        onProgress: onProgress,
+      );
+      onComplete(finalFile.path);
+    } catch (e) {
+      onError("更新包下载或校验失败: $e");
+    }
+  }
+
+  static Future<File> _downloadUpdateWithFallback(
+    AppManifest manifest,
+    String directory, {
+    required void Function(double) onProgress,
+  }) async {
+    final artifact = await _getUpdateArtifact(manifest);
+    if (artifact.url.isEmpty) {
+      throw const FormatException('未找到可用的下载链接');
+    }
 
     try {
-      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
+      return await _downloadArtifact(
+        artifact,
+        directory,
+        onProgress: onProgress,
+      );
+    } catch (error) {
+      if (!artifact.isDelta) rethrow;
 
-      if (response.statusCode == 200) {
-        int totalBytes = response.contentLength ?? 0;
-        int receivedBytes = 0;
-        var sink = tempFile.openWrite();
+      debugPrint(
+          '[UpdateService] Delta update failed, falling back to full APK: $error');
+      onProgress(0.0);
+      final fullArtifact = await _getUpdateArtifact(
+        manifest,
+        preferDelta: false,
+      );
+      if (fullArtifact.url.isEmpty) rethrow;
+      return _downloadArtifact(
+        fullArtifact,
+        directory,
+        onProgress: onProgress,
+      );
+    }
+  }
 
-        _downloadSubscription = response.stream.listen(
-          (List<int> chunk) {
-            receivedBytes += chunk.length;
-            sink.add(chunk);
-            if (totalBytes > 0) {
-              onProgress(receivedBytes / totalBytes);
-            }
-          },
-          onDone: () async {
-            await sink.close();
-            File finalFile = await tempFile.rename(savePath);
-            onComplete(finalFile.path);
-          },
-          onError: (e) async {
-            await sink.close();
-            onError("下载连接中断: $e");
-          },
-          cancelOnError: true,
-        );
-      } else {
-        onError("服务器响应异常: HTTP ${response.statusCode}");
+  static Future<File> _downloadArtifact(
+    _UpdateArtifact artifact,
+    String directory, {
+    required void Function(double) onProgress,
+  }) async {
+    final savePath = '$directory/${artifact.fileName}';
+    final tempFile = File('$savePath.download');
+    File? downloadedFile;
+
+    try {
+      if (await tempFile.exists()) await tempFile.delete();
+      final response = await _resourceService.sendGet(Uri.parse(artifact.url));
+      if (response.statusCode != 200) {
+        throw HttpException('服务器响应异常: HTTP ${response.statusCode}');
       }
-    } catch (e) {
-      onError("网络请求发生异常: $e");
+
+      final totalBytes = response.contentLength ?? 0;
+      var receivedBytes = 0;
+      final sink = tempFile.openWrite();
+      final completed = Completer<void>();
+
+      _downloadSubscription = response.stream.listen(
+        (List<int> chunk) {
+          receivedBytes += chunk.length;
+          sink.add(chunk);
+          if (totalBytes > 0) onProgress(receivedBytes / totalBytes);
+        },
+        onDone: () async {
+          try {
+            await sink.close();
+            if (!completed.isCompleted) completed.complete();
+          } catch (error, stackTrace) {
+            if (!completed.isCompleted) {
+              completed.completeError(error, stackTrace);
+            }
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) async {
+          await sink.close();
+          if (!completed.isCompleted) {
+            completed.completeError(error, stackTrace);
+          }
+        },
+        cancelOnError: true,
+      );
+      await completed.future;
+
+      downloadedFile = await tempFile.rename(savePath);
+      onProgress(1.0);
+
+      if (!artifact.isDelta) return downloadedFile;
+
+      final delta = artifact.delta!;
+      final basePath = artifact.baseApkPath;
+      if (basePath == null || basePath.isEmpty) {
+        throw const FormatException('差分包缺少基础 APK');
+      }
+
+      final targetPath = '$directory/${getUpdateFileName(delta.toVersion)}';
+      final targetTempFile = File('$targetPath.download');
+      if (await targetTempFile.exists()) await targetTempFile.delete();
+      await AndroidDeltaService.applyPatch(
+        baseApk: File(basePath),
+        patchFile: downloadedFile,
+        outputApk: targetTempFile,
+        expectedBaseSha256: delta.fromSha256,
+        expectedTargetSha256: delta.toSha256,
+      );
+
+      final targetFile = await targetTempFile.rename(targetPath);
+      if (await downloadedFile.exists()) await downloadedFile.delete();
+      return targetFile;
+    } catch (_) {
+      if (await tempFile.exists()) await tempFile.delete();
+      if (downloadedFile != null && await downloadedFile.exists()) {
+        await downloadedFile.delete();
+      }
+      rethrow;
     }
   }
 
@@ -1511,54 +1698,23 @@ class UpdateService {
       return;
     }
 
-    String fileName = getUpdateFileName(manifest.versionName);
-    String savePath = "$path/$fileName";
-    String tempPath = "$savePath.download";
-    File tempFile = File(tempPath);
-
-    final String downloadUrl = await getDownloadUrlForArch(manifest);
-
     try {
-      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        onProgress: (progress) {
+          _downloadProgress = progress;
+          _uiProgressCallback?.call(progress);
+        },
+      );
 
-      if (response.statusCode == 200) {
-        int totalBytes = response.contentLength ?? 0;
-        int receivedBytes = 0;
-        var sink = tempFile.openWrite();
-
-        _downloadSubscription = response.stream.listen(
-          (List<int> chunk) {
-            receivedBytes += chunk.length;
-            sink.add(chunk);
-            if (totalBytes > 0) {
-              _downloadProgress = receivedBytes / totalBytes;
-              _uiProgressCallback?.call(_downloadProgress);
-            }
-          },
-          onDone: () async {
-            await sink.close();
-            File finalFile = await tempFile.rename(savePath);
-
-            _isDownloading = false;
-            _isDownloaded = true;
-            _localPackagePath = finalFile.path;
-
-            _uiCompleteCallback?.call(finalFile.path);
-          },
-          onError: (e) async {
-            await sink.close();
-            _isDownloading = false;
-            _uiErrorCallback?.call("下载连接中断: $e");
-          },
-          cancelOnError: true,
-        );
-      } else {
-        _isDownloading = false;
-        _uiErrorCallback?.call("服务器响应异常: HTTP ${response.statusCode}");
-      }
+      _isDownloading = false;
+      _isDownloaded = true;
+      _localPackagePath = finalFile.path;
+      _uiCompleteCallback?.call(finalFile.path);
     } catch (e) {
       _isDownloading = false;
-      _uiErrorCallback?.call("网络请求发生异常: $e");
+      _uiErrorCallback?.call("更新包下载或校验失败: $e");
     }
   }
 }

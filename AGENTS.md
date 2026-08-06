@@ -51,6 +51,7 @@ Repository scripts currently available:
 ./scripts/build_macos.sh
 ./scripts/sync_macos_version.sh
 ./scripts/deploy_web_beta.sh
+./scripts/release_all.sh --help
 ```
 
 Cloudflare Worker:

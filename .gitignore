@@ -100,6 +100,7 @@ todo.md
 /test/
 !/test/
 /test/*
+!/test/android_delta_service_test.dart
 !/test/coach_mark_overlay_test.dart
 !/test/services/
 /test/services/*
