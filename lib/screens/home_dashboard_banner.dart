@@ -495,7 +495,6 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             page: PomodoroScreen(username: widget.username),
             sourceKey: _focusBannerKey,
           );
-          if (mounted) _loadAllData();
         },
       ));
     } else if (_remotePomodoro != null) {
@@ -575,7 +574,13 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             );
             _scheduleRevision.value++;
             _timelineRevision.value++;
-            _loadAllData();
+            _loadAllData(
+              domains: const {
+                DataRefreshDomain.todos,
+                DataRefreshDomain.planBlocks,
+                DataRefreshDomain.fixedSchedules,
+              },
+            );
           },
           onAction: () => _startPlanBlockFocus(activeBlock),
         ));
@@ -734,7 +739,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               }
             }
             await StorageService.saveTodoGroups(widget.username, allGroups);
-            _loadAllData();
+            _loadAllData(
+              domains: const {DataRefreshDomain.todoGroups},
+            );
           },
           username: widget.username,
         ),

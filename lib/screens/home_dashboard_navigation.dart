@@ -44,7 +44,10 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
           if (!mounted) return;
           _scheduleRevision.value++;
           _timelineRevision.value++;
-          await _loadAllData(deferred: true);
+          await _loadAllData(
+            deferred: true,
+            domains: const {DataRefreshDomain.fixedSchedules},
+          );
           if (_pendingTodoConfirm != null) {
             setState(() => _pendingTodoConfirm = null);
             ExternalShareHandler.clearPendingTodoConfirm();
@@ -155,11 +158,12 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
       );
     }).toList();
 
-    // 更新本地列表
-    setState(() {
-      _todos = [...newTodos, ..._todos];
-      _todoRevision.value++;
-    });
+    // 更新局部卡片，避免为批量添加待办重建整个首页。
+    _todos = [...newTodos, ..._todos];
+    _todosNotifier.value = List<TodoItem>.from(_todos);
+    _todoUpdateSignalNotifier.value++;
+    _timelineRevision.value++;
+    _pomodoroTickNotifier.value++;
 
     // 保存到数据库
     final allTodos = await StorageService.getTodos(widget.username);
@@ -425,15 +429,14 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     }
 
     if (!mounted) return;
-    setState(() {
-      todo.isDone = true;
-      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-      _todosNotifier.value = List<TodoItem>.from(_todos);
-      _todoUpdateSignalNotifier.value++;
-    });
+    todo.isDone = true;
+    _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
+    _todosNotifier.value = List<TodoItem>.from(_todos);
+    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
     _pomodoroRevision.value++;
-    unawaited(_loadAllData());
+    _pomodoroTickNotifier.value++;
+    unawaited(_loadAllData(domains: const {DataRefreshDomain.todos}));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已完成：${todo.title}')),
     );

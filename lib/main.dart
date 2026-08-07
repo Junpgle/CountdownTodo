@@ -39,6 +39,7 @@ import 'widgets/island_debug_host.dart';
 
 import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
+import 'utils/app_performance_monitor.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -88,6 +89,39 @@ Future<T?> _runStartupTask<T>(
   }
 }
 
+Future<void> _initializePlatformBeforeHome(List<String> args) async {
+  // These tasks are independent. Start them together while the Flutter splash
+  // is already visible, then keep the authenticated home flow behind this
+  // readiness barrier so SQLite and platform channels are safe to use.
+  await Future.wait<dynamic>([
+    _runStartupTask(
+      'NotificationService.bindNativeChannel',
+      NotificationService.bindNativeChannel(),
+      timeout: const Duration(seconds: 1),
+    ),
+    _runStartupTask(
+      'PlatformBootstrap.initDatabaseFactory',
+      PlatformBootstrap.initDatabaseFactory(),
+      timeout: const Duration(seconds: 2),
+    ),
+    _runStartupTask(
+      'PageTransitions.init',
+      PageTransitions.init(),
+      timeout: const Duration(seconds: 1),
+    ),
+    _runStartupTask(
+      'AppDeepLinkService.init',
+      AppDeepLinkService.init(args),
+      timeout: const Duration(seconds: 2),
+    ),
+    _runStartupTask(
+      'WindowService.init',
+      PlatformBootstrap.initWindowService(),
+      timeout: const Duration(seconds: 3),
+    ),
+  ]);
+}
+
 void _configureRuntimeCaches() {
   final imageCache = PaintingBinding.instance.imageCache;
   if (AppPlatform.isWeb) {
@@ -110,6 +144,7 @@ void _configureRuntimeCaches() {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppPerformanceMonitor.install();
 
   // Secondary desktop_multi_window engines must not run the main-window
   // startup chain. In release this can keep the island from ever reaching its
@@ -118,42 +153,12 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  // 尽早绑定原生通知 channel，绑定完成后通知 native flush pending 事件
-  await _runStartupTask(
-    'NotificationService.bindNativeChannel',
-    NotificationService.bindNativeChannel(),
-    timeout: const Duration(seconds: 1),
-  );
   _configureRuntimeCaches();
-
-  // 🚀 核心修复：桌面端 SQL 引擎初始化 (解决 databaseFactory not initialized)
-  await _runStartupTask(
-    'PlatformBootstrap.initDatabaseFactory',
-    PlatformBootstrap.initDatabaseFactory(),
-    timeout: const Duration(seconds: 2),
-  );
-
-  await _runStartupTask(
-    'PageTransitions.init',
-    PageTransitions.init(),
-    timeout: const Duration(seconds: 1),
-  );
-
-  await _runStartupTask(
-    'AppDeepLinkService.init',
-    AppDeepLinkService.init(args),
-    timeout: const Duration(seconds: 2),
-  );
 
   // 原生端绕过 SSL 证书验证，解决迁移时旧服务器握手失败问题；Web 端 no-op。
   PlatformBootstrap.configureHttpOverrides();
 
-  // 初始化 WindowService（监听窗口关闭事件）
-  await _runStartupTask(
-    'WindowService.init',
-    PlatformBootstrap.initWindowService(),
-    timeout: const Duration(seconds: 3),
-  );
+  final platformReady = _initializePlatformBeforeHome(args);
 
   // 预热 SharedPreferences 缓存，避免启动时多次重复 load
   unawaited(StorageService.prefs);
@@ -169,12 +174,15 @@ Future<void> main(List<String> args) async {
   // There's no extra code required here; the `island_entry.islandMain`
   // function is available as a top-level symbol when compiled.
 
-  // 立刻运行 App，让引擎画出第一帧，彻底消除黑屏
-  runApp(const MyApp());
+  // 立刻运行 App。平台初始化在开屏可见期间并行完成，避免原生启动页
+  // 因多个串行 timeout 最坏阻塞数秒。
+  runApp(MyApp(platformReady: platformReady));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.platformReady});
+
+  final Future<void>? platformReady;
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -221,7 +229,7 @@ class _MyAppState extends State<MyApp> {
         });
       }
       _defaultSplashFallbackTimer =
-          Timer(const Duration(milliseconds: 2200), _onDefaultSplashComplete);
+          Timer(const Duration(milliseconds: 1500), _onDefaultSplashComplete);
       _scheduleSplashReadinessFallback();
       _initializeApp();
       _startSplashSequence();
@@ -336,6 +344,7 @@ class _MyAppState extends State<MyApp> {
         StorageService.isPrivacyPolicyAgreed(),
         FeatureGuideScreen.shouldShow()
             .timeout(const Duration(seconds: 2), onTimeout: () => false),
+        widget.platformReady ?? Future<void>.value(),
       ]).timeout(const Duration(seconds: 5));
 
       // 解析并发结果

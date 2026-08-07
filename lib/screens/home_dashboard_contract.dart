@@ -158,7 +158,12 @@ mixin _HomeDashboardContract {
 
   List<TElement> _safeListResult<TElement>(dynamic value);
 
-  Future<void> _loadAllData({bool deferred = false});
+  void _onScopedDataRefresh();
+
+  Future<void> _loadAllData({
+    bool deferred = false,
+    Set<DataRefreshDomain>? domains,
+  });
 
   Future<void> _checkCoachMarks();
 
@@ -200,7 +205,11 @@ mixin _HomeDashboardContract {
     bool syncPomodoro = true,
     bool syncTimeLogs = true,
     bool syncPlanBlocks = true,
+    bool syncFixedSchedules = true,
+    bool syncHabits = true,
   });
+
+  void _onScreenTimeDataRefresh();
 
   Future<void> _showLinkDiagnostics();
 
@@ -229,6 +238,8 @@ mixin _HomeDashboardContract {
   Future<void> _refreshWallpaper();
 
   void _setupWallpaperListeners();
+
+  void _disposeWallpaperListeners();
 
   Future<void> _fetchRandomWallpaper({bool isFallback = false});
 

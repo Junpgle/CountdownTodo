@@ -175,37 +175,53 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     // ... (rest of section definitions)
-                                    Widget courseSection =
-                                        ValueListenableBuilder<int>(
-                                      valueListenable: _scheduleRevision,
-                                      builder: (context, trigger, _) {
+                                    Widget courseSection = AnimatedBuilder(
+                                      animation: Listenable.merge([
+                                        _todosNotifier,
+                                        _courseDataNotifier,
+                                        _scheduleRevision,
+                                      ]),
+                                      builder: (context, _) {
                                         return CourseSectionWidget(
                                           dashboardCourseData:
                                               _dashboardCourseData,
                                           todos: _todos,
                                           isLight: isLight,
                                           username: widget.username,
-                                          refreshTrigger: trigger,
+                                          refreshTrigger:
+                                              _scheduleRevision.value,
                                           actionKey: _todayPlanChartKey,
                                         );
                                       },
                                     );
                                     Widget countdownSection =
-                                        CountdownSectionWidget(
-                                            historyKey: _countdownHistoryKey,
-                                            countdowns: _countdowns,
-                                            username: widget.username,
-                                            isLight: isLight,
-                                            addKey: _addCountdownKey,
-                                            onDataChanged: () {
-                                              _loadAllData();
-                                              _timelineRevision.value++;
-                                            });
-                                    Widget todoSection =
-                                        ValueListenableBuilder<int>(
-                                      valueListenable:
-                                          _todoUpdateSignalNotifier,
-                                      builder: (context, signal, _) {
+                                        ValueListenableBuilder<
+                                            List<CountdownItem>>(
+                                      valueListenable: _countdownsNotifier,
+                                      builder: (context, countdowns, _) =>
+                                          CountdownSectionWidget(
+                                              historyKey: _countdownHistoryKey,
+                                              countdowns: countdowns,
+                                              username: widget.username,
+                                              isLight: isLight,
+                                              addKey: _addCountdownKey,
+                                              onDataChanged: () {
+                                                _loadAllData(
+                                                  domains: const {
+                                                    DataRefreshDomain
+                                                        .countdowns,
+                                                  },
+                                                );
+                                                _timelineRevision.value++;
+                                              }),
+                                    );
+                                    Widget todoSection = AnimatedBuilder(
+                                      animation: Listenable.merge([
+                                        _todosNotifier,
+                                        _groupsNotifier,
+                                        _todoUpdateSignalNotifier,
+                                      ]),
+                                      builder: (context, _) {
                                         return TodoSectionWidget(
                                           folderKey: _todoFolderKey,
                                           historyKey: _todoHistoryKey,
@@ -315,31 +331,42 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         ),
                                       ),
                                     );
-                                    Widget mathSection = RepaintBoundary(
-                                      child: KeyedSubtree(
-                                        key: _mathCardKey,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            SectionHeader(
-                                                title: "数学测验",
-                                                icon: Icons.functions,
-                                                isLight: isLight),
-                                            MathStatsCard(
-                                                stats: _mathStats,
-                                                onTap: () async {
-                                                  await PageTransitions
-                                                      .pushFromRect(
-                                                    context: context,
-                                                    page: MathMenuScreen(
-                                                        username:
-                                                            widget.username),
-                                                    sourceKey: _mathCardKey,
-                                                  );
-                                                  _loadAllData(deferred: true);
-                                                }),
-                                          ],
+                                    Widget mathSection = ValueListenableBuilder<
+                                        Map<String, dynamic>>(
+                                      valueListenable: _mathStatsNotifier,
+                                      builder: (context, stats, _) =>
+                                          RepaintBoundary(
+                                        child: KeyedSubtree(
+                                          key: _mathCardKey,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              SectionHeader(
+                                                  title: "数学测验",
+                                                  icon: Icons.functions,
+                                                  isLight: isLight),
+                                              MathStatsCard(
+                                                  stats: stats,
+                                                  onTap: () async {
+                                                    await PageTransitions
+                                                        .pushFromRect(
+                                                      context: context,
+                                                      page: MathMenuScreen(
+                                                          username:
+                                                              widget.username),
+                                                      sourceKey: _mathCardKey,
+                                                    );
+                                                    _loadAllData(
+                                                      deferred: true,
+                                                      domains: const {
+                                                        DataRefreshDomain
+                                                            .mathStats,
+                                                      },
+                                                    );
+                                                  }),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     );
@@ -378,7 +405,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   sourceKey: _pomodoroCardKey,
                                                 );
                                                 _pomodoroRevision.value++;
-                                                _loadAllData();
                                               },
                                             ),
                                           );
@@ -405,7 +431,15 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                 ),
                                               );
                                               _scheduleRevision.value++;
-                                              _loadAllData();
+                                              _loadAllData(
+                                                domains: const {
+                                                  DataRefreshDomain.todos,
+                                                  DataRefreshDomain.planBlocks,
+                                                  DataRefreshDomain
+                                                      .fixedSchedules,
+                                                  DataRefreshDomain.courses,
+                                                },
+                                              );
                                             },
                                           );
                                         },
@@ -413,9 +447,14 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     );
 
                                     Map<String, Widget> sectionsMap = {
-                                      'banners': ValueListenableBuilder<int>(
-                                        valueListenable: _pomodoroTickNotifier,
-                                        builder: (_, __, ___) =>
+                                      'banners': AnimatedBuilder(
+                                        animation: Listenable.merge([
+                                          _pomodoroTickNotifier,
+                                          _todosNotifier,
+                                          _courseDataNotifier,
+                                          _scheduleRevision,
+                                        ]),
+                                        builder: (_, __) =>
                                             _buildUniversalBanner(isLight),
                                       ),
                                       'courses': courseSection,
@@ -452,7 +491,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                             24),
                                                   );
                                                   _habitsRevision.value++;
-                                                  _loadAllData();
                                                 },
                                               );
                                             },
@@ -550,58 +588,40 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   child: sectionsMap[key]!))
                                               .toList();
 
-                                      return IndexedStack(
-                                        index: _selectedTabIndex == 2 ? 1 : 0,
-                                        children: [
-                                          // Tab 1: 重要日、课程、待办
-                                          RepaintBoundary(
-                                            child: SingleChildScrollView(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 16,
-                                                      vertical: 16),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  ...tab1Widgets,
-                                                  if (_wallpaperCopyright !=
-                                                          null &&
-                                                      _wallpaperCopyright!
-                                                          .isNotEmpty)
-                                                    _buildWallpaperCopyright(
-                                                        isLight),
-                                                  const SizedBox(
-                                                      height: 100), // 为悬浮底栏留出空间
-                                                ],
-                                              ),
-                                            ),
+                                      final showFocusTab =
+                                          _selectedTabIndex == 2;
+                                      final activeWidgets = showFocusTab
+                                          ? tab3Widgets
+                                          : tab1Widgets;
+                                      final hasCopyright =
+                                          _wallpaperCopyright?.isNotEmpty ??
+                                              false;
+                                      return RepaintBoundary(
+                                        child: ListView.builder(
+                                          key: PageStorageKey<String>(
+                                            showFocusTab
+                                                ? 'home-focus-sections'
+                                                : 'home-main-sections',
                                           ),
-                                          // Tab 2 (mapped to index 2 in bottom bar): 今日专注、屏幕时间
-                                          RepaintBoundary(
-                                            child: SingleChildScrollView(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 16,
-                                                      vertical: 16),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  ...tab3Widgets,
-                                                  if (_wallpaperCopyright !=
-                                                          null &&
-                                                      _wallpaperCopyright!
-                                                          .isNotEmpty)
-                                                    _buildWallpaperCopyright(
-                                                        isLight),
-                                                  const SizedBox(
-                                                      height: 100), // 为悬浮底栏留出空间
-                                                ],
-                                              ),
-                                            ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 16,
                                           ),
-                                        ],
+                                          itemCount: activeWidgets.length +
+                                              (hasCopyright ? 1 : 0) +
+                                              1,
+                                          itemBuilder: (context, index) {
+                                            if (index < activeWidgets.length) {
+                                              return activeWidgets[index];
+                                            }
+                                            if (hasCopyright &&
+                                                index == activeWidgets.length) {
+                                              return _buildWallpaperCopyright(
+                                                  isLight);
+                                            }
+                                            return const SizedBox(height: 100);
+                                          },
+                                        ),
                                       );
                                     }
 
@@ -746,7 +766,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               if (mounted) {
                 _pomodoroRevision.value++;
                 _timelineRevision.value++;
-                _loadAllData(deferred: true);
               }
             },
             tooltip: '番茄钟',
@@ -770,7 +789,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   if (mounted) {
                     _scheduleRevision.value++;
                     _timelineRevision.value++;
-                    await _loadAllData(deferred: true);
+                    await _loadAllData(
+                      deferred: true,
+                      domains: const {DataRefreshDomain.fixedSchedules},
+                    );
                   }
                 },
                 onTodoAdded: (todo) async {
@@ -789,8 +811,10 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   _rescheduleAlarms();
                   await WidgetService.updateTodoWidget(allTodos);
                   if (mounted) {
-                    await _loadAllData(deferred: true);
-                    setState(() {});
+                    await _loadAllData(
+                      deferred: true,
+                      domains: const {DataRefreshDomain.todos},
+                    );
                   }
                 },
                 onTodosBatchAdded: (todos) async {
@@ -812,7 +836,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                   _syncTodoNotification();
                   _rescheduleAlarms();
                   await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) await _loadAllData(deferred: true);
+                  if (mounted) {
+                    await _loadAllData(
+                      deferred: true,
+                      domains: const {DataRefreshDomain.todos},
+                    );
+                  }
                 },
                 onLLMResultsParsed:
                     (results, imagePath, originalText, tUuid, tName) {
@@ -916,7 +945,14 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               sourceKey: GlobalKey(),
             );
             _loadSemesterSettings();
-            _loadAllData(deferred: true);
+            _loadAllData(
+              deferred: true,
+              domains: const {
+                DataRefreshDomain.todos,
+                DataRefreshDomain.planBlocks,
+                DataRefreshDomain.fixedSchedules,
+              },
+            );
           });
         },
         onHabits: () {
@@ -928,7 +964,6 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
               sourceKey: _habitsCardKey,
             );
             _habitsRevision.value++;
-            _loadAllData(deferred: true);
           });
         },
         onChangelog: () {
@@ -1202,23 +1237,84 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
   }
 
-  // 🚀 辅助方法：内容级深度比较，用于按需刷新
-  bool _isListEqual(List a, List b) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
+  bool _isRevisionedEntityEqual(Object? a, Object? b) {
+    if (a is TodoItem && b is TodoItem) {
+      return a.id == b.id &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.isDone == b.isDone &&
+          a.isDeleted == b.isDeleted &&
+          a.hasConflict == b.hasConflict;
     }
-    return true;
+    if (a is TodoGroup && b is TodoGroup) {
+      return a.id == b.id &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.isExpanded == b.isExpanded &&
+          a.isDeleted == b.isDeleted &&
+          a.hasConflict == b.hasConflict;
+    }
+    if (a is CountdownItem && b is CountdownItem) {
+      return a.id == b.id &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.isCompleted == b.isCompleted &&
+          a.isDeleted == b.isDeleted &&
+          a.hasConflict == b.hasConflict;
+    }
+    if (a is TodoPlanBlock && b is TodoPlanBlock) {
+      return a.id == b.id &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.status == b.status &&
+          a.isDeleted == b.isDeleted;
+    }
+    if (a is FixedScheduleItem && b is FixedScheduleItem) {
+      return a.id == b.id &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.status == b.status &&
+          a.isDeleted == b.isDeleted;
+    }
+    if (a is CourseItem && b is CourseItem) {
+      return a.uuid == b.uuid &&
+          a.version == b.version &&
+          a.updatedAt == b.updatedAt &&
+          a.isDeleted == b.isDeleted;
+    }
+    return false;
+  }
+
+  bool _isDeepValueEqual(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null || a.runtimeType != b.runtimeType) return false;
+    if (_isRevisionedEntityEqual(a, b)) return true;
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var index = 0; index < a.length; index++) {
+        if (!_isDeepValueEqual(a[index], b[index])) return false;
+      }
+      return true;
+    }
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_isDeepValueEqual(a[key], b[key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return a == b;
+  }
+
+  // 内容级比较用于阻止相同数据库快照触发无意义的模块重建。
+  bool _isListEqual(List a, List b) {
+    return _isDeepValueEqual(a, b);
   }
 
   bool _isMapEqual(Map a, Map b) {
-    if (identical(a, b)) return true;
-    if (a.length != b.length) return false;
-    for (final key in a.keys) {
-      if (!b.containsKey(key) || a[key] != b[key]) return false;
-    }
-    return true;
+    return _isDeepValueEqual(a, b);
   }
 
   Widget _buildDashboardSkeleton(bool isLight) {

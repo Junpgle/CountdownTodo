@@ -147,7 +147,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   TodoClassificationSuggestion? _classificationSuggestion;
   Timer? _estimationDebounce;
   DateTime? _suggestedDueDate;
-  late Timer _timer;
   List<TodoGroup> _localTodoGroups = [];
 
   @override
@@ -161,9 +160,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_localTodoGroups.isEmpty) {
       _loadTodoGroups();
     }
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -314,7 +310,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
     _dotsController.dispose();
-    _timer.cancel();
     super.dispose();
   }
 

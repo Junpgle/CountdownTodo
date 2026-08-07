@@ -128,7 +128,6 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
       case 'TEAM_REMOVED':
         // debugPrint('🚀 [协同] 收到强制移除信号，立即执行同步与本地清理...');
         await _handleManualSync(silent: true);
-        if (mounted) _loadAllData();
         break;
 
       case 'TEAM_UPDATE':
@@ -309,6 +308,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startRemotePomodoroTicker(int targetEndMs, bool isCountUp) {
+    if (!_isDashboardInForeground) {
+      _stopRemotePomodoroTicker();
+      return;
+    }
     _remotePomodoroTicker?.cancel();
     _remotePomodoroTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
@@ -316,7 +319,11 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         return;
       }
       if (isCountUp) {
-        _remotePomodoroRemaining++;
+        final startedAt = _remotePomodoro?.timestamp;
+        _remotePomodoroRemaining = startedAt == null
+            ? _remotePomodoroRemaining + 1
+            : ((DateTime.now().millisecondsSinceEpoch - startedAt) / 1000)
+                .floor();
         _pomodoroTickNotifier.value++;
       } else {
         final rem =
@@ -388,6 +395,10 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
   }
 
   void _startLocalTicker(bool isCountUp) {
+    if (!_isDashboardInForeground) {
+      _stopLocalTicker();
+      return;
+    }
     _localPomodoroTicker?.cancel();
     _localPomodoroTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted || _localPomodoro == null) {
@@ -500,7 +511,6 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         _pomodoroRevision.value++;
         _scheduleRevision.value++;
         _timelineRevision.value++;
-        _loadAllData();
       }
     } catch (e) {
       if (!mounted) return;
@@ -520,7 +530,6 @@ mixin _HomeDashboardPomodoroMixin on _HomeDashboardStateBase {
         _pomodoroRevision.value++;
         _scheduleRevision.value++;
         _timelineRevision.value++;
-        _loadAllData();
       }
     } catch (e) {
       if (!mounted) return;
