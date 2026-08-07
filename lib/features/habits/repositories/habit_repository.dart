@@ -110,7 +110,7 @@ abstract final class HabitRepository {
 
     await HabitStorage.saveRuleRevisions([ruleForGoal]);
     await HabitStorage.saveHabitGoals([goal]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     return goal;
   }
 
@@ -249,7 +249,7 @@ abstract final class HabitRepository {
   static Future<void> updateGoal(HabitGoal goal, {String username = ''}) async {
     goal.markAsChanged();
     await HabitStorage.saveHabitGoals([goal]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
   }
 
   /// 修改目标规则。
@@ -290,7 +290,7 @@ abstract final class HabitRepository {
       if (current != null) goal.currentRuleUuid = current.uuid;
       await HabitStorage.saveRuleRevisions(allRules);
       await HabitStorage.saveHabitGoals([goal]);
-      StorageService.triggerRefresh();
+      StorageService.triggerRefresh(const {DataRefreshDomain.habits});
       return;
     }
 
@@ -318,7 +318,7 @@ abstract final class HabitRepository {
         ..markAsChanged();
       await HabitStorage.saveRuleRevisions([current]);
       await HabitStorage.saveHabitGoals([goal]);
-      StorageService.triggerRefresh();
+      StorageService.triggerRefresh(const {DataRefreshDomain.habits});
       return;
     }
 
@@ -362,7 +362,7 @@ abstract final class HabitRepository {
     changes.add(newRule);
     await HabitStorage.saveRuleRevisions(changes);
     await HabitStorage.saveHabitGoals([goal]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
   }
 
   /// 归档 / 取消归档习惯。
@@ -371,7 +371,7 @@ abstract final class HabitRepository {
     goal.isArchived = archived;
     goal.markAsChanged();
     await HabitStorage.saveHabitGoals([goal]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
   }
 
   /// 逻辑删除习惯。
@@ -389,7 +389,7 @@ abstract final class HabitRepository {
     }
     await HabitStorage.saveRuleRevisions(changes);
     await HabitStorage.saveHabitGoals([goal]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
   }
 
   // ── 打卡 ─────────────────────────────────────────────
@@ -430,7 +430,7 @@ abstract final class HabitRepository {
         : 0;
     checkIn.replacedPrevious = replacedCount > 0;
     await HabitStorage.saveCheckIns([checkIn]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     _rescheduleReminders(goal.uuid);
     return checkIn;
   }
@@ -438,7 +438,7 @@ abstract final class HabitRepository {
   static Future<void> updateCheckIn(HabitCheckIn checkIn) async {
     checkIn.markAsChanged();
     await HabitStorage.saveCheckIns([checkIn]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     _rescheduleReminders(checkIn.habitUuid);
   }
 
@@ -482,7 +482,7 @@ abstract final class HabitRepository {
         ..markAsChanged();
     }
     await HabitStorage.saveCheckIns(replaced);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     _rescheduleReminders(goal.uuid);
     return replaced.length;
   }
@@ -493,7 +493,7 @@ abstract final class HabitRepository {
     checkIn.isDeleted = true;
     checkIn.markAsChanged();
     await HabitStorage.saveCheckIns([checkIn]);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {DataRefreshDomain.habits});
     _rescheduleReminders(checkIn.habitUuid);
   }
 
@@ -558,7 +558,10 @@ abstract final class HabitRepository {
     todo.isDone = !todo.isDone;
     todo.markAsChanged();
     await StorageService.updateSingleTodo(username, todo);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {
+      DataRefreshDomain.todos,
+      DataRefreshDomain.habits,
+    });
     _rescheduleReminders(goal.uuid);
     return true;
   }
@@ -580,7 +583,10 @@ abstract final class HabitRepository {
     todo.isDone = done;
     todo.markAsChanged();
     await StorageService.updateSingleTodo(username, todo);
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {
+      DataRefreshDomain.todos,
+      DataRefreshDomain.habits,
+    });
     _rescheduleReminders(goal.uuid);
   }
 

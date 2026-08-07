@@ -35,6 +35,36 @@ part 'storage_service_conflict.dart';
 part 'storage_service_settings.dart';
 part 'storage_service_contract.dart';
 
+enum DataRefreshDomain {
+  todos,
+  todoGroups,
+  countdowns,
+  mathStats,
+  courses,
+  planBlocks,
+  fixedSchedules,
+  timeLogs,
+  pomodoro,
+  habits,
+  teams,
+  all,
+}
+
+@immutable
+class DataRefreshSignal {
+  const DataRefreshSignal({required this.revision, required this.domains});
+
+  const DataRefreshSignal.initial()
+      : revision = 0,
+        domains = const {DataRefreshDomain.all};
+
+  final int revision;
+  final Set<DataRefreshDomain> domains;
+
+  bool affects(DataRefreshDomain domain) =>
+      domains.contains(DataRefreshDomain.all) || domains.contains(domain);
+}
+
 class StorageService {
   static final _storage = _StorageServiceImpl();
 
@@ -227,6 +257,12 @@ class StorageService {
   static ValueNotifier<int> get dataRefreshNotifier =>
       _storage.dataRefreshNotifier;
 
+  static ValueNotifier<int> get screenTimeRefreshNotifier =>
+      _storage.screenTimeRefreshNotifier;
+
+  static ValueNotifier<DataRefreshSignal> get scopedDataRefreshNotifier =>
+      _storage.scopedDataRefreshNotifier;
+
   static ValueNotifier<int> get wallpaperRefreshNotifier =>
       _storage.wallpaperRefreshNotifier;
 
@@ -313,7 +349,10 @@ class StorageService {
           String username, DateTime day) =>
       _storage.getPlanBlocksByDay(username, day);
 
-  static void triggerRefresh() => _storage.triggerRefresh();
+  static void triggerRefresh([
+    Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
+  ]) =>
+      _storage.triggerRefresh(domains);
 
   static void triggerWallpaperRefresh() => _storage.triggerWallpaperRefresh();
 
@@ -569,6 +608,7 @@ class StorageService {
     bool forceFullSync = false,
     bool uploadAllLocal = false,
     BuildContext? context,
+    bool syncScreenTime = true,
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,
@@ -581,6 +621,7 @@ class StorageService {
           forceFullSync: forceFullSync,
           uploadAllLocal: uploadAllLocal,
           context: context,
+          syncScreenTime: syncScreenTime,
           syncTimeLogs: syncTimeLogs,
           syncPomodoro: syncPomodoro,
           syncPlanBlocks: syncPlanBlocks,

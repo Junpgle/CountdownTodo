@@ -2,10 +2,29 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageCore on _StorageServiceBase {
-  void triggerRefresh() {
+  void triggerRefresh([
+    Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
+  ]) {
+    if (domains.contains(DataRefreshDomain.all)) {
+      _pendingRefreshDomains
+        ..clear()
+        ..add(DataRefreshDomain.all);
+    } else if (!_pendingRefreshDomains.contains(DataRefreshDomain.all)) {
+      _pendingRefreshDomains.addAll(domains);
+    }
     _refreshDebouncer?.cancel();
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
+      final emittedDomains = Set<DataRefreshDomain>.unmodifiable(
+        _pendingRefreshDomains.isEmpty
+            ? const {DataRefreshDomain.all}
+            : _pendingRefreshDomains,
+      );
+      _pendingRefreshDomains.clear();
       dataRefreshNotifier.value++;
+      scopedDataRefreshNotifier.value = DataRefreshSignal(
+        revision: scopedDataRefreshNotifier.value.revision + 1,
+        domains: emittedDomains,
+      );
       onDataChangedHook?.call();
     });
   }
@@ -170,7 +189,10 @@ mixin _StorageCore on _StorageServiceBase {
       }
 
       // 3. 触发 UI 刷新信号
-      triggerRefresh();
+      triggerRefresh({
+        if (table == 'todos') DataRefreshDomain.todos,
+        if (table == 'countdowns') DataRefreshDomain.countdowns,
+      });
       return true;
     } catch (e) {
       debugPrint("❌ rollbackLocalItem error: $e");
@@ -348,7 +370,10 @@ mixin _StorageCore on _StorageServiceBase {
         hasSubstantialChange: _hasSubstantialChange,
         recordLocalAudit: _recordLocalAuditOptimized,
         requestSync: requestSync,
-        onCommitted: _inflightTodoRequests.clear,
+        onCommitted: () {
+          _inflightTodoRequests.clear();
+          triggerRefresh(const {DataRefreshDomain.countdowns});
+        },
       );
   Future<void> _clearGhostConflictFlags(dynamic db) =>
       StorageConflictCleanup.clearGhostConflictFlags(db);

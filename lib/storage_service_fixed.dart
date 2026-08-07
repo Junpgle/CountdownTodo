@@ -117,7 +117,9 @@ mixin _StorageFixed on _StorageServiceBase {
     }
     if (wroteAny) await batch.commit(noResult: true);
     if (sync && wroteAny) requestSync(username);
-    triggerRefresh();
+    if (wroteAny) {
+      triggerRefresh(const {DataRefreshDomain.fixedSchedules});
+    }
   }
 
   Future<List<FixedScheduleItem>> getFixedSchedules(
@@ -264,7 +266,9 @@ mixin _StorageFixed on _StorageServiceBase {
     }
 
     if (sync) requestSync(username);
-    triggerRefresh();
+    if (dedupeList.isNotEmpty) {
+      triggerRefresh(const {DataRefreshDomain.planBlocks});
+    }
   }
 
   Future<List<TodoPlanBlock>> getPlanBlocks(String username,
@@ -299,8 +303,23 @@ mixin _StorageFixed on _StorageServiceBase {
 
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
       String username, String todoId) async {
-    final all = await getPlanBlocks(username);
-    return all.where((b) => b.todoId == todoId).toList();
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        'todo_plan_blocks',
+        where: 'todo_uuid = ? AND is_deleted = 0',
+        whereArgs: [todoId],
+        orderBy: 'start_time ASC',
+      );
+      if (maps.length > 50) {
+        return compute(_parsePlanBlockItemsIsolate, maps);
+      }
+      return maps.map(TodoPlanBlock.fromJson).toList();
+    } catch (e) {
+      debugPrint('⚠️ PlanBlocks 按待办查询异常: $e');
+      final all = await getPlanBlocks(username);
+      return all.where((block) => block.todoId == todoId).toList();
+    }
   }
 
   Future<List<TodoPlanBlock>> getPlanBlocksByDay(

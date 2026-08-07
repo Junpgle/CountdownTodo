@@ -182,8 +182,16 @@ abstract class _StorageServiceBase {
     'message': '',
   });
   final ValueNotifier<int> dataRefreshNotifier = ValueNotifier<int>(0);
+
+  /// Dedicated cache refresh signal for screen-time consumers. Keeping this
+  /// beside StorageService avoids a reverse import from the storage layer to
+  /// ScreenTimeService while still notifying every cache writer.
+  final ValueNotifier<int> screenTimeRefreshNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<DataRefreshSignal> scopedDataRefreshNotifier =
+      ValueNotifier<DataRefreshSignal>(const DataRefreshSignal.initial());
   final ValueNotifier<int> wallpaperRefreshNotifier = ValueNotifier<int>(0);
   Timer? _refreshDebouncer;
+  final Set<DataRefreshDomain> _pendingRefreshDomains = {};
   Timer? _syncDebouncer;
   String? _queuedSyncUsername;
   int _lastSyncRequestAt = 0;
@@ -230,7 +238,9 @@ abstract class _StorageServiceBase {
   Future<List<TodoPlanBlock>> getPlanBlocksByTodo(
       String username, String todoId);
   Future<List<TodoPlanBlock>> getPlanBlocksByDay(String username, DateTime day);
-  void triggerRefresh();
+  void triggerRefresh([
+    Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
+  ]);
   void triggerWallpaperRefresh();
   void setForceFlushProtectedUuids(Set<String> uuids);
   Future<void> _updateOplogRowsByIds(
@@ -293,7 +303,10 @@ abstract class _StorageServiceBase {
       bool recomputeScheduleConflicts = true});
   bool _hasSubstantialChange(Map<String, dynamic> before,
       Map<String, dynamic> after, List<String> fields);
-  Future<void> _refreshTodoScheduleConflicts(String username);
+  Future<void> _refreshTodoScheduleConflicts(
+    String username, {
+    Set<String>? affectedDayKeys,
+  });
   Future<Map<String, int>> scanAllTodoConflicts(String username);
   Future<void> clearLocalTodoScheduleConflicts(String username);
   Future<void> ignoreLocalScheduleConflict(String username, TodoItem item);
@@ -426,6 +439,7 @@ abstract class _StorageServiceBase {
     bool forceFullSync = false,
     bool uploadAllLocal = false,
     BuildContext? context,
+    bool syncScreenTime = true,
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,

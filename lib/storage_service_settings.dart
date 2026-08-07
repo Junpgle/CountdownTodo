@@ -786,7 +786,13 @@ mixin _StorageSettings on _StorageServiceBase {
             : '${keyTodoGroups}_${prefs.getString(keyCurrentUser) ?? 'default'}';
     await prefs.remove(key);
 
-    triggerRefresh();
+    triggerRefresh({
+      if (table == 'todos') DataRefreshDomain.todos,
+      if (table == 'todo_groups') DataRefreshDomain.todoGroups,
+      if (table == 'countdowns') DataRefreshDomain.countdowns,
+      if (table == 'todo_plan_blocks') DataRefreshDomain.planBlocks,
+      if (table == 'fixed_schedules') DataRefreshDomain.fixedSchedules,
+    });
     recentlyResolvedUuids.add(uuid);
     recentlyResolvedTimes[uuid] = DateTime.now();
     debugPrint(
