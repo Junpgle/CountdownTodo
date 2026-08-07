@@ -42,7 +42,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _restoreCachedSnapshot();
     _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
@@ -66,6 +66,18 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   void _onDataRefreshed() {
     if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    const relevantDomains = {
+      DataRefreshDomain.teams,
+      DataRefreshDomain.todos,
+      DataRefreshDomain.todoGroups,
+      DataRefreshDomain.countdowns,
+      DataRefreshDomain.habits,
+    };
+    if (!signal.domains.contains(DataRefreshDomain.all) &&
+        signal.domains.intersection(relevantDomains).isEmpty) {
+      return;
+    }
     _loadTeams(isSilent: true);
   }
 
@@ -93,7 +105,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    StorageService.dataRefreshNotifier.removeListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.removeListener(_onDataRefreshed);
     _wsSub?.cancel();
     super.dispose();
   }

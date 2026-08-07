@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -48,6 +49,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   List<PomodoroTag> _tags = [];
   List<PomodoroRecord> _pomodoroRecords = [];
   final Set<String> _mappedBlockIds = <String>{};
+  int _loadGeneration = 0;
 
   bool _showCoachMarks = false;
 
@@ -58,7 +60,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final now = DateTime.now();
     final initial = widget.initialDate ?? now;
     _focusedDate = DateTime(initial.year, initial.month, initial.day);
-    StorageService.dataRefreshNotifier.addListener(_onDataRefresh);
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _loadData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -110,7 +112,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    StorageService.dataRefreshNotifier.removeListener(_onDataRefresh);
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_onScopedDataRefresh);
     super.dispose();
   }
 
@@ -119,23 +122,43 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (state == AppLifecycleState.resumed) _loadData();
   }
 
-  void _onDataRefresh() {
-    if (mounted) _loadData();
+  void _onScopedDataRefresh() {
+    if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.todos) ||
+        signal.affects(DataRefreshDomain.todoGroups) ||
+        signal.affects(DataRefreshDomain.courses) ||
+        signal.affects(DataRefreshDomain.planBlocks) ||
+        signal.affects(DataRefreshDomain.pomodoro)) {
+      unawaited(_loadData());
+    }
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final dayEnd = _focusedDate.add(const Duration(days: 1));
-    final results = await Future.wait([
-      StorageService.getPlanBlocksByDay(widget.username, _focusedDate),
-      StorageService.getTodos(widget.username),
-      StorageService.getTodoGroups(widget.username),
-      CourseService.getAllCourses(widget.username),
-      PomodoroService.getTags(),
-      PomodoroService.getRecordsInRange(_focusedDate, dayEnd),
-    ]);
-
     if (!mounted) return;
+    final loadGeneration = ++_loadGeneration;
+    final focusedDate = _focusedDate;
+    final dayEnd = focusedDate.add(const Duration(days: 1));
+    setState(() => _isLoading = true);
+    late final List<dynamic> results;
+    try {
+      results = await Future.wait([
+        StorageService.getPlanBlocksByDay(widget.username, focusedDate),
+        StorageService.getTodos(widget.username),
+        StorageService.getTodoGroups(widget.username),
+        CourseService.getAllCourses(widget.username),
+        PomodoroService.getTags(),
+        PomodoroService.getRecordsInRange(focusedDate, dayEnd),
+      ]);
+    } catch (error) {
+      debugPrint('TodoPlan load failed: $error');
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
+
+    if (!mounted || loadGeneration != _loadGeneration) return;
 
     final blocks =
         (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
@@ -149,7 +172,7 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     final records = (results[5] as List<PomodoroRecord>)
         .where((record) =>
             !record.isDeleted &&
-            record.startTime >= _focusedDate.millisecondsSinceEpoch &&
+            record.startTime >= focusedDate.millisecondsSinceEpoch &&
             record.startTime < dayEnd.millisecondsSinceEpoch)
         .toList();
 
@@ -169,6 +192,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (missedBlocks.isNotEmpty) {
       await StorageService.savePlanBlocks(widget.username, missedBlocks);
     }
+
+    if (!mounted || loadGeneration != _loadGeneration) return;
 
     setState(() {
       _planBlocks = blocks;
@@ -268,16 +293,16 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     setState(() {
       final date = _focusedDate.subtract(const Duration(days: 1));
       _focusedDate = DateTime(date.year, date.month, date.day);
-      _loadData();
     });
+    unawaited(_loadData());
   }
 
   void _nextDay() {
     setState(() {
       final date = _focusedDate.add(const Duration(days: 1));
       _focusedDate = DateTime(date.year, date.month, date.day);
-      _loadData();
     });
+    unawaited(_loadData());
   }
 
   void _pickDate() async {
@@ -290,8 +315,8 @@ class _TodoPlanScreenState extends State<TodoPlanScreen>
     if (picked != null) {
       setState(() {
         _focusedDate = picked;
-        _loadData();
       });
+      unawaited(_loadData());
     }
   }
 

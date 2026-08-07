@@ -411,15 +411,23 @@ class ApiService {
     }
   }
 
-  static Future<List<dynamic>> fetchScreenTime(int userId, String date) async {
+  static Future<List<dynamic>> fetchScreenTime(
+    int userId,
+    String date, {
+    bool throwOnError = false,
+  }) async {
     try {
       final response = await _client.get(
           Uri.parse(
               '$_effectiveBaseUrl/api/screen_time?user_id=$userId&date=$date'),
           headers: _getHeaders());
       if (response.statusCode == 200) return jsonDecode(response.body);
+      if (throwOnError) {
+        throw StateError('screen_time HTTP ${response.statusCode}');
+      }
       return [];
     } catch (e) {
+      if (throwOnError) rethrow;
       return [];
     }
   }

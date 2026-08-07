@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -138,6 +139,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<TodoPlanBlock> _allPlanBlocks = [];
   _EntryMode _entryMode = _EntryMode.log;
   bool _showCoachMarks = false;
+  int _loadGeneration = 0;
+  bool _didOpenInitialTag = false;
 
   void _checkCoachMarks() async {
     if (!mounted || _showCoachMarks) return;
@@ -215,6 +218,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     super.initState();
     _weekStart = _dayStart(DateTime.now())
         .subtract(Duration(days: DateTime.now().weekday - 1));
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _loadData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -222,14 +226,41 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
+  void _onScopedDataRefresh() {
+    if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.timeLogs) ||
+        signal.affects(DataRefreshDomain.pomodoro) ||
+        signal.affects(DataRefreshDomain.todos) ||
+        signal.affects(DataRefreshDomain.todoGroups) ||
+        signal.affects(DataRefreshDomain.planBlocks)) {
+      unawaited(_loadData());
+    }
+  }
+
+  @override
+  void dispose() {
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_onScopedDataRefresh);
+    super.dispose();
+  }
+
   Future<void> _loadData({bool forceSync = false}) async {
     if (!mounted) return;
+    final loadGeneration = ++_loadGeneration;
     setState(() => _isLoading = true);
 
     if (forceSync) {
       try {
         await StorageService.syncData(widget.username,
-            syncTimeLogs: true, syncTodos: false, syncCountdowns: false);
+            syncTimeLogs: true,
+            syncScreenTime: false,
+            syncTodos: false,
+            syncCountdowns: false,
+            syncPomodoro: false,
+            syncPlanBlocks: false,
+            syncFixedSchedules: false,
+            syncHabits: false);
       } catch (e) {
         if (mounted) {
           AppSnackBars.error(context, '同步失败: $e');
@@ -238,16 +269,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
 
     // 🚀 核心优化：并行加载所有统计所需数据
-    final results = await Future.wait([
-      PomodoroService.getTags(),
-      StorageService.getTimeLogs(widget.username),
-      PomodoroService.getRecords(),
-      StorageService.getTodos(widget.username),
-      StorageService.getPlanBlocks(widget.username),
-      StorageService.getTodoGroups(widget.username),
-    ]);
+    late final List<dynamic> results;
+    try {
+      results = await Future.wait([
+        PomodoroService.getTags(),
+        StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
+        StorageService.getTodos(widget.username),
+        StorageService.getPlanBlocks(widget.username),
+        StorageService.getTodoGroups(widget.username),
+      ]);
+    } catch (error) {
+      debugPrint('TimeLog load failed: $error');
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
 
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
 
     setState(() {
       _allTags = results[0] as List<PomodoroTag>;
@@ -266,7 +306,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
 
     // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
-    if (widget.initialTagUuid != null) {
+    if (widget.initialTagUuid != null && !_didOpenInitialTag) {
+      _didOpenInitialTag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final tag =
             _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;

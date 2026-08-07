@@ -55,12 +55,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   int _totalConflictCount = 0;
   bool _isLoading = true;
   bool _isCheckingClipboard = false;
+  int _teamLoadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _restoreCachedSnapshot();
     _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
@@ -85,6 +86,18 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   void _onDataRefreshed() {
     if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    const relevantDomains = {
+      DataRefreshDomain.teams,
+      DataRefreshDomain.todos,
+      DataRefreshDomain.todoGroups,
+      DataRefreshDomain.countdowns,
+      DataRefreshDomain.habits,
+    };
+    if (!signal.domains.contains(DataRefreshDomain.all) &&
+        signal.domains.intersection(relevantDomains).isEmpty) {
+      return;
+    }
     _loadTeams(isSilent: true);
   }
 
@@ -112,7 +125,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    StorageService.dataRefreshNotifier.removeListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.removeListener(_onDataRefreshed);
     _wsSub?.cancel();
     super.dispose();
   }
@@ -303,6 +316,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   Future<void> _loadTeams({bool isSilent = false}) async {
+    final loadGeneration = ++_teamLoadGeneration;
     final hasLocalContent = _teams.isNotEmpty || _myInvitations.isNotEmpty;
     if (!isSilent && !hasLocalContent) {
       setState(() => _isLoading = true);
@@ -325,38 +339,40 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       if (adminTeamUuids.isNotEmpty) {
         final pendingResults = await Future.wait(adminTeamUuids
             .map((uuid) => ApiService.fetchPendingRequests(uuid)));
+        if (!mounted || loadGeneration != _teamLoadGeneration) return;
         for (int i = 0; i < adminTeamUuids.length; i++) {
           pendingCounts[adminTeamUuids[i]] = pendingResults[i].length;
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
-          _myInvitations = invitations;
-          _teamPendingCounts = pendingCounts;
-          _isLoading = false;
-          // 🚀 默认选中第一个
-          if (_selectedTeam == null && _teams.isNotEmpty) {
-            _selectedTeam = _teams.first;
-          } else if (_selectedTeam != null) {
-            // 同步更新已选中的团队数据
-            try {
-              _selectedTeam =
-                  _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
-            } catch (_) {
-              _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
-            }
+      if (!mounted || loadGeneration != _teamLoadGeneration) return;
+      setState(() {
+        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+        _myInvitations = invitations;
+        _teamPendingCounts = pendingCounts;
+        _isLoading = false;
+        // 🚀 默认选中第一个
+        if (_selectedTeam == null && _teams.isNotEmpty) {
+          _selectedTeam = _teams.first;
+        } else if (_selectedTeam != null) {
+          // 同步更新已选中的团队数据
+          try {
+            _selectedTeam =
+                _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
+          } catch (_) {
+            _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
           }
-        });
-        _cachedTeams = List<Team>.from(_teams);
-        _cachedInvitations = List<dynamic>.from(_myInvitations);
-        _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
-      }
+        }
+      });
+      _cachedTeams = List<Team>.from(_teams);
+      _cachedInvitations = List<dynamic>.from(_myInvitations);
+      _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
 
-      unawaited(_loadTeamConflictCounts());
+      unawaited(_loadTeamConflictCounts(loadGeneration));
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && loadGeneration == _teamLoadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
 
     // 🚀 核心：处理搜索直达逻辑
@@ -367,7 +383,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     }
   }
 
-  Future<void> _loadTeamConflictCounts() async {
+  Future<void> _loadTeamConflictCounts(int loadGeneration) async {
     try {
       final results = await Future.wait([
         StorageService.getTodos(widget.username, includeDeleted: true),
@@ -434,7 +450,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
           .where((rule) => !rule.isDeleted && rule.hasConflict)
           .length;
 
-      if (!mounted) return;
+      if (!mounted || loadGeneration != _teamLoadGeneration) return;
       setState(() {
         _teamConflictCounts = conflictCounts;
         _totalConflictCount = total;

@@ -23,6 +23,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   List<PomodoroRecord> _pomodoroRecords = [];
   final Set<String> _mappedBlockIds = <String>{};
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -95,6 +96,8 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    final loadGeneration = ++_loadGeneration;
     setState(() => _loading = true);
     final r = _range;
     final results = await Future.wait([
@@ -103,7 +106,7 @@ class _PlanBlockStatsScreenState extends State<PlanBlockStatsScreen> {
       CourseService.getAllCourses(widget.username),
       PomodoroService.getRecordsInRange(r.start, r.end),
     ]);
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
     final allBlocks =
         (results[0] as List<TodoPlanBlock>).where((b) => !b.isDeleted).toList();
     final todos =

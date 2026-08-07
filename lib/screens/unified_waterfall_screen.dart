@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models.dart';
@@ -19,21 +20,32 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   bool _isLoading = true;
   int _viewDays = 30; // 默认月视图
   DateTime _lastScaleTime = DateTime.now();
+  int _loadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _loadAllTeamData();
-    StorageService.dataRefreshNotifier.addListener(_loadAllTeamData);
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
   }
 
   @override
   void dispose() {
-    StorageService.dataRefreshNotifier.removeListener(_loadAllTeamData);
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_onScopedDataRefresh);
     super.dispose();
   }
 
+  void _onScopedDataRefresh() {
+    if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.todos)) {
+      unawaited(_loadAllTeamData());
+    }
+  }
+
   Future<void> _loadAllTeamData() async {
+    final loadGeneration = ++_loadGeneration;
     final todos = await StorageService.getTodos(widget.username);
     // 过滤并排序：仅显示未完成且未删除的，按截止时间（优先）或更新时间升序排列（时间轴顺序）
     final filtered = todos.where((t) => !t.isDeleted && !t.isDone).toList();
@@ -43,7 +55,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
       return timeA.compareTo(timeB);
     });
 
-    if (mounted) {
+    if (mounted && loadGeneration == _loadGeneration) {
       setState(() {
         _allCombinedTodos = filtered;
         _isLoading = false;

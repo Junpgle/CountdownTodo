@@ -83,7 +83,7 @@ class MacPomodoroStatusBarService {
     if (!Platform.isMacOS) return;
     if (_initialized) return;
     _initialized = true;
-    _activitySyncGeneration++;
+    final initGeneration = ++_activitySyncGeneration;
     _activityRestoreDeferred = deferOngoingActivityRestore;
     if (deferOngoingActivityRestore) {
       _scheduleActivityRestoreFallback();
@@ -104,6 +104,11 @@ class MacPomodoroStatusBarService {
     } catch (e) {
       debugPrint('[MacPomodoroStatusBar] init error: $e');
     }
+
+    // init() is asynchronous and the owning page can be disposed while the
+    // persisted run state is loading. Do not attach subscriptions after that
+    // disposal (or after a newer init cycle has started).
+    if (!_isActivitySyncCurrent(initGeneration)) return;
 
     _localSub = PomodoroService.onRunStateChanged.listen((state) {
       debugPrint('[MacPomodoroStatusBar] onRunStateChanged: ${state?.phase}');
@@ -139,8 +144,9 @@ class MacPomodoroStatusBarService {
       }
     });
 
-    StorageService.dataRefreshNotifier.addListener(_handleDataRefresh);
-    if (!deferOngoingActivityRestore) {
+    StorageService.scopedDataRefreshNotifier.addListener(_handleDataRefresh);
+    if (!deferOngoingActivityRestore &&
+        _isActivitySyncCurrent(initGeneration)) {
       await syncOngoingActivity();
     }
   }
@@ -618,6 +624,20 @@ class MacPomodoroStatusBarService {
   }
 
   static void _handleDataRefresh() {
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    const relevantDomains = {
+      DataRefreshDomain.todos,
+      DataRefreshDomain.todoGroups,
+      DataRefreshDomain.countdowns,
+      DataRefreshDomain.courses,
+      DataRefreshDomain.planBlocks,
+      DataRefreshDomain.fixedSchedules,
+      DataRefreshDomain.pomodoro,
+    };
+    if (!signal.domains.contains(DataRefreshDomain.all) &&
+        signal.domains.intersection(relevantDomains).isEmpty) {
+      return;
+    }
     // 倒数日、专注记录等数据变化后刷新已经启用过的概览。
     _scheduleIslandOverviewSync();
     // 首页冷启动期间会主动提供同一批已加载数据。此时不要抢先再扫一遍
@@ -800,13 +820,14 @@ class MacPomodoroStatusBarService {
   static void dispose() {
     _initialized = false;
     _activitySyncGeneration++;
+    _channel.setMethodCallHandler(null);
     _activitySyncPending = false;
     _activityRestoreDeferred = false;
     _localSub?.cancel();
     _localSub = null;
     _remoteSub?.cancel();
     _remoteSub = null;
-    StorageService.dataRefreshNotifier.removeListener(_handleDataRefresh);
+    StorageService.scopedDataRefreshNotifier.removeListener(_handleDataRefresh);
     _activityRestoreFallbackTimer?.cancel();
     _activityRestoreFallbackTimer = null;
     _activityDataRefreshFallbackTimer?.cancel();
