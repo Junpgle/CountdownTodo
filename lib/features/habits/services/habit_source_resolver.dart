@@ -68,7 +68,7 @@ abstract final class HabitSourceResolver {
     try {
       final records = await PomodoroService.getRecordsInRange(
         DateTime(from.year, from.month, from.day),
-        DateTime(to.year, to.month, to.day, 23, 59, 59),
+        DateTime(to.year, to.month, to.day + 1),
       );
       return records.where((r) {
         if (r.isDeleted || !r.isCompleted || r.hasConflict) return false;

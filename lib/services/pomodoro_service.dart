@@ -1080,13 +1080,13 @@ class PomodoroService {
     }
   }
 
-  /// 按时间范围查询（仅有效）
+  /// 按半开时间范围 `[from, to)` 查询有效记录。
   static Future<List<PomodoroRecord>> getRecordsInRange(
       DateTime from, DateTime to) async {
     try {
       final db = await DatabaseHelper.instance.database;
       final List<Map<String, dynamic>> maps = await db.query('pomodoro_records',
-          where: 'is_deleted = 0 AND start_time >= ? AND start_time <= ?',
+          where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
           whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
           orderBy: 'start_time DESC');
       if (maps.isNotEmpty) {
@@ -1101,7 +1101,7 @@ class PomodoroService {
     final fromMs = from.millisecondsSinceEpoch;
     final toMs = to.millisecondsSinceEpoch;
     return all
-        .where((r) => r.startTime >= fromMs && r.startTime <= toMs)
+        .where((r) => r.startTime >= fromMs && r.startTime < toMs)
         .toList();
   }
 
@@ -1524,10 +1524,56 @@ class PomodoroService {
   }
 
   /// 查询绑定到指定 todoUuid 的所有专注记录
-  static Future<List<PomodoroRecord>> getRecordsByTodoUuid(
-      String todoUuid) async {
-    final all = await getRecords();
-    return all.where((r) => r.todoUuid == todoUuid).toList();
+  static Future<List<PomodoroRecord>> getRecordsByTodoUuid(String todoUuid) =>
+      getRecordsByTodoUuids([todoUuid]);
+
+  /// 查询绑定到一组待办的有效专注记录。
+  ///
+  /// 编辑循环待办时，一个编辑对象可能对应多个历史 occurrence。这里直接
+  /// 按 todo_uuid 查询，避免先读取、反序列化全部专注历史再在 Dart 侧过滤。
+  static Future<List<PomodoroRecord>> getRecordsByTodoUuids(
+      Iterable<String> todoUuids) async {
+    final ids = todoUuids.where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return const <PomodoroRecord>[];
+
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final records = <PomodoroRecord>[];
+      const chunkSize = 500;
+      for (var start = 0; start < ids.length; start += chunkSize) {
+        final end =
+            start + chunkSize < ids.length ? start + chunkSize : ids.length;
+        final chunk = ids.sublist(start, end);
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final maps = await db.query(
+          'pomodoro_records',
+          where: 'is_deleted = 0 AND todo_uuid IN ($placeholders)',
+          whereArgs: chunk,
+          orderBy: 'start_time DESC',
+        );
+        records.addAll(maps.map(PomodoroRecord.fromJson));
+      }
+      records.sort((a, b) => b.startTime.compareTo(a.startTime));
+      if (records.isNotEmpty) return records;
+
+      // SQL 为空时，getRecords 会负责一次性的 Prefs -> SQL 迁移。已有
+      // SQL 历史但当前待办没有记录时直接返回，避免退回全表读取。
+      final count = Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM pomodoro_records'),
+          ) ??
+          0;
+      if (count > 0) return records;
+      final idsSet = ids.toSet();
+      final all = await getRecords();
+      return all.where((record) => idsSet.contains(record.todoUuid)).toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    } catch (_) {
+      // SQL 不可用时保留旧路径，保证历史 Prefs 数据仍能访问。
+      final idsSet = ids.toSet();
+      final all = await getRecords();
+      return all.where((record) => idsSet.contains(record.todoUuid)).toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    }
   }
 
   static Future<List<PomodoroRecord>> getSessions() => getRecords();

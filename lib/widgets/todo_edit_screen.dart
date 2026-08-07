@@ -145,10 +145,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (!mounted) return;
     final editingTodoId = _editingTodo.id;
     final todoIds = _focusRecordTodoIds(_editingTodo, widget.todos);
-    final records = (await PomodoroService.getRecords())
-        .where((record) => todoIds.contains(record.todoUuid))
-        .toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final records = await PomodoroService.getRecordsByTodoUuids(todoIds);
     if (!mounted || _editingTodo.id != editingTodoId) return;
     setState(() {
       _focusRecords = records;
