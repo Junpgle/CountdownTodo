@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../screens/course_screens.dart';
 import '../services/pomodoro_service.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 
 // ============================================================
@@ -78,6 +79,24 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
       });
       _chartAnimationController.forward(from: 0.0);
     }
+  }
+
+  /// BackdropFilter 在 Android 上会为卡片创建离屏纹理并触发整块背景模糊，
+  /// 统计卡片滚动或动画时容易造成 Raster Jank。Android 保留半透明卡片，
+  /// 其他平台继续使用原来的毛玻璃效果。
+  Widget _wrapGlass({
+    required BorderRadius borderRadius,
+    required Widget child,
+  }) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: AppPlatform.isAndroid
+          ? child
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: child,
+            ),
+    );
   }
 
   int get _totalSeconds => _records.fold(0, (s, r) => s + r.effectiveDuration);
@@ -190,49 +209,46 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
                     child: CircularProgressIndicator()))
           else if (_records.isEmpty)
             RepaintBoundary(
-              child: ClipRRect(
+              child: _wrapGlass(
                 borderRadius: BorderRadius.circular(20),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 24, horizontal: 16),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: widget.isLight
-                          ? Colors.white.withValues(alpha: 0.15)
-                          : Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black
-                              .withValues(alpha: widget.isLight ? 0.1 : 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
-                      border: Border.all(
-                          color: widget.isLight
-                              ? Colors.white.withValues(alpha: 0.2)
-                              : Theme.of(context)
-                                  .dividerColor
-                                  .withValues(alpha: 0.5)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(Icons.timer_outlined,
-                            size: 32, color: subColor.withValues(alpha: 0.5)),
-                        const SizedBox(height: 8),
-                        Text('暂无专注记录，开始你的第一个番茄钟吧！',
-                            style: TextStyle(
-                                color: subColor,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500)),
-                      ],
-                    ),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.isLight
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black
+                            .withValues(alpha: widget.isLight ? 0.1 : 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                    border: Border.all(
+                        color: widget.isLight
+                            ? Colors.white.withValues(alpha: 0.2)
+                            : Theme.of(context)
+                                .dividerColor
+                                .withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 32, color: subColor.withValues(alpha: 0.5)),
+                      const SizedBox(height: 8),
+                      Text('暂无专注记录，开始你的第一个番茄钟吧！',
+                          style: TextStyle(
+                              color: subColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500)),
+                    ],
                   ),
                 ),
               ),
@@ -266,110 +282,106 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
     final primaryColor =
         widget.isLight ? Colors.white : Theme.of(context).colorScheme.primary;
 
-    return ClipRRect(
+    return _wrapGlass(
       borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: BoxDecoration(
-            color: widget.isLight
-                ? Colors.white.withValues(alpha: 0.15)
-                : Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
-            ],
-            border: widget.isLight
-                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('时段分布',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: widget.isLight
-                          ? Colors.white70
-                          : Theme.of(context).colorScheme.outline)),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 90,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: List.generate(24, (index) {
-                    final sec = hourlySeconds[index];
-                    final factor = maxSeconds == 0 ? 0.0 : sec / maxSeconds;
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: widget.isLight
+              ? Colors.white.withValues(alpha: 0.15)
+              : Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+          border: widget.isLight
+              ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('时段分布',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: widget.isLight
+                        ? Colors.white70
+                        : Theme.of(context).colorScheme.outline)),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 90,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(24, (index) {
+                  final sec = hourlySeconds[index];
+                  final factor = maxSeconds == 0 ? 0.0 : sec / maxSeconds;
 
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              child: AnimatedBuilder(
-                                animation: _chartAnimationController,
-                                builder: (context, child) {
-                                  final animatedFactor =
-                                      factor * _chartAnimationController.value;
-                                  return Align(
-                                    alignment: Alignment.bottomCenter,
-                                    child: FractionallySizedBox(
-                                      heightFactor: animatedFactor > 0
-                                          ? max(animatedFactor, 0.05)
-                                          : 0,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          gradient: animatedFactor > 0
-                                              ? LinearGradient(
-                                                  begin: Alignment.bottomCenter,
-                                                  end: Alignment.topCenter,
-                                                  colors: [
-                                                      primaryColor.withValues(
-                                                          alpha: 0.5),
-                                                      primaryColor,
-                                                    ])
-                                              : null,
-                                          color: animatedFactor > 0
-                                              ? null
-                                              : Colors.transparent,
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                        ),
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: AnimatedBuilder(
+                              animation: _chartAnimationController,
+                              builder: (context, child) {
+                                final animatedFactor =
+                                    factor * _chartAnimationController.value;
+                                return Align(
+                                  alignment: Alignment.bottomCenter,
+                                  child: FractionallySizedBox(
+                                    heightFactor: animatedFactor > 0
+                                        ? max(animatedFactor, 0.05)
+                                        : 0,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: animatedFactor > 0
+                                            ? LinearGradient(
+                                                begin: Alignment.bottomCenter,
+                                                end: Alignment.topCenter,
+                                                colors: [
+                                                    primaryColor.withValues(
+                                                        alpha: 0.5),
+                                                    primaryColor,
+                                                  ])
+                                            : null,
+                                        color: animatedFactor > 0
+                                            ? null
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(4),
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
+                                  ),
+                                );
+                              },
                             ),
-                            const SizedBox(height: 6),
-                            if (index % 6 == 0)
-                              Text(
-                                '$index',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: subColor?.withValues(alpha: 0.6)),
-                              )
-                            else
-                              const SizedBox(height: 14),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 6),
+                          if (index % 6 == 0)
+                            Text(
+                              '$index',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: subColor?.withValues(alpha: 0.6)),
+                            )
+                          else
+                            const SizedBox(height: 14),
+                        ],
                       ),
-                    );
-                  }),
-                ),
+                    ),
+                  );
+                }),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -381,44 +393,41 @@ class _PomodoroTodaySectionState extends State<PomodoroTodaySection>
   Widget _buildRecordsList() {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return ClipRRect(
+    return _wrapGlass(
       borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: widget.isLight
-                ? Colors.white.withValues(alpha: 0.15)
-                : colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
-            ],
-            border: widget.isLight
-                ? Border.all(color: Colors.white.withValues(alpha: 0.2))
-                : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '专注记录',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: widget.isLight ? Colors.white70 : colorScheme.outline,
-                ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: widget.isLight
+              ? Colors.white.withValues(alpha: 0.15)
+              : colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  Colors.black.withValues(alpha: widget.isLight ? 0.1 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+          border: widget.isLight
+              ? Border.all(color: Colors.white.withValues(alpha: 0.2))
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '专注记录',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: widget.isLight ? Colors.white70 : colorScheme.outline,
               ),
-              const SizedBox(height: 8),
-              ..._records.map((record) => _buildRecordItem(record)),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            ..._records.map((record) => _buildRecordItem(record)),
+          ],
         ),
       ),
     );

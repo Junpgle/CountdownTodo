@@ -1110,6 +1110,25 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     final Color inactiveColor =
         (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    final navContent = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildTabItem(
+                0, Icons.dashboard_rounded, '首页', primaryColor, inactiveColor),
+          ),
+          SizedBox(
+            width: 64,
+            child: Center(child: _buildCourseCenterButton(primaryColor)),
+          ),
+          Expanded(
+            child: _buildTabItem(
+                2, Icons.adjust_rounded, '专注', primaryColor, inactiveColor),
+          ),
+        ],
+      ),
+    );
 
     return Container(
       height: 60 + (bottomPadding > 0 ? bottomPadding * 0.5 : 6),
@@ -1135,28 +1154,14 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildTabItem(0, Icons.dashboard_rounded, '首页',
-                      primaryColor, inactiveColor),
-                ),
-                SizedBox(
-                  width: 64,
-                  child: Center(child: _buildCourseCenterButton(primaryColor)),
-                ),
-                Expanded(
-                  child: _buildTabItem(2, Icons.adjust_rounded, '专注',
-                      primaryColor, inactiveColor),
-                ),
-              ],
-            ),
-          ),
-        ),
+        // BackdropFilter 会让整块壁纸进入离屏模糊，在 Android 上很容易造成
+        // Raster Jank。Android 保留半透明底色，其他平台继续使用毛玻璃效果。
+        child: AppPlatform.isAndroid
+            ? navContent
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: navContent,
+              ),
       ),
     );
   }
