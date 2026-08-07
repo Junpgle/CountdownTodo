@@ -370,14 +370,20 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(14),
                                 onTap: () => _editTodo(todo, cardCtx),
-                                child: IntrinsicHeight(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 52,
+                                  ),
                                   child: Row(
+                                    // Stack 中的任务行只有松垂直约束；使用 stretch
+                                    // 会让行高退化为 0，显式高度可避免额外 intrinsic pass。
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
+                                        CrossAxisAlignment.center,
                                     children: [
                                       if (todo.teamUuid != null)
                                         Container(
                                           width: 4,
+                                          height: 36,
                                           margin: const EdgeInsets.symmetric(
                                               vertical: 8),
                                           decoration: BoxDecoration(
