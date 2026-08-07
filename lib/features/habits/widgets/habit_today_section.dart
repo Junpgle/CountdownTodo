@@ -56,6 +56,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   HabitDaySnapshot? _snapshot;
   final Map<String, GlobalKey> _cardKeys = {};
   bool _loading = true;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -73,9 +74,24 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _loading = true);
-    final snapshot = await HabitDayLoader.loadForDate(DateTime.now());
-    if (mounted) {
+    final loadGeneration = ++_loadGeneration;
+    // Keep the last successful snapshot visible while a background refresh is
+    // running.  The first load still shows the skeleton; subsequent refreshes
+    // must not flash the whole section back to a spinner.
+    if (_snapshot == null) {
+      setState(() => _loading = true);
+    }
+    HabitDaySnapshot snapshot;
+    try {
+      snapshot = await HabitDayLoader.loadForDate(DateTime.now());
+    } catch (error) {
+      debugPrint('今日习惯加载失败: $error');
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+    if (mounted && loadGeneration == _loadGeneration) {
       setState(() {
         _snapshot = snapshot;
         _loading = false;
