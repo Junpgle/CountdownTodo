@@ -12,6 +12,8 @@ import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
 import '../services/minor_mode_service.dart';
+import '../models/minor_age_signal_state.dart';
+import '../models/minor_mode_state.dart';
 
 import 'animation_settings_page.dart';
 import 'login_screen.dart';
@@ -757,6 +759,116 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildSidebarAccountSummary(ThemeData theme) {
+    final minorModeService = MinorModeService.instance;
+    return ValueListenableBuilder<MinorModeState>(
+      valueListenable: minorModeService.stateNotifier,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<MinorAgeSignalState>(
+          valueListenable: minorModeService.googleAgeSignalNotifier,
+          builder: (context, _, __) {
+            final minorModeEnabled =
+                minorModeService.policyState.effectiveMinorMode;
+            final colorScheme = theme.colorScheme;
+            return Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor:
+                          colorScheme.primary.withValues(alpha: 0.2),
+                      child: Text(
+                        _username.isNotEmpty ? _username[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (minorModeEnabled)
+                      Positioned(
+                        right: -6,
+                        bottom: -3,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.shield_rounded,
+                            size: 16,
+                            color: colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '你好，$_username',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _userTier,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (minorModeEnabled) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '未成年人模式',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ===== macOS 风格双栏布局 =====
   Widget _buildWideLayout() {
     final theme = Theme.of(context);
@@ -807,38 +919,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 color: theme.colorScheme.primary, width: 2)
                             : Border.all(color: Colors.transparent, width: 2),
                       ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: theme.colorScheme.primary
-                                .withValues(alpha: 0.2),
-                            child: Text(
-                                _username.isNotEmpty
-                                    ? _username[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                    color: theme.colorScheme.primary,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_username,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
-                                    overflow: TextOverflow.ellipsis),
-                                Text(_userTier,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildSidebarAccountSummary(theme),
                     ),
                   ),
                 ),
