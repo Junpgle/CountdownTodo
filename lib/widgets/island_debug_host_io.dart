@@ -11,9 +11,16 @@ class IslandDebugHost {
 
   static bool get shouldShowOverlay => AppPlatform.isWindows && kDebugMode;
 
-  static Widget route() => const IslandDebugPage();
+  static Widget route() => AppPlatform.isWindows
+      ? const IslandDebugPage()
+      : const Scaffold(
+          body: Center(child: Text('Windows island is not available here')),
+        );
 
   static Widget overlay() {
+    if (!AppPlatform.isWindows || !kDebugMode) {
+      return const SizedBox.shrink();
+    }
     return ValueListenableBuilder<Map<String, dynamic>?>(
       valueListenable: FloatWindowService.debugPayload,
       builder: (context, payload, _) {
