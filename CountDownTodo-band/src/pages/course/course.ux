@@ -44,6 +44,7 @@
 <script>
 import router from '@system.router'
 import storage from '@system.storage'
+import BandUtils from '../../common/band_utils.js'
 
 const SHORT_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
@@ -66,16 +67,12 @@ export default {
     this.displayItems = null
   },
 
-  padZero(num) {
-    return num < 10 ? '0' + num : '' + num
-  },
-
   loadCourseData() {
     storage.get({
       key: 'sync_course',
       success: (data) => {
         if (data) {
-          this.allCourses = JSON.parse(data)
+          this.allCourses = BandUtils.parseJsonArray(data)
           this.buildDisplayItems()
         }
       },
@@ -85,7 +82,7 @@ export default {
 
   buildDisplayItems() {
     const now = new Date()
-    const currentTime = this.padZero(now.getHours()) + ':' + this.padZero(now.getMinutes())
+    const currentTime = BandUtils.padZero(now.getHours()) + ':' + BandUtils.padZero(now.getMinutes())
     const items = []
 
     for (let d = 0; d < 3; d++) {
@@ -109,7 +106,7 @@ export default {
 
       const dayCourses = this.allCourses.filter(c => {
         if (c.date) {
-          const dateStr2 = targetDate.getFullYear() + '-' + this.padZero(month) + '-' + this.padZero(date)
+          const dateStr2 = targetDate.getFullYear() + '-' + BandUtils.padZero(month) + '-' + BandUtils.padZero(date)
           return c.date === dateStr2
         }
         return c.weekday === weekdayNum

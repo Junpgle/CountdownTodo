@@ -5,6 +5,7 @@ var storage = require('@system.storage')
 var interconnect = require('@system.interconnect')
 var app = require('@system.app')
 var router = require('@system.router')
+var BandUtils = require('./band_utils.js')
 var SYNC_KEY_PREFIX = 'sync_'
 var connect = null
 var isConnected = false
@@ -26,10 +27,6 @@ function getConnect() {
     }
   }
   return connect
-}
-
-function padZero(num) {
-  return num < 10 ? '0' + num : '' + num
 }
 
 function flattenArray(arr) {
@@ -82,10 +79,10 @@ function adaptItem(type, item) {
     if (adapted.roomName && !adapted.location) { adapted.location = adapted.roomName }
     if (adapted.teacherName && !adapted.teacher) { adapted.teacher = adapted.teacherName }
     if (typeof adapted.startTime === 'number') {
-      adapted.startTime = padZero(Math.floor(adapted.startTime / 100)) + ':' + padZero(adapted.startTime % 100)
+      adapted.startTime = BandUtils.padZero(Math.floor(adapted.startTime / 100)) + ':' + BandUtils.padZero(adapted.startTime % 100)
     }
     if (typeof adapted.endTime === 'number') {
-      adapted.endTime = padZero(Math.floor(adapted.endTime / 100)) + ':' + padZero(adapted.endTime % 100)
+      adapted.endTime = BandUtils.padZero(Math.floor(adapted.endTime / 100)) + ':' + BandUtils.padZero(adapted.endTime % 100)
     }
   } else if (type === 'pomodoro') {
     if (adapted.todo_title && !adapted.todoTitle) { adapted.todoTitle = adapted.todo_title }
@@ -161,11 +158,11 @@ function handleReceivedData(data) {
     if (typeof data === 'object' && data !== null && data.type) {
       parsedData = data
     } else if (typeof data === 'string') {
-      parsedData = JSON.parse(data)
+      parsedData = BandUtils.parseJson(data, null)
     } else if (typeof data === 'object' && data !== null && data.data !== undefined) {
       var innerData = data.data
       if (typeof innerData === 'string') {
-        parsedData = JSON.parse(innerData)
+        parsedData = BandUtils.parseJson(innerData, null)
       } else if (typeof innerData === 'object') {
         parsedData = innerData
       }

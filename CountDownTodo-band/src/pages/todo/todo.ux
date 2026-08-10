@@ -35,6 +35,7 @@
 import router from '@system.router'
 import storage from '@system.storage'
 import prompt from '@system.prompt'
+import BandUtils from '../../common/band_utils.js'
 
 export default {
   data: {
@@ -59,16 +60,12 @@ export default {
     this.todoList = null
   },
 
-  padZero(num) {
-    return num < 10 ? '0' + num : '' + num
-  },
-
   loadTodoData() {
     storage.get({
       key: 'sync_todo',
       success: (data) => {
         if (data) {
-          this.todoList = JSON.parse(data)
+          this.todoList = BandUtils.parseJsonArray(data)
           this.sortTodos()
           this.calculateProgress()
         }
@@ -141,7 +138,7 @@ export default {
   formatTimestamp(ts) {
     if (!ts) return ''
     const d = new Date(ts)
-    return `${d.getMonth() + 1}/${d.getDate()} ${this.padZero(d.getHours())}:${this.padZero(d.getMinutes())}`
+    return `${d.getMonth() + 1}/${d.getDate()} ${BandUtils.padZero(d.getHours())}:${BandUtils.padZero(d.getMinutes())}`
   },
 
   toggleTodo(item) {
