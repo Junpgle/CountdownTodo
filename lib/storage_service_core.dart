@@ -105,10 +105,7 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   int? _parseNullableInt(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
+    return JsonValueParser.toNullableInt(raw);
   }
 
   Future<void> ignoreRemoteItem({
@@ -156,14 +153,15 @@ mixin _StorageCore on _StorageServiceBase {
 
   Future<void> _clearTodoPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${keyTodos}_$username");
+    await prefs.remove(StorageKeyScope.scoped(keyTodos, username));
     await prefs.remove(keyTodos);
   }
 
   String _scopedKey(String baseKey, String? username) {
-    if (username == null || username.isEmpty) return baseKey;
-    return "${baseKey}_$username";
+    return StorageKeyScope.scoped(baseKey, username);
   }
+
+  Future<String?> restoreAuthToken() => UserSessionStorage.restoreAuthToken();
 
   Future<String> getDeviceFriendlyName() async =>
       UserSessionStorage.getDeviceFriendlyName();

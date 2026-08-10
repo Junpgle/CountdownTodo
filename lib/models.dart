@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'dart:convert';
 
 import 'utils/analysis_image_cleanup.dart';
+import 'utils/json_value_parser.dart';
 
 // ==========================================
 // 0. 时间轴相关 (Timeline)
@@ -44,13 +45,18 @@ class TimelineEvent {
   });
 
   factory TimelineEvent.fromMap(Map<String, dynamic> map) {
+    final typeIndex = JsonValueParser.toInt(map['type'])
+        .clamp(0, TimelineEventType.values.length - 1)
+        .toInt();
     return TimelineEvent(
-      id: map['id'] ?? '',
-      timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
-      type: TimelineEventType.values[map['type']],
-      title: map['title'] ?? '',
-      subtitle: map['subtitle'],
-      extraData: map['extraData'],
+      id: map['id']?.toString() ?? '',
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        JsonValueParser.epochMillisOrNow(map['timestamp']),
+      ),
+      type: TimelineEventType.values[typeIndex],
+      title: map['title']?.toString() ?? '',
+      subtitle: map['subtitle']?.toString(),
+      extraData: (map['extraData'] as Map?)?.cast<String, dynamic>(),
     );
   }
 }
@@ -391,16 +397,20 @@ class TodoItem {
       parsedId = const Uuid().v4(); // 如果旧数据是自增ID，强制转UUID
     }
 
+    final recurrenceIndex = JsonValueParser.toInt(json['recurrence'])
+        .clamp(0, RecurrenceType.values.length - 1)
+        .toInt();
+
     return TodoItem(
       id: parsedId,
-      title: json['content'] ?? json['title'] ?? '',
+      title: json['content']?.toString() ?? json['title']?.toString() ?? '',
       isDone: json['is_completed'] == 1 ||
           json['is_completed'] == true ||
           json['isDone'] == true,
       isDeleted: json['is_deleted'] == 1 ||
           json['is_deleted'] == true ||
           json['isDeleted'] == true,
-      version: json['version'] ?? 1,
+      version: JsonValueParser.toInt(json['version'], fallback: 1),
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
 
@@ -411,47 +421,45 @@ class TodoItem {
               ? _parseTimestamp(json['createdDate'])
               : null),
 
-      recurrence: RecurrenceType
-          .values[int.tryParse(json['recurrence']?.toString() ?? '0') ?? 0],
+      recurrence: RecurrenceType.values[recurrenceIndex],
       recurrenceSeriesId: _emptyStringToNull(
         (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
             ?.toString(),
       ),
       // 兼容两种字段名：后端列名 custom_interval_days 和本地存储名 customIntervalDays
-      customIntervalDays: int.tryParse(json['customIntervalDays']?.toString() ??
-          json['custom_interval_days']?.toString() ??
-          ''),
+      customIntervalDays: JsonValueParser.toNullableInt(
+        json['customIntervalDays'] ?? json['custom_interval_days'],
+      ),
       // 兼容两种字段名：后端列名 recurrence_end_date 和本地存储名 recurrenceEndDate
       recurrenceEndDate: _parseDateField(
           json['recurrenceEndDate'] ?? json['recurrence_end_date']),
       // due_date = 任务截止时间
-      dueDate: _parseDateField(json['due_date']),
+      dueDate: _parseDateField(json['dueDate'] ?? json['due_date']),
       // 📝 备注
-      remark: json['remark'] as String?,
+      remark: json['remark']?.toString(),
       // 📸 图片路径
-      imagePath: (json['image_path'] ?? json['imagePath']) as String?,
+      imagePath: (json['image_path'] ?? json['imagePath'])?.toString(),
       // 📄 原始分析文本
-      originalText: (json['original_text'] ?? json['originalText']) as String?,
+      originalText: (json['original_text'] ?? json['originalText'])?.toString(),
       // 📁 分组 ID
-      groupId: (json['group_id'] ?? json['groupId']) as String?,
+      groupId: (json['group_id'] ?? json['groupId'])?.toString(),
       // 🚀 提醒提前量
-      reminderMinutes:
-          json['reminder_minutes'] as int? ?? json['reminderMinutes'] as int?,
+      reminderMinutes: JsonValueParser.toNullableInt(
+        json['reminder_minutes'] ?? json['reminderMinutes'],
+      ),
       // 👥 团队 ID
-      teamUuid: json['team_uuid'] ?? json['teamUuid'],
-      creatorId: json['creator_id'] ?? json['creatorId'],
-      creatorName: json['creator_name'] ?? json['creatorName'],
-      teamName: json['team_name'] ?? json['teamName'],
-      collabType: json['collab_type'] ?? json['collabType'] ?? 0,
+      teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
+      creatorId: (json['creator_id'] ?? json['creatorId'])?.toString(),
+      creatorName: (json['creator_name'] ?? json['creatorName'])?.toString(),
+      teamName: (json['team_name'] ?? json['teamName'])?.toString(),
+      collabType: JsonValueParser.toInt(
+        json['collab_type'] ?? json['collabType'],
+      ),
       isAllDay: json['is_all_day'] == 1 || json['isAllDay'] == true,
       categoryId:
           json['category_id']?.toString() ?? json['categoryId']?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      serverVersionData: json['conflict_data'] != null
-          ? (json['conflict_data'] is String
-              ? jsonDecode(json['conflict_data'])
-              : json['conflict_data'])
-          : null,
+      serverVersionData: JsonValueParser.toMap(json['conflict_data']),
     );
   }
 
@@ -531,7 +539,7 @@ class CountdownItem {
 
     return CountdownItem(
       id: parsedId,
-      title: json['title'] ?? '',
+      title: json['title']?.toString() ?? '',
       // 🚀 修复：正确解析 targetDate（可能是毫秒时间戳或 ISO 字符串）
       // 兼容所有字段名：target_time(客户端), target_date(新服务器DB列名), targetDate(旧格式)
       targetDate: _parseDateField(json['target_time'] ??
@@ -544,19 +552,15 @@ class CountdownItem {
       isCompleted: json['is_completed'] == 1 ||
           json['is_completed'] == true ||
           json['isCompleted'] == true,
-      version: json['version'] ?? 1,
+      version: JsonValueParser.toInt(json['version'], fallback: 1),
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['lastUpdated']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
-      teamUuid: json['team_uuid'] ?? json['teamUuid'],
-      teamName: json['team_name'] ?? json['teamName'],
-      creatorId: json['creator_id'] ?? json['creatorId'],
-      creatorName: json['creator_name'] ?? json['creatorName'],
+      teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
+      teamName: (json['team_name'] ?? json['teamName'])?.toString(),
+      creatorId: (json['creator_id'] ?? json['creatorId'])?.toString(),
+      creatorName: (json['creator_name'] ?? json['creatorName'])?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      conflictData: json['conflict_data'] != null
-          ? (json['conflict_data'] is String
-              ? jsonDecode(json['conflict_data'])
-              : json['conflict_data'])
-          : null,
+      conflictData: JsonValueParser.toMap(json['conflict_data']),
     );
   }
 }
@@ -631,7 +635,7 @@ class TodoGroup {
       name: json['name']?.toString() ?? '未命名分组',
       isExpanded: json['is_expanded'] == 1 || json['is_expanded'] == true,
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
-      version: json['version'] as int? ?? 1,
+      version: JsonValueParser.toInt(json['version'], fallback: 1),
       updatedAt: _parseTimestamp(json['updated_at'] ?? json['updatedAt']),
       createdAt: _parseTimestamp(json['created_at'] ?? json['createdAt']),
       teamUuid: json['team_uuid']?.toString(),
@@ -639,11 +643,7 @@ class TodoGroup {
       creatorId: json['creator_id']?.toString(),
       creatorName: json['creator_name']?.toString(),
       hasConflict: json['has_conflict'] == 1 || json['has_conflict'] == true,
-      conflictData: json['conflict_data'] != null
-          ? (json['conflict_data'] is String
-              ? jsonDecode(json['conflict_data'])
-              : json['conflict_data'])
-          : null,
+      conflictData: JsonValueParser.toMap(json['conflict_data']),
     );
   }
 }
@@ -653,43 +653,11 @@ class TodoGroup {
 // ============================================================
 
 int _parseTimestamp(dynamic val) {
-  if (val == null) return DateTime.now().millisecondsSinceEpoch;
-  if (val is int) return val;
-  if (val is double) return val.toInt();
-  if (val is String) {
-    final trimmed = val.trim();
-    final n = int.tryParse(trimmed);
-    if (n != null) return n;
-    final dt = DateTime.tryParse(trimmed);
-    if (dt != null) return dt.toUtc().millisecondsSinceEpoch;
-  }
-  return DateTime.now().millisecondsSinceEpoch;
+  return JsonValueParser.epochMillisOrNow(val);
 }
 
 DateTime? _parseDateField(dynamic val) {
-  if (val == null) return null;
-  int ms;
-  if (val is int) {
-    ms = val;
-  } else if (val is double) {
-    ms = val.toInt();
-  } else if (val is String) {
-    final trimmed = val.trim();
-    final n = int.tryParse(trimmed);
-    if (n != null) {
-      ms = n;
-    } else {
-      final dt = DateTime.tryParse(trimmed);
-      if (dt != null) {
-        return dt.toUtc().millisecondsSinceEpoch > 0 ? dt.toLocal() : null;
-      }
-      return null;
-    }
-  } else {
-    return null;
-  }
-  if (ms <= 0) return null;
-  return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+  return JsonValueParser.localDateTime(val);
 }
 
 String? _emptyStringToNull(String? value) {
@@ -758,14 +726,12 @@ class TimeLogItem {
               ?.map((e) => e.toString())
               .toList() ??
           [],
-      startTime: (json['start_time'] as num?)?.toInt() ?? 0,
-      endTime: (json['end_time'] as num?)?.toInt() ?? 0,
+      startTime: JsonValueParser.toInt(json['start_time']),
+      endTime: JsonValueParser.toInt(json['end_time']),
       remark: json['remark']?.toString(),
-      version: (json['version'] as num?)?.toInt() ?? 1,
-      updatedAt: (json['updated_at'] as num?)?.toInt() ??
-          DateTime.now().millisecondsSinceEpoch,
-      createdAt: (json['created_at'] as num?)?.toInt() ??
-          DateTime.now().millisecondsSinceEpoch,
+      version: JsonValueParser.toInt(json['version'], fallback: 1),
+      updatedAt: JsonValueParser.epochMillisOrNow(json['updated_at']),
+      createdAt: JsonValueParser.epochMillisOrNow(json['created_at']),
       isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       deviceId: json['device_id']?.toString(),
       teamUuid: json['team_uuid']?.toString(),
@@ -884,18 +850,22 @@ class TodoPlanBlock {
         todoId:
             (j['todo_uuid'] ?? j['todo_id'] ?? j['todoId'])?.toString() ?? '',
         titleSnapshot: (j['title_snapshot'] ?? j['titleSnapshot'])?.toString(),
-        startTime: (j['start_time'] as num?)?.toInt() ?? 0,
-        endTime: (j['end_time'] as num?)?.toInt() ?? 0,
-        plannedMinutes: (j['planned_minutes'] as num?)?.toInt() ?? 0,
-        actualFocusSeconds: (j['actual_focus_seconds'] as num?)?.toInt() ?? 0,
-        status: TodoPlanStatus.values[(j['status'] as int? ?? 0)
-            .clamp(0, TodoPlanStatus.values.length - 1)],
-        source: TodoPlanSource.values[(j['source'] as int? ?? 0)
-            .clamp(0, TodoPlanSource.values.length - 1)],
+        startTime: JsonValueParser.toInt(j['start_time']),
+        endTime: JsonValueParser.toInt(j['end_time']),
+        plannedMinutes: JsonValueParser.toInt(j['planned_minutes']),
+        actualFocusSeconds: JsonValueParser.toInt(j['actual_focus_seconds']),
+        status: TodoPlanStatus.values[JsonValueParser.toInt(j['status'])
+            .clamp(0, TodoPlanStatus.values.length - 1)
+            .toInt()],
+        source: TodoPlanSource.values[JsonValueParser.toInt(j['source'])
+            .clamp(0, TodoPlanSource.values.length - 1)
+            .toInt()],
         remark: j['remark']?.toString(),
-        reminderMinutes: (j['reminder_minutes'] as num?)?.toInt() ?? 5,
-        pomodoroMinutes: (j['pomodoro_minutes'] as num?)?.toInt() ?? 25,
-        pomodoroRounds: (j['pomodoro_rounds'] as num?)?.toInt() ?? 0,
+        reminderMinutes:
+            JsonValueParser.toInt(j['reminder_minutes'], fallback: 5),
+        pomodoroMinutes:
+            JsonValueParser.toInt(j['pomodoro_minutes'], fallback: 25),
+        pomodoroRounds: JsonValueParser.toInt(j['pomodoro_rounds']),
         calendarEventId: _emptyStringToNull(
             (j['calendar_event_id'] ?? j['calendarEventId'])?.toString()),
         pomodoroRecordIds: (j['pomodoro_record_ids'] as String?)
@@ -903,9 +873,9 @@ class TodoPlanBlock {
                 .where((s) => s.isNotEmpty)
                 .toList() ??
             [],
-        version: (j['version'] as num?)?.toInt() ?? 1,
-        createdAt: (j['created_at'] as num?)?.toInt(),
-        updatedAt: (j['updated_at'] as num?)?.toInt(),
+        version: JsonValueParser.toInt(j['version'], fallback: 1),
+        createdAt: JsonValueParser.toNullableInt(j['created_at']),
+        updatedAt: JsonValueParser.toNullableInt(j['updated_at']),
         isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
         deviceId: j['device_id']?.toString(),
       );
@@ -1066,15 +1036,15 @@ class FixedScheduleItem {
       return decoded.map(convert).toList();
     }
 
-    final rawStatus = (json['status'] as num?)?.toInt() ?? 0;
-    final rawSource = (json['source'] as num?)?.toInt() ?? 0;
-    final rawRecurrence = (json['recurrence'] as num?)?.toInt() ?? 0;
+    final rawStatus = JsonValueParser.toInt(json['status']);
+    final rawSource = JsonValueParser.toInt(json['source']);
+    final rawRecurrence = JsonValueParser.toInt(json['recurrence']);
     return FixedScheduleItem(
       id: (json['uuid'] ?? json['id'])?.toString(),
       title: json['title']?.toString() ?? '',
       date: json['date']?.toString() ?? '',
-      startTime: (json['start_time'] as num?)?.toInt(),
-      endTime: (json['end_time'] as num?)?.toInt(),
+      startTime: JsonValueParser.toNullableInt(json['start_time']),
+      endTime: JsonValueParser.toNullableInt(json['end_time']),
       status: FixedScheduleStatus
           .values[rawStatus.clamp(0, FixedScheduleStatus.values.length - 1)],
       source: FixedScheduleSource
@@ -1089,9 +1059,8 @@ class FixedScheduleItem {
       timezone: _emptyStringToNull(json['timezone']?.toString()),
       recurrence: RecurrenceType
           .values[rawRecurrence.clamp(0, RecurrenceType.values.length - 1)],
-      customIntervalDays: int.tryParse(
-        (json['custom_interval_days'] ?? json['customIntervalDays'] ?? '')
-            .toString(),
+      customIntervalDays: JsonValueParser.toNullableInt(
+        json['custom_interval_days'] ?? json['customIntervalDays'],
       ),
       recurrenceSeriesId: _emptyStringToNull(
           (json['recurrence_series_id'] ?? json['recurrenceSeriesId'])
@@ -1144,12 +1113,12 @@ class SemesterInfo {
       };
 
   factory SemesterInfo.fromJson(Map<String, dynamic> json) => SemesterInfo(
-        id: json['id'] ?? '',
-        name: json['name'] ?? '',
-        startDate: DateTime.parse(json['start_date']),
-        endDate:
-            json['end_date'] != null ? DateTime.parse(json['end_date']) : null,
-        isCurrent: json['is_current'] ?? false,
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        startDate: JsonValueParser.localDateTime(json['start_date']) ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        endDate: JsonValueParser.localDateTime(json['end_date']),
+        isCurrent: json['is_current'] == true || json['is_current'] == 1,
       );
 
   /// 转换为毫秒时间戳（用于云端同步）
@@ -1162,13 +1131,15 @@ class SemesterInfo {
       };
 
   factory SemesterInfo.fromCloudJson(Map<String, dynamic> json) => SemesterInfo(
-        id: json['id'] ?? '',
-        name: json['name'] ?? '',
-        startDate: DateTime.fromMillisecondsSinceEpoch(json['start_ms'] as int),
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        startDate: DateTime.fromMillisecondsSinceEpoch(
+            JsonValueParser.toInt(json['start_ms'])),
         endDate: json['end_ms'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(json['end_ms'] as int)
+            ? DateTime.fromMillisecondsSinceEpoch(
+                JsonValueParser.toInt(json['end_ms']))
             : null,
-        isCurrent: json['is_current'] ?? false,
+        isCurrent: json['is_current'] == true || json['is_current'] == 1,
       );
 }
 
@@ -1248,21 +1219,29 @@ class CourseItem {
       };
 
   factory CourseItem.fromJson(Map<String, dynamic> json) => CourseItem(
-        uuid: json['uuid'] ?? json['id'],
-        courseName: json['courseName'] ?? json['course_name'] ?? '未知课程',
-        teacherName: json['teacherName'] ?? json['teacher_name'] ?? '未知教师',
-        date: json['date'] ?? '',
-        weekday: json['weekday'] ?? 1,
-        startTime: json['startTime'] ?? json['start_time'] ?? 0,
-        endTime: json['endTime'] ?? json['end_time'] ?? 0,
-        weekIndex: json['weekIndex'] ?? json['week_index'] ?? 1,
-        roomName: json['roomName'] ?? json['room_name'] ?? '未知地点',
-        lessonType: json['lessonType'] ?? json['lesson_type'],
-        semesterId: json['semester_id'] ?? json['semesterId'] ?? 'default',
-        teamUuid: json['team_uuid'] ?? json['teamUuid'],
-        version: (json['version'] as num?)?.toInt() ?? 1,
-        updatedAt: (json['updated_at'] as num?)?.toInt(),
-        createdAt: (json['created_at'] as num?)?.toInt(),
+        uuid: (json['uuid'] ?? json['id'])?.toString(),
+        courseName:
+            (json['courseName'] ?? json['course_name'])?.toString() ?? '未知课程',
+        teacherName:
+            (json['teacherName'] ?? json['teacher_name'])?.toString() ?? '未知教师',
+        date: json['date']?.toString() ?? '',
+        weekday: JsonValueParser.toInt(json['weekday'], fallback: 1),
+        startTime: JsonValueParser.toInt(
+          json['startTime'] ?? json['start_time'],
+        ),
+        endTime: JsonValueParser.toInt(json['endTime'] ?? json['end_time']),
+        weekIndex: JsonValueParser.toInt(
+          json['weekIndex'] ?? json['week_index'],
+          fallback: 1,
+        ),
+        roomName: (json['roomName'] ?? json['room_name'])?.toString() ?? '未知地点',
+        lessonType: (json['lessonType'] ?? json['lesson_type'])?.toString(),
+        semesterId: (json['semester_id'] ?? json['semesterId'])?.toString() ??
+            'default',
+        teamUuid: (json['team_uuid'] ?? json['teamUuid'])?.toString(),
+        version: JsonValueParser.toInt(json['version'], fallback: 1),
+        updatedAt: JsonValueParser.toNullableInt(json['updated_at']),
+        createdAt: JsonValueParser.toNullableInt(json['created_at']),
         isDeleted: json['is_deleted'] == 1 || json['is_deleted'] == true,
       );
 }
@@ -1289,9 +1268,9 @@ class TeamMember {
   });
 
   factory TeamMember.fromJson(Map<String, dynamic> json) => TeamMember(
-        userId: (json['user_id'] as num).toInt(),
-        username: json['username'] as String?,
-        email: json['email'] as String?,
+        userId: JsonValueParser.toInt(json['user_id']),
+        username: json['username']?.toString(),
+        email: json['email']?.toString(),
         role: (json['role'] == 0) ? TeamRole.admin : TeamRole.member,
         joinedAt: _parseTimestamp(json['joined_at']),
       );
@@ -1393,8 +1372,8 @@ class TeamAnnouncement {
       title: json['title']?.toString() ?? '无标题',
       content: json['content']?.toString() ?? '',
       creatorName: json['creator_name'],
-      createdAt: json['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-      expiresAt: json['expires_at'],
+      createdAt: JsonValueParser.epochMillisOrNow(json['created_at']),
+      expiresAt: JsonValueParser.toNullableInt(json['expires_at']),
       isPriority: json['is_priority'] == 1 || json['is_priority'] == true,
       isRead: json['is_read'] == 1 || json['is_read'] == true,
     );
@@ -1450,7 +1429,7 @@ class TeamShare {
       expiresAt != null && expiresAt! < DateTime.now().millisecondsSinceEpoch;
 
   factory TeamShare.fromJson(Map<String, dynamic> json) => TeamShare(
-        id: (json['id'] as num?)?.toInt() ?? 0,
+        id: JsonValueParser.toInt(json['id']),
         shareCode: json['share_code']?.toString() ?? '',
         teamUuid: json['team_uuid']?.toString() ?? '',
         title: json['title']?.toString(),
@@ -1461,9 +1440,9 @@ class TeamShare {
         shareAnnouncements: json['share_announcements'] == 1 ||
             json['share_announcements'] == true,
         hasPassword: json['has_password'] == true || json['has_password'] == 1,
-        expiresAt: (json['expires_at'] as num?)?.toInt(),
-        viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
-        createdAt: (json['created_at'] as num?)?.toInt() ?? 0,
+        expiresAt: JsonValueParser.toNullableInt(json['expires_at']),
+        viewCount: JsonValueParser.toInt(json['view_count']),
+        createdAt: JsonValueParser.toInt(json['created_at']),
         isActive: json['is_active'] == 1 || json['is_active'] == true,
         shareUrl: json['share_url']?.toString(),
       );

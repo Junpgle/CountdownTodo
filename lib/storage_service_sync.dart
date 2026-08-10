@@ -336,7 +336,9 @@ mixin _StorageSync on _StorageServiceBase {
 
   Future<void> resetSyncTime(String username) async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('last_sync_time_${ApiService.syncServerKey}_$username');
     await prefs.remove('last_sync_time_aliyun_$username');
+    await prefs.remove('last_sync_time_aliyun_test_$username');
     await prefs.remove('last_sync_time_cf_$username');
     await prefs.remove('last_sync_time_$username'); // 兼容旧版本
   }
@@ -396,8 +398,7 @@ mixin _StorageSync on _StorageServiceBase {
           await UserSessionStorage.getDeviceIdForUser(username);
       final String friendlyName =
           await UserSessionStorage.getDeviceFriendlyName();
-      final String serverKey =
-          ApiService.baseUrl == ApiService.aliyunProdUrl ? "aliyun" : "cf";
+      final String serverKey = ApiService.syncServerKey;
       final fixedScheduleServerScope = base64Url
           .encode(utf8.encode(ApiService.effectiveBaseUrl))
           .replaceAll('=', '');

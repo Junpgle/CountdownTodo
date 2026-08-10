@@ -4,6 +4,7 @@ import '../models.dart';
 import '../models/ai_todo_action.dart';
 import 'fixed_schedule_recurrence_service.dart';
 import 'pomodoro_service.dart';
+import '../utils/json_value_parser.dart';
 
 class AiTodoActionExecutionResult {
   const AiTodoActionExecutionResult({
@@ -1317,10 +1318,7 @@ class AiTodoActionExecutor {
   }
 
   static int? _parseNullableInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value.toString());
+    return JsonValueParser.toNullableInt(value);
   }
 
   static DateTime? _parseExistingDate(dynamic value) {

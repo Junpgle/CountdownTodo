@@ -2,10 +2,7 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 int? _parseNullableIntForIsolate(dynamic raw) {
-  if (raw == null) return null;
-  if (raw is int) return raw;
-  if (raw is num) return raw.toInt();
-  return int.tryParse(raw.toString());
+  return JsonValueParser.toNullableInt(raw);
 }
 
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
@@ -19,15 +16,13 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
             version: m['version'] ?? 1,
             updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
             createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdDate: m['created_date'] != null
-                ? int.tryParse(m['created_date'].toString())
-                : null,
+            createdDate: JsonValueParser.toNullableInt(m['created_date']),
             dueDate: (m['due_date'] != null &&
                     m['due_date'].toString() != '0' &&
                     m['due_date'].toString() != 'null' &&
                     m['due_date'].toString().isNotEmpty)
                 ? DateTime.fromMillisecondsSinceEpoch(
-                    int.tryParse(m['due_date'].toString()) ?? 0)
+                    JsonValueParser.toInt(m['due_date']))
                 : null,
             teamUuid: m['team_uuid'],
             teamName: m['team_name'],
@@ -44,21 +39,17 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
             recurrenceEndDate: (m['recurrence_end_date'] != null &&
                     m['recurrence_end_date'].toString() != '0')
                 ? DateTime.fromMillisecondsSinceEpoch(
-                    int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
+                    JsonValueParser.toInt(m['recurrence_end_date']))
                 : null,
             reminderMinutes: (m['reminder_minutes'] != null &&
                     m['reminder_minutes'].toString() != '-1')
-                ? int.tryParse(m['reminder_minutes'].toString())
+                ? JsonValueParser.toNullableInt(m['reminder_minutes'])
                 : null,
             imagePath: m['image_path']?.toString(),
             originalText: m['original_text']?.toString(),
             isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
             hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
-            serverVersionData: m['conflict_data'] != null
-                ? (m['conflict_data'] is String
-                    ? Map<String, dynamic>.from(jsonDecode(m['conflict_data']))
-                    : Map<String, dynamic>.from(m['conflict_data']))
-                : null,
+            serverVersionData: JsonValueParser.toMap(m['conflict_data']),
           ))
       .toList();
 }
@@ -1189,7 +1180,8 @@ mixin _StorageTodos on _StorageServiceBase {
 
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
-    List<String> list = prefs.getStringList("${keyCountdowns}_$username") ?? [];
+    final countdownsKey = _scopedKey(keyCountdowns, username);
+    List<String> list = prefs.getStringList(countdownsKey) ?? [];
     list.removeWhere((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
@@ -1198,7 +1190,7 @@ mixin _StorageTodos on _StorageServiceBase {
         return false;
       }
     });
-    await prefs.setStringList("${keyCountdowns}_$username", list);
+    await prefs.setStringList(countdownsKey, list);
 
     // 记录删除操作到 Oplog
     await db.insert('op_logs', {
@@ -1264,7 +1256,7 @@ mixin _StorageTodos on _StorageServiceBase {
       // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
       final String cleanupKey = "cleanup_done_${username}_v4_repair";
       if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
-        await prefs.remove("${keyTodos}_$username");
+        await prefs.remove(_scopedKey(keyTodos, username));
         await prefs.remove(keyTodos);
         await prefs.setBool(cleanupKey, true);
         debugPrint("🗑️ Todos 残留数据修复清理完成。");
@@ -1272,7 +1264,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
       if (!alreadyMigrated) {
         List<String> legacyJsonList =
-            prefs.getStringList("${keyTodos}_$username") ?? [];
+            prefs.getStringList(_scopedKey(keyTodos, username)) ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
           legacyJsonList = prefs.getStringList(keyTodos) ?? [];
         }
@@ -1290,7 +1282,7 @@ mixin _StorageTodos on _StorageServiceBase {
               sync: false, isSyncSource: true);
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
-          await prefs.remove("${keyTodos}_$username");
+          await prefs.remove(_scopedKey(keyTodos, username));
           await prefs.remove(keyTodos);
           debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
@@ -1342,15 +1334,15 @@ mixin _StorageTodos on _StorageServiceBase {
                         DateTime.now().millisecondsSinceEpoch,
                     createdAt: m['created_at'] ??
                         DateTime.now().millisecondsSinceEpoch,
-                    createdDate: m['created_date'] != null
-                        ? int.tryParse(m['created_date'].toString())
-                        : null,
+                    createdDate: JsonValueParser.toNullableInt(
+                      m['created_date'],
+                    ),
                     dueDate: (m['due_date'] != null &&
                             m['due_date'].toString() != '0' &&
                             m['due_date'].toString() != 'null' &&
                             m['due_date'].toString().isNotEmpty)
                         ? DateTime.fromMillisecondsSinceEpoch(
-                            int.tryParse(m['due_date'].toString()) ?? 0)
+                            JsonValueParser.toInt(m['due_date']))
                         : null,
                     teamUuid: m['team_uuid'],
                     teamName: m['team_name'],
@@ -1367,24 +1359,19 @@ mixin _StorageTodos on _StorageServiceBase {
                     recurrenceEndDate: (m['recurrence_end_date'] != null &&
                             m['recurrence_end_date'].toString() != '0')
                         ? DateTime.fromMillisecondsSinceEpoch(
-                            int.tryParse(m['recurrence_end_date'].toString()) ??
-                                0)
+                            JsonValueParser.toInt(m['recurrence_end_date']))
                         : null,
                     reminderMinutes: (m['reminder_minutes'] != null &&
                             m['reminder_minutes'].toString() != '-1')
-                        ? int.tryParse(m['reminder_minutes'].toString())
+                        ? JsonValueParser.toNullableInt(m['reminder_minutes'])
                         : null,
                     imagePath: m['image_path']?.toString(),
                     originalText: m['original_text']?.toString(),
                     isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
                     hasConflict:
                         m['has_conflict'] == 1 || m['has_conflict'] == true,
-                    serverVersionData: m['conflict_data'] != null
-                        ? (m['conflict_data'] is String
-                            ? Map<String, dynamic>.from(
-                                jsonDecode(m['conflict_data']))
-                            : Map<String, dynamic>.from(m['conflict_data']))
-                        : null,
+                    serverVersionData:
+                        JsonValueParser.toMap(m['conflict_data']),
                   ))
               .toList();
         }
@@ -1403,7 +1390,8 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     // 🚀 逃生通道：兜底读取 Prefs
-    List<String> list = prefs.getStringList("${keyTodos}_$username") ?? [];
+    List<String> list =
+        prefs.getStringList(_scopedKey(keyTodos, username)) ?? [];
     List<TodoItem> legacyTodos;
 
     if (list.length > 50) {
@@ -2646,7 +2634,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
   Future<void> _clearTodoGroupPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${keyTodoGroups}_$username");
+    await prefs.remove(_scopedKey(keyTodoGroups, username));
     await prefs.remove(keyTodoGroups);
   }
 
@@ -2663,7 +2651,7 @@ mixin _StorageTodos on _StorageServiceBase {
           await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
-            prefs.getStringList("${keyTodoGroups}_$username") ?? [];
+            prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
 
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
@@ -2720,7 +2708,8 @@ mixin _StorageTodos on _StorageServiceBase {
 
     // 逃生通道
     final prefs = await StorageService.prefs;
-    List<String> list = prefs.getStringList("${keyTodoGroups}_$username") ?? [];
+    List<String> list =
+        prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
     List<TodoGroup> result = [];
 
     for (var e in list) {

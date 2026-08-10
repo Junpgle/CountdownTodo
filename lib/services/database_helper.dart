@@ -6,6 +6,7 @@ import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models.dart';
 import '../utils/app_platform.dart';
+import '../utils/json_value_parser.dart';
 import 'database_path_resolver.dart';
 import 'database_schema_history.dart';
 
@@ -2156,9 +2157,7 @@ class DatabaseHelper {
   }
 
   int? _toNullableInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    return int.tryParse(value.toString());
+    return JsonValueParser.toNullableInt(value);
   }
 
   // 🚀 Uni-Sync 4.0: 获取所有待办事项（用于缓存重载）

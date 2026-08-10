@@ -65,8 +65,7 @@ class MigrationService {
 
       if (oldUserId == 0) throw Exception("无法获取旧服务器的用户 ID");
 
-      // 临时存入旧环境的 Token，供后续 fetch 使用
-      await prefs.setString('auth_token', oldToken);
+      // 仅在内存中使用旧环境 Token；迁移完成前不应把旧服务器凭证持久化。
       ApiService.setToken(oldToken);
 
       // ==========================================
@@ -173,8 +172,11 @@ class MigrationService {
 
       if (newUserId == 0) throw Exception("无法分配新服务器的用户 ID");
 
-      // 覆盖本地存的凭证
-      await prefs.setString('auth_token', newToken);
+      // 覆盖本地存的凭证。必须使用统一的会话 Key，确保重启后能恢复登录状态。
+      await prefs.remove(StorageService.keyAuthToken);
+      if (newToken.isNotEmpty) {
+        await prefs.setString(StorageService.keyAuthToken, newToken);
+      }
       await prefs.setInt('current_user_id', newUserId);
       ApiService.setToken(newToken);
 

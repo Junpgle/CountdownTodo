@@ -21,7 +21,9 @@ import 'services/storage/countdown_storage.dart';
 import 'services/storage/habit_storage.dart';
 import 'services/storage/pomodoro_storage.dart';
 import 'services/storage/storage_conflict_cleanup.dart';
+import 'services/storage/storage_key_scope.dart';
 import 'services/storage/user_session_storage.dart';
+import 'utils/json_value_parser.dart';
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
@@ -397,6 +399,8 @@ class StorageService {
       _storage.saveLoginSession(username, token: token);
 
   static Future<String?> getLoginSession() => _storage.getLoginSession();
+
+  static Future<String?> getAuthToken() => _storage.restoreAuthToken();
 
   static Future<void> clearLoginSession() => _storage.clearLoginSession();
 

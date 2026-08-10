@@ -1,4 +1,5 @@
 import '../models.dart';
+import '../utils/time_utils.dart';
 
 /// Centralizes the time-window rules for live todo notifications.
 class TodoNotificationPolicy {
@@ -14,12 +15,7 @@ class TodoNotificationPolicy {
 
     if (todo.isDateOnly) return false;
 
-    if (!_isSameDay(due, now)) return false;
+    if (!AppTimeFormats.isSameDay(due, now)) return false;
     return !now.isBefore(due.subtract(leadTime)) && now.isBefore(due);
   }
-
-  static bool _isSameDay(DateTime first, DateTime second) =>
-      first.year == second.year &&
-      first.month == second.month &&
-      first.day == second.day;
 }

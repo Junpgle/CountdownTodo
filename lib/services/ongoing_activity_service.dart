@@ -1,6 +1,7 @@
 import '../models.dart';
 import '../storage_service.dart';
 import 'course_service.dart';
+import '../utils/time_utils.dart';
 
 enum OngoingActivityKind { fixedSchedule, course, planBlock, todo }
 
@@ -130,7 +131,7 @@ class OngoingActivityService {
           if (todo.isDone || todo.isDeleted || todo.dueDate == null) {
             return false;
           }
-          return _isSameDay(todo.dueDate!.toLocal(), localNow);
+          return AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), localNow);
         })
         .map((todo) => TodayTodoSummary(
               id: todo.id,
@@ -209,7 +210,7 @@ class OngoingActivityService {
           DateTime.fromMillisecondsSinceEpoch(block.startTime).toLocal();
       final blockEnd =
           DateTime.fromMillisecondsSinceEpoch(block.endTime).toLocal();
-      if (!_isSameDay(blockStart, blockEnd)) continue;
+      if (!AppTimeFormats.isSameDay(blockStart, blockEnd)) continue;
       _addFutureBoundaries(boundaries, block.startTime, block.endTime, nowMs);
       final linkedTodo = todoById[block.todoId];
       if (_containsNow(block.startTime, block.endTime, nowMs)) {
@@ -267,7 +268,7 @@ class OngoingActivityService {
 
       final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
       final end = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-      if (!_isSameDay(start, end)) continue;
+      if (!AppTimeFormats.isSameDay(start, end)) continue;
       _addFutureBoundaries(boundaries, startMs, endMs, nowMs);
       _classifyCandidate(
         OngoingActivity(
@@ -376,9 +377,6 @@ class OngoingActivityService {
     if (startMs > nowMs) target.add(startMs);
     if (endMs > nowMs) target.add(endMs);
   }
-
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 
   static bool _isDisplayablePlanStatus(TodoPlanStatus status) =>
       status != TodoPlanStatus.finished &&

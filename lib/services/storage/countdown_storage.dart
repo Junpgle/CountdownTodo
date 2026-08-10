@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../models.dart';
 import '../database_helper.dart';
 import 'storage_conflict_cleanup.dart';
+import 'storage_key_scope.dart';
 
 typedef CountdownChangeChecker = bool Function(
   Map<String, dynamic> before,
@@ -34,6 +35,9 @@ class CountdownStorage {
   CountdownStorage._();
 
   static const String _countdownsKey = "user_countdowns";
+
+  static String _legacyDataKey(String username) =>
+      StorageKeyScope.scoped(_countdownsKey, username);
 
   static Future<void> saveCountdowns(
     String username,
@@ -161,7 +165,7 @@ class CountdownStorage {
           await db.rawQuery('SELECT COUNT(*) as cnt FROM countdowns');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
-            prefs.getStringList("${_countdownsKey}_$username") ?? [];
+            prefs.getStringList(_legacyDataKey(username)) ?? [];
 
         if (!alreadyMigrated && legacyJsonList.isEmpty && username.isNotEmpty) {
           final String markerKey = "${_countdownsKey}_${username}_migrated";
@@ -184,7 +188,7 @@ class CountdownStorage {
             sync: false,
             isSyncSource: true,
           );
-          await prefs.remove("${_countdownsKey}_$username");
+          await prefs.remove(_legacyDataKey(username));
           await prefs.remove(_countdownsKey);
 //           debugPrint("✅ 倒数日老数据迁移完成并已物理清理。");
         }
@@ -193,7 +197,7 @@ class CountdownStorage {
         }
         await prefs.setBool(migrationKey, true);
       } else if (alreadyMigrated) {
-        await prefs.remove("${_countdownsKey}_$username");
+        await prefs.remove(_legacyDataKey(username));
         await prefs.remove(_countdownsKey);
       }
 
@@ -213,7 +217,7 @@ class CountdownStorage {
 //       debugPrint("⚠️ Countdowns SQL 引擎异常: $e");
     }
 
-    final list = prefs.getStringList("${_countdownsKey}_$username") ?? [];
+    final list = prefs.getStringList(_legacyDataKey(username)) ?? [];
 
     if (list.length > 50) {
       return await compute(_parseCountdownJsonItemsIsolate, list);
@@ -230,7 +234,7 @@ class CountdownStorage {
 
   static Future<void> _clearCountdownPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${_countdownsKey}_$username");
+    await prefs.remove(_legacyDataKey(username));
     await prefs.remove(_countdownsKey);
   }
 

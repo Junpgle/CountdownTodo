@@ -12,6 +12,7 @@ import 'storage/app_settings_storage.dart';
 import 'macos_pomodoro_status_bar_service.dart';
 import 'todo_notification_policy.dart';
 import 'item_semantics_service.dart';
+import '../utils/time_utils.dart';
 
 class NotificationService {
   static const MethodChannel _channel =
@@ -184,12 +185,6 @@ class NotificationService {
     }
   }
 
-  static bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
-  }
-
   static Future<void> showCourseLiveActivity({
     required String courseName,
     required String room,
@@ -300,7 +295,7 @@ class NotificationService {
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
-      if (!_isSameDay(localDueDate, now)) return false;
+      if (!AppTimeFormats.isSameDay(localDueDate, now)) return false;
       DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
               t.createdDate ?? t.createdAt,
               isUtc: true)
@@ -370,7 +365,7 @@ class NotificationService {
         : todo.remark ?? '';
     if (todo.dueDate == null && !isSpecialTodo) return;
     if (todo.dueDate != null &&
-        !_isSameDay(todo.dueDate!.toLocal(), DateTime.now())) {
+        !AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), DateTime.now())) {
       return;
     }
     final isAllDayTodo = _isAllDayTodo(todo);
@@ -468,8 +463,7 @@ class NotificationService {
     if (remainingSeconds > 60) {
       countdownStr = '${(remainingSeconds / 60).ceil()} 分钟';
     } else {
-      countdownStr =
-          '${(remainingSeconds ~/ 60).toString().padLeft(2, '0')}:${(remainingSeconds % 60).toString().padLeft(2, '0')}';
+      countdownStr = formatTimerMMSS(remainingSeconds);
     }
 
     try {

@@ -58,6 +58,7 @@ dependencies:
   timezone: ^0.10.1
   qr_flutter: ^4.1.0
   dynamic_color: ^1.8.1
+  sensors_plus: ^6.1.1
   image_picker: ^1.2.2
   image_cropper: ^8.0.2
   flutter_colorpicker: ^1.1.0

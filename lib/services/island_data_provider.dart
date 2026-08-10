@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'island_slot_provider.dart';
 import 'island_payload_model.dart';
+import '../utils/time_utils.dart';
 
 /// Cache entry for island data
 class _CacheEntry<T> {
@@ -292,18 +293,14 @@ class IslandDataProvider {
       }
 
       if (secs < 0) secs = 0;
-      final mm = (secs ~/ 60).toString().padLeft(2, '0');
-      final ss = (secs % 60).toString().padLeft(2, '0');
-      timeLabel = '$mm:$ss';
+      timeLabel = formatTimerMMSS(secs);
     }
 
     String pauseLabel = '';
     if (p.isPaused && p.pauseStartMs > 0) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final pSecs = (now - p.pauseStartMs) ~/ 1000;
-      final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
-      final pss = (pSecs % 60).toString().padLeft(2, '0');
-      pauseLabel = '$pmm:$pss';
+      pauseLabel = formatTimerMMSS(pSecs);
     }
 
     return {

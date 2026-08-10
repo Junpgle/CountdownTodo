@@ -10,6 +10,7 @@ import '../models.dart';
 import '../update_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/navigator_utils.dart';
+import '../utils/json_value_parser.dart';
 
 // ============================================================
 // 跨端专注感知：连接阿里云 WebSocket 服务器
@@ -128,11 +129,7 @@ class CrossDevicePomodoroState {
       );
 
   static int? _parseInt(dynamic v) {
-    if (v == null) return null;
-    if (v is int) return v;
-    if (v is double) return v.toInt();
-    if (v is String) return int.tryParse(v);
-    return null;
+    return JsonValueParser.toNullableInt(v);
   }
 
   static List<String> _parseStringList(dynamic v) {
@@ -317,8 +314,8 @@ class PomodoroSyncService {
       final versionParam = _appVersion ?? 'unknown';
 
       // 🚀 核心修复：WebSocket 地址动态跟随 ApiService，消除 8082/8084 端口不匹配
-      String apiBase = ApiService.baseUrl;
-      String wsBase = apiBase
+      final apiBase = ApiService.effectiveBaseUrl;
+      final wsBase = apiBase
           .replaceFirst('https://', 'wss://')
           .replaceFirst('http://', 'ws://');
 

@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
 import '../models/widget_snapshot.dart';
@@ -26,9 +25,8 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
   if (uri != null && uri.scheme == 'todowidget' && uri.host == 'markdone') {
     final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (id != null) {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-      if (username.isNotEmpty) {
+      final username = await StorageService.getCurrentUsername();
+      if (username != null && username.isNotEmpty) {
         List<TodoItem> todos = await StorageService.getTodos(username);
         bool changed = false;
         for (var t in todos) {
@@ -42,7 +40,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
         if (changed) {
           todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
           await StorageService.saveTodos(username, todos);
-          await WidgetService.updateAllWidgetData(username, todos);
+          await WidgetService._updateCurrentUserWidgets(todos: todos);
         }
       }
     }
@@ -52,9 +50,8 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
   if (uri != null && uri.scheme == 'todowidget' && uri.host == 'habitcheckin') {
     final habitId = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (habitId == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-    if (username.isEmpty) return;
+    final username = await StorageService.getCurrentUsername();
+    if (username == null || username.isEmpty) return;
     final value = double.tryParse(uri.queryParameters['value'] ?? '');
     final result = await HabitWidgetCheckIn.quickCheckIn(
       habitId: habitId,
@@ -62,8 +59,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
       username: username,
     );
     if (result is HabitWidgetCheckInDone && result.succeeded) {
-      final todos = await StorageService.getTodos(username);
-      await WidgetService.updateAllWidgetData(username, todos);
+      await WidgetService._updateCurrentUserWidgets();
     }
   }
 }
@@ -97,16 +93,25 @@ class WidgetService {
   /// 同步 / 批量操作期间的多次变更；失败时静默等待周期刷新兜底。
   static Timer? _widgetRefreshDebouncer;
 
+  /// 读取当前登录用户并刷新其 Widget 数据。
+  ///
+  /// 调用方可以传入已经加载好的 Todo，避免同一业务流程重复读取；
+  /// 未传入时统一从当前用户的存储中加载。
+  static Future<void> _updateCurrentUserWidgets({
+    List<TodoItem>? todos,
+  }) async {
+    final username = await StorageService.getCurrentUsername();
+    if (username == null || username.isEmpty) return;
+    final items = todos ?? await StorageService.getTodos(username);
+    await updateAllWidgetData(username, items);
+  }
+
   static Future<void> _refreshWidgetsAfterDataChange() async {
     _widgetRefreshDebouncer?.cancel();
     _widgetRefreshDebouncer =
         Timer(const Duration(milliseconds: 600), () async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-        if (username.isEmpty) return;
-        final todos = await StorageService.getTodos(username);
-        await updateAllWidgetData(username, todos);
+        await _updateCurrentUserWidgets();
       } catch (_) {}
     });
   }
@@ -136,11 +141,7 @@ class WidgetService {
     _periodicTimer?.cancel();
     _periodicTimer = Timer.periodic(const Duration(minutes: 15), (timer) async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-        if (username.isEmpty) return;
-        final todos = await StorageService.getTodos(username);
-        await WidgetService.updateAllWidgetData(username, todos);
+        await _updateCurrentUserWidgets();
       } catch (e) {
 //         print('Widget periodic refresh error: $e');
       }
@@ -148,12 +149,7 @@ class WidgetService {
 
     // 立即触发一次更新
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-      if (username.isNotEmpty) {
-        final todos = await StorageService.getTodos(username);
-        await updateAllWidgetData(username, todos);
-      }
+      await _updateCurrentUserWidgets();
     } catch (e) {
 //       print('Widget initial update error: $e');
     }
@@ -914,8 +910,6 @@ class WidgetService {
   }
 
   static Future<void> updateTodoWidget(List<TodoItem> todos) async {
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
-    await updateAllWidgetData(username, todos);
+    await _updateCurrentUserWidgets(todos: todos);
   }
 }

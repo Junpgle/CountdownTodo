@@ -11,6 +11,7 @@ import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/android_delta_service.dart';
+import 'services/api_service.dart';
 import 'services/permission_request_coordinator.dart';
 import 'services/github_resource_service.dart';
 
@@ -295,8 +296,11 @@ class UpdateService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
-  static const String fallbackManifestUrl =
-      "http://101.200.13.100:8082/api/manifest";
+  static String get fallbackManifestUrl {
+    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    return '$base/api/manifest';
+  }
+
   static const String changelogArchiveUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
