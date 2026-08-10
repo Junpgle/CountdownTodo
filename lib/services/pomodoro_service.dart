@@ -388,12 +388,14 @@ class PomodoroSettings {
   int breakMinutes; // default_rest_duration  / 60
   int cycles; // default_loop_count
   TimerMode mode; // 🚀 新增：倒计时或正计时模式
+  bool strictFreeFocus; // 严格自由专注：通过手机翻转控制计时
 
   PomodoroSettings({
     this.focusMinutes = 25,
     this.breakMinutes = 5,
     this.cycles = 4,
     this.mode = TimerMode.countdown,
+    this.strictFreeFocus = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -401,6 +403,7 @@ class PomodoroSettings {
         'breakMinutes': breakMinutes,
         'cycles': cycles,
         'mode': mode.index,
+        'strictFreeFocus': strictFreeFocus,
         // 后端字段（秒）
         'default_focus_duration': focusMinutes * 60,
         'default_rest_duration': breakMinutes * 60,
@@ -413,6 +416,9 @@ class PomodoroSettings {
     final breakRaw = j['breakMinutes'] ?? j['default_rest_duration'];
     final cyclesRaw = j['cycles'] ?? j['default_loop_count'];
     final modeIdx = j['mode'] as int? ?? 0;
+    final strictFreeFocus = j['strictFreeFocus'] == true ||
+        j['strict_free_focus'] == true ||
+        j['strictMode'] == true;
 
     int toMinutes(dynamic v, int def) {
       final n = v as int? ?? def;
@@ -425,6 +431,7 @@ class PomodoroSettings {
       breakMinutes: toMinutes(breakRaw, 5),
       cycles: cyclesRaw as int? ?? 4,
       mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+      strictFreeFocus: strictFreeFocus,
     );
   }
 }
@@ -450,6 +457,8 @@ class PomodoroRunState {
   int sessionStartMs;
   int plannedFocusSeconds;
   TimerMode mode;
+  bool strictFreeFocus;
+  bool strictWaitingForFlip;
   // 🚀 暂停状态持久化
   bool isPaused;
   int pausedAtMs;
@@ -474,6 +483,8 @@ class PomodoroRunState {
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
     this.mode = TimerMode.countdown,
+    this.strictFreeFocus = false,
+    this.strictWaitingForFlip = false,
     this.isPaused = false,
     this.pausedAtMs = 0,
     this.accumulatedMs = 0,
@@ -515,6 +526,8 @@ class PomodoroRunState {
         'plannedFocusSeconds': plannedFocusSeconds,
         'mode': mode.index,
         'isCountUp': mode == TimerMode.countUp,
+        'strictFreeFocus': strictFreeFocus,
+        'strictWaitingForFlip': strictWaitingForFlip,
         'isPaused': isPaused,
         'paused_at_ms': pausedAtMs,
         'accumulated_ms': accumulatedMs,
@@ -548,6 +561,11 @@ class PomodoroRunState {
           j['actualFocusedSeconds'] as int? ??
           focusSecs,
       mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+      strictFreeFocus: j['strictFreeFocus'] == true ||
+          j['strict_free_focus'] == true ||
+          j['strictMode'] == true,
+      strictWaitingForFlip: j['strictWaitingForFlip'] == true ||
+          j['strict_waiting_for_flip'] == true,
       isPaused: j['is_paused'] == 1 ||
           j['is_paused'] == true ||
           j['isPaused'] == 1 ||

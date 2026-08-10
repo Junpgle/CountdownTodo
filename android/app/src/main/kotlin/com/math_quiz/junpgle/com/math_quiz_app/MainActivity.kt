@@ -19,6 +19,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.provider.Settings
@@ -52,6 +55,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val DEEP_LINK_CHANNEL = "com.math_quiz_app/deep_links"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
+    private val STRICT_FOCUS_HAPTICS_CHANNEL = "countdown_todo/strict_focus_haptics"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
     private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
@@ -943,6 +947,23 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
+            STRICT_FOCUS_HAPTICS_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    vibrateStrictFocusStart()
+                    result.success(null)
+                }
+                "pause" -> {
+                    vibrateStrictFocusPause()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
             APP_UPDATE_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -1518,6 +1539,36 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun vibrateStrictFocusStart() {
+        vibrateStrictFocus(120L)
+    }
+
+    private fun vibrateStrictFocusPause() {
+        vibrateStrictFocus(80L)
+    }
+
+    private fun vibrateStrictFocus(durationMs: Long) {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (!vibrator.hasVibrator()) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createOneShot(
+                    durationMs,
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(durationMs)
         }
     }
 
