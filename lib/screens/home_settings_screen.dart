@@ -20,6 +20,7 @@ import 'about_screen.dart';
 import 'help/help_center_screen.dart';
 import 'settings/widgets/account_section.dart';
 import 'settings/widgets/sync_settings_section.dart';
+import 'settings/widgets/update_settings_section.dart';
 import 'settings/notification_settings_page.dart';
 import 'settings/dialogs/change_password_dialog.dart';
 
@@ -97,7 +98,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final accountTargets = [
       'sync_interval',
       'conflict_detection',
-      'server_choice'
+      'server_choice',
+      'update',
+      'force_download',
+      'update_source',
+      'changelog',
     ];
     final preferenceTargets = [
       'theme',
@@ -136,10 +141,6 @@ class _SettingsPageState extends State<SettingsPage> {
       'migration',
       'cache',
       'storage',
-      'update',
-      'get_beta',
-      'force_download',
-      'update_source',
       'help_center',
       'changelog',
       'feature_guide'
@@ -217,7 +218,9 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
-      if (paneId == 'preference') {
+      if (paneId == 'account') {
+        pushWidget = _buildAccountAndAnnouncementsPane();
+      } else if (paneId == 'preference') {
         pushWidget = PreferenceSettingsPage(initialTarget: target);
       } else if (paneId == 'minor_mode') {
         pushWidget = MinorModeSettingsPage(initialTarget: target);
@@ -488,6 +491,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
             ),
+            const UpdateSettingsSection(),
             SyncSettingsSection(username: _username),
           ],
         ),
@@ -1145,6 +1149,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
           ),
+          const UpdateSettingsSection(),
           SyncSettingsSection(username: _username),
           const SizedBox(height: 24),
           const Padding(

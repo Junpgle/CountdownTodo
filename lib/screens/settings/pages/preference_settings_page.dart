@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../storage_service.dart';
 import '../../../utils/app_dialogs.dart';
@@ -16,9 +15,6 @@ import '../../feature_guide_screen.dart';
 import '../../help/help_center_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
-import '../../../update_service.dart';
-import '../../../services/minor_mode_policy.dart';
-import '../../../services/minor_mode_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
@@ -47,10 +43,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'migration': GlobalKey(),
     'cache': GlobalKey(),
     'storage': GlobalKey(),
-    'update': GlobalKey(),
-    'get_beta': GlobalKey(),
-    'force_download': GlobalKey(),
-    'update_source': GlobalKey(),
     'help_center': GlobalKey(),
     'changelog': GlobalKey(),
     'feature_guide': GlobalKey(),
@@ -66,12 +58,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
   Map<String, dynamic> _homeTextConfig = {};
   String _username = '';
 
-  bool _isCheckingUpdate = false;
-  bool _isForceDownloading = false;
-  double _forceDownloadProgress = 0.0;
   String _cacheSizeStr = "计算中...";
   late StorageManagementHandler _storageManagementHandler;
-  String _updateSource = 'server'; // 更新源偏好
 
   @override
   void initState() {
@@ -108,8 +96,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     String wallpaperProvider = await StorageService.getWallpaperProvider();
     Map<String, dynamic> homeTextConfig =
         await StorageService.getHomeTextConfig();
-    String updateSource = await UpdateService.getUpdateSource();
-
     if (AppPlatform.isWeb && wallpaperProvider == 'custom') {
       wallpaperProvider = 'bing';
       await StorageService.saveWallpaperProvider(wallpaperProvider);
@@ -121,7 +107,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
         _themeColorMode = themeColorMode;
         _wallpaperProvider = wallpaperProvider;
         _homeTextConfig = homeTextConfig;
-        _updateSource = updateSource;
         if (customColorVal != null) {
           _customThemeColor = Color(customColorVal);
         }
@@ -161,92 +146,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
       builder: (context) => MigrationDialog(
         onSuccess: () {},
       ),
-    );
-  }
-
-  Future<void> _checkUpdatesAndNotices() async {
-    setState(() => _isCheckingUpdate = true);
-    await UpdateService.checkUpdateAndPrompt(context, isManual: true);
-    if (mounted) setState(() => _isCheckingUpdate = false);
-  }
-
-  Future<void> _forceDownloadLatest() async {
-    if (_isForceDownloading) return;
-
-    final currentContext = context;
-
-    // 确认对话框
-    final confirmed = await showDialog<bool>(
-      context: currentContext,
-      builder: (ctx) => AlertDialog(
-        title: const Text('强制下载最新版本'),
-        content: const Text(
-          '强制下载最新版本可能会获取到尚未公开发布的版本，可能存在不稳定或兼容性问题。\n\n确认下载吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认下载'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    setState(() {
-      _isForceDownloading = true;
-      _forceDownloadProgress = 0.0;
-    });
-
-    await UpdateService.forceDownloadLatest(
-      context,
-      onProgress: (progress) {
-        if (mounted) setState(() => _forceDownloadProgress = progress);
-      },
-      onComplete: (path) async {
-        if (!mounted) return;
-        setState(() {
-          _isForceDownloading = false;
-          _forceDownloadProgress = 1.0;
-        });
-
-        // 显示安装确认对话框
-        final shouldInstall = await showDialog<bool>(
-          context: currentContext,
-          builder: (ctx) => AlertDialog(
-            title: const Text('下载完成'),
-            content: Text(AppPlatform.isMacOS
-                ? '安装包已下载完成，是否打开下载目录？'
-                : '最新版本已下载完成，是否立即安装？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('稍后'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(AppPlatform.isMacOS ? '打开目录' : '立即安装'),
-              ),
-            ],
-          ),
-        );
-
-        if (shouldInstall == true) {
-          await UpdateService.installPackage(path);
-        }
-      },
-      onError: (error) {
-        if (!mounted) return;
-        setState(() => _isForceDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
-      },
     );
   }
 
@@ -378,69 +277,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                 onTap: _storageManagementHandler.showStorageAnalysis,
               ),
             ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
-              targetId: 'update',
-              child: ListTile(
-                leading: Icon(Icons.system_update_outlined,
-                    color: colorScheme.cdtSuccess),
-                title: const Text('检查新版本'),
-                trailing: _isCheckingUpdate
-                    ? const AppLoadingIndicator()
-                    : const Icon(Icons.chevron_right),
-                onTap: _isCheckingUpdate ? null : _checkUpdatesAndNotices,
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
-              targetId: 'get_beta',
-              child: ListTile(
-                leading: Icon(Icons.rocket_launch, color: colorScheme.primary),
-                title: const Text('获取尝鲜版'),
-                subtitle: const Text('前往 GitHub 下载最新开发版，体验最新功能'),
-                trailing: const Icon(Icons.open_in_new),
-                onTap: () async {
-                  final uri = Uri.parse(
-                      'https://github.com/Junpgle/CountdownTodo/releases');
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-              ),
-            ),
-            const AppSettingsDivider(indent: 72),
-            _buildTile(
-              targetId: 'force_download',
-              child: ListTile(
-                leading:
-                    Icon(Icons.download_rounded, color: colorScheme.primary),
-                title: const Text('强制下载最新版本'),
-                subtitle: _isForceDownloading
-                    ? Text(
-                        '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                        style:
-                            TextStyle(fontSize: 12, color: colorScheme.primary),
-                      )
-                    : const Text('未正式发布的版本可能不稳定，请谨慎下载'),
-                trailing: _isForceDownloading
-                    ? SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          value: _forceDownloadProgress > 0
-                              ? _forceDownloadProgress
-                              : null,
-                          color: colorScheme.primary,
-                        ),
-                      )
-                    : Icon(Icons.file_download_outlined,
-                        color: colorScheme.onSurfaceVariant),
-                onTap: _isForceDownloading ? null : _forceDownloadLatest,
-              ),
-            ),
-            const AppSettingsDivider(),
-            _buildUpdateSourceSection(),
           ],
           const AppSettingsSectionHeader(
             title: '其他工具',
@@ -830,102 +666,6 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildUpdateSourceSection() {
-    return _buildTile(
-      targetId: 'update_source',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('更新检查源',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildUpdateSourceCard('github', 'GitHub（最新）', Icons.code),
-                const SizedBox(width: 24),
-                _buildUpdateSourceCard(
-                    'server', '阿里云服务器（更快）', Icons.cloud_outlined),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUpdateSourceCard(String value, String title, IconData icon) {
-    final isSelected = _updateSource == value;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: () async {
-        final authorized = await MinorModeService.instance.authorizeAction(
-          MinorModeAction.updateSource,
-        );
-        if (!authorized) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  MinorModeService.instance.authorizationFailureMessage(
-                    MinorModeAction.updateSource,
-                  ),
-                ),
-              ),
-            );
-          }
-          return;
-        }
-        await UpdateService.setUpdateSource(value);
-        if (mounted) {
-          setState(() => _updateSource = value);
-        }
-      },
-      child: Column(
-        children: [
-          Container(
-            width: 86,
-            height: 60,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isSelected ? colorScheme.tertiary : Colors.transparent,
-                width: 2.5,
-              ),
-              color: colorScheme.surfaceContainerHighest,
-              boxShadow: [
-                if (isSelected)
-                  BoxShadow(
-                      color: colorScheme.tertiary.withValues(alpha: 0.2),
-                      blurRadius: 6,
-                      spreadRadius: 1)
-              ],
-            ),
-            child: Center(
-              child: Icon(icon,
-                  size: 28,
-                  color: isSelected
-                      ? colorScheme.tertiary
-                      : colorScheme.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? colorScheme.tertiary : null,
-              )),
-        ],
       ),
     );
   }
