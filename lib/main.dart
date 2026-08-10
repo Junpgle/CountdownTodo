@@ -35,6 +35,7 @@ import 'services/course_service.dart';
 import 'services/environment_service.dart';
 import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
+import 'services/minor_mode_service.dart';
 import 'widgets/island_debug_host.dart';
 
 import 'utils/navigator_utils.dart';
@@ -118,6 +119,11 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       'WindowService.init',
       PlatformBootstrap.initWindowService(),
       timeout: const Duration(seconds: 3),
+    ),
+    _runStartupTask(
+      'MinorModeService.initialize',
+      MinorModeService.instance.initialize(),
+      timeout: const Duration(seconds: 2),
     ),
   ]);
 }

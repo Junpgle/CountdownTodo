@@ -50,6 +50,7 @@ import io.github.d4viddf.hyperisland_kit.HyperPicture
 
 // 导入 Shizuku 核心类
 import rikka.shizuku.Shizuku
+import com.math_quiz.junpgle.com.math_quiz_app.minors.MinorModeManager
 
 class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener, Shizuku.OnBinderReceivedListener, Shizuku.OnBinderDeadListener {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
@@ -120,6 +121,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
     private var deepLinkChannel: MethodChannel? = null
+    private var minorModeManager: MinorModeManager? = null
     private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
@@ -595,6 +597,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     override fun onDestroy() {
         super.onDestroy()
+        minorModeManager?.dispose()
+        minorModeManager = null
         // 移除监听器，防止内存泄漏
         Shizuku.removeRequestPermissionResultListener(this)
         Shizuku.removeBinderReceivedListener(this)
@@ -609,6 +613,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         lastNotificationTimestampMs.clear()
         methodChannel = null
         deepLinkChannel = null
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (minorModeManager?.onActivityResult(requestCode, resultCode) == true) {
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     // Shizuku 服务成功连接的回调
@@ -931,6 +942,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         super.configureFlutterEngine(flutterEngine)
 
         createNotificationChannel()
+
+        // 独立的未成年人模式桥接模块：MainActivity 只负责注册入口。
+        minorModeManager = MinorModeManager(this).also { manager ->
+            manager.register(flutterEngine)
+        }
 
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
