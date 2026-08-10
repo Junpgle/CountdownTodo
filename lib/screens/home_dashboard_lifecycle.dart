@@ -195,8 +195,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   Future<void> _configureBackgroundNotificationPoll() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('current_user_id');
-    final token =
-        ApiService.getToken() ?? prefs.getString(StorageService.keyAuthToken);
+    final token = await StorageService.getAuthToken();
     if (userId == null || token == null || token.isEmpty) return;
     await BackgroundNotificationService.configureNotificationPoll(
       userId: userId,

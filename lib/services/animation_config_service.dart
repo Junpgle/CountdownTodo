@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum AnimationPreset { performance, balanced, expressive }
+
 class AnimationConfigService {
+  static const String _keyPreset = 'animation_preset';
   static const String _keyEnableAnimations = 'enable_animations';
   static const String _keyEnableMotionBlur = 'enable_motion_blur';
   static const String _keyEnableLayerBlur = 'enable_layer_blur';
@@ -10,6 +14,18 @@ class AnimationConfigService {
   static const String _keyAnimationDuration = 'animation_duration';
   static const String _keyPageLayerDepth = 'page_layer_depth';
   static const String _keyContainerContentStart = 'container_content_start';
+
+  static bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  static Future<AnimationPreset?> getPreset() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_keyPreset);
+    for (final preset in AnimationPreset.values) {
+      if (preset.name == value) return preset;
+    }
+    return null;
+  }
 
   static Future<bool> isAnimationsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,61 +59,131 @@ class AnimationConfigService {
 
   static Future<int> getAnimationDuration() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyAnimationDuration) ?? 500;
+    return prefs.getInt(_keyAnimationDuration) ?? (_isAndroid ? 220 : 500);
   }
 
   static Future<int> getPageLayerDepth() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyPageLayerDepth) ?? 60;
+    return prefs.getInt(_keyPageLayerDepth) ?? (_isAndroid ? 18 : 60);
   }
 
   static Future<int> getContainerContentStart() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyContainerContentStart) ?? 28;
+    return prefs.getInt(_keyContainerContentStart) ?? (_isAndroid ? 12 : 28);
+  }
+
+  /// Apply a complete visual/performance profile in one user action.
+  ///
+  /// The performance profile keeps useful motion but removes the expensive
+  /// blur layers that most often block the raster thread on Android phones.
+  static Future<void> setPreset(AnimationPreset preset) async {
+    final prefs = await SharedPreferences.getInstance();
+    late final Map<String, Object> values;
+    switch (preset) {
+      case AnimationPreset.performance:
+        values = {
+          _keyEnableAnimations: true,
+          _keyEnableMotionBlur: false,
+          _keyEnableLayerBlur: false,
+          _keyEnableLazyLoad: true,
+          _keyEnableScreenRadius: true,
+          _keyEnablePredictiveBack: true,
+          _keyAnimationDuration: 220,
+          _keyPageLayerDepth: 18,
+          _keyContainerContentStart: 12,
+        };
+      case AnimationPreset.balanced:
+        values = {
+          _keyEnableAnimations: true,
+          _keyEnableMotionBlur: false,
+          _keyEnableLayerBlur: false,
+          _keyEnableLazyLoad: true,
+          _keyEnableScreenRadius: true,
+          _keyEnablePredictiveBack: true,
+          _keyAnimationDuration: 320,
+          _keyPageLayerDepth: 36,
+          _keyContainerContentStart: 18,
+        };
+      case AnimationPreset.expressive:
+        values = {
+          _keyEnableAnimations: true,
+          _keyEnableMotionBlur: true,
+          _keyEnableLayerBlur: true,
+          _keyEnableLazyLoad: false,
+          _keyEnableScreenRadius: true,
+          _keyEnablePredictiveBack: true,
+          _keyAnimationDuration: 500,
+          _keyPageLayerDepth: 60,
+          _keyContainerContentStart: 28,
+        };
+    }
+
+    await prefs.setString(_keyPreset, preset.name);
+    for (final entry in values.entries) {
+      final value = entry.value;
+      if (value is bool) {
+        await prefs.setBool(entry.key, value);
+      } else if (value is int) {
+        await prefs.setInt(entry.key, value);
+      }
+    }
   }
 
   static Future<void> setAnimationsEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnableAnimations, value);
   }
 
   static Future<void> setMotionBlurEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnableMotionBlur, value);
   }
 
   static Future<void> setLayerBlurEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnableLayerBlur, value);
   }
 
   static Future<void> setLazyLoadEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnableLazyLoad, value);
   }
 
   static Future<void> setScreenRadiusEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnableScreenRadius, value);
   }
 
   static Future<void> setPredictiveBackEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setBool(_keyEnablePredictiveBack, value);
   }
 
   static Future<void> setAnimationDuration(int value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setInt(_keyAnimationDuration, value);
   }
 
   static Future<void> setPageLayerDepth(int value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setInt(_keyPageLayerDepth, value);
   }
 
   static Future<void> setContainerContentStart(int value) async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
     await prefs.setInt(_keyContainerContentStart, value);
+  }
+
+  static Future<void> _clearPreset(SharedPreferences prefs) async {
+    await prefs.remove(_keyPreset);
   }
 }

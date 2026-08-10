@@ -7,6 +7,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
 import '../../../utils/theme_color_tokens.dart';
+import '../../../utils/app_platform.dart';
 import 'habit_format.dart';
 import 'habit_quick_checkin_sheet.dart';
 
@@ -98,9 +99,14 @@ class _HabitCardState extends State<HabitCard> {
             boxShadow: [
               BoxShadow(
                 color: _colors.shadow.withValues(alpha: 0.04),
-                blurRadius: widget.compact ? 16 : 24,
-                offset:
-                    widget.compact ? const Offset(0, 4) : const Offset(0, 8),
+                blurRadius: AppPlatform.isAndroid
+                    ? (widget.compact ? 8 : 12)
+                    : (widget.compact ? 16 : 24),
+                offset: AppPlatform.isAndroid
+                    ? const Offset(0, 4)
+                    : (widget.compact
+                        ? const Offset(0, 4)
+                        : const Offset(0, 8)),
               ),
             ],
           ),

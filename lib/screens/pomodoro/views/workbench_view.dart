@@ -6,7 +6,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../models.dart';
 import '../../../storage_service.dart';
-import '../../../services/api_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
@@ -674,7 +673,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     };
 
     // 🚀 获取 auth token 用于 WebSocket 鉴权
-    String? authToken = ApiService.getToken();
+    final authToken = await StorageService.getAuthToken();
 
     await _syncService.forceReconnect(_userId, 'flutter_$_deviceId',
         authToken: authToken, appVersion: _appVersion);
@@ -1557,14 +1556,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
                     : '自由专注中'),
                 const SizedBox(height: 12),
                 Text(_settings.mode == TimerMode.countUp
-                    ? '已累计专注: ${_formatSeconds(_remainingSeconds)}'
-                    : '还需持续专注: ${_formatSeconds(_remainingSeconds)}'),
+                    ? '已累计专注: ${formatDurationChinese(_remainingSeconds)}'
+                    : '还需持续专注: ${formatDurationChinese(_remainingSeconds)}'),
                 const SizedBox(height: 8),
                 _PauseTimerText(pauseStartMs: _pauseStartMs),
                 if (_pauseIntervals.length > 1) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '历史暂停 ${_pauseIntervals.length - 1} 次，累计 ${_formatSeconds((_accumulatedMs / 1000).round())}',
+                    '历史暂停 ${_pauseIntervals.length - 1} 次，累计 ${formatDurationChinese((_accumulatedMs / 1000).round())}',
                     style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(ctx).colorScheme.onSurfaceVariant),
@@ -1609,7 +1608,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             Text(_boundTodo != null ? '正在专注: "${_boundTodo!.title}"' : '自由专注中'),
             const SizedBox(height: 12),
             Text(
-              '已累计专注: ${_formatSeconds(PomodoroRunState.computeActualSeconds(_sessionStartMs, _accumulatedMs, endMs: _pausedAtMs > 0 ? _pausedAtMs : DateTime.now().millisecondsSinceEpoch))}',
+              '已累计专注: ${formatDurationChinese(PomodoroRunState.computeActualSeconds(_sessionStartMs, _accumulatedMs, endMs: _pausedAtMs > 0 ? _pausedAtMs : DateTime.now().millisecondsSinceEpoch))}',
               style: TextStyle(
                   fontSize: 13,
                   color: Theme.of(ctx).colorScheme.onSurfaceVariant),
@@ -1638,9 +1637,6 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       ),
     );
   }
-
-  String _formatSeconds(int totalSeconds) =>
-      formatDurationChinese(totalSeconds);
 
   Future<void> _startFocus() async {
     if (_isStrictFreeFocus) {
@@ -3276,13 +3272,12 @@ class _PauseTimerTextState extends State<_PauseTimerText> {
     super.dispose();
   }
 
-  String _format(int s) => formatTimerMMSS(s);
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: _secondsNotifier,
-      builder: (context, seconds, _) => Text('暂停时长: ${_format(seconds)}'),
+      builder: (context, seconds, _) =>
+          Text('暂停时长: ${formatTimerMMSS(seconds)}'),
     );
   }
 }

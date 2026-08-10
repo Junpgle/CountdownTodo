@@ -990,11 +990,9 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                     children: [
                       Text('高级设置',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.primary)),
+                              fontSize: 12, color: colorScheme.primary)),
                       Icon(Icons.chevron_right,
-                          size: 16,
-                          color: colorScheme.primary),
+                          size: 16, color: colorScheme.primary),
                     ],
                   ),
                 ),
@@ -1053,7 +1051,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                                 child: Container(
                                   height: 12,
                                   decoration: BoxDecoration(
-                                    color: colorScheme.tertiary.withValues(alpha: 0.4),
+                                    color: colorScheme.tertiary
+                                        .withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
@@ -1063,7 +1062,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                                 child: Container(
                                   height: 12,
                                   decoration: BoxDecoration(
-                                    color: colorScheme.secondary.withValues(alpha: 0.4),
+                                    color: colorScheme.secondary
+                                        .withValues(alpha: 0.4),
                                     borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
@@ -1073,7 +1073,8 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                           Container(
                             height: 6,
                             decoration: BoxDecoration(
-                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+                              color: colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),

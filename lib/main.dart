@@ -151,6 +151,7 @@ void _configureRuntimeCaches() {
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   AppPerformanceMonitor.install();
+  unawaited(AppPerformanceMonitor.loadSettings());
 
   // Secondary desktop_multi_window engines must not run the main-window
   // startup chain. In release this can keep the island from ever reaching its
@@ -789,6 +790,9 @@ class _MyAppState extends State<MyApp> {
                             title: 'CountDownTodo',
                             debugShowCheckedModeBanner: false,
                             navigatorKey: appNavigatorKey,
+                            navigatorObservers: [
+                              AppPerformanceNavigatorObserver(),
+                            ],
                             themeMode: currentThemeMode,
                             scrollBehavior:
                                 const MaterialScrollBehavior().copyWith(

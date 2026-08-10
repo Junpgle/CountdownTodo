@@ -8,12 +8,14 @@ import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../utils/page_transitions.dart';
 import 'package:intl/intl.dart';
 import '../widgets/todo_section_widget.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../services/storage/habit_storage.dart';
+import '../utils/json_value_parser.dart';
 
 enum _ConflictFilter { all, time, other }
 
@@ -109,29 +111,20 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
       if (!mounted || loadGeneration != _loadGeneration) return;
 
       final List<dynamic> items = [];
-      items.addAll(todos.where((t) {
-        if (t.isDeleted) return false;
-        if (!t.hasConflict) return false;
-
-        // 如果有详细的冲突数据，检查其冲突对象是否全是全天任务
-        final data = t.serverVersionData;
-        if (data != null &&
-            (data['type'] == 'schedule' || data['conflict_with'] != null)) {
-          // 独立完成待办的时间冲突同样展示
-          if (_isAllDayTask(t.toJson())) return false;
-          final peers = data['conflict_with'];
-          if (peers is List) {
-            final validPeers = peers.where((p) =>
-                p is Map && !_isAllDayTask(Map<String, dynamic>.from(p)));
-            if (validPeers.isEmpty) return false;
-          }
-        }
-        return true;
-      }));
-      items.addAll(groups.where((g) => !g.isDeleted && g.hasConflict));
-      items.addAll(countdowns.where((c) => !c.isDeleted && c.hasConflict));
-      items.addAll(habitGoals.where((g) => !g.isDeleted && g.hasConflict));
-      items.addAll(habitRules.where((r) => !r.isDeleted && r.hasConflict));
+      items
+          .addAll(todos.where(ConflictVisibilityService.isVisibleTodoConflict));
+      items.addAll(
+        groups.where(ConflictVisibilityService.isVisibleTodoGroupConflict),
+      );
+      items.addAll(
+        countdowns.where(ConflictVisibilityService.isVisibleCountdownConflict),
+      );
+      items.addAll(
+        habitGoals.where(ConflictVisibilityService.isVisibleHabitGoalConflict),
+      );
+      items.addAll(
+        habitRules.where(ConflictVisibilityService.isVisibleHabitRuleConflict),
+      );
 
       items.sort((a, b) {
         int timeA = (a is TodoItem)
@@ -2290,7 +2283,13 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final peers = (data['conflict_with'] is List
             ? data['conflict_with'] as List
             : const [])
-        .where((p) => p is Map && !_isAllDayTask(Map<String, dynamic>.from(p)))
+        .where(
+          (p) =>
+              p is Map &&
+              !ConflictVisibilityService.isAllDayTodoData(
+                Map<String, dynamic>.from(p),
+              ),
+        )
         .toList();
 
     // 如果过滤掉全天任务后不再冲突，则不显示详情（或提示已解决）
@@ -2851,9 +2850,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   int _parseMs(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+    return JsonValueParser.toInt(value);
   }
 
   DateTimeRange? _suggestPreferredWindow(TodoItem item, List peers) {
@@ -2982,7 +2979,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
                 candidate != null &&
                 !candidate.isDeleted &&
                 !candidate.isAllDay &&
-                !_isAllDayTask(candidate.toJson()) &&
+                !ConflictVisibilityService.isAllDayTodo(candidate) &&
                 _todoEndMs(candidate) > _todoStartMs(candidate) &&
                 _isSameLocalDayMs(_todoStartMs(candidate), seedStart) &&
                 ((peerId != null && candidate.id == peerId) ||
@@ -3011,42 +3008,6 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
 
   String? _itemIdFromData(Map<String, dynamic> data) {
     return (data['uuid'] ?? data['id'] ?? data['id_todo'])?.toString();
-  }
-
-  bool _isAllDayTask(Map<String, dynamic> data) {
-    if (data['is_all_day'] == 1 ||
-        data['is_all_day'] == true ||
-        data['isAllDay'] == true) {
-      return true;
-    }
-    final startMs = _parseMs(data['start_time'] ??
-        data['startTime'] ??
-        data['created_date'] ??
-        data['createdDate']);
-    final endMs = _parseMs(data['end_time'] ??
-        data['endTime'] ??
-        data['due_date'] ??
-        data['dueDate']);
-    if (startMs <= 0 || endMs <= startMs) return false;
-
-    final start = DateTime.fromMillisecondsSinceEpoch(startMs).toLocal();
-    final end = DateTime.fromMillisecondsSinceEpoch(endMs).toLocal();
-
-    // 判定为全天任务：时间正好跨越 00:00 到 23:59 或次日 00:00
-    if (start.hour == 0 && start.minute == 0) {
-      if ((end.hour == 23 && end.minute == 59) ||
-          (end.hour == 0 && end.minute == 0 && end.isAfter(start))) {
-        return true;
-      }
-    }
-
-    // 跨度超过 23.5 小时也视为全天
-    if (endMs - startMs >=
-        const Duration(hours: 23, minutes: 30).inMilliseconds) {
-      return true;
-    }
-
-    return false;
   }
 
   int _todoStartMs(TodoItem item) => item.createdDate ?? item.createdAt;

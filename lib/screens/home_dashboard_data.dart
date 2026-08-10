@@ -276,11 +276,8 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
         actions: [
           FilledButton(
             onPressed: () async {
-              // 1. 清理本地所有登录相关的持久化数据
-              // 假设你的 StorageService 有清理方法，或者直接操作 prefs
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('current_user_id');
-              await prefs.remove('logged_in_username'); // 顺便清理用户名
+              // 使用统一会话清理入口，避免遗漏真实的用户名、Token 和数据库状态。
+              await StorageService.clearLoginSession();
 
               if (!mounted || !ctx.mounted) return;
 
@@ -460,30 +457,11 @@ mixin _HomeDashboardDataMixin on _HomeDashboardStateBase {
       final bool hasTeamConflict = !conflictInputsChanged
           ? _hasTeamConflictDot
           : conflictDetectionEnabled &&
-              (allTodos.any((t) {
-                    if (!t.hasConflict || (t.teamUuid?.isEmpty ?? true)) {
-                      return false;
-                    }
-                    if (t.isAllDayTask) return false;
-                    final data = t.serverVersionData;
-                    if (data != null &&
-                        (data['type'] == 'schedule' ||
-                            data['conflict_with'] != null)) {
-                      final peers = data['conflict_with'];
-                      if (peers is List) {
-                        final hasValidPeer = peers.any((p) =>
-                            p is Map &&
-                            !TodoItem.fromJson(Map<String, dynamic>.from(p))
-                                .isAllDayTask);
-                        if (!hasValidPeer) return false;
-                      }
-                    }
-                    return true;
-                  }) ||
-                  allGroups.any((g) =>
-                      g.hasConflict && (g.teamUuid?.isNotEmpty ?? false)) ||
-                  allCountdowns.any((c) =>
-                      c.hasConflict && (c.teamUuid?.isNotEmpty ?? false)));
+              ConflictVisibilityService.hasTeamConflict(
+                todos: allTodos,
+                groups: allGroups,
+                countdowns: allCountdowns,
+              );
 
       final Map<String, dynamic> mathStats = results[3] == null
           ? Map<String, dynamic>.from(_mathStats)

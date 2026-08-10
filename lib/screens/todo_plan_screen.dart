@@ -1234,8 +1234,6 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
     super.dispose();
   }
 
-  String _formatDuration(int minutes) => formatMinutesChinese(minutes);
-
   Future<void> _prefillEstimate(String todoId) async {
     final todo = widget.todos.cast<TodoItem?>().firstWhere(
           (t) => t?.id == todoId,
@@ -1570,7 +1568,7 @@ class _AddPlanBlockSheetState extends State<_AddPlanBlockSheet> {
                     size: 14, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 4),
                 Text(
-                  'AI 预估 ${_formatDuration(_estimatedMinutes!)}，已自动设置时长和番茄轮数',
+                  'AI 预估 ${formatMinutesChinese(_estimatedMinutes!)}，已自动设置时长和番茄轮数',
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context)

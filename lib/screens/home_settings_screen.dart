@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -308,12 +307,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (useCache) return;
 
     try {
-      final response = await http.get(
-          Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        await prefs.setString(cacheKey, response.body);
+      final data = await ApiService.fetchUserStatus(_userId!);
+      if (data != null) {
+        await prefs.setString(cacheKey, jsonEncode(data));
         await prefs.setInt(timeKey, DateTime.now().millisecondsSinceEpoch);
 
         if (mounted) {
@@ -325,13 +321,11 @@ class _SettingsPageState extends State<SettingsPage> {
             _isLoadingStatus = false;
           });
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            _userTier = "Free";
-            _isLoadingStatus = false;
-          });
-        }
+      } else if (mounted) {
+        setState(() {
+          _userTier = "Free";
+          _isLoadingStatus = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -739,7 +733,10 @@ class _SettingsPageState extends State<SettingsPage> {
         centerTitle: true,
       ),
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 600),
+        // 首次进入设置时，600ms 淡入会与大量设置卡片同时栅格化，
+        // Android 真机上会连续超出 120Hz 帧预算。移动端缩短过渡，
+        // 桌面端保留原有动效。
+        duration: Duration(milliseconds: AppPlatform.isAndroid ? 140 : 600),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         child: _isInitialLoading

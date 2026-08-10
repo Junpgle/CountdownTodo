@@ -19,9 +19,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _lazyLoadEnabled = true;
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
-  int _animationDuration = 500;
-  int _pageLayerDepth = 60;
-  int _containerContentStart = 28;
+  int _animationDuration = 220;
+  int _pageLayerDepth = 18;
+  int _containerContentStart = 12;
+  AnimationPreset? _preset;
 
   @override
   void initState() {
@@ -40,7 +41,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.getAnimationDuration(),
       AnimationConfigService.getPageLayerDepth(),
       AnimationConfigService.getContainerContentStart(),
+      AnimationConfigService.getPreset(),
     ]);
+    if (!mounted) return;
     setState(() {
       _animationsEnabled = results[0] as bool;
       _motionBlurEnabled = results[1] as bool;
@@ -51,7 +54,15 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _animationDuration = results[6] as int;
       _pageLayerDepth = results[7] as int;
       _containerContentStart = results[8] as int;
+      _preset = results[9] as AnimationPreset?;
     });
+  }
+
+  Future<void> _applyPreset(AnimationPreset preset) async {
+    setState(() => _preset = preset);
+    await AnimationConfigService.setPreset(preset);
+    await PageTransitions.init();
+    await _loadSettings();
   }
 
   Future<void> _update({
@@ -65,6 +76,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     int? pageLayerDepth,
     int? containerContentStart,
   }) async {
+    if (_preset != null && mounted) {
+      setState(() => _preset = null);
+    }
     if (enabled != null) {
       await AnimationConfigService.setAnimationsEnabled(enabled);
     }
@@ -110,6 +124,19 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Padding(
+            padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+            child: Text(
+              '性能预设',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          _buildPresetGrid(),
+          const SizedBox(height: 24),
           const Padding(
             padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
             child: Text('核心特效开关',
@@ -357,6 +384,148 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
           ),
           const SizedBox(height: 40),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPresetGrid() {
+    final isWide = MediaQuery.of(context).size.width > 600;
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      // 三种策略始终并排，便于快速对比和切换；窄屏使用更紧凑的卡片
+      // 排版，避免把性能选项推到很深的位置。
+      crossAxisCount: 3,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: isWide ? 1.45 : 0.78,
+      children: [
+        _buildPresetCard(
+          preset: AnimationPreset.performance,
+          title: '极致流畅',
+          subtitle: '优先稳定帧率，适合大多数 Android 机型',
+          icon: Icons.speed_rounded,
+        ),
+        _buildPresetCard(
+          preset: AnimationPreset.balanced,
+          title: '均衡模式',
+          subtitle: '保留主要过渡，兼顾观感与性能',
+          icon: Icons.tune_rounded,
+        ),
+        _buildPresetCard(
+          preset: AnimationPreset.expressive,
+          title: '完整动效',
+          subtitle: '开启模糊和层级动画，视觉优先',
+          icon: Icons.auto_awesome_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPresetCard({
+    required AnimationPreset preset,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _preset == preset;
+    final compact = MediaQuery.of(context).size.width <= 600;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _applyPreset(preset),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: selected ? 2 : 0,
+        color: selected
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 14,
+            vertical: compact ? 8 : 10,
+          ),
+          child: compact
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisAlignment: selected
+                          ? MainAxisAlignment.spaceBetween
+                          : MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 22,
+                          color: selected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        if (selected)
+                          Icon(Icons.check_circle_rounded,
+                              size: 17, color: colorScheme.primary),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Flexible(
+                      child: Text(
+                        subtitle,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 9, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Icon(icon,
+                        color: selected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text(subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      Icon(Icons.check_circle_rounded,
+                          color: colorScheme.primary),
+                  ],
+                ),
+        ),
       ),
     );
   }

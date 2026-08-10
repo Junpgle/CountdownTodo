@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../services/api_service.dart';
 import '../services/pomodoro_sync_service.dart';
+import 'platform_backdrop_filter.dart';
 
 enum SyncPathStatus { online, connecting, offline, serverError, success }
 
@@ -244,7 +245,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                   ],
                 ),
                 child: ClipRRect(
-                  child: BackdropFilter(
+                  child: PlatformBackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -273,7 +274,7 @@ class _SyncStatusBannerState extends State<SyncStatusBanner> {
                                 Expanded(
                                   child: Text(
                                     _detailMessage +
-                                        (ApiService.baseUrl.contains(':8084')
+                                        (ApiService.isTestServer
                                             ? ' 🚀[TEST]'
                                             : ''),
                                     style: const TextStyle(

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import '../update_service.dart';
+import 'platform_backdrop_filter.dart';
 
 DateTime? _parseRegistrationDate(dynamic raw) {
   if (raw is num) {
@@ -191,7 +192,7 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
           ),
           // Backdrop Filter for Frosted Glass effect
           Positioned.fill(
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 color: Colors.transparent,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import 'package:intl/intl.dart';
 import 'dart:ui';
+import '../utils/app_platform.dart';
 
 class StickyAnnouncementBanner extends StatefulWidget {
   final TeamAnnouncement announcement;
@@ -58,179 +59,178 @@ class _StickyAnnouncementBannerState extends State<StickyAnnouncementBanner>
             ? Colors.blueGrey.withValues(alpha: 0.15)
             : Theme.of(context).colorScheme.primary.withValues(alpha: 0.7));
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ClipRRect(
+    final bannerContent = Container(
+      decoration: BoxDecoration(
+        color: bgColor,
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accentColor.withValues(alpha: 0.3),
-                width: 1.5,
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.1),
+            blurRadius: 20,
+            spreadRadius: -5,
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // 背景装饰气泡
+          Positioned(
+            right: -20,
+            top: -20,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accentColor.withValues(alpha: 0.05),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  spreadRadius: -5,
-                ),
-              ],
             ),
-            child: Stack(
-              children: [
-                // 背景装饰气泡
-                Positioned(
-                  right: -20,
-                  top: -20,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: accentColor.withValues(alpha: 0.05),
-                    ),
-                  ),
-                ),
+          ),
 
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          ScaleTransition(
-                            scale: _pulseAnimation,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: accentColor,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: accentColor.withValues(alpha: 0.4),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  )
-                                ],
-                              ),
-                              child: Icon(
-                                widget.announcement.isPriority
-                                    ? Icons.bolt_rounded
-                                    : Icons.campaign_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.announcement.isPriority
-                                      ? "重要通知"
-                                      : "团队公告",
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    letterSpacing: 1.2,
-                                    fontWeight: FontWeight.w900,
-                                    color: accentColor.withValues(alpha: 0.8),
-                                  ),
-                                ),
-                                Text(
-                                  widget.announcement.title,
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color:
-                                        isDark ? Colors.white : Colors.black87,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildAcknowledgeButton(accentColor, isDark),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    ScaleTransition(
+                      scale: _pulseAnimation,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white)
-                              .withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                widget.announcement.content,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  height: 1.5,
-                                  color:
-                                      isDark ? Colors.white70 : Colors.black87,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                          color: accentColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: accentColor.withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            )
                           ],
                         ),
+                        child: Icon(
+                          widget.announcement.isPriority
+                              ? Icons.bolt_rounded
+                              : Icons.campaign_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 8,
-                                backgroundColor:
-                                    accentColor.withValues(alpha: 0.2),
-                                child: Icon(Icons.person,
-                                    size: 10, color: accentColor),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                widget.announcement.creatorName ?? '管理员',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: isDark
-                                        ? Colors.white38
-                                        : Colors.black38),
-                              ),
-                            ],
+                          Text(
+                            widget.announcement.isPriority ? "重要通知" : "团队公告",
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 1.2,
+                              fontWeight: FontWeight.w900,
+                              color: accentColor.withValues(alpha: 0.8),
+                            ),
                           ),
                           Text(
-                            DateFormat('MM-dd HH:mm').format(
-                                DateTime.fromMillisecondsSinceEpoch(
-                                    widget.announcement.createdAt)),
+                            widget.announcement.title,
                             style: TextStyle(
-                                fontSize: 11,
-                                color:
-                                    isDark ? Colors.white38 : Colors.black38),
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildAcknowledgeButton(accentColor, isDark),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.black : Colors.white)
+                        .withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.announcement.content,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.5,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 8,
+                          backgroundColor: accentColor.withValues(alpha: 0.2),
+                          child:
+                              Icon(Icons.person, size: 10, color: accentColor),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.announcement.creatorName ?? '管理员',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white38 : Colors.black38,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      DateFormat('MM-dd HH:mm').format(
+                        DateTime.fromMillisecondsSinceEpoch(
+                            widget.announcement.createdAt),
+                      ),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white38 : Colors.black38,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-        ),
+        ],
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: AppPlatform.isAndroid
+            ? bannerContent
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: bannerContent,
+              ),
       ),
     );
   }

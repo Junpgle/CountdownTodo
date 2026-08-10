@@ -42,9 +42,11 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
+import '../utils/json_value_parser.dart';
 import '../utils/local_image_provider.dart';
 
 // 引入其他页面
@@ -117,12 +119,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
     with WidgetsBindingObserver, _HomeDashboardContract {
   late final PermissionRequestCoordinator _permissionCoordinator;
   final GitHubResourceService _githubResourceService = GitHubResourceService();
-
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
-  }
 
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];

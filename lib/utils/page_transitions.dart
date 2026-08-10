@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_performance_monitor.dart';
 
 const _pageLayerCurve = Cubic(0.4, 0.65, 0.25, 1.0);
 const _defaultPageLayerBackgroundScale = 0.875;
@@ -29,15 +30,22 @@ class _AnimSettings {
   static Future<void> load() async {
     try {
       final prefs = await _prefs();
+      final isAndroid =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
       enabled = prefs.getBool('enable_animations') ?? true;
       lazyLoad = prefs.getBool('enable_lazy_load') ?? true;
       screenRadius = prefs.getBool('enable_screen_radius') ?? true;
       layerBlur = prefs.getBool('enable_layer_blur') ?? false;
       motionBlur = prefs.getBool('enable_motion_blur') ?? false;
       predictiveBack = prefs.getBool('enable_predictive_back') ?? true;
-      duration = prefs.getInt('animation_duration') ?? 500;
-      pageLayerDepth = prefs.getInt('page_layer_depth') ?? 60;
-      containerContentStart = prefs.getInt('container_content_start') ?? 28;
+      // Android defaults to the performance-first profile. It keeps short,
+      // useful transitions but avoids spending the first frames on expensive
+      // layer composition on lower-end devices.
+      duration = prefs.getInt('animation_duration') ?? (isAndroid ? 220 : 500);
+      pageLayerDepth =
+          prefs.getInt('page_layer_depth') ?? (isAndroid ? 18 : 60);
+      containerContentStart =
+          prefs.getInt('container_content_start') ?? (isAndroid ? 12 : 28);
     } catch (_) {}
   }
 
@@ -96,6 +104,9 @@ class PageTransitions {
     BorderRadius sourceBorderRadius =
         const BorderRadius.all(Radius.circular(16)),
   }) async {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
     await _AnimSettings.load();
     if (!context.mounted) {
       return null;
@@ -141,7 +152,13 @@ class PageTransitions {
     bool allowSnapshotting = true,
   }) {
     return _ConfiguredMaterialPageRoute<T>(
-      builder: builder,
+      builder: (context) {
+        final page = builder(context);
+        AppPerformanceMonitor.setCurrentScreen(
+          AppPerformanceMonitor.screenNameForWidget(page),
+        );
+        return page;
+      },
       settings: settings,
       maintainState: maintainState,
       fullscreenDialog: fullscreenDialog,
@@ -150,16 +167,25 @@ class PageTransitions {
   }
 
   static Route<T> slideHorizontal<T>(Widget page, {RouteSettings? settings}) {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
     return _SlideRoute<T>(
         page: page, mode: _PageLayerRouteMode.slideEnd, settings: settings);
   }
 
   static Route<T> slideUp<T>(Widget page, {RouteSettings? settings}) {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
     return _SlideRoute<T>(
         page: page, mode: _PageLayerRouteMode.slideBottom, settings: settings);
   }
 
   static Route<T> fadeThrough<T>(Widget page, {RouteSettings? settings}) {
+    AppPerformanceMonitor.setCurrentScreen(
+      AppPerformanceMonitor.screenNameForWidget(page),
+    );
     return _FadeRoute<T>(page: page, settings: settings);
   }
 }

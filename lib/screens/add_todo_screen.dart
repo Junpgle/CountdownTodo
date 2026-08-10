@@ -1387,7 +1387,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           if (est != null)
             _buildSuggestionItem(
               icon: Icons.timer_outlined,
-              label: '预估耗时: ~${_formatDuration(est.estimatedMinutes)}',
+              label: '预估耗时: ~${formatMinutesChinese(est.estimatedMinutes)}',
               sub: _estimationConfidenceLabel(est),
               subColor: _estimationConfidenceColor(est),
               showAccept: false,
@@ -1617,8 +1617,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       ),
     );
   }
-
-  String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   List<String> _extractKeywords() {
     final text = _titleCtrl.text.trim().toLowerCase();

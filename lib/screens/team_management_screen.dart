@@ -16,6 +16,7 @@ import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/storage/habit_storage.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
@@ -400,54 +401,21 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       int total = 0;
 
       for (final item in allItems) {
-        bool hasConflict = false;
-        String? teamUuid;
+        if (!ConflictVisibilityService.isVisibleConflict(item)) continue;
 
-        if (item is TodoItem) {
-          if (item.isDeleted) continue;
-          if (!item.hasConflict) continue;
-          // 独立完成待办的时间冲突同样展示
-          if (item.isAllDayTask) continue;
-
-          // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过
-          final data = item.serverVersionData;
-          if (data != null &&
-              (data['type'] == 'schedule' || data['conflict_with'] != null)) {
-            final peers = data['conflict_with'];
-            if (peers is List) {
-              final hasValidPeer = peers.any((p) =>
-                  p is Map &&
-                  !TodoItem.fromJson(Map<String, dynamic>.from(p))
-                      .isAllDayTask);
-              if (!hasValidPeer) continue; // 🚀 使用 continue 跳过当前有冲突但均非有效对等体的任务
-            }
-          }
-          hasConflict = true;
-          teamUuid = item.teamUuid;
-        } else if (item is TodoGroup) {
-          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
-          hasConflict = item.hasConflict;
-          teamUuid = item.teamUuid;
-        } else if (item is CountdownItem) {
-          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
-          hasConflict = item.hasConflict;
-          teamUuid = item.teamUuid;
-        }
-
-        if (hasConflict) {
-          total++;
-          if (teamUuid != null && teamUuid.isNotEmpty) {
-            conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
-          }
+        total++;
+        final teamUuid = ConflictVisibilityService.teamUuidOf(item);
+        if (ConflictVisibilityService.hasTeamUuid(teamUuid)) {
+          conflictCounts[teamUuid!] = (conflictCounts[teamUuid] ?? 0) + 1;
         }
       }
 
       // 冲突中心内部还会展示习惯目标和规则，入口角标必须使用同一口径。
       total += habitGoals
-          .where((goal) => !goal.isDeleted && goal.hasConflict)
+          .where(ConflictVisibilityService.isVisibleHabitGoalConflict)
           .length;
       total += habitRules
-          .where((rule) => !rule.isDeleted && rule.hasConflict)
+          .where(ConflictVisibilityService.isVisibleHabitRuleConflict)
           .length;
 
       if (!mounted || loadGeneration != _teamLoadGeneration) return;

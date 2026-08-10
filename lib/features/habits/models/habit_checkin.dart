@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import '../../../utils/json_value_parser.dart';
 
 /// 打卡来源。
 enum HabitCheckInSource {
@@ -133,9 +134,7 @@ class HabitCheckIn {
   }
 
   static int _parseMs(dynamic v) {
-    if (v == null) return DateTime.now().millisecondsSinceEpoch;
-    final n = int.tryParse(v.toString());
-    return n ?? DateTime.now().millisecondsSinceEpoch;
+    return JsonValueParser.epochMillisOrNow(v);
   }
 
   /// 生成稳定去重键，例如通知按钮重复提交。

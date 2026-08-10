@@ -90,8 +90,7 @@ mixin _HomeDashboardNavigationMixin on _HomeDashboardStateBase {
     }
 
     int? parseInt(dynamic value) {
-      if (value is num) return value.toInt();
-      return int.tryParse(value?.toString() ?? '');
+      return JsonValueParser.toNullableInt(value);
     }
 
     final newTodos = todosData.map((data) {

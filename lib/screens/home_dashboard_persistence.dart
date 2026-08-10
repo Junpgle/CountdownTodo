@@ -410,7 +410,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Widget _buildEnvironmentInfo() {
-    final isTest = ApiService.baseUrl.contains(':8084');
+    final isTest = ApiService.isTestServer;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

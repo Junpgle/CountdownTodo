@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'thirty_day_challenge.dart';
+import '../../../utils/json_value_parser.dart';
 
 enum CloudChallengePickerAction { start, customize }
 
@@ -129,8 +130,7 @@ class CloudChallengeCatalog {
   }
 
   static int _parseVersion(dynamic value) {
-    if (value is int) return value;
-    return int.tryParse(value?.toString() ?? '') ?? 1;
+    return JsonValueParser.toInt(value, fallback: 1);
   }
 
   static CloudChallengeCatalog fromResponse(http.Response response) {

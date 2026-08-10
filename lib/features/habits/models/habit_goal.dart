@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
+import '../../../utils/json_value_parser.dart';
 
 /// 习惯的数据来源类型。
 ///
@@ -164,8 +165,6 @@ class HabitGoal {
   }
 
   static int _parseMs(dynamic v) {
-    if (v == null) return DateTime.now().millisecondsSinceEpoch;
-    final n = int.tryParse(v.toString());
-    return n ?? DateTime.now().millisecondsSinceEpoch;
+    return JsonValueParser.epochMillisOrNow(v);
   }
 }

@@ -1057,7 +1057,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                             style: TextStyle(fontWeight: FontWeight.w600)),
                         const Spacer(),
                         Text(
-                          _formatPauseDuration(editSession.totalPauseSeconds!),
+                          formatDurationChinese(editSession.totalPauseSeconds!),
                           style: TextStyle(
                             color: Theme.of(ctx).colorScheme.error,
                             fontWeight: FontWeight.w500,
@@ -1286,9 +1286,6 @@ class PomodoroStatsState extends State<PomodoroStats> {
     );
   }
 
-  String _formatPauseDuration(int totalSeconds) =>
-      formatDurationChinese(totalSeconds);
-
   Widget _buildPauseIntervalRow(
       BuildContext ctx, int index, PauseInterval interval) {
     final startStr = DateFormat('HH:mm:ss').format(
@@ -1301,7 +1298,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
                 .toLocal());
     final durationStr = interval.isOngoing
         ? ''
-        : _formatPauseDuration(interval.durationSeconds);
+        : formatDurationChinese(interval.durationSeconds);
     return Row(
       children: [
         Text(

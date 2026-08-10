@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
+import '../../../utils/app_platform.dart';
 import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
@@ -61,7 +62,7 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     super.initState();
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: Duration(milliseconds: AppPlatform.isAndroid ? 260 : 650),
     );
     _entranceAnimation = CurvedAnimation(
       parent: _entranceController,
@@ -782,10 +783,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                   ),
                 ),
                 Positioned.fill(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-                    child: const SizedBox(),
-                  ),
+                  child: AppPlatform.isAndroid
+                      ? const SizedBox.shrink()
+                      : BackdropFilter(
+                          filter: ui.ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                          child: const SizedBox(),
+                        ),
                 ),
                 // Content
                 SingleChildScrollView(
@@ -856,14 +859,16 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                   BoxShadow(
                                     color:
                                         welcomePrimary.withValues(alpha: 0.42),
-                                    blurRadius: 32,
-                                    offset: const Offset(0, 16),
+                                    blurRadius: AppPlatform.isAndroid ? 14 : 32,
+                                    offset: AppPlatform.isAndroid
+                                        ? const Offset(0, 6)
+                                        : const Offset(0, 16),
                                   ),
                                   BoxShadow(
                                     color:
                                         scheme.tertiary.withValues(alpha: 0.18),
-                                    blurRadius: 8,
-                                    spreadRadius: 4,
+                                    blurRadius: AppPlatform.isAndroid ? 4 : 8,
+                                    spreadRadius: AppPlatform.isAndroid ? 2 : 4,
                                   ),
                                 ],
                               ),
@@ -951,8 +956,10 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                               boxShadow: [
                                 BoxShadow(
                                   color: scheme.shadow.withValues(alpha: 0.05),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 8),
+                                  blurRadius: AppPlatform.isAndroid ? 10 : 24,
+                                  offset: AppPlatform.isAndroid
+                                      ? const Offset(0, 4)
+                                      : const Offset(0, 8),
                                 ),
                               ],
                             ),
@@ -1278,10 +1285,12 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
             ),
           ),
           Positioned.fill(
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
-              child: const SizedBox(),
-            ),
+            child: AppPlatform.isAndroid
+                ? const SizedBox.shrink()
+                : BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 48, sigmaY: 48),
+                    child: const SizedBox(),
+                  ),
           ),
           Positioned.fill(
             child: SingleChildScrollView(
@@ -3143,8 +3152,10 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withValues(alpha: 0.15),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            blurRadius: AppPlatform.isAndroid ? 10 : 24,
+            offset: AppPlatform.isAndroid
+                ? const Offset(0, 4)
+                : const Offset(0, 12),
           ),
         ],
       ),
@@ -3154,22 +3165,36 @@ class _ChallengeTaskCardState extends State<_ChallengeTaskCard> {
           children: [
             if (hasImage)
               Positioned.fill(
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          scheme.scrim.withValues(alpha: 0.4),
-                          taskColors[1].withValues(alpha: 0.12),
-                          scheme.scrim.withValues(alpha: 0.52),
-                        ],
+                child: AppPlatform.isAndroid
+                    ? DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              scheme.scrim.withValues(alpha: 0.4),
+                              taskColors[1].withValues(alpha: 0.12),
+                              scheme.scrim.withValues(alpha: 0.52),
+                            ],
+                          ),
+                        ),
+                      )
+                    : BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                scheme.scrim.withValues(alpha: 0.4),
+                                taskColors[1].withValues(alpha: 0.12),
+                                scheme.scrim.withValues(alpha: 0.52),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
               ),
             LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
