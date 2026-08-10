@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../models/data_export_models.dart';
 import '../../../services/data_export_service.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/app_platform.dart';
 
@@ -65,6 +67,24 @@ class _DataExportPageState extends State<DataExportPage> {
 
   Future<void> _export() async {
     if (_selectedTypes.isEmpty) return;
+
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.dataExport,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.dataExport,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _isExporting = true);
 

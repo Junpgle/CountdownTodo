@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import '../services/api_service.dart';
@@ -10,6 +11,7 @@ import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
+import '../services/minor_mode_service.dart';
 
 import 'animation_settings_page.dart';
 import 'login_screen.dart';
@@ -25,6 +27,7 @@ import 'settings/pages/course_settings_page.dart';
 import 'settings/pages/interconnect_settings_page.dart';
 import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
+import 'settings/pages/minor_mode_settings_page.dart';
 import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -102,6 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'wallpaper',
       'home_text'
     ];
+    final minorModeTargets = ['minor_mode', 'minor_mode_status'];
     final courseTargets = [
       'no_course_behavior',
       'webview_import',
@@ -155,7 +159,13 @@ class _SettingsPageState extends State<SettingsPage> {
       'mac_island_without_notch'
     ];
 
-    if (accountTargets.contains(target)) {
+    if (minorModeTargets.contains(target)) {
+      paneId = 'minor_mode';
+      paneBuilder = () => MinorModeSettingsPage(
+            initialTarget: target,
+            isEmbedded: true,
+          );
+    } else if (accountTargets.contains(target)) {
       paneId = 'account';
       paneBuilder = _buildAccountAndAnnouncementsPane;
     } else if (preferenceTargets.contains(target)) {
@@ -208,6 +218,8 @@ class _SettingsPageState extends State<SettingsPage> {
       Widget pushWidget;
       if (paneId == 'preference') {
         pushWidget = PreferenceSettingsPage(initialTarget: target);
+      } else if (paneId == 'minor_mode') {
+        pushWidget = MinorModeSettingsPage(initialTarget: target);
       } else if (paneId == 'course') {
         pushWidget = CourseSettingsPage(initialTarget: target);
       } else if (paneId == 'interconnect') {
@@ -501,6 +513,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _forceFullSync() async {
+    if (!mounted) return;
+
     if (_username.isEmpty || _userId == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('请先登录账号')));
@@ -584,6 +598,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     if (confirm) {
+      final authorized =
+          await MinorModeService.instance.authorizeSensitiveAction();
+      if (!authorized) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要家长身份认证才能退出账号')),
+          );
+        }
+        return;
+      }
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -595,8 +619,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showChangePasswordDialog() {
+    unawaited(_openChangePasswordDialog());
+  }
+
+  Future<void> _openChangePasswordDialog() async {
     if (_userId == null) return;
-    showDialog(
+    final authorized =
+        await MinorModeService.instance.authorizeSensitiveAction();
+    if (!authorized || !mounted) {
+      if (mounted && !authorized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('需要家长身份认证才能修改密码')),
+        );
+      }
+      return;
+    }
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => ChangePasswordDialog(
@@ -620,6 +658,8 @@ class _SettingsPageState extends State<SettingsPage> {
     switch (_selectedPaneId) {
       case 'account':
         return '账号与系统公告';
+      case 'minor_mode':
+        return '未成年人模式';
       case 'preference':
         return '系统与外观';
       case 'animation':
@@ -803,6 +843,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                _buildMacSidebarItem(
+                  id: 'minor_mode',
+                  icon: Icons.shield_outlined,
+                  color: theme.colorScheme.primary,
+                  title: '未成年人模式',
+                  widgetBuilder: () =>
+                      const MinorModeSettingsPage(isEmbedded: true),
+                ),
 
                 // 导航菜单
                 _buildMacSidebarItem(
@@ -1034,6 +1083,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.shield_outlined),
+                  title: const Text('未成年人模式'),
+                  subtitle: const Text('系统联动状态与 App 兜底开关'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const MinorModeSettingsPage(),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
                 ListTile(
                   leading:
                       const Icon(Icons.palette_outlined, color: Colors.indigo),

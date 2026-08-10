@@ -17,6 +17,8 @@ import '../../help/help_center_screen.dart';
 import '../handlers/storage_management_handler.dart';
 import '../dialogs/migration_dialog.dart';
 import '../../../update_service.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
@@ -866,6 +868,23 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () async {
+        final authorized = await MinorModeService.instance.authorizeAction(
+          MinorModeAction.updateSource,
+        );
+        if (!authorized) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  MinorModeService.instance.authorizationFailureMessage(
+                    MinorModeAction.updateSource,
+                  ),
+                ),
+              ),
+            );
+          }
+          return;
+        }
         await UpdateService.setUpdateSource(value);
         if (mounted) {
           setState(() => _updateSource = value);

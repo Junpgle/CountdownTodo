@@ -15,6 +15,8 @@ import '../services/ai_chat_service.dart';
 import '../services/ai_todo_context_builder.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/llm_service.dart';
+import '../services/minor_mode_policy.dart';
+import '../services/minor_mode_service.dart';
 import '../services/chat_storage_service.dart';
 import '../services/pomodoro_control_service.dart';
 import '../services/pomodoro_service.dart';

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/llm_service.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 
 class LLMConfigDialog extends StatefulWidget {
   const LLMConfigDialog({super.key});
@@ -18,6 +20,7 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
   bool _obscureApiKey = true;
   bool _isLoading = true;
   bool _isTesting = false;
+  bool _accessDenied = false;
 
   @override
   void initState() {
@@ -26,6 +29,18 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
   }
 
   Future<void> _loadConfig() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized) {
+      if (mounted) {
+        setState(() {
+          _accessDenied = true;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
     final config = await LLMService.getConfig();
     if (config != null) {
       _apiUrlCtrl.text = config.apiUrl;
@@ -46,6 +61,7 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
   }
 
   Future<void> _testConnection() async {
+    if (!await _ensureConfigurationAllowed()) return;
     setState(() => _isTesting = true);
     try {
       // 先保存当前配置
@@ -83,6 +99,24 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
     }
   }
 
+  Future<bool> _ensureConfigurationAllowed() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            MinorModeService.instance.authorizationFailureMessage(
+              MinorModeAction.llmConfiguration,
+            ),
+          ),
+        ),
+      );
+    }
+    return authorized;
+  }
+
   @override
   void dispose() {
     _apiUrlCtrl.dispose();
@@ -104,172 +138,179 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
               height: 100,
               child: Center(child: CircularProgressIndicator()),
             )
-          : SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer
-                          .withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '支持智谱AI等兼容OpenAI格式的API',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _apiUrlCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'API地址',
-                      hintText:
-                          'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.link),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _apiKeyCtrl,
-                    obscureText: _obscureApiKey,
-                    decoration: InputDecoration(
-                      labelText: 'API Key',
-                      hintText: '输入您的API Key',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.key),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscureApiKey
-                            ? Icons.visibility_off
-                            : Icons.visibility),
-                        onPressed: () {
-                          setState(() => _obscureApiKey = !_obscureApiKey);
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _modelCtrl,
-                    decoration: InputDecoration(
-                      labelText: '文本模型',
-                      hintText: 'glm-4.7-flash',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.text_fields),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _visionModelCtrl,
-                    decoration: InputDecoration(
-                      labelText: '视觉模型 (图片识别)',
-                      hintText: 'glm-4.6v-flash',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.image),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ExpansionTile(
-                    title: const Text('高级设置 (自定义Prompt)',
-                        style: TextStyle(fontSize: 14)),
+          : _accessDenied
+              ? const SizedBox(
+                  height: 100,
+                  child: Center(child: Text('未成年人模式下需要家长身份认证')),
+                )
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 8),
-                      const Text('文本识别Prompt:',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(height: 4),
-                      const Text('可用变量: {now} 当前时间, {input} 输入文本',
-                          style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _textPromptCtrl,
-                        maxLines: 8,
-                        style: const TextStyle(
-                            fontSize: 12, fontFamily: 'monospace'),
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.all(12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primaryContainer
+                              .withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '支持智谱AI等兼容OpenAI格式的API',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text('图片识别Prompt:',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(height: 4),
-                      const Text('可用变量: {now} 当前时间',
-                          style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      const SizedBox(height: 8),
                       TextField(
-                        controller: _visionPromptCtrl,
-                        maxLines: 8,
-                        style: const TextStyle(
-                            fontSize: 12, fontFamily: 'monospace'),
+                        controller: _apiUrlCtrl,
                         decoration: InputDecoration(
+                          labelText: 'API地址',
+                          hintText:
+                              'https://open.bigmodel.cn/api/paas/v4/chat/completions',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          contentPadding: const EdgeInsets.all(12),
+                          prefixIcon: const Icon(Icons.link),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _textPromptCtrl.text =
-                                    LLMConfig.defaultTextPrompt;
-                                _visionPromptCtrl.text =
-                                    LLMConfig.defaultVisionPrompt;
-                              });
-                            },
-                            icon: const Icon(Icons.restore, size: 16),
-                            label: const Text('恢复默认'),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _apiKeyCtrl,
+                        obscureText: _obscureApiKey,
+                        decoration: InputDecoration(
+                          labelText: 'API Key',
+                          hintText: '输入您的API Key',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
+                          prefixIcon: const Icon(Icons.key),
+                          suffixIcon: IconButton(
+                            icon: Icon(_obscureApiKey
+                                ? Icons.visibility_off
+                                : Icons.visibility),
+                            onPressed: () {
+                              setState(() => _obscureApiKey = !_obscureApiKey);
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _modelCtrl,
+                        decoration: InputDecoration(
+                          labelText: '文本模型',
+                          hintText: 'glm-4.7-flash',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          prefixIcon: const Icon(Icons.text_fields),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _visionModelCtrl,
+                        decoration: InputDecoration(
+                          labelText: '视觉模型 (图片识别)',
+                          hintText: 'glm-4.6v-flash',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          prefixIcon: const Icon(Icons.image),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ExpansionTile(
+                        title: const Text('高级设置 (自定义Prompt)',
+                            style: TextStyle(fontSize: 14)),
+                        children: [
+                          const SizedBox(height: 8),
+                          const Text('文本识别Prompt:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          const Text('可用变量: {now} 当前时间, {input} 输入文本',
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _textPromptCtrl,
+                            maxLines: 8,
+                            style: const TextStyle(
+                                fontSize: 12, fontFamily: 'monospace'),
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('图片识别Prompt:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          const Text('可用变量: {now} 当前时间',
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _visionPromptCtrl,
+                            maxLines: 8,
+                            style: const TextStyle(
+                                fontSize: 12, fontFamily: 'monospace'),
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _textPromptCtrl.text =
+                                        LLMConfig.defaultTextPrompt;
+                                    _visionPromptCtrl.text =
+                                        LLMConfig.defaultVisionPrompt;
+                                  });
+                                },
+                                icon: const Icon(Icons.restore, size: 16),
+                                label: const Text('恢复默认'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
                         ],
                       ),
-                      const SizedBox(height: 8),
                     ],
                   ),
-                ],
-              ),
-            ),
+                ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
         ),
         TextButton.icon(
-          onPressed: _isTesting ? null : _testConnection,
+          onPressed: _accessDenied || _isTesting ? null : _testConnection,
           icon: _isTesting
               ? const SizedBox(
                   width: 16,
@@ -281,6 +322,7 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
         ),
         TextButton(
           onPressed: () async {
+            if (!await _ensureConfigurationAllowed() || !mounted) return;
             await LLMService.clearConfig();
             if (context.mounted) {
               Navigator.pop(context, true);
@@ -293,6 +335,9 @@ class _LLMConfigDialogState extends State<LLMConfigDialog> {
         ),
         FilledButton(
           onPressed: () async {
+            final authorized = await _ensureConfigurationAllowed();
+            if (!authorized) return;
+            if (!context.mounted) return;
             if (_apiKeyCtrl.text.trim().isEmpty ||
                 _modelCtrl.text.trim().isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(

@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 import '../handlers/permission_handler.dart' as handlers;
 import '../widgets/permission_section.dart';
 
@@ -97,6 +99,23 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
     );
 
     if (confirmed == true) {
+      final authorized = await MinorModeService.instance.authorizeAction(
+        MinorModeAction.sensitive,
+      );
+      if (!authorized) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                MinorModeService.instance.authorizationFailureMessage(
+                  MinorModeAction.sensitive,
+                ),
+              ),
+            ),
+          );
+        }
+        return;
+      }
       await _permissionHandler.revokeAllAgreements();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -104,6 +123,27 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
         );
       }
     }
+  }
+
+  Future<void> _requestOrOpenPermission(String key) async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.sensitive,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.sensitive,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await _permissionHandler.requestOrOpenPermission(key);
   }
 
   @override
@@ -145,8 +185,7 @@ class _PermissionSettingsPageState extends State<PermissionSettingsPage> {
             permissionStatuses: _permissionStatuses,
             isCheckingPermissions: _isCheckingPermissions,
             onCheckAllPermissions: _permissionHandler.checkAllPermissions,
-            onRequestOrOpenPermission:
-                _permissionHandler.requestOrOpenPermission,
+            onRequestOrOpenPermission: _requestOrOpenPermission,
             onRevokeAll: _revokeAllPermissions,
           ),
         ),

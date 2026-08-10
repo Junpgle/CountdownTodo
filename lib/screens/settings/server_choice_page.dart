@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../storage_service.dart';
 import '../login_screen.dart';
 import '../../utils/page_transitions.dart';
+import '../../services/minor_mode_policy.dart';
+import '../../services/minor_mode_service.dart';
 
 class ServerChoicePage extends StatefulWidget {
   final String initialServerChoice;
@@ -299,6 +301,23 @@ class _ServerChoicePageState extends State<ServerChoicePage> {
     );
 
     if (confirm == true && mounted) {
+      final authorized = await MinorModeService.instance.authorizeAction(
+        MinorModeAction.sensitive,
+      );
+      if (!authorized) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                MinorModeService.instance.authorizationFailureMessage(
+                  MinorModeAction.sensitive,
+                ),
+              ),
+            ),
+          );
+        }
+        return;
+      }
       await StorageService.saveServerChoice(_selectedServer);
       await StorageService.clearLoginSession();
       if (mounted) {

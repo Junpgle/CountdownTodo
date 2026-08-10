@@ -13,6 +13,8 @@ import '../utils/text_file_reader.dart';
 import 'api_service.dart';
 import 'course_service.dart';
 import 'database_helper.dart';
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 
 class DataImportService {
@@ -137,6 +139,21 @@ class DataImportService {
     required String jsonString,
     ImportOptions options = const ImportOptions(),
   }) async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.dataImport,
+    );
+    if (!authorized) {
+      return ImportResult(
+        success: false,
+        errorMessage: MinorModeService.instance.authorizationFailureMessage(
+          MinorModeAction.dataImport,
+        ),
+        importedCount: 0,
+        skippedCount: 0,
+        updatedCount: 0,
+      );
+    }
+
     try {
       // 重置 UUID 重映射，设置用户盐值确保同账号内确定性映射
       _uuidRemap.clear();
