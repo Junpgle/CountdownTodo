@@ -332,6 +332,18 @@ class SearchService {
       extraData: {'route': '/settings', 'target': 'mac_island_clipboard_links'},
     ),
     SearchResult(
+      id: 'setting_mac_island_clipboard_browser',
+      title: '剪贴板网址默认浏览器 / 灵动岛浏览器',
+      subtitle: '设置复制网址时默认使用的浏览器',
+      icon: Icons.language_rounded,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 平台专属',
+      extraData: {
+        'route': '/settings',
+        'target': 'mac_island_clipboard_browser',
+      },
+    ),
+    SearchResult(
       id: 'setting_mac_island_test',
       title: '测试灵动岛提醒 / 测试顶部提醒',
       subtitle: '立即显示一条测试提醒，检查位置和交互',

@@ -47,6 +47,7 @@ class _PlatformSpecificSettingsPageState
     'mac_island_shortcut': GlobalKey(),
     'mac_island_reminders': GlobalKey(),
     'mac_island_clipboard_links': GlobalKey(),
+    'mac_island_clipboard_browser': GlobalKey(),
     'mac_island_without_notch': GlobalKey(),
     'mac_island_test': GlobalKey(),
   };
@@ -67,6 +68,8 @@ class _PlatformSpecificSettingsPageState
   bool _macIslandRemindersEnabled = true;
   bool _macIslandClipboardLinksEnabled = true;
   bool _macIslandShowWithoutNotch = true;
+  List<Map<String, String>> _macIslandBrowsers = [];
+  String _macIslandDefaultBrowserId = '';
   String _macIslandShortcutKey = '';
   bool _macIslandShortcutCommand = false;
   bool _macIslandShortcutOption = false;
@@ -132,6 +135,23 @@ class _PlatformSpecificSettingsPageState
       }
     }
     if (AppPlatform.isMacOS) {
+      final browserSettings = await WindowService.getMacIslandBrowserSettings();
+      final rawBrowsers = browserSettings['browsers'];
+      final browsers = <Map<String, String>>[];
+      if (rawBrowsers is List) {
+        for (final item in rawBrowsers) {
+          if (item is! Map) continue;
+          final id = item['id']?.toString() ?? '';
+          final name = item['name']?.toString() ?? '';
+          if (id.isNotEmpty && name.isNotEmpty) {
+            browsers.add({'id': id, 'name': name});
+          }
+        }
+      }
+      final nativeSelectedId = browserSettings['selectedId']?.toString() ?? '';
+      final selectedBrowserId = nativeSelectedId.isNotEmpty
+          ? nativeSelectedId
+          : (prefs.getString('macos_island_clipboard_selected_browser') ?? '');
       if (mounted) {
         setState(() {
           _macIslandEnabled = prefs.getBool('macos_island_enabled') ??
@@ -143,6 +163,8 @@ class _PlatformSpecificSettingsPageState
               prefs.getBool('macos_island_reminders_enabled') ?? true;
           _macIslandClipboardLinksEnabled =
               prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
+          _macIslandBrowsers = browsers;
+          _macIslandDefaultBrowserId = selectedBrowserId;
           _macIslandShortcutKey =
               prefs.getString('macos_island_shortcut_key') ?? '';
           _macIslandShortcutCommand =
@@ -156,6 +178,25 @@ class _PlatformSpecificSettingsPageState
         });
       }
     }
+  }
+
+  String _macIslandBrowserName(String browserId) {
+    for (final browser in _macIslandBrowsers) {
+      if (browser['id'] == browserId) return browser['name'] ?? browserId;
+    }
+    return '未选择';
+  }
+
+  Future<void> _selectMacIslandDefaultBrowser(String? browserId) async {
+    if (browserId == null || browserId == _macIslandDefaultBrowserId) return;
+    final browserName = _macIslandBrowserName(browserId);
+    final changed = await WindowService.setMacIslandDefaultBrowser(browserId);
+    if (!changed || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('macos_island_clipboard_selected_browser', browserId);
+    if (!mounted) return;
+    setState(() => _macIslandDefaultBrowserId = browserId);
+    AppSnackBars.success(context, '剪贴板网址默认浏览器已设为 $browserName');
   }
 
   _MacIslandShortcut get _macIslandShortcut => _MacIslandShortcut(
