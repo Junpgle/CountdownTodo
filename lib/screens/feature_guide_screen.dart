@@ -225,6 +225,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   bool _importingSemester = false;
 
   late List<Widget Function()> _pagesBuilder;
+  Future<void>? _guideConfigurationFuture;
 
   @override
   void initState() {
@@ -234,7 +235,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       platformChannel: platform,
       onResult: (_) => _checkPermissions(),
     );
-    unawaited(_loadMinorModeGuideState());
+    _guideConfigurationFuture = _loadGuideConfiguration();
 
     if (_isManualReview) {
       // 手动查看：直接同步设置页面，跳过自动启动逻辑。
@@ -242,21 +243,27 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _pagesBuilder = _isChangelogOnly
           ? [_buildChangelogPage]
           : [_buildChangelogPage, ..._buildPlatformGuidePages()];
-      if (AppPlatform.isWindows) _loadTaiConfig();
       _loadInfo();
-      _checkPermissions();
-      _loadGlobalSettings();
     } else {
       // 默认只放第一页（更新日志），防止异步加载前数组越界
       _pagesBuilder = [_buildChangelogPage];
       _loadInfo();
-      _checkPermissions();
-      _loadGlobalSettings();
       _setupPages();
     }
   }
 
+  Future<void> _loadGuideConfiguration() async {
+    final tasks = <Future<void>>[
+      _checkPermissions(),
+      _loadGlobalSettings(),
+      _loadMinorModeGuideState(),
+    ];
+    if (AppPlatform.isWindows) tasks.add(_loadTaiConfig());
+    await Future.wait<void>(tasks);
+  }
+
   Future<void> _setupPages() async {
+    await _guideConfigurationFuture;
     final prefs = await SharedPreferences.getInstance();
     final shownVersion = prefs.getString(FeatureGuideScreen._guideKey);
 
@@ -275,12 +282,17 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       pages.add(_buildUniSyncMigrationPage);
     }
 
+    final onlyUnconfigured = !isFirstLaunch && !_isManualReview;
+    final platformGuidePages = _buildPlatformGuidePages(
+      onlyUnconfigured: onlyUnconfigured,
+    );
     final shouldShowGuide = widget.mode == FeatureGuideMode.guide ||
         (widget.mode == FeatureGuideMode.automatic &&
-            (isFirstLaunch || widget.isManualReview));
+            (isFirstLaunch ||
+                widget.isManualReview ||
+                platformGuidePages.isNotEmpty));
     if (shouldShowGuide) {
-      pages.addAll(_buildPlatformGuidePages());
-      if (AppPlatform.isWindows) _loadTaiConfig();
+      pages.addAll(platformGuidePages);
     }
 
     if (mounted) {
@@ -290,33 +302,60 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
   }
 
-  List<Widget Function()> _buildPlatformGuidePages() {
+  List<Widget Function()> _buildPlatformGuidePages({
+    bool onlyUnconfigured = false,
+  }) {
     if (AppPlatform.isWeb) {
-      return [
-        _buildWebFeaturePage,
-        _buildWebCapabilityPage,
-        _buildGlobalCourseSetupPage,
-        _buildGlobalThemeSetupPage,
-      ];
+      if (!onlyUnconfigured) {
+        return [
+          _buildWebFeaturePage,
+          _buildWebCapabilityPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ];
+      }
+      return _semesterEnabled ? [] : [_buildGlobalCourseSetupPage];
     }
     if (AppPlatform.isWindows) {
+      if (!onlyUnconfigured) {
+        return [
+          _buildWinFeaturePage1,
+          _buildWinFeaturePage2,
+          _buildTaiSetupPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ];
+      }
       return [
-        _buildWinFeaturePage1,
-        _buildWinFeaturePage2,
-        _buildTaiSetupPage,
+        if (_taiDbPath.isEmpty) _buildTaiSetupPage,
+        if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+      ];
+    }
+    if (!onlyUnconfigured) {
+      return [
+        _buildAndroidFeaturePage1,
+        _buildAndroidFeaturePage2,
+        _buildAndroidFeaturePage3,
+        _buildAndroidWidgetGuidePage,
+        _buildMinorModeGuidePage,
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
       ];
     }
+
     return [
-      _buildAndroidFeaturePage1,
-      _buildAndroidFeaturePage2,
-      _buildAndroidFeaturePage3,
-      _buildAndroidWidgetGuidePage,
-      _buildMinorModeGuidePage,
-      _buildGlobalCourseSetupPage,
-      _buildGlobalThemeSetupPage,
+      if (!_hasUsageStats) _buildAndroidFeaturePage1,
+      if (_notificationStatus?.isGranted != true || !_hasExactAlarm)
+        _buildAndroidFeaturePage2,
+      if (!_ignoringBatteryOptimizations) _buildAndroidFeaturePage3,
+      if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
+      if (!_semesterEnabled) _buildGlobalCourseSetupPage,
     ];
+  }
+
+  bool get _minorModeGuideConfigured {
+    final service = MinorModeService.instance;
+    return service.policyState.systemEnabled || service.manualBirthDate != null;
   }
 
   Future<void> _loadGlobalSettings() async {
