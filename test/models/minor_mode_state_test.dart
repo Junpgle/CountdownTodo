@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../lib/models/minor_mode_state.dart';
-import '../../lib/services/minor_mode_policy.dart';
+import 'package:countdown_todo/models/minor_mode_state.dart';
+import 'package:countdown_todo/services/minor_mode_policy.dart';
 
 void main() {
   MinorModeState state({
