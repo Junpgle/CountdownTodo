@@ -360,6 +360,11 @@ abstract class _StorageServiceBase {
   bool deduplicatePersistedRecurrenceOccurrencesForTest(
     List<TodoItem> todos,
   );
+  bool pruneRecurrenceOccurrencesAfterEndDateForTest(
+    List<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+  });
   Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,

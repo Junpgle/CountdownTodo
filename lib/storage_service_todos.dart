@@ -1663,6 +1663,21 @@ mixin _StorageTodos on _StorageServiceBase {
               );
         final keepSeriesActive =
             recurrenceEndDay == null || !todayDay.isAfter(recurrenceEndDay);
+        if (recurrenceEndDay != null) {
+          // 结束日期可能只修改了当前锚点，或来自另一台设备的同步；不能
+          // 依赖编辑页一定把所有未来实例一起带回来。存储层每次处理规则
+          // 时都清理结束日期之后的旧实例，避免它们继续留在系列中，或在
+          // 旧锚点仍存活时被再次生成。
+          if (_pruneRecurrenceOccurrencesAfterEndDate(
+            todos
+                .where((occurrence) => occurrence.id != todo.id)
+                .followedBy(generatedOccurrences),
+            seriesId: seriesId,
+            recurrenceEndDate: recurrenceEndDay,
+          )) {
+            needSave = true;
+          }
+        }
         final seriesChain = <TodoItem>[todo];
         var activeOccurrence = todo;
         var todoChanged = !hasSeriesId;
@@ -1706,6 +1721,13 @@ mixin _StorageTodos on _StorageServiceBase {
 
         if (rollOffsets.isNotEmpty) {
           // 原实例保留自己的完成状态，当前日期对应实例接管循环锚点。
+          todo.recurrence = RecurrenceType.none;
+          todoChanged = true;
+        }
+
+        // 如果结束日期被改到了当前锚点之前，rollOffsets 为空，原有逻辑
+        // 会错误地继续保留 recurrence，导致后续每次读取都把它当作活动规则。
+        if (!keepSeriesActive && todo.recurrence != RecurrenceType.none) {
           todo.recurrence = RecurrenceType.none;
           todoChanged = true;
         }
@@ -1911,6 +1933,17 @@ mixin _StorageTodos on _StorageServiceBase {
       generatedOccurrences: generated,
     );
   }
+
+  bool pruneRecurrenceOccurrencesAfterEndDateForTest(
+    List<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+  }) =>
+      _pruneRecurrenceOccurrencesAfterEndDate(
+        todos,
+        seriesId: seriesId,
+        recurrenceEndDate: recurrenceEndDate,
+      );
 
   String recurrenceOccurrenceIdForTest(
     String seriesId,
@@ -2346,6 +2379,37 @@ mixin _StorageTodos on _StorageServiceBase {
         changedIds?.add(duplicate.id);
         changed = true;
       }
+    }
+    return changed;
+  }
+
+  bool _pruneRecurrenceOccurrencesAfterEndDate(
+    Iterable<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+  }) {
+    final endDay = DateTime(
+      recurrenceEndDate.year,
+      recurrenceEndDate.month,
+      recurrenceEndDate.day,
+    );
+    var changed = false;
+    for (final occurrence in todos) {
+      if (occurrence.isDeleted || occurrence.recurrenceSeriesId != seriesId) {
+        continue;
+      }
+      final startMs = occurrence.createdDate ?? occurrence.createdAt;
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
+      final startDay = DateTime(start.year, start.month, start.day);
+      if (!startDay.isAfter(endDay)) continue;
+
+      occurrence.isDeleted = true;
+      occurrence.recurrence = RecurrenceType.none;
+      occurrence.markAsChanged();
+      changed = true;
     }
     return changed;
   }
