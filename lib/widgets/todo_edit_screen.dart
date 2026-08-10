@@ -830,10 +830,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                   ],
                   InkWell(
                     onTap: () async {
-                      final firstDate = _recurrenceEndDateFirstDate();
                       final picked = await showDatePicker(
                           context: context,
-                          firstDate: firstDate,
+                          // 循环结束日期是系列规则，不是当前实例的截止时间；
+                          // 允许把规则结束日期回调到今天之前。
+                          firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                           initialDate: _recurrenceEndDate ??
                               DateTime.now().add(const Duration(days: 30)));
@@ -1205,29 +1206,6 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     _reminderMinutes = todo.reminderMinutes ?? 5;
     _selectedTeamUuid = todo.teamUuid;
     _collabType = todo.collabType;
-  }
-
-  DateTime _recurrenceEndDateFirstDate() {
-    final seriesId = _editingTodo.recurrenceSeriesId?.trim();
-    var firstOccurrence = _createdDate;
-    if (seriesId != null && seriesId.isNotEmpty) {
-      for (final occurrence in widget.todos) {
-        if (occurrence.isDeleted ||
-            occurrence.recurrenceSeriesId?.trim() != seriesId) {
-          continue;
-        }
-        final start = DateTime.fromMillisecondsSinceEpoch(
-          occurrence.createdDate ?? occurrence.createdAt,
-          isUtc: true,
-        ).toLocal();
-        if (start.isBefore(firstOccurrence)) firstOccurrence = start;
-      }
-    }
-    return DateTime(
-      firstOccurrence.year,
-      firstOccurrence.month,
-      firstOccurrence.day,
-    );
   }
 
   bool get _hasUnsavedChanges {
