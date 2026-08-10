@@ -8,12 +8,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Environment
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -65,12 +68,13 @@ class AppUpdateWorker(
                 return Result.success()
             }
 
+            val downloadedFile = downloadFullPackage(manifest, remoteVersion)
             if (!canPostNotification()) {
                 Log.d(TAG, "Notification permission is unavailable")
                 return Result.success()
             }
 
-            showUpdateNotification(remoteVersion, manifest)
+            showUpdateNotification(remoteVersion, manifest, downloadedFile != null)
             prefs.edit().putString(KEY_LAST_NOTIFIED_VERSION, remoteVersion).apply()
             Result.success()
         } catch (error: Exception) {
@@ -146,7 +150,82 @@ class AppUpdateWorker(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun showUpdateNotification(version: String, manifest: JSONObject) {
+    private fun resolveAndroidPackageUrl(manifest: JSONObject): String {
+        val updateInfo = manifest.optJSONObject("update_info") ?: return ""
+        val packages = updateInfo.optJSONObject("android_arch_packages")
+        if (packages != null) {
+            Build.SUPPORTED_ABIS.forEach { abi ->
+                val url = packages.optString(abi).trim()
+                if (url.isNotEmpty()) return url
+            }
+        }
+        return updateInfo.optString("full_package_url").trim()
+    }
+
+    private fun downloadFullPackage(manifest: JSONObject, version: String): File? {
+        val packageUrl = resolveAndroidPackageUrl(manifest)
+        if (packageUrl.isEmpty()) {
+            Log.w(TAG, "No Android package URL for $version")
+            return null
+        }
+
+        val downloadsRoot = applicationContext.getExternalFilesDir(
+            Environment.DIRECTORY_DOWNLOADS
+        ) ?: return null
+        val targetDirectory = File(downloadsRoot, "CountdownTodo")
+        if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
+            Log.w(TAG, "Unable to create update directory: $targetDirectory")
+            return null
+        }
+
+        val target = File(targetDirectory, "CountdownTodo_v$version.apk")
+        val temporary = File(targetDirectory, "CountdownTodo_v$version.apk.download")
+        try {
+            val connection = URL(packageUrl).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 60_000
+            connection.setRequestProperty(
+                "Accept",
+                "application/vnd.android.package-archive"
+            )
+            if (connection.responseCode !in 200..299) {
+                Log.w(TAG, "Package request failed: HTTP ${connection.responseCode}")
+                connection.disconnect()
+                return null
+            }
+
+            connection.inputStream.use { input ->
+                FileOutputStream(temporary).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            connection.disconnect()
+
+            if (temporary.length() <= 1024 * 1024) {
+                temporary.delete()
+                Log.w(TAG, "Downloaded update package is unexpectedly small")
+                return null
+            }
+            if (target.exists()) target.delete()
+            if (!temporary.renameTo(target)) {
+                temporary.delete()
+                return null
+            }
+            Log.d(TAG, "Downloaded update package: $target")
+            return target
+        } catch (error: Exception) {
+            temporary.delete()
+            Log.w(TAG, "Update package download failed", error)
+            return null
+        }
+    }
+
+    private fun showUpdateNotification(
+        version: String,
+        manifest: JSONObject,
+        packageDownloaded: Boolean
+    ) {
         val manager = applicationContext.getSystemService(
             Context.NOTIFICATION_SERVICE
         ) as NotificationManager
@@ -156,10 +235,15 @@ class AppUpdateWorker(
         val title = updateInfo?.optString("title")
             ?.takeIf { it.isNotBlank() }
             ?: "发现新版本"
-        val description = updateInfo?.optString("description")
+        val baseDescription = updateInfo?.optString("description")
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: "CountDownTodo $version 已发布，点击打开应用查看详情"
+        val description = if (packageDownloaded) {
+            "更新包已在 Wi-Fi 下下载完成，打开应用后确认安装。"
+        } else {
+            baseDescription
+        }
 
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or

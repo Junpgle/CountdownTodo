@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:countdown_todo/services/band_sync_service.dart';
 import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
@@ -311,6 +311,8 @@ class UpdateService {
       'changelog_archive_cache_time';
   static const String _updateDialogSnoozeTodayKey =
       'update_dialog_snooze_today';
+  static const String _updateMethodChannelName =
+      'com.math_quiz.junpgle.com.math_quiz_app/app_update';
 
   // 更新源偏好设置
   static const String _updateSourceKey = 'update_source_preference';
@@ -329,10 +331,26 @@ class UpdateService {
     await prefs.setString(_updateSourceKey, source);
   }
 
+  /// Returns true only when Android reports that the active network is Wi-Fi.
+  /// Automatic package downloads deliberately do not run on mobile data.
+  static Future<bool> isWifiConnected() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await const MethodChannel(_updateMethodChannelName)
+              .invokeMethod<bool>('isWifiConnected') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<AppManifest?>? _manifestRefreshFuture;
+  static Future<void>? _updateCheckFuture;
 
   static bool _isDialogShowing = false;
   static bool _isAnnouncementDialogShowing = false;
+  static String? _lastPromptedUpdateVersion;
+  static DateTime? _lastPromptedUpdateAt;
 
   // 全局壁纸状态管理
   static ValueNotifier<String?> wallpaperUrlNotifier =
@@ -915,21 +933,47 @@ class UpdateService {
   }
 
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async {
-    final path = await getDownloadDirectory();
-    if (path == null) return null;
-
     final fileName = getUpdateFileName(versionName);
-    File file = File("$path/$fileName");
+    for (final path in await _getDownloadDirectories()) {
+      File file = File("$path/$fileName");
 
-    if (!await file.exists()) {
-      final zipFile = File("$path/$fileName.zip");
-      if (await zipFile.exists()) file = zipFile;
-    }
+      if (!await file.exists()) {
+        final zipFile = File("$path/$fileName.zip");
+        if (await zipFile.exists()) file = zipFile;
+      }
 
-    if (await file.exists() && await file.length() > 1024 * 1024) {
-      return file.path;
+      if (await file.exists() && await file.length() > 1024 * 1024) {
+        return file.path;
+      }
     }
     return null;
+  }
+
+  static Future<List<String>> _getDownloadDirectories() async {
+    final directories = <String>[];
+    final publicDirectory = await getDownloadDirectory();
+    if (publicDirectory != null) directories.add(publicDirectory);
+
+    if (Platform.isAndroid) {
+      try {
+        final externalDirectory = await getExternalStorageDirectory();
+        if (externalDirectory != null) {
+          final appDirectory = Directory(
+            '${externalDirectory.path}/Download/CountdownTodo',
+          );
+          if (!await appDirectory.exists()) {
+            await appDirectory.create(recursive: true);
+          }
+          if (!directories.contains(appDirectory.path)) {
+            directories.add(appDirectory.path);
+          }
+        }
+      } catch (error) {
+        debugPrint('[UpdateService] 获取应用更新目录失败: $error');
+      }
+    }
+
+    return directories;
   }
 
   static Future<bool> prepareForDownload(
@@ -950,8 +994,7 @@ class UpdateService {
     }
 
     try {
-      final path = await getDownloadDirectory();
-      if (path != null) {
+      for (final path in await _getDownloadDirectories()) {
         final dir = Directory(path);
         if (await dir.exists()) {
           final List<FileSystemEntity> files = dir.listSync();
@@ -1269,6 +1312,31 @@ class UpdateService {
   }
 
   static Future<void> checkUpdateAndPrompt(BuildContext context,
+      {bool isManual = false}) {
+    final running = _updateCheckFuture;
+    if (running != null) return running;
+
+    final future = _checkUpdateAndPromptInternal(
+      context,
+      isManual: isManual,
+    );
+    _updateCheckFuture = future;
+    future.then<void>(
+      (_) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+    );
+    return future;
+  }
+
+  static Future<void> _checkUpdateAndPromptInternal(BuildContext context,
       {bool isManual = false}) async {
     if (_isDialogShowing) return;
 
@@ -1433,6 +1501,39 @@ class UpdateService {
     }
   }
 
+  /// Starts a background package download when the update is discovered over
+  /// Wi-Fi. Installation is never automatic; the update dialog exposes the
+  /// completed package through an explicit install button.
+  static Future<void> autoDownloadLatestOnWifi(
+    BuildContext context,
+    AppManifest manifest, {
+    void Function(double)? onProgress,
+    void Function(String)? onComplete,
+    void Function(String)? onError,
+  }) async {
+    if (!Platform.isAndroid || !context.mounted) return;
+    if (_isDownloading || _isDownloaded) return;
+    if (!await isWifiConnected() || !context.mounted) return;
+
+    final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
+    if (existingPath != null) {
+      _isDownloaded = true;
+      _localPackagePath = existingPath;
+      _uiCompleteCallback?.call(existingPath);
+      onComplete?.call(existingPath);
+      return;
+    }
+
+    if (_isDownloading || !context.mounted) return;
+    unawaited(_startForegroundDownload(
+      context,
+      manifest,
+      onProgress: onProgress,
+      onComplete: onComplete,
+      onError: onError,
+    ));
+  }
+
   // 🚀 提取出来的纯净版本号对比算法
   static bool _compareVersions(String manifestVersion, String localVersion) {
     try {
@@ -1490,13 +1591,26 @@ class UpdateService {
       bool hasNotice = false,
       bool respectTodaySnooze = true}) async {
     if (_isDialogShowing) return;
+    final now = DateTime.now();
+    if (hasUpdate &&
+        !manifest.forceUpdate &&
+        _lastPromptedUpdateVersion == manifest.versionName &&
+        _lastPromptedUpdateAt != null &&
+        now.difference(_lastPromptedUpdateAt!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _isDialogShowing = true;
     if (hasUpdate &&
         respectTodaySnooze &&
         !manifest.forceUpdate &&
         await _isUpdateDialogSnoozedToday(manifest.versionName)) {
+      _isDialogShowing = false;
       return;
     }
-    _isDialogShowing = true;
+    if (hasUpdate && !manifest.forceUpdate) {
+      _lastPromptedUpdateVersion = manifest.versionName;
+      _lastPromptedUpdateAt = now;
+    }
 
     // 🚀 只要弹窗显示了，就说明用户已经进入更新流程，立即取消通知栏提醒
     NotificationService.cancelUpdateNotification();
@@ -1513,6 +1627,10 @@ class UpdateService {
     if (!context.mounted) {
       _isDialogShowing = false;
       return;
+    }
+
+    if (hasUpdate && !_isDownloading && !_isDownloaded) {
+      unawaited(autoDownloadLatestOnWifi(context, manifest));
     }
 
     await showDialog(
@@ -1743,23 +1861,32 @@ class UpdateService {
   }
 
   static Future<void> _startForegroundDownload(
-      BuildContext context, AppManifest manifest) async {
-    await _downloadSubscription?.cancel();
-    if (!context.mounted) {
-      _isDownloading = false;
-      _uiErrorCallback?.call("页面已关闭，已取消权限申请");
-      return;
-    }
-
+    BuildContext context,
+    AppManifest manifest, {
+    void Function(double)? onProgress,
+    void Function(String)? onComplete,
+    void Function(String)? onError,
+  }) async {
+    if (_isDownloading) return;
     _isDownloading = true;
     _isDownloaded = false;
     _downloadProgress = 0.0;
     _uiProgressCallback?.call(0.0);
+    onProgress?.call(0.0);
+
+    await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("页面已关闭，已取消权限申请");
+      onError?.call("页面已关闭，已取消权限申请");
+      return;
+    }
 
     bool ready = await prepareForDownload(context, manifest.versionName);
     if (!ready) {
       _isDownloading = false;
       _uiErrorCallback?.call("准备下载环境失败，请检查存储权限");
+      onError?.call("准备下载环境失败，请检查存储权限");
       return;
     }
 
@@ -1767,6 +1894,7 @@ class UpdateService {
     if (path == null) {
       _isDownloading = false;
       _uiErrorCallback?.call("无法获取下载保存目录");
+      onError?.call("无法获取下载保存目录");
       return;
     }
 
@@ -1777,6 +1905,7 @@ class UpdateService {
         onProgress: (progress) {
           _downloadProgress = progress;
           _uiProgressCallback?.call(progress);
+          onProgress?.call(progress);
         },
       );
 
@@ -1784,9 +1913,11 @@ class UpdateService {
       _isDownloaded = true;
       _localPackagePath = finalFile.path;
       _uiCompleteCallback?.call(finalFile.path);
+      onComplete?.call(finalFile.path);
     } catch (e) {
       _isDownloading = false;
       _uiErrorCallback?.call("更新包下载或校验失败: $e");
+      onError?.call("更新包下载或校验失败: $e");
     }
   }
 }

@@ -858,8 +858,9 @@ class NotificationService {
     required String updateContent,
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS && !_isDesktopSupported) return;
-    final notificationKey =
-        '$versionName\u0000$updateTitle\u0000$updateContent';
+    // GitHub、服务器和 WebSocket 可能用不同标题/文案报告同一版本；
+    // 以版本号去重，避免同一个更新连续弹出多条通知。
+    final notificationKey = versionName;
     if (!_shownUpdateNotificationKeys.add(notificationKey)) return;
     await ensureInitialized();
 

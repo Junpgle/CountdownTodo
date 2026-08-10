@@ -267,8 +267,11 @@ class UpdateService {
   static const String updateSourceServer = 'server';
 
   static Future<AppManifest?>? _manifestRefreshFuture;
+  static Future<void>? _updateCheckFuture;
   static bool _isDialogShowing = false;
   static bool _isAnnouncementDialogShowing = false;
+  static String? _lastPromptedUpdateVersion;
+  static DateTime? _lastPromptedUpdateAt;
 
   static ValueNotifier<String?> wallpaperUrlNotifier =
       ValueNotifier<String?>(null);
@@ -656,6 +659,14 @@ class UpdateService {
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async =>
       null;
 
+  static Future<void> autoDownloadLatestOnWifi(
+    BuildContext context,
+    AppManifest manifest, {
+    void Function(double)? onProgress,
+    void Function(String)? onComplete,
+    void Function(String)? onError,
+  }) async {}
+
   static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async =>
       false;
 
@@ -724,6 +735,33 @@ class UpdateService {
   }
 
   static Future<void> checkUpdateAndPrompt(
+    BuildContext context, {
+    bool isManual = false,
+  }) {
+    final running = _updateCheckFuture;
+    if (running != null) return running;
+
+    final future = _checkUpdateAndPromptInternal(
+      context,
+      isManual: isManual,
+    );
+    _updateCheckFuture = future;
+    future.then<void>(
+      (_) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+    );
+    return future;
+  }
+
+  static Future<void> _checkUpdateAndPromptInternal(
     BuildContext context, {
     bool isManual = false,
   }) async {
@@ -903,13 +941,26 @@ class UpdateService {
     bool respectTodaySnooze = true,
   }) async {
     if (_isDialogShowing) return;
+    final now = DateTime.now();
+    if (hasUpdate &&
+        !manifest.forceUpdate &&
+        _lastPromptedUpdateVersion == manifest.versionName &&
+        _lastPromptedUpdateAt != null &&
+        now.difference(_lastPromptedUpdateAt!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _isDialogShowing = true;
     if (hasUpdate &&
         respectTodaySnooze &&
         !manifest.forceUpdate &&
         await _isUpdateDialogSnoozedToday(manifest.versionName)) {
+      _isDialogShowing = false;
       return;
     }
-    _isDialogShowing = true;
+    if (hasUpdate && !manifest.forceUpdate) {
+      _lastPromptedUpdateVersion = manifest.versionName;
+      _lastPromptedUpdateAt = now;
+    }
     NotificationService.cancelUpdateNotification();
 
     if (!context.mounted) {

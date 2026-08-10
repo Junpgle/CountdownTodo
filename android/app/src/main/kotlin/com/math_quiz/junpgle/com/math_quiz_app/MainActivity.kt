@@ -11,6 +11,8 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.net.Uri
@@ -988,6 +990,18 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                     // the path lets the Dart delta applier use the exact
                     // signed APK currently installed on this device.
                     result.success(applicationInfo.sourceDir)
+                }
+                "isWifiConnected" -> {
+                    val connectivityManager =
+                        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val network = connectivityManager.activeNetwork
+                    val capabilities = network?.let {
+                        connectivityManager.getNetworkCapabilities(it)
+                    }
+                    result.success(
+                        capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                            == true
+                    )
                 }
                 else -> result.notImplemented()
             }

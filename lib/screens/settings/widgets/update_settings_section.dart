@@ -31,6 +31,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   bool _isDownloading = false;
   double _downloadProgress = 0;
   String? _downloadKind;
+  String? _downloadedPackagePath;
   bool _isForceDownloading = false;
   double _forceDownloadProgress = 0;
   String? _errorMessage;
@@ -112,6 +113,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       final hasDelta = hasUpdate && AppPlatform.isAndroid
           ? await UpdateService.hasUsableDeltaPackage(manifest)
           : false;
+      final downloadedPackagePath = manifest == null
+          ? null
+          : await UpdateService.isPackageAlreadyDownloaded(
+              manifest.versionName);
 
       if (!mounted) return;
       setState(() {
@@ -121,10 +126,44 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _latestChangelog = latestChangelog;
         _updateSource = source;
         _hasDeltaPackage = hasDelta;
+        _downloadedPackagePath = downloadedPackagePath;
         _errorMessage = manifest == null ? '暂时无法获取更新信息' : null;
         _isLoading = false;
         _isRefreshing = false;
       });
+
+      if (hasUpdate && mounted && AppPlatform.isAndroid) {
+        unawaited(
+          UpdateService.autoDownloadLatestOnWifi(
+            context,
+            manifest,
+            onProgress: (progress) {
+              if (!mounted) return;
+              setState(() {
+                _isDownloading = true;
+                _downloadKind = 'Wi-Fi 自动下载';
+                _downloadProgress = progress;
+              });
+            },
+            onComplete: (path) {
+              if (!mounted) return;
+              setState(() {
+                _isDownloading = false;
+                _downloadProgress = 1;
+                _downloadKind = null;
+                _downloadedPackagePath = path;
+              });
+            },
+            onError: (_) {
+              if (!mounted) return;
+              setState(() {
+                _isDownloading = false;
+                _downloadKind = null;
+              });
+            },
+          ),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -182,6 +221,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Future<void> _downloadPackage({required bool preferDelta}) async {
     final manifest = _manifest;
+    if (_downloadedPackagePath != null) {
+      await _installDownloadedPackage();
+      return;
+    }
     if (_isDownloading || manifest == null || !_hasDownloadPackage) return;
 
     setState(() {
@@ -263,6 +306,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     setState(() {
       _isForceDownloading = false;
       _forceDownloadProgress = 1;
+      _downloadedPackagePath = path;
     });
     await _promptInstall(path);
   }
@@ -273,8 +317,15 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       _isDownloading = false;
       _downloadProgress = 1;
       _downloadKind = null;
+      _downloadedPackagePath = path;
     });
     await _promptInstall(path);
+  }
+
+  Future<void> _installDownloadedPackage() async {
+    final path = _downloadedPackagePath;
+    if (path == null) return;
+    await UpdateService.installPackage(path);
   }
 
   Future<void> _promptInstall(String path) async {
@@ -563,7 +614,17 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               ),
             ),
           ],
-          if (_isDownloading) ...[
+          if (_downloadedPackagePath != null) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _installDownloadedPackage,
+                icon: const Icon(Icons.system_update_alt_rounded),
+                label: const Text('立即安装'),
+              ),
+            ),
+          ] else if (_isDownloading) ...[
             const SizedBox(height: 14),
             Row(
               children: [
@@ -726,6 +787,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Widget _buildForceDownloadTile() {
     final colorScheme = Theme.of(context).colorScheme;
+    final packageReady = _downloadedPackagePath != null;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       leading: Container(
@@ -738,27 +800,34 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         child:
             Icon(Icons.download_rounded, color: colorScheme.onPrimaryContainer),
       ),
-      title: const Text('强制下载最新版完整包'),
-      subtitle: _isForceDownloading
-          ? Text(
-              '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-              style: TextStyle(fontSize: 12, color: colorScheme.primary),
-            )
-          : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
-      trailing: _isForceDownloading
-          ? SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                value:
-                    _forceDownloadProgress > 0 ? _forceDownloadProgress : null,
-                color: colorScheme.primary,
-              ),
-            )
-          : Icon(Icons.file_download_outlined,
-              color: colorScheme.onSurfaceVariant),
-      onTap: _isForceDownloading ? null : _forceDownloadLatest,
+      title: Text(packageReady ? '立即安装最新版' : '强制下载最新版完整包'),
+      subtitle: packageReady
+          ? const Text('完整安装包已下载完成，确认后开始安装')
+          : _isForceDownloading
+              ? Text(
+                  '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(fontSize: 12, color: colorScheme.primary),
+                )
+              : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
+      trailing: packageReady
+          ? Icon(Icons.system_update_alt_rounded, color: colorScheme.primary)
+          : _isForceDownloading
+              ? SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    value: _forceDownloadProgress > 0
+                        ? _forceDownloadProgress
+                        : null,
+                    color: colorScheme.primary,
+                  ),
+                )
+              : Icon(Icons.file_download_outlined,
+                  color: colorScheme.onSurfaceVariant),
+      onTap: packageReady
+          ? _installDownloadedPackage
+          : (_isForceDownloading ? null : _forceDownloadLatest),
     );
   }
 
