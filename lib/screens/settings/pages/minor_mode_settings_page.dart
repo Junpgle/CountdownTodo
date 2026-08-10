@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../models/minor_age_signal_state.dart';
 import '../../../models/minor_mode_state.dart';
@@ -55,6 +56,22 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
 
   Future<void> _setManualEnabled(bool enabled) async {
     await MinorModeService.instance.setManualEnabled(enabled);
+  }
+
+  Future<void> _pickManualBirthDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final current = MinorModeService.instance.manualBirthDate;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime(today.year - 12, today.month, today.day),
+      firstDate: DateTime(1900),
+      lastDate: today,
+      helpText: '选择出生日期',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (picked == null) return;
+    await MinorModeService.instance.setManualBirthDate(picked);
   }
 
   Future<void> _refresh() async {
@@ -262,6 +279,7 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
 
   Widget _buildManualSection(BuildContext context, MinorModeState state) {
     final colorScheme = Theme.of(context).colorScheme;
+    final birthDate = MinorModeService.instance.manualBirthDate;
     return AppSettingsSection(
       title: 'App 未成年人模式',
       children: [
@@ -281,6 +299,23 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
             value: state.manualEnabled,
             onChanged: state.systemEnabled ? null : _setManualEnabled,
           ),
+        ),
+        const AppSettingsDivider(),
+        ListTile(
+          leading: Icon(Icons.cake_outlined, color: colorScheme.primary),
+          title: const Text('出生日期'),
+          subtitle: Text(
+            birthDate == null
+                ? '选择后自动计算年龄段并开启 App 未成年人模式'
+                : '仅保存在本机：${MinorAgeBandSystemMapping.fromBirthDate(birthDate).label}',
+          ),
+          trailing: Text(
+            birthDate == null
+                ? '未设置'
+                : DateFormat('yyyy-MM-dd').format(birthDate),
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          onTap: _pickManualBirthDate,
         ),
       ],
     );

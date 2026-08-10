@@ -73,6 +73,38 @@ void main() {
     );
   });
 
+  test('maps a local birth date to the policy age band', () {
+    final today = DateTime(2026, 8, 10);
+    expect(
+      MinorAgeBandSystemMapping.fromBirthDate(
+        DateTime(2014, 8, 10),
+        today: today,
+      ),
+      MinorAgeBand.age12to15,
+    );
+    expect(
+      MinorAgeBandSystemMapping.fromBirthDate(
+        DateTime(2009, 8, 11),
+        today: today,
+      ),
+      MinorAgeBand.age16to17,
+    );
+    expect(
+      MinorAgeBandSystemMapping.fromBirthDate(
+        DateTime(2000, 1, 1),
+        today: today,
+      ),
+      MinorAgeBand.adult,
+    );
+    expect(
+      MinorAgeBandSystemMapping.fromBirthDate(
+        DateTime(2027, 1, 1),
+        today: today,
+      ),
+      MinorAgeBand.unknown,
+    );
+  });
+
   test('unknown minor age does not silently allow advanced AI', () {
     expect(
       MinorModePolicy.allowsAdvancedAiInteraction(state(systemEnabled: true)),

@@ -61,6 +61,34 @@ extension MinorAgeBandSystemMapping on MinorAgeBand {
       _ => MinorAgeBand.unknown,
     };
   }
+
+  static MinorAgeBand fromBirthDate(
+    DateTime birthDate, {
+    DateTime? today,
+  }) {
+    final currentDate = today ?? DateTime.now();
+    final current = DateTime(
+      currentDate.year,
+      currentDate.month,
+      currentDate.day,
+    );
+    final date = DateTime(birthDate.year, birthDate.month, birthDate.day);
+    if (date.isAfter(current)) return MinorAgeBand.unknown;
+
+    var age = current.year - date.year;
+    final birthdayThisYear = DateTime(current.year, date.month, date.day);
+    if (birthdayThisYear.isAfter(current)) age--;
+
+    return switch (age) {
+      < 0 => MinorAgeBand.unknown,
+      < 3 => MinorAgeBand.under3,
+      <= 7 => MinorAgeBand.age3to7,
+      <= 11 => MinorAgeBand.age8to11,
+      <= 15 => MinorAgeBand.age12to15,
+      <= 17 => MinorAgeBand.age16to17,
+      _ => MinorAgeBand.adult,
+    };
+  }
 }
 
 @immutable

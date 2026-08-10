@@ -15,6 +15,7 @@ class MinorModeService with WidgetsBindingObserver {
   static final MinorModeService instance = MinorModeService._();
 
   static const manualEnabledKey = 'minor_mode_manual_enabled';
+  static const manualBirthDateKey = 'minor_mode_manual_birth_date';
   static const _channelName = 'com.math_quiz_app/minor_mode';
   static const _eventChannelName = 'com.math_quiz_app/minor_mode_events';
 
@@ -24,6 +25,7 @@ class MinorModeService with WidgetsBindingObserver {
       ValueNotifier(const MinorModeState.unsupported());
   final ValueNotifier<MinorAgeSignalState> googleAgeSignalNotifier =
       ValueNotifier(const MinorAgeSignalState.unavailable());
+  final ValueNotifier<DateTime?> manualBirthDateNotifier = ValueNotifier(null);
 
   StreamSubscription<dynamic>? _eventSubscription;
   Future<void>? _initialization;
@@ -36,6 +38,7 @@ class MinorModeService with WidgetsBindingObserver {
   static const _parentAuthorizationSession = Duration(minutes: 5);
 
   MinorModeState get state => stateNotifier.value;
+  DateTime? get manualBirthDate => manualBirthDateNotifier.value;
   MinorModeState get policyState {
     final ageSignal = googleAgeSignalNotifier.value;
     if (!ageSignal.isMinor) return state;
@@ -76,11 +79,16 @@ class MinorModeService with WidgetsBindingObserver {
   Future<MinorModeState> refreshMinorModeState() async {
     if (!_initialized) await initialize();
     final manualEnabled = await _readManualEnabled();
+    final manualBirthDate = await _readManualBirthDate();
+    _publishManualBirthDate(manualBirthDate);
+    final manualAgeBand = _manualAgeBand(manualBirthDate);
 
     if (!AppPlatform.isAndroid) {
-      return _publish(
+      return _publish(_applyManualAgeBand(
         MinorModeState.unsupported(manualEnabled: manualEnabled),
-      );
+        manualEnabled: manualEnabled,
+        manualAgeBand: manualAgeBand,
+      ));
     }
 
     try {
@@ -89,9 +97,13 @@ class MinorModeService with WidgetsBindingObserver {
         final map = Map<Object?, Object?>.from(raw);
         _hasPlatformState = true;
         return _publish(
-          MinorModeState.fromPlatformMap(
-            map,
+          _applyManualAgeBand(
+            MinorModeState.fromPlatformMap(
+              map,
+              manualEnabled: manualEnabled,
+            ),
             manualEnabled: manualEnabled,
+            manualAgeBand: manualAgeBand,
           ),
         );
       }
@@ -105,6 +117,39 @@ class MinorModeService with WidgetsBindingObserver {
     }
   }
 
+  Future<MinorModeState> setManualBirthDate(DateTime? birthDate) async {
+    await initialize();
+    final normalized = birthDate == null
+        ? null
+        : DateTime(birthDate.year, birthDate.month, birthDate.day);
+    final prefs = await SharedPreferences.getInstance();
+    if (normalized == null) {
+      await prefs.remove(manualBirthDateKey);
+    } else {
+      await prefs.setString(manualBirthDateKey, normalized.toIso8601String());
+    }
+    _publishManualBirthDate(normalized);
+
+    final ageBand = _manualAgeBand(normalized);
+    final shouldEnable =
+        ageBand != MinorAgeBand.unknown && ageBand != MinorAgeBand.adult;
+    await prefs.setBool(manualEnabledKey, shouldEnable);
+
+    final current = state;
+    final next = current.copyWith(
+      manualEnabled: shouldEnable,
+      source: current.systemEnabled
+          ? current.source
+          : shouldEnable
+              ? MinorModeSource.manual
+              : current.systemSupported
+                  ? MinorModeSource.chinaSystem
+                  : MinorModeSource.unsupported,
+      ageBand: current.systemEnabled ? current.ageBand : ageBand,
+    );
+    return _publish(next);
+  }
+
   Future<MinorModeState> setManualEnabled(bool enabled) async {
     await initialize();
     final prefs = await SharedPreferences.getInstance();
@@ -112,16 +157,20 @@ class MinorModeService with WidgetsBindingObserver {
 
     final current = state;
     return _publish(
-      current.copyWith(
+      _applyManualAgeBand(
+        current.copyWith(
+          manualEnabled: enabled,
+          source: current.systemEnabled
+              ? current.source
+              : enabled
+                  ? MinorModeSource.manual
+                  : current.systemSupported
+                      ? MinorModeSource.chinaSystem
+                      : MinorModeSource.unsupported,
+          lastError: current.lastError,
+        ),
         manualEnabled: enabled,
-        source: current.systemEnabled
-            ? current.source
-            : enabled
-                ? MinorModeSource.manual
-                : current.systemSupported
-                    ? MinorModeSource.chinaSystem
-                    : MinorModeSource.unsupported,
-        lastError: current.lastError,
+        manualAgeBand: _manualAgeBand(manualBirthDate),
       ),
     );
   }
@@ -302,9 +351,50 @@ class MinorModeService with WidgetsBindingObserver {
     }
   }
 
+  Future<DateTime?> _readManualBirthDate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(manualBirthDateKey);
+      if (raw == null || raw.isEmpty) return null;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) return null;
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    } catch (_) {
+      return manualBirthDate;
+    }
+  }
+
+  MinorAgeBand _manualAgeBand(DateTime? birthDate) {
+    if (birthDate == null) return MinorAgeBand.unknown;
+    return MinorAgeBandSystemMapping.fromBirthDate(birthDate);
+  }
+
+  MinorModeState _applyManualAgeBand(
+    MinorModeState nextState, {
+    required bool manualEnabled,
+    required MinorAgeBand manualAgeBand,
+  }) {
+    if (!manualEnabled || nextState.systemEnabled) return nextState;
+    return nextState.copyWith(ageBand: manualAgeBand);
+  }
+
+  void _publishManualBirthDate(DateTime? birthDate) {
+    if (manualBirthDateNotifier.value != birthDate) {
+      manualBirthDateNotifier.value = birthDate;
+    }
+  }
+
   Future<void> _applyManualState() async {
     final manualEnabled = await _readManualEnabled();
-    _publish(MinorModeState.unsupported(manualEnabled: manualEnabled));
+    final manualBirthDate = await _readManualBirthDate();
+    _publishManualBirthDate(manualBirthDate);
+    _publish(
+      _applyManualAgeBand(
+        MinorModeState.unsupported(manualEnabled: manualEnabled),
+        manualEnabled: manualEnabled,
+        manualAgeBand: _manualAgeBand(manualBirthDate),
+      ),
+    );
   }
 
   void _handlePlatformEvent(dynamic event) {
@@ -315,11 +405,17 @@ class MinorModeService with WidgetsBindingObserver {
 
   Future<void> _applyPlatformEvent(Map<Object?, Object?> map) async {
     final manualEnabled = await _readManualEnabled();
+    final manualBirthDate = await _readManualBirthDate();
+    _publishManualBirthDate(manualBirthDate);
     _hasPlatformState = true;
     _publish(
-      MinorModeState.fromPlatformMap(
-        map,
+      _applyManualAgeBand(
+        MinorModeState.fromPlatformMap(
+          map,
+          manualEnabled: manualEnabled,
+        ),
         manualEnabled: manualEnabled,
+        manualAgeBand: _manualAgeBand(manualBirthDate),
       ),
     );
   }
@@ -327,18 +423,26 @@ class MinorModeService with WidgetsBindingObserver {
   MinorModeState _handlePlatformFailure(Object error, bool manualEnabled) {
     if (_hasPlatformState) {
       return _publish(
-        state.copyWith(
+        _applyManualAgeBand(
+          state.copyWith(
+            manualEnabled: manualEnabled,
+            systemStateReadFailed: true,
+            lastError: error.toString(),
+          ),
           manualEnabled: manualEnabled,
-          systemStateReadFailed: true,
-          lastError: error.toString(),
+          manualAgeBand: _manualAgeBand(manualBirthDate),
         ),
       );
     }
     return _publish(
-      MinorModeState.unsupported(
+      _applyManualAgeBand(
+        MinorModeState.unsupported(
+          manualEnabled: manualEnabled,
+          systemStateReadFailed: true,
+          lastError: error.toString(),
+        ),
         manualEnabled: manualEnabled,
-        systemStateReadFailed: true,
-        lastError: error.toString(),
+        manualAgeBand: _manualAgeBand(manualBirthDate),
       ),
     );
   }
