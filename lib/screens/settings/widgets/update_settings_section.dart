@@ -386,36 +386,70 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final date = entry?.date.isNotEmpty == true ? entry!.date : '暂无记录';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.verified_outlined, color: colorScheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.verified_outlined,
+                color: colorScheme.onPrimaryContainer),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('当前版本',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 3),
-                    Text(_currentVersionLabel()),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('当前版本',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 3),
+                          Text(_currentVersionLabel(),
+                              style: Theme.of(context).textTheme.bodyMedium),
+                        ],
+                      ),
+                    ),
+                    if (_currentChangelog != null)
+                      OutlinedButton.icon(
+                        onPressed: _showCurrentChangelog,
+                        icon: const Icon(Icons.notes_outlined, size: 16),
+                        label: const Text('查看日志'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
+                      ),
                   ],
                 ),
-              ),
-              TextButton.icon(
-                onPressed:
-                    _currentChangelog == null ? null : _showCurrentChangelog,
-                icon: const Icon(Icons.description_outlined, size: 18),
-                label: const Text('更新日志'),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.event_outlined,
+                        size: 15, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 5),
+                    Text('更新于 $date',
+                        style: TextStyle(
+                            fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          Text('更新日期：$date',
-              style: TextStyle(color: colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -440,50 +474,105 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.new_releases_outlined,
-                  color: colorScheme.onPrimaryContainer),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colorScheme.onPrimaryContainer.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.new_releases_outlined,
+                    color: colorScheme.onPrimaryContainer),
+              ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  '发现新版本  v${manifest.versionName}',
-                  style: TextStyle(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '发现新版本',
+                      style: TextStyle(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'v${manifest.versionName}',
+                      style: TextStyle(
+                        color: colorScheme.onPrimaryContainer
+                            .withValues(alpha: 0.8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (latestDate?.isNotEmpty == true)
-                Text(latestDate!,
-                    style: TextStyle(color: colorScheme.onPrimaryContainer)),
+                Text('更新于 $latestDate',
+                    style: TextStyle(
+                        color: colorScheme.onPrimaryContainer, fontSize: 12)),
             ],
           ),
-          if (manifest.updateInfo.title.isNotEmpty) ...[
-            const SizedBox(height: 8),
+          if (manifest.updateInfo.title.isNotEmpty &&
+              manifest.updateInfo.title != '版本更新 ${manifest.versionName}') ...[
+            const SizedBox(height: 12),
             Text(manifest.updateInfo.title,
-                style: TextStyle(color: colorScheme.onPrimaryContainer)),
+                style: TextStyle(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600)),
           ],
           if (notes.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ...notes.map(
-              (note) => Padding(
-                padding: const EdgeInsets.only(bottom: 5),
-                child: Text(
-                  '• $note',
-                  style: TextStyle(color: colorScheme.onPrimaryContainer),
-                ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 11, 12, 6),
+              decoration: BoxDecoration(
+                color: colorScheme.onPrimaryContainer.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: notes
+                    .map(
+                      (note) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Icon(Icons.circle,
+                                  size: 5,
+                                  color: colorScheme.onPrimaryContainer),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(note,
+                                  style: TextStyle(
+                                      color: colorScheme.onPrimaryContainer)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
             ),
           ],
           if (_isDownloading) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: LinearProgressIndicator(
                     value: _downloadProgress == 0 ? null : _downloadProgress,
-                    color: colorScheme.primary,
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(6),
+                    color: colorScheme.onPrimaryContainer,
                     backgroundColor:
                         colorScheme.onPrimaryContainer.withValues(alpha: 0.15),
                   ),
@@ -537,97 +626,73 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     );
   }
 
-  Widget _buildChannelCard({
-    required BuildContext context,
-    required String value,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final selected = _updateSource == value;
-    return InkWell(
-      onTap: () => _setUpdateSource(value),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected
-              ? colorScheme.primary.withValues(alpha: 0.1)
-              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon,
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text(subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                ],
-              ),
-            ),
-            if (selected) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildUpdateSource(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('更新渠道',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(height: 4),
-          Text('选择版本清单的获取线路；安装包仍会使用清单提供的校验地址。',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: _buildChannelCard(
-                  context: context,
+              Icon(Icons.alt_route_rounded,
+                  color: colorScheme.primary, size: 21),
+              const SizedBox(width: 9),
+              const Text('更新渠道',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text('选择版本清单的获取线路，安装包仍使用清单提供的地址。',
+              style:
+                  TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
                   value: UpdateService.updateSourceGithub,
-                  title: 'GitHub 官方源',
-                  subtitle: '信息更新更及时',
-                  icon: Icons.code_rounded,
+                  label: Text('GitHub 官方'),
+                  icon: Icon(Icons.code_rounded),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildChannelCard(
-                  context: context,
+                ButtonSegment(
                   value: UpdateService.updateSourceServer,
-                  title: '阿里云加速源',
-                  subtitle: '国内访问更快',
-                  icon: Icons.cloud_outlined,
+                  label: Text('阿里云加速'),
+                  icon: Icon(Icons.cloud_outlined),
+                ),
+              ],
+              selected: {
+                _updateSource == UpdateService.updateSourceServer
+                    ? UpdateService.updateSourceServer
+                    : UpdateService.updateSourceGithub,
+              },
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+              onSelectionChanged: (selected) {
+                if (selected.isNotEmpty) {
+                  unawaited(_setUpdateSource(selected.first));
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.info_outline,
+                  size: 15, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  _updateSource == UpdateService.updateSourceServer
+                      ? '当前使用阿里云加速线路，国内访问通常更快。'
+                      : '当前使用 GitHub 官方线路，版本信息更新更及时。',
+                  style: TextStyle(
+                      fontSize: 12, color: colorScheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -638,12 +703,23 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   }
 
   Widget _buildBetaReleaseTile() {
+    final colorScheme = Theme.of(context).colorScheme;
     return ListTile(
-      leading: Icon(Icons.rocket_launch_outlined,
-          color: Theme.of(context).colorScheme.primary),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: colorScheme.tertiaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(Icons.rocket_launch_outlined,
+            color: colorScheme.onTertiaryContainer),
+      ),
       title: const Text('获取尝鲜版本'),
-      subtitle: const Text('前往 GitHub 下载最新开发版，体验最新功能'),
-      trailing: const Icon(Icons.open_in_new),
+      subtitle: Text('前往 GitHub 下载最新开发版，体验最新功能',
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+      trailing: Icon(Icons.open_in_new, color: colorScheme.onSurfaceVariant),
       onTap: _openBetaReleases,
     );
   }
@@ -651,7 +727,17 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Widget _buildForceDownloadTile() {
     final colorScheme = Theme.of(context).colorScheme;
     return ListTile(
-      leading: Icon(Icons.download_rounded, color: colorScheme.primary),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child:
+            Icon(Icons.download_rounded, color: colorScheme.onPrimaryContainer),
+      ),
       title: const Text('强制下载最新版完整包'),
       subtitle: _isForceDownloading
           ? Text(
@@ -673,6 +759,34 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           : Icon(Icons.file_download_outlined,
               color: colorScheme.onSurfaceVariant),
       onTap: _isForceDownloading ? null : _forceDownloadLatest,
+    );
+  }
+
+  Widget _buildUpdateTools(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            border: Border.all(color: colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              _buildBetaReleaseTile(),
+              Divider(
+                height: 1,
+                indent: 62,
+                color: colorScheme.outlineVariant,
+              ),
+              _buildForceDownloadTile(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -708,12 +822,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             ),
           ),
         _buildLatestVersionCard(context),
-        if (!AppPlatform.isWeb) ...[
-          const AppSettingsDivider(),
-          _buildBetaReleaseTile(),
-          const AppSettingsDivider(indent: 72),
-          _buildForceDownloadTile(),
-        ],
+        if (!AppPlatform.isWeb) _buildUpdateTools(context),
         const AppSettingsDivider(),
         _buildUpdateSource(context),
       ],
