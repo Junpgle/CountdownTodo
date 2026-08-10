@@ -38,17 +38,15 @@ class _PomodoroScreenState extends State<PomodoroScreen>
   PomodoroPhase _currentPhase = PomodoroPhase.idle;
   bool _workbenchReady = false;
   final _statsKey = GlobalKey<PomodoroStatsState>();
-  final GlobalKey<PomodoroWorkbenchState> _workbenchKeyPortrait =
-      GlobalKey<PomodoroWorkbenchState>();
-  final GlobalKey<PomodoroWorkbenchState> _workbenchKeyLandscape =
+
+  /// 横竖屏共用同一个 workbench State，避免旋转设备时等待翻转状态被重置。
+  final GlobalKey<PomodoroWorkbenchState> _workbenchKey =
       GlobalKey<PomodoroWorkbenchState>();
   final GlobalKey _statsTabKey = GlobalKey();
   final List<StreamSubscription<MethodCall>> _notifSubs = [];
   bool _disposed = false;
 
-  /// 统一访问当前活跃的 workbench state（portrait 或 landscape）
-  PomodoroWorkbenchState? get _workbenchState =>
-      _workbenchKeyPortrait.currentState ?? _workbenchKeyLandscape.currentState;
+  PomodoroWorkbenchState? get _workbenchState => _workbenchKey.currentState;
 
   @override
   void initState() {
@@ -222,7 +220,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   alignment: Alignment.center,
                   child: PomodoroWorkbench(
-                    key: _workbenchKeyLandscape,
+                    key: _workbenchKey,
                     username: widget.username,
                     onPhaseChanged: (phase) {
                       if (!_disposed && mounted && _currentPhase != phase) {
@@ -339,7 +337,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                 children: [
                   // portrait workbench
                   PomodoroWorkbench(
-                    key: _workbenchKeyPortrait,
+                    key: _workbenchKey,
                     username: widget.username,
                     onPhaseChanged: (phase) {
                       if (!_disposed && mounted && _currentPhase != phase) {

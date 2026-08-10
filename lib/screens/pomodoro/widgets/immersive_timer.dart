@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/strict_focus_sensor_service.dart';
 
 class ImmersiveTimer extends StatefulWidget {
   final PomodoroPhase phase;
@@ -15,6 +16,9 @@ class ImmersiveTimer extends StatefulWidget {
   final bool isCompact;
   final bool isPaused;
   final int pauseSeconds;
+  final bool isStrictMode;
+  final bool isStrictWaitingForFlip;
+  final StrictFocusSensorState strictSensorState;
 
   const ImmersiveTimer({
     super.key,
@@ -30,6 +34,9 @@ class ImmersiveTimer extends StatefulWidget {
     this.isCompact = false,
     this.isPaused = false,
     this.pauseSeconds = 0,
+    this.isStrictMode = false,
+    this.isStrictWaitingForFlip = false,
+    this.strictSensorState = StrictFocusSensorState.waitingForFaceUp,
   });
 
   @override
@@ -67,6 +74,8 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
     final isBreaking = widget.phase == PomodoroPhase.breaking;
     final isFinished = widget.phase == PomodoroPhase.finished;
     final isRemote = widget.phase == PomodoroPhase.remoteWatching;
+    final isStrictWaiting = widget.isStrictWaitingForFlip;
+    // 等待翻转仍属于闲置态，保持较小圆环，避免在竖屏下把底部操作区顶出屏幕。
     final isActive = isFocusing || isBreaking || isRemote;
 
     final bool effectiveIsCountUp =
@@ -84,15 +93,20 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
           : 0.0;
     }
 
-    final timeStr = effectiveIsCountUp
-        ? formatTimerMMSS(widget.remainingSeconds)
-        : formatCountdown(widget.remainingSeconds);
+    final timeStr = isStrictWaiting
+        ? '--:--'
+        : effectiveIsCountUp
+            ? formatTimerMMSS(widget.remainingSeconds)
+            : formatCountdown(widget.remainingSeconds);
 
     Color ringColor = Theme.of(context).colorScheme.primary;
     if (isFocusing) ringColor = const Color(0xFFFF6B6B);
     if (isBreaking) ringColor = const Color(0xFF4ECDC4);
     if (isFinished) ringColor = const Color(0xFFFFD166);
     if (isRemote) ringColor = const Color(0xFFFF6B6B).withValues(alpha: 0.6);
+    if (isStrictWaiting) {
+      ringColor = Theme.of(context).colorScheme.primary;
+    }
 
     final labelColor =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
@@ -116,25 +130,34 @@ class _ImmersiveTimerState extends State<ImmersiveTimer>
         ? '${sourceIdentifier.substring(0, 10)}...'
         : sourceIdentifier;
 
-    final String labelText = isBreaking
-        ? '☕ 休息中'
-        : isFinished
-            ? '🎉 完成！'
-            : isFocusing
-                ? (widget.isPaused
-                    ? (widget.pauseSeconds > 0
-                        ? '⏸️ 暂停中 ${formatTimerMMSS(widget.pauseSeconds)}'
-                        : '⏸️ 已暂停')
-                    : (effectiveIsCountUp ? '正在正计时' : '保持专注'))
-                : isRemote
-                    ? '$displayIdentifier ${widget.isRemoteCountUp ? '正计时' : '专注'}中'
-                    : '准备开始';
+    final String labelText = isStrictWaiting
+        ? (widget.strictSensorState == StrictFocusSensorState.waitingForFaceUp
+            ? '请先将屏幕朝上'
+            : '翻转手机开始计时')
+        : isBreaking
+            ? '☕ 休息中'
+            : isFinished
+                ? '🎉 完成！'
+                : isFocusing
+                    ? (widget.isPaused
+                        ? (widget.isStrictMode
+                            ? '⏸️ 请翻转手机继续'
+                            : widget.pauseSeconds > 0
+                                ? '⏸️ 暂停中 ${formatTimerMMSS(widget.pauseSeconds)}'
+                                : '⏸️ 已暂停')
+                        : (effectiveIsCountUp ? '正在正计时' : '保持专注'))
+                    : isRemote
+                        ? '$displayIdentifier ${widget.isRemoteCountUp ? '正计时' : '专注'}中'
+                        : '准备开始';
 
-    final String cycleText = isRemote
-        ? '同步观察'
-        : (effectiveIsCountUp
-            ? '自由模式'
-            : '第 ${widget.currentCycle} / ${widget.totalCycles} 轮');
+    final String cycleText =
+        isStrictWaiting || (widget.isStrictMode && isFocusing)
+            ? '严格自由模式'
+            : isRemote
+                ? '同步观察'
+                : (effectiveIsCountUp
+                    ? '自由模式'
+                    : '第 ${widget.currentCycle} / ${widget.totalCycles} 轮');
 
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;

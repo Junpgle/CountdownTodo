@@ -11,6 +11,9 @@ import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/pomodoro_sync_service.dart';
+import '../../../services/strict_focus_sensor_service.dart';
+import '../../../services/strict_focus_haptic_service.dart';
+import '../../../services/strict_focus_session_coordinator.dart';
 import '../../../services/todo_classification_service.dart';
 import '../../../services/band_sync_service.dart';
 import '../../../services/float_window_service.dart';
@@ -83,6 +86,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   int _notifyTickCount = 0;
   final ValueNotifier<int> _timerTickNotifier = ValueNotifier<int>(0);
 
+  // ── 严格自由专注传感器 ──
+  StreamSubscription<StrictFocusSensorEvent>? _strictSensorSub;
+  StrictFocusSensorState _strictSensorState =
+      StrictFocusSensorState.waitingForFaceUp;
+  bool _strictWaitingForFlip = false;
+  bool _strictStartInFlight = false;
+  bool _strictUnavailableNoticeShown = false;
+
   // ── Todos ──
   List<TodoItem> _todos = [];
   List<TodoGroup> _todoGroups = [];
@@ -127,6 +138,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     MacPomodoroStatusBarService.init();
     _init();
     _listenToRunState();
+    _listenToStrictSensor();
     _listenToIslandActions();
   }
 
@@ -213,8 +225,50 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               _phase == PomodoroPhase.finished ||
               _currentSessionUuid != state.sessionUuid)) {
         _recoverState(state);
+      } else if (state != null &&
+          state.sessionUuid == _currentSessionUuid &&
+          state.phase == PomodoroPhase.focusing &&
+          _phase == PomodoroPhase.focusing) {
+        _applySavedFocusState(state);
       }
     });
+  }
+
+  void _listenToStrictSensor() {
+    _strictSensorSub =
+        StrictFocusSessionCoordinator.instance.sensorEvents.listen((event) {
+      _handleStrictSensorEvent(event);
+    });
+  }
+
+  void _applySavedFocusState(PomodoroRunState state) {
+    if (!mounted) return;
+    final wasPaused = _isPaused;
+    final wasWaitingForFlip = _strictWaitingForFlip;
+    setState(() {
+      _targetEndMs = state.targetEndMs;
+      _sessionStartMs = state.sessionStartMs;
+      _isPaused = state.isPaused;
+      _strictWaitingForFlip = state.strictWaitingForFlip;
+      _pausedAtMs = state.pausedAtMs;
+      _pauseStartMs = state.pauseStartMs;
+      _accumulatedMs = state.accumulatedMs;
+      _pauseIntervals
+        ..clear()
+        ..addAll(state.pauseIntervals);
+    });
+
+    if (state.isPaused && !wasPaused) {
+      _ticker?.cancel();
+      _startPauseTicker();
+    } else if (!state.isPaused && wasPaused) {
+      _pauseTicker?.cancel();
+      _startTicker();
+    }
+    if (wasWaitingForFlip != state.strictWaitingForFlip) {
+      _timerTickNotifier.value++;
+    }
+    _timerTickNotifier.value++;
   }
 
   Future<void> _clearRunStateSilently() async {
@@ -231,11 +285,13 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   void dispose() {
     FloatWindowService.isWorkbenchMounted = false;
     _ticker?.cancel();
+    _pauseTicker?.cancel();
     _remoteTicker?.cancel();
     _timerTickNotifier.dispose();
     _crossDeviceSub?.cancel();
     _connSub?.cancel();
     _runStateSub?.cancel();
+    _strictSensorSub?.cancel();
     _islandSub?.cancel();
     _bandSub?.cancel();
     _macStatusBarSub?.cancel();
@@ -251,10 +307,185 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      if (_isHandlingEnd) return;
+      if (_strictWaitingForFlip) {
+        StrictFocusSessionCoordinator.instance.pauseForBackground();
+      } else if (_isStrictFreeFocus &&
+          _phase == PomodoroPhase.focusing &&
+          !_isPaused) {
+        // 严格模式在前台失去传感器数据时安全暂停，避免把后台时间算进专注。
+        StrictFocusSessionCoordinator.instance.pauseForBackground();
+      }
+      return;
+    }
     if (state == AppLifecycleState.resumed) {
       _notifyTickCount = 0;
       _recoverFromBackground();
       _syncService.resumeSync();
+      if (_isStrictFreeFocus && _phase == PomodoroPhase.focusing && _isPaused) {
+        if (!StrictFocusSessionCoordinator.instance.isMonitoring) {
+          StrictFocusSessionCoordinator.instance.startMonitoring();
+        }
+      }
+    }
+  }
+
+  bool get _isStrictFreeFocus =>
+      _settings.mode == TimerMode.countUp && _settings.strictFreeFocus;
+
+  Future<void> _beginStrictWaiting() async {
+    if (_strictWaitingForFlip || _strictStartInFlight) return;
+    if (!AppPlatform.isAndroid && !AppPlatform.isIOS) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('严格自由专注仅支持 Android 和 iOS 手机端'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+
+    setState(() {
+      _strictWaitingForFlip = true;
+      _strictSensorState = StrictFocusSensorState.waitingForFaceUp;
+      _remainingSeconds = 0;
+    });
+    _strictUnavailableNoticeShown = false;
+    _timerTickNotifier.value++;
+    _strictStartInFlight = true;
+    _suppressRunStateEvents = true;
+    PomodoroStartResult? pending;
+    try {
+      pending = await PomodoroControlService.startFocus(
+        settings: _settings,
+        boundTodo: _boundTodo,
+        tagUuids: _selectedTagUuids,
+        currentCycle: _currentCycle,
+        deviceId: _deviceId,
+        note: _currentNote.isNotEmpty ? _currentNote : null,
+        notify: false,
+        updateFloat: false,
+        sync: false,
+        syncBand: false,
+        startPaused: true,
+        strictWaitingForFlip: true,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _strictWaitingForFlip = false;
+          _remainingSeconds = 0;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('严格模式启动失败，请重试'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      await PomodoroService.clearRunState();
+      PomodoroSyncService.instance.setLocalFocusing(false);
+      return;
+    } finally {
+      _suppressRunStateEvents = false;
+      _strictStartInFlight = false;
+    }
+
+    final waitingState = pending.state;
+    _currentSessionUuid = waitingState.sessionUuid;
+    if (mounted) {
+      setState(() {
+        // Keep the workbench in its idle layout while the persisted session is
+        // only waiting for the first flip. The coordinator still owns a
+        // focusing run state so the wait survives leaving this route.
+        _phase = PomodoroPhase.idle;
+        _targetEndMs = waitingState.targetEndMs;
+        _remainingSeconds = 0;
+        _sessionStartMs = waitingState.sessionStartMs;
+        _isPaused = true;
+        _pausedAtMs = waitingState.pausedAtMs;
+        _pauseStartMs = waitingState.pauseStartMs;
+        _accumulatedMs = waitingState.accumulatedMs;
+        _pauseIntervals
+          ..clear()
+          ..addAll(waitingState.pauseIntervals);
+      });
+      _startPauseTicker();
+      widget.onPhaseChanged(_phase);
+    }
+
+    // The coordinator owns this subscription, so the waiting state survives
+    // popping the workbench route or switching back to the app home page.
+    await StrictFocusSessionCoordinator.instance.startMonitoring();
+  }
+
+  Future<void> _cancelStrictWaiting() async {
+    if (_strictStartInFlight) return;
+    final saved = await PomodoroService.loadRunState();
+    if (saved != null && !saved.strictWaitingForFlip) {
+      // A sensor event may have started the session while the cancel action
+      // was waiting for SharedPreferences. Rehydrate the active state instead
+      // of leaving this page in its idle waiting layout.
+      await _recoverState(saved);
+      return;
+    }
+    _strictWaitingForFlip = false;
+    _strictStartInFlight = false;
+    _pauseTicker?.cancel();
+    _pauseTicker = null;
+    await StrictFocusSessionCoordinator.instance.stopMonitoring();
+    if (saved?.strictWaitingForFlip == true) {
+      await _clearRunStateSilently();
+      PomodoroSyncService.instance.setLocalFocusing(false);
+      await NotificationService.cancelNotification();
+      await FloatWindowService.update(endMs: 0, isLocal: true);
+    }
+    if (!mounted) return;
+    setState(() {
+      _phase = PomodoroPhase.idle;
+      _isPaused = false;
+      _pausedAtMs = 0;
+      _pauseStartMs = 0;
+      _accumulatedMs = 0;
+      _pauseIntervals.clear();
+      _strictSensorState = StrictFocusSensorState.waitingForFaceUp;
+      _remainingSeconds = 0;
+    });
+    widget.onPhaseChanged(_phase);
+    _timerTickNotifier.value++;
+  }
+
+  Future<void> _stopStrictSensorMonitoring() async {
+    _strictWaitingForFlip = false;
+    _strictStartInFlight = false;
+    await StrictFocusSessionCoordinator.instance.stopMonitoring();
+  }
+
+  void _handleStrictSensorEvent(StrictFocusSensorEvent event) {
+    if (!mounted) return;
+    final wasUnavailable =
+        _strictSensorState == StrictFocusSensorState.unavailable;
+    _strictSensorState = event.state;
+    _timerTickNotifier.value++;
+
+    if (event.state == StrictFocusSensorState.unavailable &&
+        !wasUnavailable &&
+        !_strictUnavailableNoticeShown &&
+        (_strictWaitingForFlip ||
+            (_isStrictFreeFocus &&
+                _phase == PomodoroPhase.focusing &&
+                _isPaused))) {
+      _strictUnavailableNoticeShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('运动传感器不可用，正在自动重试'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } else if (event.state == StrictFocusSensorState.waitingForFlip ||
+        event.state == StrictFocusSensorState.faceDown ||
+        event.state == StrictFocusSensorState.notFaceDown) {
+      _strictUnavailableNoticeShown = false;
     }
   }
 
@@ -851,6 +1082,11 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   Future<void> _recoverState(PomodoroRunState saved) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final bool isCountUp = saved.mode == TimerMode.countUp;
+    final bool isStrictFreeFocus =
+        saved.strictFreeFocus && saved.mode == TimerMode.countUp;
+    final bool forceStrictPause = isStrictFreeFocus &&
+        !saved.isPaused &&
+        !StrictFocusSessionCoordinator.instance.isMonitoring;
     final int savedAccumulated = saved.accumulatedMs;
     int remaining;
     if (isCountUp) {
@@ -900,7 +1136,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       }
       if (mounted) {
         setState(() {
-          _phase = saved.phase;
+          _phase =
+              saved.strictWaitingForFlip ? PomodoroPhase.idle : saved.phase;
           _currentSessionUuid = saved.sessionUuid;
           _targetEndMs = saved.targetEndMs;
           _remainingSeconds = remaining;
@@ -909,26 +1146,40 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           _settings.breakMinutes = saved.breakSeconds ~/ 60;
           _settings.cycles = saved.totalCycles;
           _settings.mode = saved.mode;
+          _settings.strictFreeFocus = saved.strictFreeFocus;
           _boundTodo = boundTodo;
           _selectedTagUuids = saved.tagUuids;
           _sessionStartMs = saved.sessionStartMs;
-          _isPaused = saved.isPaused;
-          _pausedAtMs = saved.pausedAtMs;
+          _strictWaitingForFlip =
+              isStrictFreeFocus && saved.strictWaitingForFlip;
+          _isPaused = saved.isPaused || forceStrictPause;
+          _pausedAtMs = forceStrictPause ? now : saved.pausedAtMs;
           _accumulatedMs = saved.accumulatedMs;
-          _pauseStartMs = saved.pauseStartMs;
+          _pauseStartMs = forceStrictPause ? now : saved.pauseStartMs;
           _currentNote = saved.note ?? '';
           _pauseIntervals
             ..clear()
             ..addAll(saved.pauseIntervals);
+          if (forceStrictPause) {
+            _pauseIntervals.add(PauseInterval(startMs: now));
+          }
         });
+        if (forceStrictPause) {
+          await PomodoroService.saveRunState(_buildCurrentRunState());
+        }
         _syncService.setLocalFocusing(true);
         widget.onPhaseChanged(_phase);
         _pushPomodoroNotification(overrideRemaining: remaining);
         _showLocalFloat();
-        if (saved.isPaused == true) {
+        if (isStrictFreeFocus) {
+          await StrictFocusSessionCoordinator.instance.startMonitoring();
+        }
+        if (saved.isPaused == true || forceStrictPause) {
           _ticker?.cancel();
           _startPauseTicker();
         } else {
+          _pauseTicker?.cancel();
+          _pauseTicker = null;
           _startTicker();
         }
         if (!isCountUp) {
@@ -1172,6 +1423,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       // debugPrint('[Pause] Early return, condition failed');
       return;
     }
+    // 暂停入口统一给出震动提示；不阻塞计时状态切换。
+    unawaited(StrictFocusHapticService.notifyFocusPaused());
     // debugPrint('[Pause] About to cancel ticker');
     _ticker?.cancel();
     // debugPrint(
@@ -1207,6 +1460,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
   }
 
   Future<void> _resumeFocus() async {
+    // 恢复计时也属于“开始计时”，使用开始提示。
+    await StrictFocusHapticService.notifyFocusStarted();
     final now = DateTime.now().millisecondsSinceEpoch;
     // debugPrint('[Resume] _resumeFocus called');
     if (_pausedAtMs > 0) {
@@ -1388,6 +1643,17 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       formatDurationChinese(totalSeconds);
 
   Future<void> _startFocus() async {
+    if (_isStrictFreeFocus) {
+      await _beginStrictWaiting();
+      return;
+    }
+    await _startFocusNow();
+  }
+
+  Future<void> _startFocusNow() async {
+    // 所有正式开始计时的入口统一先给出震动确认。
+    await StrictFocusHapticService.notifyFocusStarted();
+
     if (_phase == PomodoroPhase.remoteWatching) {
       _stopRemoteTicker();
       final prefs = await SharedPreferences.getInstance();
@@ -1441,6 +1707,10 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     });
     _stopRemoteTicker();
     widget.onPhaseChanged(_phase);
+    if (_isStrictFreeFocus) {
+      // 工作台只负责展示，传感器监听交给跨页面协调器。
+      await StrictFocusSessionCoordinator.instance.startMonitoring();
+    }
     _startTicker();
     _showLocalFloat();
 
@@ -1530,6 +1800,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
+      await _stopStrictSensorMonitoring();
       _ticker?.cancel();
       _pauseTicker?.cancel();
       NotificationService.cancelNotification();
@@ -1577,6 +1848,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_isHandlingEnd) return;
     _isHandlingEnd = true;
     try {
+      await _stopStrictSensorMonitoring();
       _pauseTicker?.cancel();
       NotificationService.cancelReminder(40001);
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -1807,6 +2079,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         confirm = res == true;
       }
       if (confirm) {
+        await _stopStrictSensorMonitoring();
         final now = DateTime.now().millisecondsSinceEpoch;
 
         _finalizeOngoingPause(now);
@@ -1890,7 +2163,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
               final ns = PomodoroSettings(
                   focusMinutes: f.clamp(1, 120),
                   breakMinutes: b.clamp(1, 60),
-                  cycles: c.clamp(1, 20));
+                  cycles: c.clamp(1, 20),
+                  mode: _settings.mode,
+                  strictFreeFocus: _settings.strictFreeFocus);
               await PomodoroService.saveSettings(ns);
               setState(() {
                 _settings = ns;
@@ -2217,6 +2492,8 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
             ? 0
             : _settings.focusMinutes * 60,
         mode: _settings.mode,
+        strictFreeFocus: _settings.strictFreeFocus,
+        strictWaitingForFlip: _strictWaitingForFlip,
         isPaused: _isPaused,
         pausedAtMs: _pausedAtMs,
         accumulatedMs: _accumulatedMs,
@@ -2469,63 +2746,64 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
         // Right side: Info and Actions
         Expanded(
           flex: 5,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Right Actions
-              if (isIdle)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+          child: isIdle
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                              key: settingsKey,
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.settings_outlined),
+                              tooltip: '设置',
+                              onPressed: _showSettingsDialog),
+                          IconButton(
+                              key: tagsManagerKey,
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.label_outline),
+                              tooltip: '标签',
+                              onPressed: _showTagsDialog),
+                          _buildSyncLinkButton(),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    _buildIdleMiddle(),
+                    const SizedBox(height: 32),
+                    _buildActions(
+                        isIdle, isFocusing, isRemoteWatching, contentColor),
+                    const Spacer(),
+                  ],
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                          key: settingsKey,
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.settings_outlined),
-                          tooltip: '设置',
-                          onPressed: _showSettingsDialog),
-                      IconButton(
-                          key: tagsManagerKey,
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.label_outline),
-                          tooltip: '标签',
-                          onPressed: _showTagsDialog),
-                      _buildSyncLinkButton(),
+                      _buildTagsList(isRemoteWatching),
+                      const SizedBox(height: 16),
+                      WorkbenchTaskArea(
+                        isIdle: false,
+                        isFocusing: isFocusing,
+                        isRemoteWatching: isRemoteWatching,
+                        boundTodo: _boundTodo,
+                        contentColor: contentColor,
+                        bindKey: bindTodoKey,
+                        onTap: () => _showBindTodoDialog(
+                            isSwitching: _boundTodo != null),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildNoteButton(contentColor),
+                      const SizedBox(height: 32),
+                      _buildActions(
+                          isIdle, isFocusing, isRemoteWatching, contentColor),
                     ],
                   ),
                 ),
-
-              if (isIdle) ...[
-                const Spacer(),
-                _buildIdleMiddle(),
-                const SizedBox(height: 32),
-                _buildActions(
-                    isIdle, isFocusing, isRemoteWatching, contentColor),
-                const Spacer(),
-              ] else ...[
-                const Spacer(),
-                _buildTagsList(isRemoteWatching),
-                const SizedBox(height: 16),
-                WorkbenchTaskArea(
-                  isIdle: false,
-                  isFocusing: isFocusing,
-                  isRemoteWatching: isRemoteWatching,
-                  boundTodo: _boundTodo,
-                  contentColor: contentColor,
-                  bindKey: bindTodoKey,
-                  onTap: () =>
-                      _showBindTodoDialog(isSwitching: _boundTodo != null),
-                ),
-                const SizedBox(height: 12),
-                _buildNoteButton(contentColor),
-                const SizedBox(height: 32),
-                _buildActions(
-                    isIdle, isFocusing, isRemoteWatching, contentColor),
-                const Spacer(),
-              ],
-            ],
-          ),
         ),
       ],
     );
@@ -2594,34 +2872,67 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
     if (_phase != PomodoroPhase.idle) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: SegmentedButton<TimerMode>(
-          key: modeSwitchKey,
-          segments: const [
-            ButtonSegment(
-                value: TimerMode.countdown,
-                label: Text('倒计时', style: TextStyle(fontSize: 12))),
-            ButtonSegment(
-                value: TimerMode.countUp,
-                label: Text('正计时', style: TextStyle(fontSize: 12))),
-          ],
-          selected: {_settings.mode},
-          showSelectedIcon: false,
-          style: SegmentedButton.styleFrom(
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SegmentedButton<TimerMode>(
+              key: modeSwitchKey,
+              segments: const [
+                ButtonSegment(
+                    value: TimerMode.countdown,
+                    label: Text('倒计时', style: TextStyle(fontSize: 12))),
+                ButtonSegment(
+                    value: TimerMode.countUp,
+                    label: Text('正计时', style: TextStyle(fontSize: 12))),
+              ],
+              selected: {_settings.mode},
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+              ),
+              onSelectionChanged: _strictWaitingForFlip
+                  ? null
+                  : (s) async {
+                      setState(() {
+                        _settings.mode = s.first;
+                        if (_settings.mode != TimerMode.countUp) {
+                          _settings.strictFreeFocus = false;
+                        }
+                        _remainingSeconds = _settings.mode == TimerMode.countUp
+                            ? 0
+                            : _settings.focusMinutes * 60;
+                      });
+                      await PomodoroService.saveSettings(_settings);
+                    },
+            ),
           ),
-          onSelectionChanged: (s) async {
-            setState(() {
-              _settings.mode = s.first;
-              _remainingSeconds = _settings.mode == TimerMode.countUp
-                  ? 0
-                  : _settings.focusMinutes * 60;
-            });
-            await PomodoroService.saveSettings(_settings);
-          },
-        ),
+          if (_settings.mode == TimerMode.countUp &&
+              (AppPlatform.isAndroid || AppPlatform.isIOS)) ...[
+            const SizedBox(height: 6),
+            FilterChip(
+              avatar: Icon(
+                Icons.screen_lock_portrait_outlined,
+                size: 16,
+                color: _settings.strictFreeFocus
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              label: const Text('严格模式', style: TextStyle(fontSize: 12)),
+              selected: _settings.strictFreeFocus,
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              onSelected: _strictWaitingForFlip
+                  ? null
+                  : (value) async {
+                      setState(() => _settings.strictFreeFocus = value);
+                      await PomodoroService.saveSettings(_settings);
+                    },
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2797,6 +3108,9 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
           isCompact: widget.isCompact,
           isPaused: _isPaused,
           pauseSeconds: _pauseElapsedSecs,
+          isStrictMode: _isStrictFreeFocus,
+          isStrictWaitingForFlip: _strictWaitingForFlip,
+          strictSensorState: _strictSensorState,
         );
       },
     );
@@ -2878,11 +3192,14 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
       isIdle: isIdle,
       isFocusing: isFocusing,
       isRemoteWatching: isRemoteWatching,
+      isStrictMode: _isStrictFreeFocus,
+      isStrictWaitingForFlip: _strictWaitingForFlip,
       phase: _phase,
       boundTodo: _boundTodo,
       bindKey: bindTodoKey,
       onShowBindTodo: _showBindTodoDialog,
       onStartFocus: _startFocus,
+      onCancelStrictWaiting: _strictStartInFlight ? null : _cancelStrictWaiting,
       onFinishEarly: _finishEarly,
       onAbandonFocus: _abandonFocus,
       onPauseFocus: isPaused ? null : _pauseFocus,
