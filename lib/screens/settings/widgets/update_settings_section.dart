@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
@@ -30,6 +31,8 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   bool _isDownloading = false;
   double _downloadProgress = 0;
   String? _downloadKind;
+  bool _isForceDownloading = false;
+  double _forceDownloadProgress = 0;
   String? _errorMessage;
 
   @override
@@ -207,13 +210,74 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     );
   }
 
+  Future<void> _forceDownloadLatest() async {
+    if (_isForceDownloading) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('强制下载最新版完整包'),
+        content: const Text(
+          '强制下载会忽略当前版本检查，直接获取清单中的最新版完整安装包。\n\n'
+          '该版本可能尚未正式发布，存在不稳定或兼容性问题，请确认后继续。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认下载'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isForceDownloading = true;
+      _forceDownloadProgress = 0;
+    });
+
+    await UpdateService.forceDownloadLatest(
+      context,
+      onProgress: (progress) {
+        if (mounted) setState(() => _forceDownloadProgress = progress);
+      },
+      onComplete: (path) => unawaited(_finishForceDownload(path)),
+      onError: (message) {
+        if (!mounted) return;
+        setState(() {
+          _isForceDownloading = false;
+          _forceDownloadProgress = 0;
+        });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
+      },
+    );
+  }
+
+  Future<void> _finishForceDownload(String path) async {
+    if (!mounted) return;
+    setState(() {
+      _isForceDownloading = false;
+      _forceDownloadProgress = 1;
+    });
+    await _promptInstall(path);
+  }
+
   Future<void> _finishDownload(String path) async {
     if (!mounted) return;
     setState(() {
       _isDownloading = false;
       _downloadProgress = 1;
+      _downloadKind = null;
     });
+    await _promptInstall(path);
+  }
 
+  Future<void> _promptInstall(String path) async {
     if (AppPlatform.isWeb) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('已打开最新版本资源')));
@@ -239,6 +303,17 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       ),
     );
     if (shouldInstall == true) await UpdateService.installPackage(path);
+  }
+
+  Future<void> _openBetaReleases() async {
+    final uri = Uri.parse('https://github.com/Junpgle/CountdownTodo/releases');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开尝鲜版本下载页面')),
+      );
+    }
   }
 
   Future<void> _showCurrentChangelog() async {
@@ -475,7 +550,6 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
       onTap: () => _setUpdateSource(value),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        constraints: const BoxConstraints(minWidth: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: selected
@@ -488,22 +562,28 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon,
                 color: selected
                     ? colorScheme.primary
                     : colorScheme.onSurfaceVariant),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(subtitle,
-                    style: TextStyle(
-                        fontSize: 11, color: colorScheme.onSurfaceVariant)),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                ],
+              ),
             ),
             if (selected) ...[
               const SizedBox(width: 8),
@@ -529,28 +609,70 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          Row(
             children: [
-              _buildChannelCard(
-                context: context,
-                value: UpdateService.updateSourceGithub,
-                title: 'GitHub 官方源',
-                subtitle: '信息更新更及时',
-                icon: Icons.code_rounded,
+              Expanded(
+                child: _buildChannelCard(
+                  context: context,
+                  value: UpdateService.updateSourceGithub,
+                  title: 'GitHub 官方源',
+                  subtitle: '信息更新更及时',
+                  icon: Icons.code_rounded,
+                ),
               ),
-              _buildChannelCard(
-                context: context,
-                value: UpdateService.updateSourceServer,
-                title: '阿里云加速源',
-                subtitle: '国内访问更快',
-                icon: Icons.cloud_outlined,
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildChannelCard(
+                  context: context,
+                  value: UpdateService.updateSourceServer,
+                  title: '阿里云加速源',
+                  subtitle: '国内访问更快',
+                  icon: Icons.cloud_outlined,
+                ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBetaReleaseTile() {
+    return ListTile(
+      leading: Icon(Icons.rocket_launch_outlined,
+          color: Theme.of(context).colorScheme.primary),
+      title: const Text('获取尝鲜版本'),
+      subtitle: const Text('前往 GitHub 下载最新开发版，体验最新功能'),
+      trailing: const Icon(Icons.open_in_new),
+      onTap: _openBetaReleases,
+    );
+  }
+
+  Widget _buildForceDownloadTile() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ListTile(
+      leading: Icon(Icons.download_rounded, color: colorScheme.primary),
+      title: const Text('强制下载最新版完整包'),
+      subtitle: _isForceDownloading
+          ? Text(
+              '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+              style: TextStyle(fontSize: 12, color: colorScheme.primary),
+            )
+          : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
+      trailing: _isForceDownloading
+          ? SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                value:
+                    _forceDownloadProgress > 0 ? _forceDownloadProgress : null,
+                color: colorScheme.primary,
+              ),
+            )
+          : Icon(Icons.file_download_outlined,
+              color: colorScheme.onSurfaceVariant),
+      onTap: _isForceDownloading ? null : _forceDownloadLatest,
     );
   }
 
@@ -586,6 +708,12 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             ),
           ),
         _buildLatestVersionCard(context),
+        if (!AppPlatform.isWeb) ...[
+          const AppSettingsDivider(),
+          _buildBetaReleaseTile(),
+          const AppSettingsDivider(indent: 72),
+          _buildForceDownloadTile(),
+        ],
         const AppSettingsDivider(),
         _buildUpdateSource(context),
       ],

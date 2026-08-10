@@ -1139,6 +1139,7 @@ class UpdateService {
       final finalFile = await _downloadUpdateWithFallback(
         manifest,
         path,
+        preferDelta: false,
         onProgress: onProgress,
       );
       onComplete(finalFile.path);
