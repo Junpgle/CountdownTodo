@@ -2102,85 +2102,63 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     // 📸 图片识别待办成功通知（实时通知，点击进入确认页面）
     private fun updateTodoRecognizeSuccessNotification(args: Map<String, Any>) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoCount = (args["todoCount"] as? Number)?.toInt() ?: 0
-
-        val title = "✅ 图片识别完成"
-        val text = "发现${todoCount}个待办事项，点击查看详情"
-        val subText = "识别成功"
-        val color = 0xFF4CAF50.toInt() // 绿色
-
-        // 创建点击意图，打开应用并导航到确认页面
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("open_todo_confirm", true)
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        showTodoRecognitionNotification(
+            title = "✅ 图片识别完成",
+            text = "发现${todoCount}个待办事项，点击查看详情",
+            subText = "识别成功",
+            color = 0xFF4CAF50.toInt(),
+            smallIcon = R.drawable.ic_done,
+            contentIntent = intent,
+            intentFlags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
         )
-
-        // 使用 buildAndNotify 创建实时通知，但设置自定义的 pendingIntent
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        val extras = Bundle()
-        extras.putBoolean("android.extra.requestPromotedOngoing", true)
-
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_done)
-            .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(subText)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setWhen(System.currentTimeMillis())
-            .setShowWhen(true)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setColor(color)
-            .setColorized(false)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setRequestPromotedOngoing(true)
-            .addExtras(extras)
-            .build()
-
-        try {
-            notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeSuccessNotification error", e)
-        }
     }
 
     // 📸 图片识别待办失败通知（实时通知）
     private fun updateTodoRecognizeFailedNotification(args: Map<String, Any>) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val errorMsg = (args["errorMsg"] as? String)?.trim() ?: "未知错误"
         val displayError = if (errorMsg.length > 50) errorMsg.substring(0, 50) + "..." else errorMsg
-
-        val title = "❌ 图片识别失败"
-        val text = displayError
-        val subText = "识别失败"
-        val color = 0xFFF44336.toInt() // 红色
-
-        // 创建点击意图，打开应用
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        showTodoRecognitionNotification(
+            title = "❌ 图片识别失败",
+            text = displayError,
+            subText = "识别失败",
+            color = 0xFFF44336.toInt(),
+            smallIcon = R.drawable.ic_cancel,
+            contentIntent = intent,
+            intentFlags = Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
+    }
 
-        // 使用 NotificationCompat.Builder 创建实时通知
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        val extras = Bundle()
-        extras.putBoolean("android.extra.requestPromotedOngoing", true)
+    private fun showTodoRecognitionNotification(
+        title: String,
+        text: String,
+        subText: String,
+        color: Int,
+        smallIcon: Int,
+        contentIntent: Intent,
+        intentFlags: Int,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
+        contentIntent.flags = intentFlags
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            TODO_RECOGNIZE_NOTIFICATION_ID,
+            contentIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val extras = Bundle().apply {
+            putBoolean("android.extra.requestPromotedOngoing", true)
+        }
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_cancel)
+            .setSmallIcon(smallIcon)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
@@ -2200,9 +2178,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .build()
 
         try {
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
         } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeFailedNotification error", e)
+            Log.e(TAG, "showTodoRecognitionNotification error", e)
         }
     }
 
