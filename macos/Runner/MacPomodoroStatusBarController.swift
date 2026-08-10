@@ -5,6 +5,7 @@ import FlutterMacOS
 import QuartzCore
 import Carbon
 import CoreAudio
+import CoreServices
 import Darwin
 import SQLite3
 
@@ -37,6 +38,12 @@ private struct MacIslandTodoSummary: Identifiable, Equatable {
     let dueMs: Int64
     let isDateOnly: Bool
     let groupName: String
+}
+
+fileprivate struct MacClipboardBrowser: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let applicationURL: URL
 }
 
 private struct MacNowPlayingSnapshot {
@@ -1098,6 +1105,8 @@ class IslandStateModel: ObservableObject {
     @Published var countdownDays = -1
     @Published var clipboardLinkActive = false
     @Published var clipboardLinkDisplay = ""
+    @Published fileprivate var clipboardBrowsers: [MacClipboardBrowser] = []
+    @Published var selectedClipboardBrowserID = ""
     @Published var nowPlayingActive = false
     @Published var nowPlayingTitle = ""
     @Published var nowPlayingArtist = ""
@@ -1123,6 +1132,7 @@ class IslandStateModel: ObservableObject {
     var onSnoozeReminder: (() -> Void)?
     var onOpenClipboardLink: (() -> Void)?
     var onDismissClipboardLink: (() -> Void)?
+    var onSelectClipboardBrowser: ((String) -> Void)?
     var onPreviousTrack: (() -> Void)?
     var onToggleMediaPlayback: (() -> Void)?
     var onNextTrack: (() -> Void)?
@@ -1186,6 +1196,12 @@ class IslandStateModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "M月d日"
         return formatter.string(from: Date(timeIntervalSince1970: Double(countdownTargetMs) / 1000))
+    }
+
+    var selectedClipboardBrowserName: String {
+        clipboardBrowsers.first(where: {
+            $0.id == selectedClipboardBrowserID
+        })?.name ?? "系统默认浏览器"
     }
 }
 
@@ -2468,6 +2484,10 @@ struct MacIslandSwiftUIView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+            if !model.clipboardBrowsers.isEmpty {
+                clipboardBrowserSelector
+            }
+
             HStack(spacing: 12) {
                 Button(action: { model.onDismissClipboardLink?() }) {
                     Text("忽略")
@@ -2506,35 +2526,84 @@ struct MacIslandSwiftUIView: View {
     }
 
     var clipboardLinkCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "link")
-                .foregroundColor(.blue)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("剪贴板链接")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(model.clipboardLinkDisplay)
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.white.opacity(0.55))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "link")
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("剪贴板链接")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text(model.clipboardLinkDisplay)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 8)
+                Button(action: { model.onOpenClipboardLink?() }) {
+                    Text("打开网址")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.85))
+                        .cornerRadius(9)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            Spacer(minLength: 8)
-            Button(action: { model.onOpenClipboardLink?() }) {
-                Text("打开网址")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.85))
-                    .cornerRadius(9)
-                    .contentShape(Rectangle())
+
+            if !model.clipboardBrowsers.isEmpty {
+                clipboardBrowserSelector
             }
-            .buttonStyle(.plain)
         }
         .padding(12)
         .background(Color.white.opacity(0.1))
         .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private var clipboardBrowserSelector: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.65))
+            Text("打开方式")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.7))
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(model.clipboardBrowsers) { browser in
+                    Button(action: {
+                        model.onSelectClipboardBrowser?(browser.id)
+                    }) {
+                        HStack {
+                            Text(browser.name)
+                            if browser.id == model.selectedClipboardBrowserID {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(model.selectedClipboardBrowserName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.14))
+                .cornerRadius(8)
+            }
+            .menuStyle(.borderlessButton)
+        }
     }
     
     var activityCard: some View {
@@ -2587,6 +2656,11 @@ class MacPomodoroStatusBarController {
     private var clipboardURL: URL?
     private var clipboardLinkExpiresAt: TimeInterval = 0
     private var clipboardDidForceExpansion = false
+    private var clipboardBrowsers: [MacClipboardBrowser] = []
+    private var selectedClipboardBrowserID = ""
+
+    private let selectedClipboardBrowserPreferenceKey =
+        "macos_island_clipboard_selected_browser"
 
     private var phase = "idle"
     private var targetEndMs: Int64 = 0
@@ -2630,7 +2704,11 @@ class MacPomodoroStatusBarController {
     private var countdownTargetMs: Int64 = 0
     private var countdownDays = -1
 
-    private init() {}
+    private init() {
+        selectedClipboardBrowserID = UserDefaults.standard.string(
+            forKey: selectedClipboardBrowserPreferenceKey
+        ) ?? ""
+    }
 
     func setup() {
         guard observers.isEmpty else { return }
@@ -3115,6 +3193,8 @@ class MacPomodoroStatusBarController {
         view.countdownDays = countdownDays
         view.clipboardLinkActive = hasClipboardLink
         view.clipboardLinkDisplay = clipboardURL.map(clipboardDisplayText) ?? ""
+        view.clipboardBrowsers = clipboardBrowsers
+        view.selectedClipboardBrowserID = selectedClipboardBrowserID
         view.nowPlayingActive = hasNowPlaying
         view.nowPlayingTitle = nowPlayingSnapshot.title
         view.nowPlayingArtist = nowPlayingSnapshot.artist
@@ -3187,14 +3267,19 @@ class MacPomodoroStatusBarController {
                 if hasReminder && !view.reminderTitle.isEmpty {
                     contentHeight += 12 + 39
                 } else if hasClipboardLink {
-                    contentHeight += 12 + 54
+                    // clipboardLinkCard includes the browser selector and a
+                    // little extra room for accessibility/font metric changes.
+                    contentHeight += 12 + 112
                 } else if hasActivity && !view.activityTitle.isEmpty {
                     contentHeight += 12 + 39
                 }
             } else if hasReminder {
                 contentHeight = 104
             } else if hasClipboardLink {
-                contentHeight = 104
+                // The expanded clipboard card now has four rows: title, URL,
+                // browser selector, and actions. Keep a safety margin so the
+                // selector cannot be clipped by the window mask.
+                contentHeight = 164
             } else if hasActivity {
                 // 标题 36 + 时间卡 48 + 操作区 48。
                 contentHeight = 132
@@ -3444,6 +3529,9 @@ class MacPomodoroStatusBarController {
         view.onDismissClipboardLink = { [weak self] in
             self?.dismissClipboardLink()
         }
+        view.onSelectClipboardBrowser = { [weak self] browserID in
+            self?.selectClipboardBrowser(browserID)
+        }
         view.onPreviousTrack = { [weak self] in
             self?.nowPlayingMonitor.previous()
         }
@@ -3604,9 +3692,135 @@ class MacPomodoroStatusBarController {
             clipboardDidForceExpansion = !isExpanded
         }
         clipboardURL = url
+        updateClipboardBrowsers(for: url)
         clipboardLinkExpiresAt = Date().timeIntervalSince1970 + 15
         isExpanded = true
         refreshDisplay()
+    }
+
+    private func updateClipboardBrowsers(for url: URL) {
+        clipboardBrowsers = discoverClipboardBrowsers(for: url)
+        normalizeSelectedClipboardBrowser()
+    }
+
+    func clipboardBrowserSettings() -> [String: Any] {
+        guard let sampleURL = URL(string: "https://example.com") else {
+            return ["browsers": [], "selectedId": selectedClipboardBrowserID]
+        }
+        let browsers = discoverClipboardBrowsers(for: sampleURL)
+        if clipboardURL == nil {
+            clipboardBrowsers = browsers
+        }
+        normalizeSelectedClipboardBrowser(using: browsers)
+        return [
+            "browsers": browsers.map { browser in
+                ["id": browser.id, "name": browser.name]
+            },
+            "selectedId": selectedClipboardBrowserID,
+        ]
+    }
+
+    func setPreferredClipboardBrowser(_ browserID: String) -> Bool {
+        let browsers: [MacClipboardBrowser]
+        if clipboardBrowsers.isEmpty {
+            guard let sampleURL = URL(string: "https://example.com") else { return false }
+            browsers = discoverClipboardBrowsers(for: sampleURL)
+        } else {
+            browsers = clipboardBrowsers
+        }
+        guard browsers.contains(where: { $0.id == browserID }) else { return false }
+        selectedClipboardBrowserID = browserID
+        UserDefaults.standard.set(browserID, forKey: selectedClipboardBrowserPreferenceKey)
+        if clipboardURL != nil {
+            refreshDisplay()
+        }
+        return true
+    }
+
+    private func discoverClipboardBrowsers(for url: URL) -> [MacClipboardBrowser] {
+        let defaultApplicationURL = NSWorkspace.shared.urlForApplication(toOpen: url)
+        var applicationURLs: [URL] = []
+        if let defaultApplicationURL = defaultApplicationURL {
+            applicationURLs.append(defaultApplicationURL)
+        }
+        if #available(macOS 12.0, *) {
+            applicationURLs.append(contentsOf: NSWorkspace.shared.urlsForApplications(toOpen: url))
+        } else {
+            // urlsForApplications(toOpen:) was introduced in macOS 12.
+            // LaunchServices provides the equivalent URL-based lookup on the
+            // app's macOS 11 deployment target and also finds browser variants
+            // that do not have a fixed bundle identifier in our code.
+            if let legacyURLs = LSCopyApplicationURLsForURL(
+                url as CFURL,
+                LSRolesMask(rawValue: UInt32.max)
+            )?.takeRetainedValue() as? [URL] {
+                applicationURLs.append(contentsOf: legacyURLs)
+            }
+        }
+
+        var seenPaths = Set<String>()
+        var seenBundleIdentifiers = Set<String>()
+        let browsers: [MacClipboardBrowser] = applicationURLs.compactMap { applicationURL in
+            let standardizedURL = applicationURL.standardizedFileURL
+            let path = standardizedURL.path
+            guard seenPaths.insert(path).inserted else { return nil }
+
+            let bundle = Bundle(url: standardizedURL)
+            let bundleIdentifier = bundle?.bundleIdentifier ?? path
+            guard seenBundleIdentifiers.insert(bundleIdentifier).inserted else {
+                return nil
+            }
+            let isDefaultApplication = defaultApplicationURL?.standardizedFileURL == standardizedURL
+            guard isDefaultApplication || declaresWebURLScheme(bundle) else {
+                return nil
+            }
+            let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                ?? standardizedURL.deletingPathExtension().lastPathComponent
+            return MacClipboardBrowser(
+                id: bundleIdentifier,
+                name: name,
+                applicationURL: standardizedURL
+            )
+        }
+        return browsers
+    }
+
+    private func declaresWebURLScheme(_ bundle: Bundle?) -> Bool {
+        guard let urlTypes = bundle?.object(forInfoDictionaryKey: "CFBundleURLTypes")
+                as? [[String: Any]] else {
+            return false
+        }
+        return urlTypes.contains { urlType in
+            guard let schemes = urlType["CFBundleURLSchemes"] as? [String] else {
+                return false
+            }
+            return schemes.contains { scheme in
+                let normalizedScheme = scheme.lowercased()
+                return normalizedScheme == "http" || normalizedScheme == "https"
+            }
+        }
+    }
+
+    private func normalizeSelectedClipboardBrowser(
+        using browsers: [MacClipboardBrowser]? = nil
+    ) {
+        let availableBrowsers = browsers ?? clipboardBrowsers
+        if !availableBrowsers.contains(where: {
+            $0.id == selectedClipboardBrowserID
+        }) {
+            selectedClipboardBrowserID = availableBrowsers.first?.id ?? ""
+            if !selectedClipboardBrowserID.isEmpty {
+                UserDefaults.standard.set(
+                    selectedClipboardBrowserID,
+                    forKey: selectedClipboardBrowserPreferenceKey
+                )
+            }
+        }
+    }
+
+    private func selectClipboardBrowser(_ browserID: String) {
+        _ = setPreferredClipboardBrowser(browserID)
     }
 
     private func normalizedClipboardURL(_ value: String) -> URL? {
@@ -3665,8 +3879,25 @@ class MacPomodoroStatusBarController {
 
     private func openClipboardLink() {
         guard let url = clipboardURL else { return }
-        NSWorkspace.shared.open(url)
-        dismissClipboardLink()
+        guard let browser = clipboardBrowsers.first(where: {
+            $0.id == selectedClipboardBrowserID
+        }) else {
+            NSWorkspace.shared.open(url)
+            dismissClipboardLink()
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: browser.applicationURL,
+            configuration: configuration
+        ) { [weak self] _, error in
+            guard error == nil else { return }
+            DispatchQueue.main.async {
+                self?.dismissClipboardLink()
+            }
+        }
     }
 
     private func dismissClipboardLink() {
@@ -3677,6 +3908,7 @@ class MacPomodoroStatusBarController {
         guard clipboardURL != nil else { return }
         clipboardURL = nil
         clipboardLinkExpiresAt = 0
+        clipboardBrowsers = []
         if restoreExpansion,
            clipboardDidForceExpansion,
            currentReminder == nil,

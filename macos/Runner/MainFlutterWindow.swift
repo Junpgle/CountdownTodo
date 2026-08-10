@@ -118,6 +118,19 @@ class MainFlutterWindow: NSWindow {
           clipboardLinksEnabled: clipboardLinksEnabled
         )
         result(true)
+      case "getClipboardBrowserSettings":
+        result(MacPomodoroStatusBarController.shared.clipboardBrowserSettings())
+      case "setClipboardBrowser":
+        guard let args = call.arguments as? [String: Any],
+              let browserID = args["browserId"] as? String else {
+          result(FlutterError(
+            code: "INVALID_ARGS",
+            message: "Missing browserId",
+            details: nil
+          ))
+          return
+        }
+        result(MacPomodoroStatusBarController.shared.setPreferredClipboardBrowser(browserID))
       case "setVisible":
         let args = call.arguments as? [String: Any]
         let visible = args?["visible"] as? Bool ?? true
