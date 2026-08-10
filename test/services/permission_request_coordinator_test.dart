@@ -11,6 +11,25 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('keeps normal productivity and APK update permissions outside the gate',
+      () {
+    expect(
+        AppPermissionKind.notification.requiresMinorModeAuthorization, isFalse);
+    expect(AppPermissionKind.calendar.requiresMinorModeAuthorization, isFalse);
+    expect(
+        AppPermissionKind.exactAlarm.requiresMinorModeAuthorization, isFalse);
+    expect(AppPermissionKind.requestInstall.requiresMinorModeAuthorization,
+        isFalse);
+    expect(AppPermissionKind.usageStats.requiresMinorModeAuthorization, isTrue);
+    expect(AppPermissionKind.batteryOptimization.requiresMinorModeAuthorization,
+        isTrue);
+    expect(
+        AppPermissionKind.liveUpdates.requiresMinorModeAuthorization, isTrue);
+    expect(
+        AppPermissionKind.bandDeviceManagement.requiresMinorModeAuthorization,
+        isTrue);
+  });
+
   testWidgets('returns the requested status, invokes callback and hides banner',
       (tester) async {
     late BuildContext context;
