@@ -16,6 +16,8 @@ class MinorModeManager(private val activity: Activity) {
     companion object {
         const val CHANNEL = "com.math_quiz_app/minor_mode"
         const val EVENT_CHANNEL = "com.math_quiz_app/minor_mode_events"
+        private const val PARENTAL_CHILD_MANAGEMENT_ACTION =
+            "com.android.action.PARENTAL_CHILD_MANAGEMENT"
         private const val PARENTAL_CONTROLS_SETTINGS_ACTION =
             "android.settings.PARENTAL_CONTROLS_SETTINGS"
     }
@@ -64,8 +66,11 @@ class MinorModeManager(private val activity: Activity) {
         registerObserverIfNeeded()
     }
 
-    fun onActivityResult(requestCode: Int, resultCode: Int): Boolean =
-        parentAuthManager.onActivityResult(requestCode, resultCode)
+    fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent? = null,
+    ): Boolean = parentAuthManager.onActivityResult(requestCode, resultCode, data)
 
     fun dispose() {
         try {
@@ -167,16 +172,19 @@ class MinorModeManager(private val activity: Activity) {
     }
 
     private fun openMinorModeSettings(): Boolean {
-        val parentalIntent = Intent(PARENTAL_CONTROLS_SETTINGS_ACTION).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val intent = if (parentalIntent.resolveActivity(activity.packageManager) != null) {
-            parentalIntent
-        } else {
-            Intent(Settings.ACTION_SETTINGS).apply {
+        val intent = listOf(
+            PARENTAL_CHILD_MANAGEMENT_ACTION,
+            PARENTAL_CONTROLS_SETTINGS_ACTION,
+        ).asSequence()
+            .map { action ->
+                Intent(action).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            }
+            .firstOrNull { candidate ->
+                candidate.resolveActivity(activity.packageManager) != null
+            }
+            ?: Intent(Settings.ACTION_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-        }
 
         return try {
             activity.startActivity(intent)

@@ -616,7 +616,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (minorModeManager?.onActivityResult(requestCode, resultCode) == true) {
+        if (minorModeManager?.onActivityResult(requestCode, resultCode, data) == true) {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
