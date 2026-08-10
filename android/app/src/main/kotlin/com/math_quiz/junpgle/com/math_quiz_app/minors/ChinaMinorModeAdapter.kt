@@ -22,10 +22,9 @@ class ChinaMinorModeAdapter(private val context: Context) : AndroidMinorModeAdap
         .lowercase(Locale.ROOT)
 
     /**
-     * The public Android contract is intentionally checked first. The OEM
-     * aliases are only capability probes: a missing key means unsupported and
-     * no key is written by the app. This keeps the adapter safe on ROMs that
-     * do not expose a documented integration surface.
+     * These three keys are the Xiaomi HyperOS minor-mode contract. The
+     * aliases are only compatibility probes for older vendor ROMs: a missing
+     * key means unsupported and no key is ever written by the app.
      */
     private val enabledKeys = listOf(ENABLED_KEY) + vendorAliases(
         "minor_mode_enabled",
