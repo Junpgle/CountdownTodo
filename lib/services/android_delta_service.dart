@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
-/// Metadata for one arm64-v8a APK delta.
+/// Metadata for one architecture-specific APK delta.
 ///
 /// A delta is not itself installable. Applying it to the exact base APK must
 /// produce the signed target APK byte-for-byte.

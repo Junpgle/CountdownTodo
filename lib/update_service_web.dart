@@ -656,6 +656,9 @@ class UpdateService {
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async =>
       null;
 
+  static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async =>
+      false;
+
   static Future<bool> prepareForDownload(String targetVersionName) async =>
       true;
 
@@ -665,6 +668,29 @@ class UpdateService {
     final uri = Uri.tryParse(filePath);
     if (uri != null && uri.hasScheme) {
       await launchUrl(uri, webOnlyWindowName: '_blank');
+    }
+  }
+
+  static Future<void> downloadLatestPackage(
+    BuildContext context,
+    AppManifest manifest, {
+    bool preferDelta = true,
+    required void Function(double) onProgress,
+    required void Function(String) onComplete,
+    required void Function(String) onError,
+  }) async {
+    final downloadUrl = getDownloadUrlForArch(manifest);
+    if (downloadUrl.isEmpty) {
+      onError('未找到可用的下载链接');
+      return;
+    }
+    onProgress(1.0);
+    final launched =
+        await launchUrl(Uri.parse(downloadUrl), webOnlyWindowName: '_blank');
+    if (launched) {
+      onComplete(downloadUrl);
+    } else {
+      onError('无法打开下载链接');
     }
   }
 

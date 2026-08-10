@@ -587,8 +587,9 @@ class UpdateService {
     return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
   }
 
-  /// Selects an arm64-v8a delta only when the exact installed APK is its base.
-  /// Every other case deliberately falls back to the complete APK.
+  /// Selects a delta only when the exact installed APK for the current
+  /// architecture is its base. Every other case deliberately falls back to
+  /// the complete APK.
   static Future<_UpdateArtifact> _getUpdateArtifact(
     AppManifest manifest, {
     bool preferDelta = true,
@@ -603,9 +604,7 @@ class UpdateService {
 
     try {
       final architecture = await getDeviceArchitecture();
-      if (architecture != 'arm64-v8a') return fullArtifact;
-
-      final candidates = manifest.updateInfo.androidDeltaPackages['arm64-v8a'];
+      final candidates = manifest.updateInfo.androidDeltaPackages[architecture];
       if (candidates == null || candidates.isEmpty) return fullArtifact;
 
       final packageInfo = await PackageInfo.fromPlatform();
@@ -630,7 +629,7 @@ class UpdateService {
         if (patchUrl.isEmpty) continue;
 
         debugPrint(
-            '[UpdateService] Using arm64-v8a delta ${candidate.fromVersion} -> ${candidate.toVersion}');
+            '[UpdateService] Using $architecture delta ${candidate.fromVersion} -> ${candidate.toVersion}');
         return _UpdateArtifact(
           url: patchUrl,
           fileName:
@@ -645,6 +644,15 @@ class UpdateService {
     }
 
     return fullArtifact;
+  }
+
+  /// Returns whether this device can build a usable incremental package for
+  /// the manifest's target version. The check also verifies the installed APK
+  /// hash, so the UI never offers a delta that cannot be applied locally.
+  static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async {
+    if (!Platform.isAndroid) return false;
+    final artifact = await _getUpdateArtifact(manifest);
+    return artifact.isDelta;
   }
 
   static String _cleanVersion(String version) =>
@@ -1033,6 +1041,61 @@ class UpdateService {
     );
   }
 
+  /// Downloads the selected update artifact and returns the generated APK.
+  ///
+  /// On Android, [preferDelta] selects a verified incremental package when
+  /// one matches the installed APK. A failed delta application falls back to
+  /// the architecture-matched full APK, so the install flow remains usable.
+  static Future<void> downloadLatestPackage(
+    BuildContext context,
+    AppManifest manifest, {
+    bool preferDelta = true,
+    required void Function(double) onProgress,
+    required void Function(String) onComplete,
+    required void Function(String) onError,
+  }) async {
+    await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      onError('页面已关闭，已取消下载');
+      return;
+    }
+
+    final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
+    if (existingPath != null) {
+      onProgress(1.0);
+      onComplete(existingPath);
+      return;
+    }
+
+    if (!context.mounted) {
+      onError('页面已关闭，已取消下载');
+      return;
+    }
+    final ready = await prepareForDownload(context, manifest.versionName);
+    if (!ready) {
+      onError('准备下载环境失败，请检查存储权限');
+      return;
+    }
+
+    final path = await getDownloadDirectory();
+    if (path == null) {
+      onError('无法获取下载保存目录');
+      return;
+    }
+
+    try {
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        preferDelta: preferDelta,
+        onProgress: onProgress,
+      );
+      onComplete(finalFile.path);
+    } catch (e) {
+      onError('更新包下载或校验失败: $e');
+    }
+  }
+
   /// 强制下载最新版本，忽略当前版本，下载完成后跳转安装
   static Future<void> forceDownloadLatest(
     BuildContext context, {
@@ -1087,9 +1150,13 @@ class UpdateService {
   static Future<File> _downloadUpdateWithFallback(
     AppManifest manifest,
     String directory, {
+    bool preferDelta = true,
     required void Function(double) onProgress,
   }) async {
-    final artifact = await _getUpdateArtifact(manifest);
+    final artifact = await _getUpdateArtifact(
+      manifest,
+      preferDelta: preferDelta,
+    );
     if (artifact.url.isEmpty) {
       throw const FormatException('未找到可用的下载链接');
     }
