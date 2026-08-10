@@ -6,11 +6,12 @@ import android.provider.Settings
 import java.util.Locale
 
 /**
- * Optional best-effort adapter for OEM Secure Settings contracts used by the
- * domestic Android minor-mode integration. Missing keys mean unsupported;
- * they are not treated as an error and never prevent the app from starting.
+ * Best-effort adapter for the unified domestic Android minor-mode contract.
+ * Participating vendors expose the same standard Secure Settings keys;
+ * vendor-specific aliases are retained only as compatibility probes. Missing
+ * keys mean unsupported and never prevent the app from starting.
  */
-class ChinaMinorModeAdapter(private val context: Context) : AndroidMinorModeAdapter {
+class DomesticMinorModeAdapter(private val context: Context) : AndroidMinorModeAdapter {
     companion object {
         const val CAPABILITY_KEY = "minors_mode"
         const val ENABLED_KEY = "minors_mode_enabled"
@@ -22,7 +23,8 @@ class ChinaMinorModeAdapter(private val context: Context) : AndroidMinorModeAdap
         .lowercase(Locale.ROOT)
 
     /**
-     * These three keys are the Xiaomi HyperOS minor-mode contract. The
+     * These three keys are the standard terminal/App minor-mode contract
+     * published with the Xiaomi guide and used for cross-vendor linkage. The
      * aliases are only compatibility probes for older vendor ROMs: a missing
      * key means unsupported and no key is ever written by the app.
      */
@@ -53,7 +55,7 @@ class ChinaMinorModeAdapter(private val context: Context) : AndroidMinorModeAdap
             systemSupported = supported,
             systemEnabled = supported && enabled == 1,
             ageRange = ageRange,
-            source = if (supported) "chinaSystem" else "unsupported",
+            source = if (supported) "androidSystem" else "unsupported",
             parentAuthenticationSupported = false,
         )
     }

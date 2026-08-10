@@ -15,7 +15,7 @@ void main() {
       systemEnabled: systemEnabled,
       manualEnabled: manualEnabled,
       source: systemEnabled
-          ? MinorModeSource.chinaSystem
+          ? MinorModeSource.androidSystem
           : manualEnabled
               ? MinorModeSource.manual
               : MinorModeSource.unsupported,

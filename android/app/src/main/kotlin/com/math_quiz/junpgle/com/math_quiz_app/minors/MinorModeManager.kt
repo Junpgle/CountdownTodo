@@ -22,7 +22,7 @@ class MinorModeManager(private val activity: Activity) {
             "android.settings.PARENTAL_CONTROLS_SETTINGS"
     }
 
-    private val adapter: AndroidMinorModeAdapter = ChinaMinorModeAdapter(activity)
+    private val adapter: AndroidMinorModeAdapter = DomesticMinorModeAdapter(activity)
     private val googleAgeSignalsAdapter = GoogleAgeSignalsAdapter(activity, activity)
     private val parentAuthManager = ParentAuthManager(activity)
     private var methodChannel: MethodChannel? = null

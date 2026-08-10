@@ -143,7 +143,7 @@ class MinorModeService with WidgetsBindingObserver {
           : shouldEnable
               ? MinorModeSource.manual
               : current.systemSupported
-                  ? MinorModeSource.chinaSystem
+                  ? MinorModeSource.androidSystem
                   : MinorModeSource.unsupported,
       ageBand: current.systemEnabled ? current.ageBand : ageBand,
     );
@@ -165,7 +165,7 @@ class MinorModeService with WidgetsBindingObserver {
               : enabled
                   ? MinorModeSource.manual
                   : current.systemSupported
-                      ? MinorModeSource.chinaSystem
+                      ? MinorModeSource.androidSystem
                       : MinorModeSource.unsupported,
           lastError: current.lastError,
         ),

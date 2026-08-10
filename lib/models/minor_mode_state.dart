@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 enum MinorModeSource {
-  chinaSystem,
+  androidSystem,
   googleAgeSignals,
   appleDeclaredAgeRange,
   manual,
@@ -22,7 +22,7 @@ enum MinorAgeBand {
 
 extension MinorModeSourceLabel on MinorModeSource {
   String get label => switch (this) {
-        MinorModeSource.chinaSystem => '手机系统',
+        MinorModeSource.androidSystem => '手机系统',
         MinorModeSource.googleAgeSignals => 'Google 年龄信号',
         MinorModeSource.appleDeclaredAgeRange => 'Apple 年龄范围',
         MinorModeSource.manual => 'App 设置',
@@ -243,7 +243,7 @@ class MinorModeState {
   }) {
     if (systemEnabled) {
       return nativeSource == MinorModeSource.unsupported
-          ? MinorModeSource.chinaSystem
+          ? MinorModeSource.androidSystem
           : nativeSource;
     }
     if (manualEnabled) return MinorModeSource.manual;
