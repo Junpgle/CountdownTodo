@@ -8,6 +8,7 @@ import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_rule_resolver.dart';
 import 'habit_sleep_duration_service.dart';
+import 'habit_sleep_goal_resolver.dart';
 
 /// 只有时间格占位（例如 15 / 30 分钟）时，早睡节点采用的时间。
 enum HabitSleepLogTimeSelection {
@@ -234,7 +235,9 @@ abstract final class HabitSleepLogMigrationService {
     if (byNight.length < minimumNights) return null;
     final samples = byNight.values.toList()
       ..sort((a, b) => a.log.startTime.compareTo(b.log.startTime));
-    final existing = existingGoals.where((goal) => !goal.isDeleted);
+    final existing = existingGoals.where(
+      (goal) => !goal.isDeleted && !goal.isArchived,
+    );
     final hasEarlySleep = existing.any(_isEarlySleepGoal);
     final hasEarlyWake = existing.any(_isEarlyWakeGoal);
 
@@ -293,13 +296,22 @@ abstract final class HabitSleepLogMigrationService {
         part == HabitTimeLogImportPart.wakeTime && proposal != null
             ? candidates.where((log) => !proposal.isGridOnlyLog(log)).toList()
             : candidates;
-    final checkIns = await HabitRepository.getCheckIns(habitUuid: goal.uuid);
+    final goals = await HabitRepository.getGoals();
+    final canonicalGoal = HabitSleepGoalResolver.canonical(
+          goals,
+          part == HabitTimeLogImportPart.bedtime
+              ? HabitAdaptationKind.earlySleep
+              : HabitAdaptationKind.earlyWake,
+        ) ??
+        goal;
+    // 重复睡眠目标之间也共享导入去重状态，避免从不同详情页重复导入同一条日志。
+    final checkIns = await HabitRepository.getCheckIns();
     final importedKeys = _checkInDedupeKeys(checkIns);
     final pending = importCandidates
         .where(
           (log) => !_containsTimeLogDedupeKey(
             importedKeys,
-            goal,
+            canonicalGoal,
             log,
             part: part,
           ),
@@ -325,14 +337,22 @@ abstract final class HabitSleepLogMigrationService {
     HabitSleepLogMigrationOptions options =
         const HabitSleepLogMigrationOptions(),
   }) async {
-    final existing = await HabitRepository.getCheckIns(habitUuid: goal.uuid);
+    final goals = await HabitRepository.getGoals();
+    final kind = part == HabitTimeLogImportPart.bedtime
+        ? HabitAdaptationKind.earlySleep
+        : HabitAdaptationKind.earlyWake;
+    final importGoal = HabitSleepGoalResolver.canonical(goals, kind) ?? goal;
+    final importRule = importGoal.uuid == goal.uuid
+        ? rule
+        : await _currentRuleFor(importGoal) ?? rule;
+    final existing = await HabitRepository.getCheckIns();
     final importedKeys = _checkInDedupeKeys(existing);
     var importedCount = 0;
     for (final log in preview.pendingLogs) {
-      final dedupeKey = timeLogDedupeKey(goal, log, part: part);
+      final dedupeKey = timeLogDedupeKey(importGoal, log, part: part);
       if (_containsTimeLogDedupeKey(
         importedKeys,
-        goal,
+        importGoal,
         log,
         part: part,
       )) {
@@ -367,8 +387,8 @@ abstract final class HabitSleepLogMigrationService {
               ? '取时间格开始'
               : null;
       await HabitRepository.addCheckIn(
-        goal: goal,
-        rule: rule,
+        goal: importGoal,
+        rule: importRule,
         localOccurredAt: localOccurredAt,
         source: HabitCheckInSource.import,
         note: '从时间日志导入 · $timeRange · $durationLabel'
@@ -428,20 +448,12 @@ abstract final class HabitSleepLogMigrationService {
     }
     // 兼容 v5.7 及更早版本按时间日志 UUID 生成的去重键，升级后不能
     // 因为键格式变化而把已经导入的记录再写一遍。
-    return importedKeys
-        .contains(_legacyTimeLogDedupeKey(goal, log, part: part));
-  }
-
-  static String _legacyTimeLogDedupeKey(
-    HabitGoal goal,
-    TimeLogItem log, {
-    required HabitTimeLogImportPart part,
-  }) {
     final suffix = part == HabitTimeLogImportPart.bedtime ? '' : '/end';
-    return HabitCheckIn.buildDedupeKey(
-      goal.uuid,
-      'time-log/${log.id}$suffix',
-    )!;
+    final v2Suffix = '/time-log/v2/${log.startTime}-${log.endTime}$suffix';
+    final legacySuffix = '/time-log/${log.id}$suffix';
+    return importedKeys.any(
+      (key) => key.endsWith(v2Suffix) || key.endsWith(legacySuffix),
+    );
   }
 
   static bool _shouldReplaceSample(
@@ -464,7 +476,9 @@ abstract final class HabitSleepLogMigrationService {
     String username = '',
   }) async {
     final allGoals = await HabitRepository.getGoals();
-    final activeGoals = allGoals.where((goal) => !goal.isDeleted);
+    final activeGoals = allGoals.where(
+      (goal) => !goal.isDeleted && !goal.isArchived,
+    );
     final hasEarlySleep = activeGoals.any(_isEarlySleepGoal);
     final hasEarlyWake = activeGoals.any(_isEarlyWakeGoal);
 
@@ -546,10 +560,16 @@ abstract final class HabitSleepLogMigrationService {
       username: username,
     );
     final activeGoals = (await HabitRepository.getGoals())
-        .where((goal) => !goal.isDeleted)
+        .where((goal) => !goal.isDeleted && !goal.isArchived)
         .toList(growable: false);
-    final earlySleep = _firstGoal(activeGoals, _isEarlySleepGoal);
-    final earlyWake = _firstGoal(activeGoals, _isEarlyWakeGoal);
+    final earlySleep = HabitSleepGoalResolver.canonical(
+      activeGoals,
+      HabitAdaptationKind.earlySleep,
+    );
+    final earlyWake = HabitSleepGoalResolver.canonical(
+      activeGoals,
+      HabitAdaptationKind.earlyWake,
+    );
     final preview = HabitTimeLogImportPreview(
       candidateLogs: selectedProposal.matchedLogs,
       pendingLogs: selectedProposal.matchedLogs,
@@ -592,16 +612,6 @@ abstract final class HabitSleepLogMigrationService {
       importedWakeTimeCount: importedWakeTimeCount,
       generatedSleepDurationCount: generatedSleepDurationCount,
     );
-  }
-
-  static HabitGoal? _firstGoal(
-    Iterable<HabitGoal> goals,
-    bool Function(HabitGoal) predicate,
-  ) {
-    for (final goal in goals) {
-      if (predicate(goal)) return goal;
-    }
-    return null;
   }
 
   static bool _isSleepDurationGoal(HabitGoal goal) {

@@ -5,6 +5,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
+import 'habit_sleep_goal_resolver.dart';
 
 /// 早睡 / 早起打卡配对后生成睡眠时长打卡。
 ///
@@ -227,17 +228,8 @@ abstract final class HabitSleepDurationService {
   static HabitGoal? _firstGoal(
     Iterable<HabitGoal> goals,
     HabitAdaptationKind kind,
-  ) {
-    for (final goal in goals) {
-      if (goal.isDeleted ||
-          goal.isArchived ||
-          goal.sourceType != HabitSourceType.timeCheckIn) {
-        continue;
-      }
-      if (HabitAdaptationService.forHabit(goal)?.kind == kind) return goal;
-    }
-    return null;
-  }
+  ) =>
+      HabitSleepGoalResolver.canonical(goals, kind);
 
   static HabitGoalRuleRevision? _currentRule(
     HabitGoal goal,

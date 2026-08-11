@@ -7,6 +7,7 @@ import '../repositories/habit_repository.dart';
 import '../services/habit_sleep_duration_service.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
+import '../services/habit_sleep_goal_resolver.dart';
 import '../widgets/habit_format.dart';
 
 /// 习惯中心「日历」标签页：月历 + 选中日习惯明细。
@@ -53,7 +54,9 @@ class _HabitCalendarTabState extends State<HabitCalendarTab> {
     setState(() => _loading = true);
     await HabitSleepDurationService.syncAll();
     // 日历是历史视图，归档习惯仍需参与计算；今日 / 分析页仍只加载未归档习惯。
-    final goals = await HabitRepository.getGoals();
+    final goals = HabitSleepGoalResolver.forDisplay(
+      await HabitRepository.getGoals(),
+    );
     final allRules = await HabitRepository.getRules();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final daysByHabit = <String, List<HabitDayProgress>>{};
