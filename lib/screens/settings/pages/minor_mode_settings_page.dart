@@ -108,8 +108,6 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                 children: [
                   _buildStatusSection(context, state, googleAgeSignal),
                   const SizedBox(height: 16),
-                  _buildCapabilityMatrix(context, state, googleAgeSignal),
-                  const SizedBox(height: 16),
                   _buildManualSection(context, state),
                   if (AppPlatform.isAndroid) ...[
                     const SizedBox(height: 16),
@@ -133,6 +131,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                       ],
                     ),
                   ],
+                  const SizedBox(height: 16),
+                  _buildCapabilityMatrix(context, state, googleAgeSignal),
                 ],
               ),
             );
