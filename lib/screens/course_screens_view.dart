@@ -247,56 +247,76 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
   @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isDesktop = MediaQuery.of(context).size.width >= 768;
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              icon: const Icon(Icons.arrow_back_ios, size: 13),
-              onPressed: () {
-                if (_viewMode == 2) {
-                  _changeMonth(-1);
-                } else if (_viewMode == 1) {
-                  _changeWeek(-2);
-                } else {
-                  _changeWeek(-1);
-                }
-              },
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: _viewMode == 0 ? _showWeekJumpDialog : null,
-              child: Text(
-                _viewMode == 2
-                    ? DateFormat('yyyy年M月').format(_selectedMonth)
-                    : (_viewMode == 1 ? _getBiWeekLabel() : _getWeekLabel()),
-                style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            final navigationWidth =
+                constraints.maxWidth < 420 ? constraints.maxWidth : 420.0;
+
+            return SizedBox(
+              width: navigationWidth,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.arrow_back_ios, size: 13),
+                    onPressed: () {
+                      if (_viewMode == 2) {
+                        _changeMonth(-1);
+                      } else if (_viewMode == 1) {
+                        _changeWeek(-2);
+                      } else {
+                        _changeWeek(-1);
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _viewMode == 0 ? _showWeekJumpDialog : null,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: Text(
+                          _viewMode == 2
+                              ? DateFormat('yyyy年M月').format(_selectedMonth)
+                              : (_viewMode == 1
+                                  ? _getBiWeekLabel()
+                                  : _getWeekLabel()),
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.arrow_forward_ios, size: 13),
+                    onPressed: () {
+                      if (_viewMode == 2) {
+                        _changeMonth(1);
+                      } else if (_viewMode == 1) {
+                        _changeWeek(2);
+                      } else {
+                        _changeWeek(1);
+                      }
+                    },
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              icon: const Icon(Icons.arrow_forward_ios, size: 13),
-              onPressed: () {
-                if (_viewMode == 2) {
-                  _changeMonth(1);
-                } else if (_viewMode == 1) {
-                  _changeWeek(2);
-                } else {
-                  _changeWeek(1);
-                }
-              },
-            ),
-          ],
+            );
+          },
         ),
-        centerTitle: false,
+        centerTitle: true,
         titleSpacing: 0,
         actions: [
           IconButton(
@@ -312,24 +332,25 @@ mixin _WeeklyCourseView on _WeeklyCourseScreenStateBase {
             tooltip: '切换视图模式',
             onPressed: () => _toggleViewMode((_viewMode + 1) % 3),
           ),
-          IconButton(
-            key: _timeLogKey,
-            visualDensity: const VisualDensity(horizontal: -2),
-            icon: const Icon(Icons.edit_calendar, size: 20),
-            tooltip: '记录时间日志',
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                PageTransitions.material(
-                  builder: (context) =>
-                      TimeLogScreen(username: widget.username),
-                ),
-              );
-              if (result == true) {
-                _loadData();
-              }
-            },
-          ),
+          if (isDesktop)
+            IconButton(
+              key: _timeLogKey,
+              visualDensity: const VisualDensity(horizontal: -2),
+              icon: const Icon(Icons.edit_calendar, size: 20),
+              tooltip: '记录时间日志',
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  PageTransitions.material(
+                    builder: (context) =>
+                        TimeLogScreen(username: widget.username),
+                  ),
+                );
+                if (result == true) {
+                  _loadData();
+                }
+              },
+            ),
           MenuAnchor(
             key: _filterKey,
             menuChildren: [
