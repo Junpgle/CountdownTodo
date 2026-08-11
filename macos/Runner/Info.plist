@@ -48,6 +48,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>CountDownTodo 需要读取和控制音乐播放状态，以便在 macOS 灵动岛中显示当前歌曲并提供播放控制。</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

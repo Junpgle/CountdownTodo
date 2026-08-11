@@ -47,6 +47,7 @@ fileprivate struct MacClipboardBrowser: Identifiable, Equatable {
 }
 
 private struct MacNowPlayingSnapshot {
+    var sourceBundleIdentifier = ""
     var trackIdentifier = ""
     var title = ""
     var artist = ""
@@ -106,6 +107,10 @@ private final class MacNowPlayingMonitor {
     private struct NeteaseLyricResponse: Decodable {
         let lrc: NeteaseLyricSection?
         let tlyric: NeteaseLyricSection?
+    }
+
+    private struct LrclibLyricResponse: Decodable {
+        let syncedLyrics: String?
     }
 
     private struct NeteaseTrackRecord {
@@ -216,7 +221,7 @@ private final class MacNowPlayingMonitor {
         refreshSequence += 1
         let sequence = refreshSequence
         guard let getInfo = getInfo else {
-            refreshNeteaseFallback(sequence: sequence)
+            refreshSystemPlaybackOrNetease(sequence: sequence)
             return
         }
         let callback: InfoCallback = { [weak self] rawInfo in
@@ -224,7 +229,7 @@ private final class MacNowPlayingMonitor {
             let info = (rawInfo as NSDictionary?) as? [String: Any] ?? [:]
             let title = self.stringValue(info["kMRMediaRemoteNowPlayingInfoTitle"])
             guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                self.refreshNeteaseFallback(sequence: sequence)
+                self.refreshSystemPlaybackOrNetease(sequence: sequence)
                 return
             }
 
@@ -238,7 +243,7 @@ private final class MacNowPlayingMonitor {
             let artwork = artworkData.flatMap(NSImage.init(data:))
 
             let deliver: (Bool) -> Void = { [weak self] isPlaying in
-                self?.publish(MacNowPlayingSnapshot(
+                let snapshot = MacNowPlayingSnapshot(
                     trackIdentifier: "\(title)\u{001F}\(artist)",
                     title: title,
                     artist: artist,
@@ -249,7 +254,12 @@ private final class MacNowPlayingMonitor {
                     playbackRate: rate,
                     updatedAt: timestamp,
                     isPlaying: isPlaying
-                ), sequence: sequence)
+                )
+                self?.publish(snapshot, sequence: sequence)
+                self?.loadAppleMusicLyricsIfNeeded(
+                    for: snapshot,
+                    sequence: sequence
+                )
             }
 
             if let getPlaying = self.getPlaying {
@@ -264,10 +274,42 @@ private final class MacNowPlayingMonitor {
         getInfo(.main, callback)
     }
 
+    /// MediaRemote 在新系统上可能拒绝第三方读取。先尝试读取系统媒体状态，
+    /// 再尝试 Apple Music 的公开 AppleScript 接口，最后才进入网易云兼容层。
+    private func refreshSystemPlaybackOrNetease(sequence: Int) {
+        fallbackQueue.async { [weak self] in
+            guard let self = self else { return }
+            let systemPlayback = self.readSystemPlaybackState()
+            if let systemPlayback = systemPlayback {
+                if systemPlayback.bundleIdentifier != "com.netease.163music" {
+                    self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
+                    return
+                }
+                self.refreshNeteaseFallback(
+                    sequence: sequence,
+                    systemPlayback: systemPlayback
+                )
+                return
+            }
+
+            if let appleMusicPlayback = self.readAppleMusicState() {
+                self.publishSystemPlaybackState(
+                    appleMusicPlayback,
+                    sequence: sequence
+                )
+                return
+            }
+            self.refreshNeteaseFallback(sequence: sequence)
+        }
+    }
+
     /// 网易云音乐 3.x 有时会正常更新自己的 MPNowPlayingInfoCenter，却不
-    /// 出现在系统 MediaRemote 客户端列表中。仅在系统结果为空时读取其
-    /// 本地最近播放记录，并用 CoreAudio 判断该进程是否仍在输出声音。
-    private func refreshNeteaseFallback(sequence: Int) {
+    /// 出现在系统 MediaRemote 客户端列表中。读取其本地最近播放记录，并用
+    /// CoreAudio 判断该进程是否仍在输出声音。
+    private func refreshNeteaseFallback(
+        sequence: Int,
+        systemPlayback: SystemPlaybackState? = nil
+    ) {
         guard let app = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.netease.163music"
         ).first(where: { !$0.isTerminated }) else {
@@ -277,10 +319,11 @@ private final class MacNowPlayingMonitor {
         let processIdentifier = app.processIdentifier
         let previousSnapshot = currentSnapshot
         let optimisticState = optimisticPlaybackState
+        let providedSystemPlayback = systemPlayback
 
         fallbackQueue.async { [weak self] in
             guard let self = self else { return }
-            let systemPlayback = self.readSystemPlaybackState()
+            let systemPlayback = providedSystemPlayback ?? self.readSystemPlaybackState()
             if let systemPlayback = systemPlayback,
                systemPlayback.bundleIdentifier != "com.netease.163music" {
                 self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
@@ -370,6 +413,7 @@ private final class MacNowPlayingMonitor {
                 }
             }
             var snapshot = MacNowPlayingSnapshot(
+                sourceBundleIdentifier: "com.netease.163music",
                 trackIdentifier: record.track.id,
                 title: matchingSystemPlayback?.title ?? record.track.name,
                 artist: matchingSystemPlayback?.artist ?? artist,
@@ -548,6 +592,7 @@ private final class MacNowPlayingMonitor {
         sequence: Int
     ) {
         let snapshot = MacNowPlayingSnapshot(
+            sourceBundleIdentifier: state.bundleIdentifier,
             trackIdentifier: "\(state.title)\u{001F}\(state.artist)",
             title: state.title,
             artist: state.artist,
@@ -562,7 +607,23 @@ private final class MacNowPlayingMonitor {
             isPlaying: state.playbackRate > 0
         )
         DispatchQueue.main.async { [weak self] in
-            self?.publish(snapshot, sequence: sequence)
+            guard let self = self else { return }
+            var snapshotWithLyrics = snapshot
+            if state.bundleIdentifier == "com.apple.Music" {
+                let cacheKey = self.appleMusicLyricCacheKey(for: snapshot)
+                snapshotWithLyrics.lyrics = self.lyricCache[cacheKey] ?? []
+                self.publish(snapshotWithLyrics, sequence: sequence)
+                if self.lyricCache[cacheKey] == nil,
+                   self.lyricRetryAfter[cacheKey, default: .distantPast] <= Date() {
+                    self.loadAppleMusicLyrics(
+                        for: snapshotWithLyrics,
+                        cacheKey: cacheKey,
+                        sequence: sequence
+                    )
+                }
+            } else {
+                self.publish(snapshotWithLyrics, sequence: sequence)
+            }
         }
     }
 
@@ -646,6 +707,85 @@ private final class MacNowPlayingMonitor {
         return state
     }
 
+    /// Apple Music 提供了公开的 AppleScript 字典。它不依赖 MediaRemote 的
+    /// 私有读取权限，作为新系统上的媒体信息与播放进度兜底；首次使用时
+    /// macOS 可能会要求允许 CountDownTodo 控制 Music。
+    private func readAppleMusicState() -> SystemPlaybackState? {
+        guard NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Music"
+        ).contains(where: { !$0.isTerminated }) else {
+            return nil
+        }
+
+        let script = #"""
+        tell application id "com.apple.Music"
+          try
+            set currentTrack to current track
+            set trackTitle to name of currentTrack as text
+            set trackArtist to artist of currentTrack as text
+            set trackAlbum to album of currentTrack as text
+            set trackDuration to duration of currentTrack as real
+            set trackPosition to player position as real
+            set trackRate to 0
+            if player state is playing then set trackRate to 1
+
+            set previousDelimiters to AppleScript's text item delimiters
+            set AppleScript's text item delimiters to (ASCII character 31)
+            set payload to {trackTitle, trackArtist, trackAlbum, trackDuration as text, trackPosition as text, trackRate as text}
+            set output to payload as text
+            set AppleScript's text item delimiters to previousDelimiters
+            return output
+          on error
+            return ""
+          end try
+        end tell
+        """#
+
+        let process = Process()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
+            process.terminate()
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fields = output
+            .split(separator: "\u{001F}", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard fields.count >= 6 else { return nil }
+
+        let title = fields[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        let duration = Double(fields[3].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let elapsedTime = Double(fields[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let playbackRate = Double(fields[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        return SystemPlaybackState(
+            bundleIdentifier: "com.apple.Music",
+            title: title,
+            artist: fields[1],
+            album: fields[2],
+            duration: max(0, duration),
+            elapsedTime: max(0, elapsedTime),
+            playbackRate: max(0, playbackRate)
+        )
+    }
+
     private func mediaTitlesMatch(_ lhs: String, _ rhs: String) -> Bool {
         let normalize: (String) -> String = {
             $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -725,6 +865,156 @@ private final class MacNowPlayingMonitor {
             snapshotWithArtwork.artwork = artwork
             DispatchQueue.main.async { [weak self] in
                 self?.publish(snapshotWithArtwork, sequence: sequence)
+            }
+        }.resume()
+    }
+
+    private func appleMusicLyricCacheKey(
+        for snapshot: MacNowPlayingSnapshot
+    ) -> String {
+        let values = [
+            snapshot.title,
+            snapshot.artist,
+            snapshot.album,
+            String(Int(snapshot.duration.rounded())),
+        ].map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .lowercased()
+        }
+        return "apple:\(values.joined(separator: "\u{001F}"))"
+    }
+
+    /// MediaRemote 直接返回的媒体信息没有播放器 bundle id。若 Apple Music
+    /// 正在运行，额外用 AppleScript 核对当前歌曲，确保歌词不会错配到其他
+    /// 播放器的同名歌曲。
+    private func loadAppleMusicLyricsIfNeeded(
+        for snapshot: MacNowPlayingSnapshot,
+        sequence: Int
+    ) {
+        guard snapshot.isAvailable else { return }
+        if snapshot.sourceBundleIdentifier == "com.apple.Music" {
+            let cacheKey = appleMusicLyricCacheKey(for: snapshot)
+            guard lyricCache[cacheKey] == nil,
+                  lyricRetryAfter[cacheKey, default: .distantPast] <= Date() else {
+                return
+            }
+            loadAppleMusicLyrics(
+                for: snapshot,
+                cacheKey: cacheKey,
+                sequence: sequence
+            )
+            return
+        }
+        guard snapshot.sourceBundleIdentifier.isEmpty else { return }
+
+        fallbackQueue.async { [weak self] in
+            guard let self = self,
+                  let appleMusicState = self.readAppleMusicState(),
+                  self.mediaTitlesMatch(appleMusicState.title, snapshot.title),
+                  (snapshot.artist.isEmpty
+                      || self.mediaTitlesMatch(appleMusicState.artist, snapshot.artist)) else {
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self,
+                      sequence == self.refreshSequence,
+                      self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
+                    return
+                }
+                var appleMusicSnapshot = snapshot
+                appleMusicSnapshot.sourceBundleIdentifier = "com.apple.Music"
+                let cacheKey = self.appleMusicLyricCacheKey(for: appleMusicSnapshot)
+                guard self.lyricCache[cacheKey] == nil,
+                      self.lyricRetryAfter[cacheKey, default: .distantPast] <= Date() else {
+                    return
+                }
+                self.loadAppleMusicLyrics(
+                    for: appleMusicSnapshot,
+                    cacheKey: cacheKey,
+                    sequence: sequence
+                )
+            }
+        }
+    }
+
+    /// LRCLIB 根据歌曲元数据返回带时间戳的 LRC 歌词。歌词来源独立于
+    /// Apple Music 播放控制，因此 Apple Music 仍只需要授予音乐自动化权限。
+    private func loadAppleMusicLyrics(
+        for snapshot: MacNowPlayingSnapshot,
+        cacheKey: String,
+        sequence: Int
+    ) {
+        guard !cacheKey.isEmpty,
+              !lyricRequestsInFlight.contains(cacheKey) else { return }
+        let title = snapshot.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = snapshot.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let album = snapshot.album.trimmingCharacters(in: .whitespacesAndNewlines)
+        let duration = Int(snapshot.duration.rounded())
+        guard !title.isEmpty, !artist.isEmpty, !album.isEmpty, duration > 0 else {
+            return
+        }
+
+        lyricRequestsInFlight.insert(cacheKey)
+        lyricRetryAfter[cacheKey] = Date().addingTimeInterval(60)
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "lrclib.net"
+        components.path = "/api/get"
+        components.queryItems = [
+            URLQueryItem(name: "track_name", value: title),
+            URLQueryItem(name: "artist_name", value: artist),
+            URLQueryItem(name: "album_name", value: album),
+            URLQueryItem(name: "duration", value: String(duration)),
+        ]
+        guard let url = components.url else {
+            lyricRequestsInFlight.remove(cacheKey)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue(
+            "CountDownTodo macOS (https://github.com/Junpgle/CountdownTodo)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self = self else { return }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let decodedResponse = data.flatMap {
+                try? JSONDecoder().decode(LrclibLyricResponse.self, from: $0)
+            }
+            let lines = decodedResponse?.syncedLyrics.map {
+                self.parseLyrics($0, translation: "")
+            } ?? []
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.lyricRequestsInFlight.remove(cacheKey)
+                guard statusCode == 200,
+                      decodedResponse != nil,
+                      !lines.isEmpty else {
+                    return
+                }
+                self.lyricCache[cacheKey] = lines
+                if self.lyricCache.count > 32,
+                   let oldestKey = self.lyricCache.keys.first(where: {
+                       $0 != cacheKey
+                   }) {
+                    self.lyricCache.removeValue(forKey: oldestKey)
+                }
+                guard sequence == self.refreshSequence,
+                      self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
+                    return
+                }
+                var snapshotWithLyrics = snapshot
+                snapshotWithLyrics.lyrics = lines
+                self.publish(snapshotWithLyrics, sequence: sequence)
+                #if DEBUG
+                NSLog("[MacIsland] Apple Music 歌词已加载：%d 行", lines.count)
+                #endif
             }
         }.resume()
     }
@@ -880,7 +1170,12 @@ private final class MacNowPlayingMonitor {
     }
 
     func previous() {
-        send(command: 5)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("previous track")
+            scheduleCommandRefreshes()
+        } else {
+            send(command: 5)
+        }
     }
 
     func togglePlayPause() {
@@ -907,17 +1202,54 @@ private final class MacNowPlayingMonitor {
             )
             onChange?(optimisticSnapshot)
         }
-        sendCommandFunction?(2, nil)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("playpause")
+        } else {
+            sendCommandFunction?(2, nil)
+        }
         scheduleCommandRefreshes()
     }
 
     func next() {
-        send(command: 4)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("next track")
+            scheduleCommandRefreshes()
+        } else {
+            send(command: 4)
+        }
     }
 
     private func send(command: UInt32) {
         sendCommandFunction?(command, nil)
         scheduleCommandRefreshes()
+    }
+
+    private func sendAppleMusicCommand(_ command: String) {
+        guard NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Music"
+        ).contains(where: { !$0.isTerminated }) else {
+            return
+        }
+        let script = """
+        tell application id "com.apple.Music"
+          \(command)
+        end tell
+        """
+        let process = Process()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+        do {
+            try process.run()
+            if exitSemaphore.wait(timeout: .now() + 1.5) == .timedOut {
+                process.terminate()
+            }
+        } catch {
+            return
+        }
     }
 
     private func scheduleCommandRefreshes() {
