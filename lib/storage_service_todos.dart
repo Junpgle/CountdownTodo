@@ -1933,6 +1933,11 @@ mixin _StorageTodos on _StorageServiceBase {
         recurrenceEndDate: recurrenceEndDate,
       );
 
+  Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
+    List<TodoItem> todos,
+  ) =>
+      _pruneRecurrenceOccurrencesAfterEndDates(todos);
+
   String recurrenceOccurrenceIdForTest(
     String seriesId,
     int startMs,
@@ -2375,6 +2380,7 @@ mixin _StorageTodos on _StorageServiceBase {
     Iterable<TodoItem> todos, {
     required String seriesId,
     required DateTime recurrenceEndDate,
+    Set<String>? changedIds,
   }) {
     final endDay = DateTime(
       recurrenceEndDate.year,
@@ -2397,9 +2403,55 @@ mixin _StorageTodos on _StorageServiceBase {
       occurrence.isDeleted = true;
       occurrence.recurrence = RecurrenceType.none;
       occurrence.markAsChanged();
+      changedIds?.add(occurrence.id);
       changed = true;
     }
     return changed;
+  }
+
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(
+    List<TodoItem> todos,
+  ) {
+    final activeRulesBySeries = <String, TodoItem>{};
+    for (final todo in todos) {
+      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
+      final seriesId = todo.recurrenceSeriesId?.trim();
+      if (seriesId == null || seriesId.isEmpty) continue;
+
+      final current = activeRulesBySeries[seriesId];
+      if (current == null ||
+          _compareRecurrenceOccurrenceLwwDescending(todo, current) < 0) {
+        activeRulesBySeries[seriesId] = todo;
+      }
+    }
+
+    final changedIds = <String>{};
+    final now = DateTime.now();
+    final todayDay = DateTime(now.year, now.month, now.day);
+    for (final entry in activeRulesBySeries.entries) {
+      final rule = entry.value;
+      final recurrenceEndDate = rule.recurrenceEndDate;
+      if (recurrenceEndDate == null) continue;
+      final endDay = DateTime(
+        recurrenceEndDate.year,
+        recurrenceEndDate.month,
+        recurrenceEndDate.day,
+      );
+
+      if (todayDay.isAfter(endDay) && rule.recurrence != RecurrenceType.none) {
+        rule.recurrence = RecurrenceType.none;
+        rule.markAsChanged();
+        changedIds.add(rule.id);
+      }
+
+      _pruneRecurrenceOccurrencesAfterEndDate(
+        todos.where((todo) => todo.id != rule.id),
+        seriesId: entry.key,
+        recurrenceEndDate: endDay,
+        changedIds: changedIds,
+      );
+    }
+    return changedIds;
   }
 
   int _compareRecurrenceOccurrenceLwwDescending(TodoItem a, TodoItem b) {

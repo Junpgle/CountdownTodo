@@ -2004,6 +2004,16 @@ mixin _StorageSync on _StorageServiceBase {
         // the next read instead of waiting until tomorrow.
         _recurrenceCheckCache.clear();
       }
+      // 远端旧设备可能仍保存着“重复截止日期”之后的实例。即使它们在
+      // LWW 合并中赢过本机删除标记，也不能让已结束的循环再次复活；把
+      // 这些实例转成删除 tombstone，并将修复结果回传给云端。
+      final recurrenceBoundaryChangedIds =
+          _pruneRecurrenceOccurrencesAfterEndDates(allLocalTodos);
+      if (recurrenceBoundaryChangedIds.isNotEmpty) {
+        repairedRemoteTodoIds.addAll(recurrenceBoundaryChangedIds);
+        hasChanges = true;
+        _recurrenceCheckCache.clear();
+      }
       if (await getConflictDetectionEnabled()) {
         if (_recomputeLocalTodoScheduleConflicts(
           allLocalTodos,
@@ -2065,6 +2075,7 @@ mixin _StorageSync on _StorageServiceBase {
       if (repairedRemoteTodoIds.isNotEmpty) {
         final repairIdsToUpload = repairedRemoteTodoIds.where((id) =>
             recurrenceDedupeChangedIds.contains(id) ||
+            recurrenceBoundaryChangedIds.contains(id) ||
             !_attemptedRecurrenceSeriesRepairUploads.contains('$username|$id'));
         final repairedItems = allLocalTodos
             .where((todo) => repairIdsToUpload.contains(todo.id))

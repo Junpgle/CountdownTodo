@@ -534,6 +534,11 @@ class StorageService {
         recurrenceEndDate: recurrenceEndDate,
       );
 
+  static Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
+    List<TodoItem> todos,
+  ) =>
+      _storage.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos);
+
   static Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,

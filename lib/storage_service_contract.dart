@@ -365,6 +365,12 @@ abstract class _StorageServiceBase {
     required String seriesId,
     required DateTime recurrenceEndDate,
   });
+  Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
+    List<TodoItem> todos,
+  );
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(
+    List<TodoItem> todos,
+  );
   Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,
