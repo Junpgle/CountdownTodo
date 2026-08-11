@@ -410,45 +410,56 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                             ),
                           ],
                           const SizedBox(height: 20),
-                          ...visibleItems.map(
-                            (item) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('•  '),
-                                  Expanded(child: Text(item)),
-                                ],
-                              ),
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeInOut,
+                            alignment: Alignment.topCenter,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ...visibleItems.map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('•  '),
+                                        Expanded(child: Text(item)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (hasMoreItems)
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                      onPressed: () {
+                                        setSheetState(() {
+                                          isExpanded = !isExpanded;
+                                        });
+                                      },
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      icon: Icon(
+                                        isExpanded
+                                            ? Icons.keyboard_arrow_up_rounded
+                                            : Icons.keyboard_arrow_down_rounded,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        isExpanded ? '收起更新日志' : '展开全部更新日志',
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          if (hasMoreItems)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: () {
-                                  setSheetState(() {
-                                    isExpanded = !isExpanded;
-                                  });
-                                },
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                icon: Icon(
-                                  isExpanded
-                                      ? Icons.keyboard_arrow_up_rounded
-                                      : Icons.keyboard_arrow_down_rounded,
-                                  size: 18,
-                                ),
-                                label: Text(
-                                  isExpanded ? '收起更新日志' : '展开全部更新日志',
-                                ),
-                              ),
-                            ),
                         ],
                       ),
               ),
@@ -630,58 +641,72 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ...visibleNotes
-                      .map(
-                        (note) => Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Icon(Icons.circle,
-                                    size: 5,
-                                    color: colorScheme.onPrimaryContainer),
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeInOut,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...visibleNotes
+                            .map(
+                              (note) => Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: Icon(Icons.circle,
+                                          size: 5,
+                                          color:
+                                              colorScheme.onPrimaryContainer),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(note,
+                                          style: TextStyle(
+                                              color: colorScheme
+                                                  .onPrimaryContainer)),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(note,
-                                    style: TextStyle(
-                                        color: colorScheme.onPrimaryContainer)),
+                            )
+                            .toList(),
+                        if (hasMoreNotes)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _isLatestChangelogExpanded =
+                                      !_isLatestChangelogExpanded;
+                                });
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: colorScheme.onPrimaryContainer,
+                                padding: const EdgeInsets.only(top: 2),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
                               ),
-                            ],
+                              icon: Icon(
+                                _isLatestChangelogExpanded
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                _isLatestChangelogExpanded
+                                    ? '收起更新日志'
+                                    : '展开全部更新日志',
+                              ),
+                            ),
                           ),
-                        ),
-                      )
-                      .toList(),
-                  if (hasMoreNotes)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _isLatestChangelogExpanded =
-                                !_isLatestChangelogExpanded;
-                          });
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: colorScheme.onPrimaryContainer,
-                          padding: const EdgeInsets.only(top: 2),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: Icon(
-                          _isLatestChangelogExpanded
-                              ? Icons.keyboard_arrow_up_rounded
-                              : Icons.keyboard_arrow_down_rounded,
-                          size: 18,
-                        ),
-                        label: Text(
-                          _isLatestChangelogExpanded ? '收起更新日志' : '展开全部更新日志',
-                        ),
-                      ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
