@@ -1200,7 +1200,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading: const Icon(Icons.shield_outlined),
                   title: const Text('未成年人模式'),
-                  subtitle: const Text('系统联动状态与 App 兜底开关'),
+                  subtitle: const Text('守护未成年人身心健康'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                     context,
