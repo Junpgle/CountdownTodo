@@ -34,6 +34,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   String? _downloadedPackagePath;
   bool _isForceDownloading = false;
   double _forceDownloadProgress = 0;
+  bool _isLatestChangelogExpanded = false;
   String? _errorMessage;
 
   @override
@@ -549,6 +550,10 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     final colorScheme = Theme.of(context).colorScheme;
     final latestDate = _latestChangelog?.date;
     final notes = _latestReleaseNotes();
+    final hasMoreNotes = notes.length > 5;
+    final visibleNotes = hasMoreNotes && !_isLatestChangelogExpanded
+        ? notes.take(5).toList(growable: false)
+        : notes;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -624,30 +629,60 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: notes
-                    .map(
-                      (note) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Icon(Icons.circle,
-                                  size: 5,
-                                  color: colorScheme.onPrimaryContainer),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(note,
-                                  style: TextStyle(
-                                      color: colorScheme.onPrimaryContainer)),
-                            ),
-                          ],
+                children: [
+                  ...visibleNotes
+                      .map(
+                        (note) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Icon(Icons.circle,
+                                    size: 5,
+                                    color: colorScheme.onPrimaryContainer),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(note,
+                                    style: TextStyle(
+                                        color: colorScheme.onPrimaryContainer)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  if (hasMoreNotes)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _isLatestChangelogExpanded =
+                                !_isLatestChangelogExpanded;
+                          });
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: colorScheme.onPrimaryContainer,
+                          padding: const EdgeInsets.only(top: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: Icon(
+                          _isLatestChangelogExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _isLatestChangelogExpanded ? '收起更新日志' : '展开全部更新日志',
                         ),
                       ),
-                    )
-                    .toList(),
+                    ),
+                ],
               ),
             ),
           ],
@@ -891,69 +926,76 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Widget _buildBetaReleaseTile() {
     final colorScheme = Theme.of(context).colorScheme;
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      leading: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: colorScheme.tertiaryContainer,
-          borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: colorScheme.tertiaryContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.rocket_launch_outlined,
+              color: colorScheme.onTertiaryContainer),
         ),
-        child: Icon(Icons.rocket_launch_outlined,
-            color: colorScheme.onTertiaryContainer),
+        title: const Text('获取尝鲜版本'),
+        subtitle: Text('前往 GitHub 下载最新开发版，体验最新功能',
+            style:
+                TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+        trailing: Icon(Icons.open_in_new, color: colorScheme.onSurfaceVariant),
+        onTap: _openBetaReleases,
       ),
-      title: const Text('获取尝鲜版本'),
-      subtitle: Text('前往 GitHub 下载最新开发版，体验最新功能',
-          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
-      trailing: Icon(Icons.open_in_new, color: colorScheme.onSurfaceVariant),
-      onTap: _openBetaReleases,
     );
   }
 
   Widget _buildForceDownloadTile() {
     final colorScheme = Theme.of(context).colorScheme;
     final packageReady = _downloadedPackagePath != null;
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      leading: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: colorScheme.primaryContainer,
-          borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.download_rounded,
+              color: colorScheme.onPrimaryContainer),
         ),
-        child:
-            Icon(Icons.download_rounded, color: colorScheme.onPrimaryContainer),
+        title: Text(packageReady ? '立即安装最新版' : '强制下载最新版完整包'),
+        subtitle: packageReady
+            ? const Text('完整安装包已下载完成，确认后开始安装')
+            : _isForceDownloading
+                ? Text(
+                    '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(fontSize: 12, color: colorScheme.primary),
+                  )
+                : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
+        trailing: packageReady
+            ? Icon(Icons.system_update_alt_rounded, color: colorScheme.primary)
+            : _isForceDownloading
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      value: _forceDownloadProgress > 0
+                          ? _forceDownloadProgress
+                          : null,
+                      color: colorScheme.primary,
+                    ),
+                  )
+                : Icon(Icons.file_download_outlined,
+                    color: colorScheme.onSurfaceVariant),
+        onTap: packageReady
+            ? _installDownloadedPackage
+            : (_isForceDownloading ? null : _forceDownloadLatest),
       ),
-      title: Text(packageReady ? '立即安装最新版' : '强制下载最新版完整包'),
-      subtitle: packageReady
-          ? const Text('完整安装包已下载完成，确认后开始安装')
-          : _isForceDownloading
-              ? Text(
-                  '下载中 ${(_forceDownloadProgress * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(fontSize: 12, color: colorScheme.primary),
-                )
-              : const Text('忽略当前版本检查，下载清单中的最新完整安装包'),
-      trailing: packageReady
-          ? Icon(Icons.system_update_alt_rounded, color: colorScheme.primary)
-          : _isForceDownloading
-              ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    value: _forceDownloadProgress > 0
-                        ? _forceDownloadProgress
-                        : null,
-                    color: colorScheme.primary,
-                  ),
-                )
-              : Icon(Icons.file_download_outlined,
-                  color: colorScheme.onSurfaceVariant),
-      onTap: packageReady
-          ? _installDownloadedPackage
-          : (_isForceDownloading ? null : _forceDownloadLatest),
     );
   }
 
