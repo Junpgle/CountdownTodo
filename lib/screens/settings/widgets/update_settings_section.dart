@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,6 +37,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   double _forceDownloadProgress = 0;
   bool _isLatestChangelogExpanded = false;
   bool _isAutoDownloadOnWifi = true;
+  String _architectureLabel = '检测中...';
   String? _errorMessage;
 
   @override
@@ -73,6 +75,32 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     return null;
   }
 
+  Future<String> _loadArchitectureLabel() async {
+    if (AppPlatform.isAndroid) {
+      try {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        final supportedAbis = androidInfo.supportedAbis;
+        final abi = supportedAbis.firstWhere(
+          (value) => {
+            'arm64-v8a',
+            'armeabi-v7a',
+            'x86_64',
+            'x86',
+          }.contains(value),
+          orElse: () => supportedAbis.isNotEmpty ? supportedAbis.first : '',
+        );
+        if (abi.isNotEmpty) return 'Android · $abi';
+      } catch (_) {}
+      return 'Android';
+    }
+    if (AppPlatform.isWindows) return 'Windows';
+    if (AppPlatform.isMacOS) return 'macOS';
+    if (AppPlatform.isLinux) return 'Linux';
+    if (AppPlatform.isIOS) return 'iOS';
+    if (AppPlatform.isWeb) return 'Web';
+    return AppPlatform.operatingSystem;
+  }
+
   Future<void> _load({bool refresh = false}) async {
     if (refresh) {
       if (_isRefreshing) return;
@@ -90,11 +118,13 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         AppPlatform.isAndroid
             ? UpdateService.getAutoDownloadOnWifi()
             : Future.value(false),
+        _loadArchitectureLabel(),
       ]);
       final packageInfo = results[0] as PackageInfo;
       final manifest = results[1] as AppManifest?;
       final source = results[2] as String;
       final autoDownloadOnWifi = results[3] as bool;
+      final architectureLabel = results[4] as String;
       var currentChangelog = manifest == null
           ? null
           : _findChangelog(manifest.changelogHistory, packageInfo.version);
@@ -132,6 +162,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _latestChangelog = latestChangelog;
         _updateSource = source;
         _isAutoDownloadOnWifi = autoDownloadOnWifi;
+        _architectureLabel = architectureLabel;
         _hasDeltaPackage = hasDelta;
         _downloadedPackagePath = downloadedPackagePath;
         _errorMessage = manifest == null ? '暂时无法获取更新信息' : null;
@@ -540,6 +571,14 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                           const SizedBox(height: 3),
                           Text(_currentVersionLabel(),
                               style: Theme.of(context).textTheme.bodyMedium),
+                          const SizedBox(height: 3),
+                          Text(
+                            '架构：$_architectureLabel',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                          ),
                         ],
                       ),
                     ),
