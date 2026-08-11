@@ -1003,6 +1003,16 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                             == true
                     )
                 }
+                "setAutoDownloadOnWifi" -> {
+                    val enabled = call.arguments as? Boolean ?: true
+                    getSharedPreferences(
+                        "FlutterSharedPreferences",
+                        Context.MODE_PRIVATE
+                    ).edit()
+                        .putBoolean("flutter.auto_download_updates_on_wifi", enabled)
+                        .apply()
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

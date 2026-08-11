@@ -316,6 +316,7 @@ class UpdateService {
 
   // 更新源偏好设置
   static const String _updateSourceKey = 'update_source_preference';
+  static const String _autoDownloadOnWifiKey = 'auto_download_updates_on_wifi';
   static const String updateSourceGithub = 'github';
   static const String updateSourceServer = 'server';
 
@@ -329,6 +330,27 @@ class UpdateService {
   static Future<void> setUpdateSource(String source) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_updateSourceKey, source);
+  }
+
+  /// Whether Android may download a discovered update automatically on Wi-Fi.
+  static Future<bool> getAutoDownloadOnWifi() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoDownloadOnWifiKey) ?? true;
+  }
+
+  static Future<void> setAutoDownloadOnWifi(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoDownloadOnWifiKey, enabled);
+    if (Platform.isAndroid) {
+      try {
+        await const MethodChannel(_updateMethodChannelName).invokeMethod<void>(
+          'setAutoDownloadOnWifi',
+          enabled,
+        );
+      } catch (error) {
+        debugPrint('[UpdateService] 同步 Wi-Fi 自动下载设置失败: $error');
+      }
+    }
   }
 
   /// Returns true only when Android reports that the active network is Wi-Fi.
@@ -1512,6 +1534,7 @@ class UpdateService {
     void Function(String)? onError,
   }) async {
     if (!Platform.isAndroid || !context.mounted) return;
+    if (!await getAutoDownloadOnWifi() || !context.mounted) return;
     if (_isDownloading || _isDownloaded) return;
     if (!await isWifiConnected() || !context.mounted) return;
 

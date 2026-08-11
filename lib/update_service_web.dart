@@ -667,6 +667,10 @@ class UpdateService {
     void Function(String)? onError,
   }) async {}
 
+  static Future<bool> getAutoDownloadOnWifi() async => false;
+
+  static Future<void> setAutoDownloadOnWifi(bool enabled) async {}
+
   static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async =>
       false;
 

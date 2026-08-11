@@ -35,6 +35,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   bool _isForceDownloading = false;
   double _forceDownloadProgress = 0;
   bool _isLatestChangelogExpanded = false;
+  bool _isAutoDownloadOnWifi = true;
   String? _errorMessage;
 
   @override
@@ -86,10 +87,14 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
           refreshInBackground: !refresh,
         ),
         UpdateService.getUpdateSource(),
+        AppPlatform.isAndroid
+            ? UpdateService.getAutoDownloadOnWifi()
+            : Future.value(false),
       ]);
       final packageInfo = results[0] as PackageInfo;
       final manifest = results[1] as AppManifest?;
       final source = results[2] as String;
+      final autoDownloadOnWifi = results[3] as bool;
       var currentChangelog = manifest == null
           ? null
           : _findChangelog(manifest.changelogHistory, packageInfo.version);
@@ -126,6 +131,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _currentChangelog = currentChangelog;
         _latestChangelog = latestChangelog;
         _updateSource = source;
+        _isAutoDownloadOnWifi = autoDownloadOnWifi;
         _hasDeltaPackage = hasDelta;
         _downloadedPackagePath = downloadedPackagePath;
         _errorMessage = manifest == null ? '暂时无法获取更新信息' : null;
@@ -133,7 +139,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
         _isRefreshing = false;
       });
 
-      if (hasUpdate && mounted && AppPlatform.isAndroid) {
+      if (hasUpdate && mounted && AppPlatform.isAndroid && autoDownloadOnWifi) {
         unawaited(
           UpdateService.autoDownloadLatestOnWifi(
             context,
@@ -218,6 +224,20 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     }
     await UpdateService.setUpdateSource(source);
     if (mounted) setState(() => _updateSource = source);
+  }
+
+  Future<void> _setAutoDownloadOnWifi(bool enabled) async {
+    final previousValue = _isAutoDownloadOnWifi;
+    setState(() => _isAutoDownloadOnWifi = enabled);
+    try {
+      await UpdateService.setAutoDownloadOnWifi(enabled);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isAutoDownloadOnWifi = previousValue);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存 Wi-Fi 自动下载设置失败：$error')),
+      );
+    }
   }
 
   Future<void> _downloadPackage({required bool preferDelta}) async {
@@ -1052,6 +1072,54 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
     );
   }
 
+  Widget _buildAutoDownloadSetting(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            border: Border.all(color: colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: SwitchListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+              secondary: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.wifi_rounded,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+              title: const Text('Wi-Fi 自动下载更新包'),
+              subtitle: Text(
+                _isAutoDownloadOnWifi
+                    ? '发现新版本时，仅在 Wi-Fi 下自动下载'
+                    : '已关闭，发现新版本后需要手动下载',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              value: _isAutoDownloadOnWifi,
+              onChanged: _setAutoDownloadOnWifi,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const AppLoadingView();
@@ -1084,6 +1152,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             ),
           ),
         _buildLatestVersionCard(context),
+        if (AppPlatform.isAndroid) _buildAutoDownloadSetting(context),
         if (!AppPlatform.isWeb) _buildUpdateTools(context),
         const AppSettingsDivider(),
         _buildUpdateSource(context),

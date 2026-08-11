@@ -37,6 +37,9 @@ class AppUpdateWorker(
         private const val NOTIFICATION_ID = 12354
         private const val PREFS_NAME = "app_update_check"
         private const val KEY_LAST_NOTIFIED_VERSION = "last_notified_version"
+        private const val FLUTTER_PREFS_NAME = "FlutterSharedPreferences"
+        private const val KEY_AUTO_DOWNLOAD_ON_WIFI =
+            "flutter.auto_download_updates_on_wifi"
 
         // 后台任务也遵循直连优先，中转和服务器 manifest 作为兜底。
         private const val GITHUB_MANIFEST_URL =
@@ -68,7 +71,16 @@ class AppUpdateWorker(
                 return Result.success()
             }
 
-            val downloadedFile = downloadFullPackage(manifest, remoteVersion)
+            val autoDownloadOnWifi = applicationContext.getSharedPreferences(
+                FLUTTER_PREFS_NAME,
+                Context.MODE_PRIVATE
+            ).getBoolean(KEY_AUTO_DOWNLOAD_ON_WIFI, true)
+            val downloadedFile = if (autoDownloadOnWifi) {
+                downloadFullPackage(manifest, remoteVersion)
+            } else {
+                Log.d(TAG, "Wi-Fi automatic package download is disabled")
+                null
+            }
             if (!canPostNotification()) {
                 Log.d(TAG, "Notification permission is unavailable")
                 return Result.success()
