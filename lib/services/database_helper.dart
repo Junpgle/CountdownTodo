@@ -311,6 +311,30 @@ class DatabaseHelper {
           updated_at INTEGER NOT NULL
         )
       ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_sleep_coaching_plans (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          kind TEXT NOT NULL DEFAULT 'sleep_routine',
+          enabled INTEGER NOT NULL DEFAULT 0,
+          paused INTEGER NOT NULL DEFAULT 0,
+          step_minutes INTEGER NOT NULL DEFAULT 15,
+          stage_days INTEGER NOT NULL DEFAULT 4,
+          started_logical_date TEXT,
+          baseline_bedtime_minute INTEGER,
+          baseline_wake_minute INTEGER,
+          baseline_sleep_minutes INTEGER,
+          paused_stage_index INTEGER,
+          paused_progress_days INTEGER,
+          paused_logical_date TEXT,
+          timezone_offset_minutes INTEGER,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_habit_goals_active '
         'ON habit_goals(is_deleted, is_archived, sort_order)',
@@ -328,6 +352,41 @@ class DatabaseHelper {
         'ON habit_checkins(updated_at)',
       );
       await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_sleep_coaching_plans_updated '
+        'ON habit_sleep_coaching_plans(updated_at)',
+      );
+
+      // V42：旧版本允许同一导入日志产生多个相同 dedupe_key。先保留
+      // updated_at/version 最新的一条，再创建唯一索引；否则已有重复数据
+      // 会让数据库升级直接失败。
+      final duplicateDedupeKeys = await db.rawQuery('''
+        SELECT dedupe_key
+        FROM habit_checkins
+        WHERE dedupe_key IS NOT NULL
+        GROUP BY dedupe_key
+        HAVING COUNT(*) > 1
+      ''');
+      for (final duplicate in duplicateDedupeKeys) {
+        final dedupeKey = duplicate['dedupe_key']?.toString();
+        if (dedupeKey == null || dedupeKey.isEmpty) continue;
+        final rows = await db.query(
+          'habit_checkins',
+          columns: ['uuid'],
+          where: 'dedupe_key = ?',
+          whereArgs: [dedupeKey],
+          orderBy: 'updated_at DESC, version DESC, uuid DESC',
+        );
+        for (final row in rows.skip(1)) {
+          final uuid = row['uuid']?.toString();
+          if (uuid == null || uuid.isEmpty) continue;
+          await db.delete(
+            'habit_checkins',
+            where: 'uuid = ?',
+            whereArgs: [uuid],
+          );
+        }
+      }
+      await db.execute(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_checkins_dedupe '
         'ON habit_checkins(dedupe_key) WHERE dedupe_key IS NOT NULL',
       );
@@ -341,6 +400,47 @@ class DatabaseHelper {
         }
       } catch (e) {
         // 忽略：新建库时该列已存在。
+      }
+      // V41：为已存在的睡眠训练计划补充逻辑时区字段（幂等）。
+      try {
+        final planInfo = await db.rawQuery(
+          'PRAGMA table_info(habit_sleep_coaching_plans)',
+        );
+        if (!planInfo.any((row) => row['name'] == 'timezone_offset_minutes')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN timezone_offset_minutes INTEGER',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时该列已存在。
+      }
+      // V43：为已存在的睡眠训练计划补充暂停检查点字段（幂等）。
+      try {
+        final planInfo = await db.rawQuery(
+          'PRAGMA table_info(habit_sleep_coaching_plans)',
+        );
+        final planColumns = planInfo.map((row) => row['name']).toSet();
+        if (!planColumns.contains('paused_stage_index')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_stage_index INTEGER',
+          );
+        }
+        if (!planColumns.contains('paused_progress_days')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_progress_days INTEGER',
+          );
+        }
+        if (!planColumns.contains('paused_logical_date')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_logical_date TEXT',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时这些列已存在。
       }
       // V38：为规则表补充同步字段 device_id / has_conflict / conflict_data（幂等）。
       try {
@@ -440,6 +540,9 @@ class DatabaseHelper {
             if (oldVersion < 38) {
               // 重建 FTS 会清除历史软删除条目，并安装仅监听搜索字段的触发器。
               await _setupFts(db);
+            }
+            if (oldVersion < 43) {
+              await ensureHabitSchema(db);
             }
             if (oldVersion < 37) {
               await ensureHabitSchema(db);

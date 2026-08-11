@@ -11,10 +11,31 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 40;
+  static const int currentVersion = 43;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 43,
+      title: '睡眠训练暂停检查点',
+      changes: [
+        '保存暂停时的阶段、稳定天数和逻辑日期，确保恢复训练时多端继续同一进度。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 42,
+      title: '习惯打卡去重索引安全迁移',
+      changes: [
+        '升级前清理历史重复 dedupe_key，避免唯一索引创建失败。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 41,
+      title: '睡眠训练逻辑时区',
+      changes: [
+        '为睡眠训练计划保存训练起始时区，确保不同设备使用同一逻辑日期推进阶段。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 40,
       title: '待办专注记录定向查询索引',

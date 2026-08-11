@@ -17,6 +17,7 @@ import '../widgets/habit_format.dart';
 import '../widgets/habit_adaptation_panel.dart';
 import '../widgets/habit_time_point_chart.dart';
 import '../widgets/habit_water_progress_card.dart';
+import '../widgets/habit_sleep_coaching_card.dart';
 import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
@@ -26,6 +27,7 @@ import 'habit_edit_screen.dart';
 import 'habit_history_screen.dart';
 import '../services/habit_sleep_log_migration_service.dart';
 import '../services/habit_sleep_duration_service.dart';
+import '../services/habit_sleep_coaching_service.dart';
 
 /// 习惯详情：今日进度 + 今日打卡记录 + 目标信息 + 管理操作。
 ///
@@ -57,12 +59,19 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   int _timeTrendRangeDays = 7;
   HabitTimeLogImportPreview? _timeLogImportPreview;
   HabitTimeLogImportPart? _timeLogImportPart;
+  HabitSleepCoachingSnapshot? _sleepCoachingSnapshot;
   bool _loading = true;
 
   bool get _isSleepDuration =>
       HabitSleepDurationService.isSleepDurationGoal(_goal);
 
   String get _displayPeriodLabel => _isSleepDuration ? '前一晚' : '今日';
+
+  Future<String> _accountUsername() async {
+    final explicit = widget.username.trim();
+    if (explicit.isNotEmpty) return explicit;
+    return (await StorageService.getLoginSession())?.trim() ?? '';
+  }
 
   @override
   void initState() {
@@ -77,6 +86,30 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     if (HabitSleepDurationService.isSleepDurationGoal(_goal)) {
       await HabitSleepDurationService.syncAll();
     }
+    final adaptation = HabitAdaptationService.forHabit(_goal);
+    final isSleepGoal = adaptation?.kind == HabitAdaptationKind.earlySleep ||
+        adaptation?.kind == HabitAdaptationKind.earlyWake ||
+        adaptation?.kind == HabitAdaptationKind.sleepDuration;
+    final username = isSleepGoal ? await _accountUsername() : '';
+    if (isSleepGoal && username.isNotEmpty) {
+      try {
+        await StorageService.syncData(
+          username,
+          syncTodos: false,
+          syncCountdowns: false,
+          syncScreenTime: false,
+          syncTimeLogs: false,
+          syncPomodoro: false,
+          syncPlanBlocks: false,
+          syncFixedSchedules: false,
+          syncHabits: true,
+        );
+      } catch (_) {
+        // 详情页仍可使用本地快照离线展示。
+      }
+    }
+    final sleepCoachingSnapshot =
+        isSleepGoal ? await HabitSleepCoachingService.load(username) : null;
     final rules = await HabitRepository.getRules(habitUuid: _goal.uuid);
     final today = DateTime.now();
     final displayDate =
@@ -120,10 +153,117 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
         _todayCheckIns = checkIns;
         _todayFocusRecords = focusRecords;
         _timeTrend = timeTrend;
+        _sleepCoachingSnapshot = sleepCoachingSnapshot;
         _loading = false;
       });
     }
     _loadTimeLogImportPreview();
+  }
+
+  Future<void> _enableSleepCoaching() async {
+    try {
+      final username = await _accountUsername();
+      final snapshot = await HabitSleepCoachingService.enable(
+        username: username,
+      );
+      if (mounted) setState(() => _sleepCoachingSnapshot = snapshot);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('训练计划开启失败，请稍后重试')),
+      );
+    }
+  }
+
+  Future<void> _setSleepCoachingPaused(bool paused) async {
+    final snapshot = _sleepCoachingSnapshot;
+    if (snapshot == null) return;
+    try {
+      final username = await _accountUsername();
+      final plan = await HabitSleepCoachingService.setPaused(
+        username: username,
+        plan: snapshot.plan,
+        paused: paused,
+      );
+      final refreshed = await HabitSleepCoachingService.load(username);
+      if (mounted) {
+        setState(() => _sleepCoachingSnapshot = refreshed ??
+            HabitSleepCoachingSnapshot(
+              plan: plan,
+              stageIndex: 0,
+              stageProgressDays: 0,
+              metrics: snapshot.metrics,
+            ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('训练状态更新失败，请稍后重试')),
+        );
+      }
+    }
+  }
+
+  Future<void> _setSleepCoachingEnabled(bool enabled) async {
+    final snapshot = _sleepCoachingSnapshot;
+    if (snapshot == null) return;
+    try {
+      final username = await _accountUsername();
+      final plan = await HabitSleepCoachingService.setEnabled(
+        username: username,
+        plan: snapshot.plan,
+        enabled: enabled,
+      );
+      final refreshed = await HabitSleepCoachingService.load(username);
+      if (mounted) {
+        setState(() => _sleepCoachingSnapshot = refreshed ??
+            HabitSleepCoachingSnapshot(
+              plan: plan,
+              stageIndex: 0,
+              stageProgressDays: 0,
+              metrics: snapshot.metrics,
+            ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('训练开关更新失败，请稍后重试')),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateSleepCoachingSettings(
+    int stepMinutes,
+    int stageDays,
+  ) async {
+    final snapshot = _sleepCoachingSnapshot;
+    if (snapshot == null) return;
+    try {
+      final username = await _accountUsername();
+      final plan = await HabitSleepCoachingService.updateSettings(
+        username: username,
+        plan: snapshot.plan,
+        stepMinutes: stepMinutes,
+        stageDays: stageDays,
+      );
+      final refreshed = await HabitSleepCoachingService.load(username);
+      if (mounted) {
+        setState(() => _sleepCoachingSnapshot = refreshed ??
+            HabitSleepCoachingSnapshot(
+              plan: plan,
+              stageIndex: 0,
+              stageProgressDays: 0,
+              metrics: snapshot.metrics,
+            ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('训练节奏更新失败，请稍后重试')),
+        );
+      }
+    }
   }
 
   Future<void> _loadTimeLogImportPreview() async {
@@ -1358,6 +1498,17 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   ? null
                   : _rule.unit,
         ),
+        if (isSleepAdaptation || isSleepDurationAdaptation) ...[
+          const SizedBox(height: 12),
+          HabitSleepCoachingCard(
+            kind: adaptation.kind,
+            snapshot: _sleepCoachingSnapshot,
+            onEnable: _enableSleepCoaching,
+            onPauseChanged: _setSleepCoachingPaused,
+            onEnabledChanged: _setSleepCoachingEnabled,
+            onSettingsChanged: _updateSleepCoachingSettings,
+          ),
+        ],
         if (isSleepAdaptation) ...[
           const SizedBox(height: 12),
           HabitSleepTimingGuide(

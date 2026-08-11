@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../features/habits/models/habit_checkin.dart';
 import '../../features/habits/models/habit_goal.dart';
 import '../../features/habits/models/habit_goal_rule.dart';
+import '../../features/habits/models/habit_sleep_coaching_plan.dart';
 import '../database_helper.dart';
 
 /// 习惯模块的 SQL 存取层。
@@ -19,6 +20,7 @@ abstract final class HabitStorage {
   static const String tableGoals = 'habit_goals';
   static const String tableRules = 'habit_goal_rule_revisions';
   static const String tableCheckIns = 'habit_checkins';
+  static const String tableSleepCoachingPlans = 'habit_sleep_coaching_plans';
 
   static const List<String> goalChangeColumns = [
     'name',
@@ -72,6 +74,27 @@ abstract final class HabitStorage {
     'note',
     'source',
     'dedupe_key',
+    'is_deleted',
+    'version',
+    'device_id',
+    'created_at',
+    'updated_at',
+  ];
+
+  static const List<String> sleepCoachingPlanChangeColumns = [
+    'kind',
+    'enabled',
+    'paused',
+    'step_minutes',
+    'stage_days',
+    'started_logical_date',
+    'baseline_bedtime_minute',
+    'baseline_wake_minute',
+    'baseline_sleep_minutes',
+    'paused_stage_index',
+    'paused_progress_days',
+    'paused_logical_date',
+    'timezone_offset_minutes',
     'is_deleted',
     'version',
     'device_id',
@@ -168,6 +191,23 @@ abstract final class HabitStorage {
     }
   }
 
+  static Future<List<HabitSleepCoachingPlan>> getSleepCoachingPlans({
+    bool includeDeleted = false,
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final maps = await db.query(
+        tableSleepCoachingPlans,
+        where: includeDeleted ? null : 'is_deleted = 0',
+        orderBy: 'updated_at DESC',
+      );
+      return maps.map(HabitSleepCoachingPlan.fromJson).toList();
+    } catch (e) {
+      debugPrint('⚠️ HabitStorage 读取睡眠训练计划失败: $e');
+      return [];
+    }
+  }
+
   // ── 写入 ─────────────────────────────────────────────
 
   static Future<void> saveHabitGoals(
@@ -248,13 +288,69 @@ abstract final class HabitStorage {
   }) async {
     if (items.isEmpty) return;
     final db = await DatabaseHelper.instance.database;
+    final keyedItems = <String, HabitCheckIn>{};
+    final unkeyedItems = <HabitCheckIn>[];
+    bool isNewer(HabitCheckIn incoming, HabitCheckIn current) {
+      return incoming.updatedAt > current.updatedAt ||
+          (incoming.updatedAt == current.updatedAt &&
+              incoming.version > current.version) ||
+          (incoming.updatedAt == current.updatedAt &&
+              incoming.version == current.version &&
+              incoming.uuid.compareTo(current.uuid) > 0);
+    }
+
+    for (final item in items) {
+      final key = item.dedupeKey;
+      if (key == null || key.isEmpty) {
+        unkeyedItems.add(item);
+        continue;
+      }
+      final current = keyedItems[key];
+      if (current == null || isNewer(item, current)) keyedItems[key] = item;
+    }
+    final itemsToSave = [...unkeyedItems, ...keyedItems.values];
     final existing =
-        await _rowsById(db, tableCheckIns, items.map((e) => e.uuid));
+        await _rowsById(db, tableCheckIns, itemsToSave.map((e) => e.uuid));
+    final dedupeKeys = itemsToSave
+        .map((item) => item.dedupeKey)
+        .whereType<String>()
+        .where((key) => key.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    final existingByDedupe = <String, Map<String, dynamic>>{};
+    if (dedupeKeys.isNotEmpty) {
+      final placeholders = List.filled(dedupeKeys.length, '?').join(',');
+      final rows = await db.query(
+        tableCheckIns,
+        where: 'dedupe_key IN ($placeholders)',
+        whereArgs: dedupeKeys,
+      );
+      for (final row in rows) {
+        final key = row['dedupe_key']?.toString();
+        if (key != null && key.isNotEmpty) existingByDedupe[key] = row;
+      }
+    }
     final batch = db.batch();
     var wroteAny = false;
-    for (final item in items) {
+    for (final item in itemsToSave) {
       final data = item.toJson();
-      final old = existing[item.uuid];
+      final oldByDedupe =
+          item.dedupeKey == null ? null : existingByDedupe[item.dedupeKey!];
+      if (oldByDedupe != null && oldByDedupe['uuid'] != item.uuid) {
+        final oldUpdatedAt =
+            int.tryParse(oldByDedupe['updated_at']?.toString() ?? '') ?? 0;
+        final oldVersion =
+            int.tryParse(oldByDedupe['version']?.toString() ?? '') ?? 0;
+        final incomingWins = item.updatedAt > oldUpdatedAt ||
+            (item.updatedAt == oldUpdatedAt && item.version > oldVersion) ||
+            (item.updatedAt == oldUpdatedAt &&
+                item.version == oldVersion &&
+                item.uuid.compareTo(oldByDedupe['uuid'].toString()) > 0);
+        if (!incomingWins) continue;
+        // 保留本地 canonical UUID，防止旧服务端返回重复事件时产生新身份。
+        data['uuid'] = oldByDedupe['uuid'];
+      }
+      final old = existing[item.uuid] ?? oldByDedupe;
       if (old != null &&
           !_hasSubstantialChange(old, data, checkInChangeColumns)) {
         continue;
@@ -264,7 +360,7 @@ abstract final class HabitStorage {
         batch.insert('op_logs', {
           'op_type': 'UPSERT',
           'target_table': tableCheckIns,
-          'target_uuid': item.uuid,
+          'target_uuid': data['uuid']?.toString() ?? item.uuid,
           'data_json': jsonEncode(data),
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'is_synced': 0,
@@ -273,6 +369,44 @@ abstract final class HabitStorage {
       }
       batch.insert(
         tableCheckIns,
+        data,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    if (wroteAny) await batch.commit(noResult: true);
+  }
+
+  static Future<void> saveSleepCoachingPlans(
+    List<HabitSleepCoachingPlan> items, {
+    bool isSyncSource = false,
+  }) async {
+    if (items.isEmpty) return;
+    final db = await DatabaseHelper.instance.database;
+    final existing =
+        await _rowsById(db, tableSleepCoachingPlans, items.map((e) => e.uuid));
+    final batch = db.batch();
+    var wroteAny = false;
+    for (final item in items) {
+      final data = item.toJson();
+      final old = existing[item.uuid];
+      if (old != null &&
+          !_hasSubstantialChange(old, data, sleepCoachingPlanChangeColumns)) {
+        continue;
+      }
+      wroteAny = true;
+      if (writeOplog && !isSyncSource) {
+        batch.insert('op_logs', {
+          'op_type': 'UPSERT',
+          'target_table': tableSleepCoachingPlans,
+          'target_uuid': item.uuid,
+          'data_json': jsonEncode(data),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'is_synced': 0,
+          'sync_error': '',
+        });
+      }
+      batch.insert(
+        tableSleepCoachingPlans,
         data,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
