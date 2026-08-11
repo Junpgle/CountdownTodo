@@ -708,37 +708,41 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
               style:
                   TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: UpdateService.updateSourceGithub,
-                  label: Text('GitHub 官方'),
-                  icon: Icon(Icons.code_rounded),
-                ),
-                ButtonSegment(
-                  value: UpdateService.updateSourceServer,
-                  label: Text('阿里云加速'),
-                  icon: Icon(Icons.cloud_outlined),
-                ),
-              ],
-              selected: {
-                _updateSource == UpdateService.updateSourceServer
-                    ? UpdateService.updateSourceServer
-                    : UpdateService.updateSourceGithub,
-              },
-              showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: const TextStyle(fontSize: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color:
+                    colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                border: Border.all(color: colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(16),
               ),
-              onSelectionChanged: (selected) {
-                if (selected.isNotEmpty) {
-                  unawaited(_setUpdateSource(selected.first));
-                }
-              },
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildUpdateSourceChoice(
+                        context,
+                        value: UpdateService.updateSourceGithub,
+                        title: 'GitHub 官方',
+                        subtitle: '信息更新更及时',
+                        icon: Icons.code_rounded,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: _buildUpdateSourceChoice(
+                        context,
+                        value: UpdateService.updateSourceServer,
+                        title: '阿里云加速',
+                        subtitle: '国内访问更快',
+                        icon: Icons.cloud_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -759,6 +763,91 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildUpdateSourceChoice(
+    BuildContext context, {
+    required String value,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _updateSource == value;
+
+    return InkWell(
+      onTap: () => unawaited(_setUpdateSource(value)),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primaryContainer.withValues(alpha: 0.55)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? colorScheme.primary : Colors.transparent,
+            width: selected ? 1.2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: selected
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.check_circle_rounded,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
