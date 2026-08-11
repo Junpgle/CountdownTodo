@@ -369,54 +369,91 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
 
   Future<void> _showCurrentChangelog() async {
     final entry = _currentChangelog;
+    var isExpanded = false;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: FractionallySizedBox(
-          heightFactor: 0.72,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: entry == null
-                ? const Center(child: Text('暂无该版本的更新日志'))
-                : ListView(
-                    children: [
-                      Text(
-                        'v${entry.versionName}',
-                        style: Theme.of(sheetContext)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      if (entry.date.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          entry.date,
-                          style: TextStyle(
-                            color: Theme.of(sheetContext)
-                                .colorScheme
-                                .onSurfaceVariant,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final items = entry?.items ?? const <String>[];
+          final hasMoreItems = items.length > 5;
+          final visibleItems =
+              isExpanded ? items : items.take(5).toList(growable: false);
+
+          return SafeArea(
+            child: FractionallySizedBox(
+              heightFactor: 0.72,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                child: entry == null
+                    ? const Center(child: Text('暂无该版本的更新日志'))
+                    : ListView(
+                        children: [
+                          Text(
+                            'v${entry.versionName}',
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      ...entry.items.map(
-                        (item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('•  '),
-                              Expanded(child: Text(item)),
-                            ],
+                          if (entry.date.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              entry.date,
+                              style: TextStyle(
+                                color: Theme.of(sheetContext)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          ...visibleItems.map(
+                            (item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('•  '),
+                                  Expanded(child: Text(item)),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                          if (hasMoreItems)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () {
+                                  setSheetState(() {
+                                    isExpanded = !isExpanded;
+                                  });
+                                },
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: Icon(
+                                  isExpanded
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  isExpanded ? '收起更新日志' : '展开全部更新日志',
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ],
-                  ),
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

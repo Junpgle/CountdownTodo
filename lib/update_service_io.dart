@@ -1633,11 +1633,6 @@ class UpdateService {
       unawaited(autoDownloadLatestOnWifi(context, manifest));
     }
 
-    final changelogLineCount =
-        manifest.updateInfo.description.split(RegExp(r'\r?\n')).length;
-    final hasMoreChangelog = changelogLineCount > 5;
-    var isChangelogExpanded = false;
-
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -1703,41 +1698,7 @@ class UpdateService {
                                         Theme.of(context).colorScheme.primary,
                                     fontWeight: FontWeight.bold)),
                             const SizedBox(height: 10),
-                            Text(
-                              manifest.updateInfo.description,
-                              maxLines: isChangelogExpanded ? null : 5,
-                              overflow: isChangelogExpanded
-                                  ? TextOverflow.visible
-                                  : TextOverflow.ellipsis,
-                            ),
-                            if (hasMoreChangelog)
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      isChangelogExpanded =
-                                          !isChangelogExpanded;
-                                    });
-                                  },
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                  icon: Icon(
-                                    isChangelogExpanded
-                                        ? Icons.keyboard_arrow_up_rounded
-                                        : Icons.keyboard_arrow_down_rounded,
-                                    size: 18,
-                                  ),
-                                  label: Text(
-                                    isChangelogExpanded ? '收起更新日志' : '展开全部更新日志',
-                                  ),
-                                ),
-                              ),
+                            Text(manifest.updateInfo.description),
                             const SizedBox(height: 20),
                             if (manifest.updateInfo.fullPackageUrl.isNotEmpty)
                               if (_isDownloaded)
