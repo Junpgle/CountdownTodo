@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:countdown_todo/services/band_sync_service.dart';
 import 'package:countdown_todo/services/notification_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/android_delta_service.dart';
+import 'services/api_service.dart';
 import 'services/permission_request_coordinator.dart';
 import 'services/github_resource_service.dart';
 
@@ -114,6 +116,7 @@ class UpdateInfo {
   final String pcPackageUrl;
   final String macPackageUrl;
   final Map<String, String> androidArchPackages;
+  final Map<String, List<AndroidDeltaPackage>> androidDeltaPackages;
 
   UpdateInfo.fromJson(Map<String, dynamic> json)
       : title = json['title'] ?? '版本更新',
@@ -123,7 +126,30 @@ class UpdateInfo {
         macPackageUrl = json['mac_package_url'] ?? '',
         androidArchPackages = json['android_arch_packages'] != null
             ? Map<String, String>.from(json['android_arch_packages'])
-            : {};
+            : {},
+        androidDeltaPackages =
+            _parseAndroidDeltaPackages(json['android_delta_packages']);
+
+  static Map<String, List<AndroidDeltaPackage>> _parseAndroidDeltaPackages(
+      dynamic raw) {
+    if (raw is! Map) return {};
+
+    final result = <String, List<AndroidDeltaPackage>>{};
+    raw.forEach((key, value) {
+      if (value is! List) return;
+      final packages = value
+          .whereType<Map>()
+          .map((entry) => AndroidDeltaPackage.fromJson(
+                Map<String, dynamic>.from(entry),
+              ))
+          .where((entry) => entry.isUsable)
+          .toList();
+      if (packages.isNotEmpty) {
+        result[key.toString()] = packages;
+      }
+    });
+    return result;
+  }
 }
 
 class Announcement {
@@ -153,6 +179,22 @@ class WallpaperConfig {
   WallpaperConfig.fromJson(Map<String, dynamic> json)
       : show = json['show'] ?? false,
         imageUrl = json['image_url'] ?? '';
+}
+
+class _UpdateArtifact {
+  final String url;
+  final String fileName;
+  final AndroidDeltaPackage? delta;
+  final String? baseApkPath;
+
+  const _UpdateArtifact({
+    required this.url,
+    required this.fileName,
+    this.delta,
+    this.baseApkPath,
+  });
+
+  bool get isDelta => delta != null;
 }
 
 class _AnnouncementCarouselDialog extends StatefulWidget {
@@ -254,8 +296,11 @@ class UpdateService {
   static final GitHubResourceService _resourceService = GitHubResourceService();
   static const String manifestUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_manifest.json";
-  static const String fallbackManifestUrl =
-      "http://101.200.13.100:8082/api/manifest";
+  static String get fallbackManifestUrl {
+    final base = ApiService.effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    return '$base/api/manifest';
+  }
+
   static const String changelogArchiveUrl =
       "https://raw.githubusercontent.com/Junpgle/CountdownTodo/refs/heads/master/update_changelog_archive.json";
   static const String _manifestCacheKey = 'update_manifest_cache_json';
@@ -266,9 +311,12 @@ class UpdateService {
       'changelog_archive_cache_time';
   static const String _updateDialogSnoozeTodayKey =
       'update_dialog_snooze_today';
+  static const String _updateMethodChannelName =
+      'com.math_quiz.junpgle.com.math_quiz_app/app_update';
 
   // 更新源偏好设置
   static const String _updateSourceKey = 'update_source_preference';
+  static const String _autoDownloadOnWifiKey = 'auto_download_updates_on_wifi';
   static const String updateSourceGithub = 'github';
   static const String updateSourceServer = 'server';
 
@@ -284,10 +332,47 @@ class UpdateService {
     await prefs.setString(_updateSourceKey, source);
   }
 
+  /// Whether Android may download a discovered update automatically on Wi-Fi.
+  static Future<bool> getAutoDownloadOnWifi() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoDownloadOnWifiKey) ?? true;
+  }
+
+  static Future<void> setAutoDownloadOnWifi(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoDownloadOnWifiKey, enabled);
+    if (Platform.isAndroid) {
+      try {
+        await const MethodChannel(_updateMethodChannelName).invokeMethod<void>(
+          'setAutoDownloadOnWifi',
+          enabled,
+        );
+      } catch (error) {
+        debugPrint('[UpdateService] 同步 Wi-Fi 自动下载设置失败: $error');
+      }
+    }
+  }
+
+  /// Returns true only when Android reports that the active network is Wi-Fi.
+  /// Automatic package downloads deliberately do not run on mobile data.
+  static Future<bool> isWifiConnected() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await const MethodChannel(_updateMethodChannelName)
+              .invokeMethod<bool>('isWifiConnected') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<AppManifest?>? _manifestRefreshFuture;
+  static Future<void>? _updateCheckFuture;
 
   static bool _isDialogShowing = false;
   static bool _isAnnouncementDialogShowing = false;
+  static String? _lastPromptedUpdateVersion;
+  static DateTime? _lastPromptedUpdateAt;
 
   // 全局壁纸状态管理
   static ValueNotifier<String?> wallpaperUrlNotifier =
@@ -541,6 +626,77 @@ class UpdateService {
         '[UpdateService] Using fullPackageUrl: ${manifest.updateInfo.fullPackageUrl}');
     return _giteePackageUrl(manifest.updateInfo.fullPackageUrl);
   }
+
+  /// Selects a delta only when the exact installed APK for the current
+  /// architecture is its base. Every other case deliberately falls back to
+  /// the complete APK.
+  static Future<_UpdateArtifact> _getUpdateArtifact(
+    AppManifest manifest, {
+    bool preferDelta = true,
+  }) async {
+    final fullUrl = await getDownloadUrlForArch(manifest);
+    final fullArtifact = _UpdateArtifact(
+      url: fullUrl,
+      fileName: getUpdateFileName(manifest.versionName),
+    );
+
+    if (!preferDelta || !Platform.isAndroid) return fullArtifact;
+
+    try {
+      final architecture = await getDeviceArchitecture();
+      final candidates = manifest.updateInfo.androidDeltaPackages[architecture];
+      if (candidates == null || candidates.isEmpty) return fullArtifact;
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final localVersion = _cleanVersion(packageInfo.version);
+      final basePath = await AndroidDeltaService.getInstalledApkPath();
+      if (basePath == null || basePath.isEmpty) return fullArtifact;
+
+      final baseApk = File(basePath);
+      if (!await baseApk.exists()) return fullArtifact;
+      final baseSha256 = await AndroidDeltaService.sha256Of(baseApk);
+
+      for (final candidate in candidates) {
+        if (!candidate.isUsable ||
+            _cleanVersion(candidate.fromVersion) != localVersion ||
+            _cleanVersion(candidate.toVersion) !=
+                _cleanVersion(manifest.versionName) ||
+            candidate.fromSha256.toLowerCase() != baseSha256.toLowerCase()) {
+          continue;
+        }
+
+        final patchUrl = _giteePackageUrl(candidate.patchUrl);
+        if (patchUrl.isEmpty) continue;
+
+        debugPrint(
+            '[UpdateService] Using $architecture delta ${candidate.fromVersion} -> ${candidate.toVersion}');
+        return _UpdateArtifact(
+          url: patchUrl,
+          fileName:
+              'CountdownTodo_v${manifest.versionName}_from_${candidate.fromVersion}.patch',
+          delta: candidate,
+          baseApkPath: baseApk.path,
+        );
+      }
+    } catch (error) {
+      debugPrint(
+          '[UpdateService] Delta selection failed, using full APK: $error');
+    }
+
+    return fullArtifact;
+  }
+
+  /// Returns whether this device can build a usable incremental package for
+  /// the manifest's target version. The check also verifies the installed APK
+  /// hash, so the UI never offers a delta that cannot be applied locally.
+  static Future<bool> hasUsableDeltaPackage(AppManifest manifest) async {
+    if (!Platform.isAndroid) return false;
+    final artifact = await _getUpdateArtifact(manifest);
+    return artifact.isDelta;
+  }
+
+  static String _cleanVersion(String version) =>
+      version.split('+').first.split('-').first.trim();
 
   static String _giteePackageUrl(String url) {
     final uri = Uri.tryParse(url);
@@ -799,21 +955,47 @@ class UpdateService {
   }
 
   static Future<String?> isPackageAlreadyDownloaded(String versionName) async {
-    final path = await getDownloadDirectory();
-    if (path == null) return null;
-
     final fileName = getUpdateFileName(versionName);
-    File file = File("$path/$fileName");
+    for (final path in await _getDownloadDirectories()) {
+      File file = File("$path/$fileName");
 
-    if (!await file.exists()) {
-      final zipFile = File("$path/$fileName.zip");
-      if (await zipFile.exists()) file = zipFile;
-    }
+      if (!await file.exists()) {
+        final zipFile = File("$path/$fileName.zip");
+        if (await zipFile.exists()) file = zipFile;
+      }
 
-    if (await file.exists() && await file.length() > 1024 * 1024) {
-      return file.path;
+      if (await file.exists() && await file.length() > 1024 * 1024) {
+        return file.path;
+      }
     }
     return null;
+  }
+
+  static Future<List<String>> _getDownloadDirectories() async {
+    final directories = <String>[];
+    final publicDirectory = await getDownloadDirectory();
+    if (publicDirectory != null) directories.add(publicDirectory);
+
+    if (Platform.isAndroid) {
+      try {
+        final externalDirectory = await getExternalStorageDirectory();
+        if (externalDirectory != null) {
+          final appDirectory = Directory(
+            '${externalDirectory.path}/Download/CountdownTodo',
+          );
+          if (!await appDirectory.exists()) {
+            await appDirectory.create(recursive: true);
+          }
+          if (!directories.contains(appDirectory.path)) {
+            directories.add(appDirectory.path);
+          }
+        }
+      } catch (error) {
+        debugPrint('[UpdateService] 获取应用更新目录失败: $error');
+      }
+    }
+
+    return directories;
   }
 
   static Future<bool> prepareForDownload(
@@ -834,8 +1016,7 @@ class UpdateService {
     }
 
     try {
-      final path = await getDownloadDirectory();
-      if (path != null) {
+      for (final path in await _getDownloadDirectories()) {
         final dir = Directory(path);
         if (await dir.exists()) {
           final List<FileSystemEntity> files = dir.listSync();
@@ -845,6 +1026,7 @@ class UpdateService {
             if (name.endsWith(".apk") ||
                 name.endsWith(".exe") ||
                 name.endsWith(".zip") ||
+                name.endsWith(".patch") ||
                 name.endsWith(".download")) {
               await file.delete();
             }
@@ -924,6 +1106,61 @@ class UpdateService {
     );
   }
 
+  /// Downloads the selected update artifact and returns the generated APK.
+  ///
+  /// On Android, [preferDelta] selects a verified incremental package when
+  /// one matches the installed APK. A failed delta application falls back to
+  /// the architecture-matched full APK, so the install flow remains usable.
+  static Future<void> downloadLatestPackage(
+    BuildContext context,
+    AppManifest manifest, {
+    bool preferDelta = true,
+    required void Function(double) onProgress,
+    required void Function(String) onComplete,
+    required void Function(String) onError,
+  }) async {
+    await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      onError('页面已关闭，已取消下载');
+      return;
+    }
+
+    final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
+    if (existingPath != null) {
+      onProgress(1.0);
+      onComplete(existingPath);
+      return;
+    }
+
+    if (!context.mounted) {
+      onError('页面已关闭，已取消下载');
+      return;
+    }
+    final ready = await prepareForDownload(context, manifest.versionName);
+    if (!ready) {
+      onError('准备下载环境失败，请检查存储权限');
+      return;
+    }
+
+    final path = await getDownloadDirectory();
+    if (path == null) {
+      onError('无法获取下载保存目录');
+      return;
+    }
+
+    try {
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        preferDelta: preferDelta,
+        onProgress: onProgress,
+      );
+      onComplete(finalFile.path);
+    } catch (e) {
+      onError('更新包下载或校验失败: $e');
+    }
+  }
+
   /// 强制下载最新版本，忽略当前版本，下载完成后跳转安装
   static Future<void> forceDownloadLatest(
     BuildContext context, {
@@ -935,12 +1172,6 @@ class UpdateService {
         await checkManifest(preferCache: false, refreshInBackground: false);
     if (manifest == null) {
       onError('获取版本信息失败，请检查网络');
-      return;
-    }
-
-    final downloadUrl = await getDownloadUrlForArch(manifest);
-    if (downloadUrl.isEmpty) {
-      onError('未找到可用的下载链接');
       return;
     }
 
@@ -969,47 +1200,165 @@ class UpdateService {
       return;
     }
 
-    String fileName = getUpdateFileName(manifest.versionName);
-    String savePath = "$path/$fileName";
-    String tempPath = "$savePath.download";
-    File tempFile = File(tempPath);
+    try {
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        preferDelta: false,
+        onProgress: onProgress,
+      );
+      onComplete(finalFile.path);
+    } catch (e) {
+      onError("更新包下载或校验失败: $e");
+    }
+  }
+
+  static Future<File> _downloadUpdateWithFallback(
+    AppManifest manifest,
+    String directory, {
+    bool preferDelta = true,
+    required void Function(double) onProgress,
+  }) async {
+    final artifact = await _getUpdateArtifact(
+      manifest,
+      preferDelta: preferDelta,
+    );
+    if (artifact.url.isEmpty) {
+      throw const FormatException('未找到可用的下载链接');
+    }
 
     try {
-      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
+      return await _downloadArtifact(
+        artifact,
+        directory,
+        onProgress: onProgress,
+      );
+    } catch (error) {
+      if (!artifact.isDelta) rethrow;
 
-      if (response.statusCode == 200) {
-        int totalBytes = response.contentLength ?? 0;
-        int receivedBytes = 0;
-        var sink = tempFile.openWrite();
+      debugPrint(
+          '[UpdateService] Delta update failed, falling back to full APK: $error');
+      onProgress(0.0);
+      final fullArtifact = await _getUpdateArtifact(
+        manifest,
+        preferDelta: false,
+      );
+      if (fullArtifact.url.isEmpty) rethrow;
+      return _downloadArtifact(
+        fullArtifact,
+        directory,
+        onProgress: onProgress,
+      );
+    }
+  }
 
-        _downloadSubscription = response.stream.listen(
-          (List<int> chunk) {
-            receivedBytes += chunk.length;
-            sink.add(chunk);
-            if (totalBytes > 0) {
-              onProgress(receivedBytes / totalBytes);
-            }
-          },
-          onDone: () async {
-            await sink.close();
-            File finalFile = await tempFile.rename(savePath);
-            onComplete(finalFile.path);
-          },
-          onError: (e) async {
-            await sink.close();
-            onError("下载连接中断: $e");
-          },
-          cancelOnError: true,
-        );
-      } else {
-        onError("服务器响应异常: HTTP ${response.statusCode}");
+  static Future<File> _downloadArtifact(
+    _UpdateArtifact artifact,
+    String directory, {
+    required void Function(double) onProgress,
+  }) async {
+    final savePath = '$directory/${artifact.fileName}';
+    final tempFile = File('$savePath.download');
+    File? downloadedFile;
+
+    try {
+      if (await tempFile.exists()) await tempFile.delete();
+      final response = await _resourceService.sendGet(Uri.parse(artifact.url));
+      if (response.statusCode != 200) {
+        throw HttpException('服务器响应异常: HTTP ${response.statusCode}');
       }
-    } catch (e) {
-      onError("网络请求发生异常: $e");
+
+      final totalBytes = response.contentLength ?? 0;
+      var receivedBytes = 0;
+      final sink = tempFile.openWrite();
+      final completed = Completer<void>();
+
+      _downloadSubscription = response.stream.listen(
+        (List<int> chunk) {
+          receivedBytes += chunk.length;
+          sink.add(chunk);
+          if (totalBytes > 0) onProgress(receivedBytes / totalBytes);
+        },
+        onDone: () async {
+          try {
+            await sink.close();
+            if (!completed.isCompleted) completed.complete();
+          } catch (error, stackTrace) {
+            if (!completed.isCompleted) {
+              completed.completeError(error, stackTrace);
+            }
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) async {
+          await sink.close();
+          if (!completed.isCompleted) {
+            completed.completeError(error, stackTrace);
+          }
+        },
+        cancelOnError: true,
+      );
+      await completed.future;
+
+      downloadedFile = await tempFile.rename(savePath);
+      onProgress(1.0);
+
+      if (!artifact.isDelta) return downloadedFile;
+
+      final delta = artifact.delta!;
+      final basePath = artifact.baseApkPath;
+      if (basePath == null || basePath.isEmpty) {
+        throw const FormatException('差分包缺少基础 APK');
+      }
+
+      final targetPath = '$directory/${getUpdateFileName(delta.toVersion)}';
+      final targetTempFile = File('$targetPath.download');
+      if (await targetTempFile.exists()) await targetTempFile.delete();
+      await AndroidDeltaService.applyPatch(
+        baseApk: File(basePath),
+        patchFile: downloadedFile,
+        outputApk: targetTempFile,
+        expectedBaseSha256: delta.fromSha256,
+        expectedTargetSha256: delta.toSha256,
+      );
+
+      final targetFile = await targetTempFile.rename(targetPath);
+      if (await downloadedFile.exists()) await downloadedFile.delete();
+      return targetFile;
+    } catch (_) {
+      if (await tempFile.exists()) await tempFile.delete();
+      if (downloadedFile != null && await downloadedFile.exists()) {
+        await downloadedFile.delete();
+      }
+      rethrow;
     }
   }
 
   static Future<void> checkUpdateAndPrompt(BuildContext context,
+      {bool isManual = false}) {
+    final running = _updateCheckFuture;
+    if (running != null) return running;
+
+    final future = _checkUpdateAndPromptInternal(
+      context,
+      isManual: isManual,
+    );
+    _updateCheckFuture = future;
+    future.then<void>(
+      (_) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (identical(_updateCheckFuture, future)) {
+          _updateCheckFuture = null;
+        }
+      },
+    );
+    return future;
+  }
+
+  static Future<void> _checkUpdateAndPromptInternal(BuildContext context,
       {bool isManual = false}) async {
     if (_isDialogShowing) return;
 
@@ -1174,6 +1523,40 @@ class UpdateService {
     }
   }
 
+  /// Starts a background package download when the update is discovered over
+  /// Wi-Fi. Installation is never automatic; the update dialog exposes the
+  /// completed package through an explicit install button.
+  static Future<void> autoDownloadLatestOnWifi(
+    BuildContext context,
+    AppManifest manifest, {
+    void Function(double)? onProgress,
+    void Function(String)? onComplete,
+    void Function(String)? onError,
+  }) async {
+    if (!Platform.isAndroid || !context.mounted) return;
+    if (!await getAutoDownloadOnWifi() || !context.mounted) return;
+    if (_isDownloading || _isDownloaded) return;
+    if (!await isWifiConnected() || !context.mounted) return;
+
+    final existingPath = await isPackageAlreadyDownloaded(manifest.versionName);
+    if (existingPath != null) {
+      _isDownloaded = true;
+      _localPackagePath = existingPath;
+      _uiCompleteCallback?.call(existingPath);
+      onComplete?.call(existingPath);
+      return;
+    }
+
+    if (_isDownloading || !context.mounted) return;
+    unawaited(_startForegroundDownload(
+      context,
+      manifest,
+      onProgress: onProgress,
+      onComplete: onComplete,
+      onError: onError,
+    ));
+  }
+
   // 🚀 提取出来的纯净版本号对比算法
   static bool _compareVersions(String manifestVersion, String localVersion) {
     try {
@@ -1231,13 +1614,26 @@ class UpdateService {
       bool hasNotice = false,
       bool respectTodaySnooze = true}) async {
     if (_isDialogShowing) return;
+    final now = DateTime.now();
+    if (hasUpdate &&
+        !manifest.forceUpdate &&
+        _lastPromptedUpdateVersion == manifest.versionName &&
+        _lastPromptedUpdateAt != null &&
+        now.difference(_lastPromptedUpdateAt!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _isDialogShowing = true;
     if (hasUpdate &&
         respectTodaySnooze &&
         !manifest.forceUpdate &&
         await _isUpdateDialogSnoozedToday(manifest.versionName)) {
+      _isDialogShowing = false;
       return;
     }
-    _isDialogShowing = true;
+    if (hasUpdate && !manifest.forceUpdate) {
+      _lastPromptedUpdateVersion = manifest.versionName;
+      _lastPromptedUpdateAt = now;
+    }
 
     // 🚀 只要弹窗显示了，就说明用户已经进入更新流程，立即取消通知栏提醒
     NotificationService.cancelUpdateNotification();
@@ -1254,6 +1650,10 @@ class UpdateService {
     if (!context.mounted) {
       _isDialogShowing = false;
       return;
+    }
+
+    if (hasUpdate && !_isDownloading && !_isDownloaded) {
+      unawaited(autoDownloadLatestOnWifi(context, manifest));
     }
 
     await showDialog(
@@ -1484,23 +1884,32 @@ class UpdateService {
   }
 
   static Future<void> _startForegroundDownload(
-      BuildContext context, AppManifest manifest) async {
-    await _downloadSubscription?.cancel();
-    if (!context.mounted) {
-      _isDownloading = false;
-      _uiErrorCallback?.call("页面已关闭，已取消权限申请");
-      return;
-    }
-
+    BuildContext context,
+    AppManifest manifest, {
+    void Function(double)? onProgress,
+    void Function(String)? onComplete,
+    void Function(String)? onError,
+  }) async {
+    if (_isDownloading) return;
     _isDownloading = true;
     _isDownloaded = false;
     _downloadProgress = 0.0;
     _uiProgressCallback?.call(0.0);
+    onProgress?.call(0.0);
+
+    await _downloadSubscription?.cancel();
+    if (!context.mounted) {
+      _isDownloading = false;
+      _uiErrorCallback?.call("页面已关闭，已取消权限申请");
+      onError?.call("页面已关闭，已取消权限申请");
+      return;
+    }
 
     bool ready = await prepareForDownload(context, manifest.versionName);
     if (!ready) {
       _isDownloading = false;
       _uiErrorCallback?.call("准备下载环境失败，请检查存储权限");
+      onError?.call("准备下载环境失败，请检查存储权限");
       return;
     }
 
@@ -1508,57 +1917,30 @@ class UpdateService {
     if (path == null) {
       _isDownloading = false;
       _uiErrorCallback?.call("无法获取下载保存目录");
+      onError?.call("无法获取下载保存目录");
       return;
     }
 
-    String fileName = getUpdateFileName(manifest.versionName);
-    String savePath = "$path/$fileName";
-    String tempPath = "$savePath.download";
-    File tempFile = File(tempPath);
-
-    final String downloadUrl = await getDownloadUrlForArch(manifest);
-
     try {
-      final response = await _resourceService.sendGet(Uri.parse(downloadUrl));
+      final finalFile = await _downloadUpdateWithFallback(
+        manifest,
+        path,
+        onProgress: (progress) {
+          _downloadProgress = progress;
+          _uiProgressCallback?.call(progress);
+          onProgress?.call(progress);
+        },
+      );
 
-      if (response.statusCode == 200) {
-        int totalBytes = response.contentLength ?? 0;
-        int receivedBytes = 0;
-        var sink = tempFile.openWrite();
-
-        _downloadSubscription = response.stream.listen(
-          (List<int> chunk) {
-            receivedBytes += chunk.length;
-            sink.add(chunk);
-            if (totalBytes > 0) {
-              _downloadProgress = receivedBytes / totalBytes;
-              _uiProgressCallback?.call(_downloadProgress);
-            }
-          },
-          onDone: () async {
-            await sink.close();
-            File finalFile = await tempFile.rename(savePath);
-
-            _isDownloading = false;
-            _isDownloaded = true;
-            _localPackagePath = finalFile.path;
-
-            _uiCompleteCallback?.call(finalFile.path);
-          },
-          onError: (e) async {
-            await sink.close();
-            _isDownloading = false;
-            _uiErrorCallback?.call("下载连接中断: $e");
-          },
-          cancelOnError: true,
-        );
-      } else {
-        _isDownloading = false;
-        _uiErrorCallback?.call("服务器响应异常: HTTP ${response.statusCode}");
-      }
+      _isDownloading = false;
+      _isDownloaded = true;
+      _localPackagePath = finalFile.path;
+      _uiCompleteCallback?.call(finalFile.path);
+      onComplete?.call(finalFile.path);
     } catch (e) {
       _isDownloading = false;
-      _uiErrorCallback?.call("网络请求发生异常: $e");
+      _uiErrorCallback?.call("更新包下载或校验失败: $e");
+      onError?.call("更新包下载或校验失败: $e");
     }
   }
 }

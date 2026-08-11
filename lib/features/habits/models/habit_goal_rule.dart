@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
+import '../../../utils/json_value_parser.dart';
 
 /// 目标周期类型。
 enum HabitPeriodType {
@@ -287,8 +288,6 @@ class HabitGoalRuleRevision {
   }
 
   static int _parseMs(dynamic v) {
-    if (v == null) return DateTime.now().millisecondsSinceEpoch;
-    final n = int.tryParse(v.toString());
-    return n ?? DateTime.now().millisecondsSinceEpoch;
+    return JsonValueParser.epochMillisOrNow(v);
   }
 }

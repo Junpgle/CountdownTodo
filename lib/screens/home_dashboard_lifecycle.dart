@@ -39,8 +39,9 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _mathStatsNotifier = ValueNotifier<Map<String, dynamic>>(_mathStats);
 
     // 🚀 核心修复：监听全局数据刷新信号，实现背景同步后的 UI 自动响应
-    StorageService.dataRefreshNotifier.addListener(_loadAllData);
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     StorageService.wallpaperRefreshNotifier.addListener(_onWallpaperRefresh);
+    ScreenTimeService.dataRefreshNotifier.addListener(_onScreenTimeDataRefresh);
     // 在细粒度通知器和刷新监听都就绪后再启动首轮数据读取。
     unawaited(_loadAllData());
 
@@ -153,15 +154,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
 
       _checkAutoSync();
 
-      _courseTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-        _checkUpcomingEvents();
-      });
-
-      // 🚀 Banner 倒计时实时刷新：每 10 秒触发 Banner 区域重绘，确保”剩 Xm”动态更新
-      _bannerRefreshTimer =
-          Timer.periodic(const Duration(seconds: 10), (timer) {
-        if (mounted) _pomodoroTickNotifier.value++;
-      });
+      _startDashboardTimers();
 
       // 立即执行一次
       Future.delayed(Duration(milliseconds: 500), () {
@@ -178,11 +171,31 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     });
   }
 
+  void _startDashboardTimers() {
+    if (!mounted) return;
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    if (lifecycleState != null && lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    _courseTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) unawaited(_checkUpcomingEvents());
+    });
+    _bannerRefreshTimer ??= Timer.periodic(const Duration(seconds: 10), (_) {
+      if (mounted) _pomodoroTickNotifier.value++;
+    });
+  }
+
+  void _stopDashboardTimers() {
+    _courseTimer?.cancel();
+    _courseTimer = null;
+    _bannerRefreshTimer?.cancel();
+    _bannerRefreshTimer = null;
+  }
+
   Future<void> _configureBackgroundNotificationPoll() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('current_user_id');
-    final token =
-        ApiService.getToken() ?? prefs.getString(StorageService.keyAuthToken);
+    final token = await StorageService.getAuthToken();
     if (userId == null || token == null || token.isEmpty) return;
     await BackgroundNotificationService.configureNotificationPoll(
       userId: userId,
@@ -197,8 +210,11 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     for (final sub in _notifSubs) {
       sub.cancel();
     }
-    StorageService.dataRefreshNotifier.removeListener(_loadAllData);
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_onScopedDataRefresh);
     StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
+    ScreenTimeService.dataRefreshNotifier
+        .removeListener(_onScreenTimeDataRefresh);
     ThirtyDayChallengeRepository.activityRevision
         .removeListener(_onThirtyDayChallengeActivityChanged);
     _todosNotifier.dispose();
@@ -206,6 +222,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _courseDataNotifier.dispose();
     _countdownsNotifier.dispose();
     _mathStatsNotifier.dispose();
+    _disposeWallpaperListeners();
     _connStateSub?.cancel();
     _remotePomodoroSub?.cancel();
     _localPomodoroSub?.cancel();
@@ -213,24 +230,29 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     _remotePomodoroTicker?.cancel();
     _localPomodoroTicker?.cancel();
     ExternalShareHandler.dispose();
-    _courseTimer?.cancel();
+    _stopDashboardTimers();
     _todoPersistDebounce?.cancel();
     if (_todoPersistDebounceCompleter?.isCompleted == false) {
       _todoPersistDebounceCompleter!.complete();
     }
     _collaborativeSyncDebouncer?.cancel();
+    _syncWatchdogTimer?.cancel();
     _remoteTodoHighlightTimer?.cancel();
-    _bannerRefreshTimer?.cancel();
     _dashboardLoadRetryTimer?.cancel();
     _todoNotificationDebouncer?.cancel();
     _teamPendingDebouncer?.cancel();
     _announcementDebouncer?.cancel();
     _todoWidgetDebouncer?.cancel();
     _reminderScheduleDebouncer?.cancel();
+    _scheduleRevision.dispose();
+    _timelineRevision.dispose();
+    _pomodoroRevision.dispose();
+    _habitsRevision.dispose();
+    _isGlobalLoadingNotifier.dispose();
+    _todoUpdateSignalNotifier.dispose();
     _pomodoroTickNotifier.dispose();
     _githubResourceService.dispose();
     MacPomodoroStatusBarService.dispose();
-    StorageService.wallpaperRefreshNotifier.removeListener(_onWallpaperRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -502,7 +524,7 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     final result = await ApiService.requestJoinTeam(inviteCode);
     if (!mounted) return;
     if (result['success'] == true) {
-      unawaited(_loadAllData(deferred: true));
+      _debouncedFetchTeamPending();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('加入申请已提交，请等待管理员审核')),
       );
@@ -593,6 +615,19 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _isDashboardInForeground = true;
+      _startDashboardTimers();
+      final localPomodoro = _localPomodoro;
+      if (localPomodoro != null) {
+        _startLocalTicker(localPomodoro.mode == TimerMode.countUp);
+      }
+      final remotePomodoro = _remotePomodoro;
+      if (remotePomodoro != null) {
+        _startRemotePomodoroTicker(
+          remotePomodoro.targetEndMs ?? 0,
+          remotePomodoro.mode == 1,
+        );
+      }
       _checkAutoSync(force: true);
       _loadSectionPreferences();
       _loadSemesterSettings();
@@ -604,7 +639,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       _wallpaperRetryCount = 0;
       // 从番茄钟页或任何前台切换回来时，刷新所有卡片
       if (mounted) {
-        _todoRevision.value++;
         _scheduleRevision.value++;
         _timelineRevision.value++;
         _pomodoroRevision.value++;
@@ -616,6 +650,11 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
       // 清理残留的一次性通知
       NotificationService.cancelSpecialTodoNotification(12351); // 番茄钟结束提醒
       NotificationService.cancelTodoRecognizeNotification(); // 图片识别通知
+    } else {
+      _isDashboardInForeground = false;
+      _stopDashboardTimers();
+      _stopLocalTicker();
+      _stopRemotePomodoroTicker();
     }
   }
 
@@ -665,7 +704,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     if (mounted) {
       _pomodoroRevision.value++;
       _timelineRevision.value++;
-      _loadAllData(deferred: true);
     }
   }
 
@@ -811,12 +849,6 @@ mixin _HomeDashboardLifecycleMixin on _HomeDashboardStateBase {
     // 取消特殊待办的通知
     await NotificationService.cancelSpecialTodoNotification(
         currentTodo.id.hashCode);
-
-    setState(() {
-      currentTodo!.isDone = true;
-      currentTodo.markAsChanged();
-      _todos.sort((a, b) => a.isDone == b.isDone ? 0 : (a.isDone ? 1 : -1));
-    });
 
     setState(() {
       currentTodo!.isDone = true;

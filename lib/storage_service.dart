@@ -21,10 +21,13 @@ import 'services/storage/countdown_storage.dart';
 import 'services/storage/habit_storage.dart';
 import 'services/storage/pomodoro_storage.dart';
 import 'services/storage/storage_conflict_cleanup.dart';
+import 'services/storage/storage_key_scope.dart';
 import 'services/storage/user_session_storage.dart';
+import 'utils/json_value_parser.dart';
 import 'features/habits/models/habit_checkin.dart';
 import 'features/habits/models/habit_goal.dart';
 import 'features/habits/models/habit_goal_rule.dart';
+import 'features/habits/models/habit_sleep_coaching_plan.dart';
 import 'features/habits/services/habit_sync_conflict_service.dart';
 
 part 'storage_service_fixed.dart';
@@ -34,6 +37,36 @@ part 'storage_service_sync.dart';
 part 'storage_service_conflict.dart';
 part 'storage_service_settings.dart';
 part 'storage_service_contract.dart';
+
+enum DataRefreshDomain {
+  todos,
+  todoGroups,
+  countdowns,
+  mathStats,
+  courses,
+  planBlocks,
+  fixedSchedules,
+  timeLogs,
+  pomodoro,
+  habits,
+  teams,
+  all,
+}
+
+@immutable
+class DataRefreshSignal {
+  const DataRefreshSignal({required this.revision, required this.domains});
+
+  const DataRefreshSignal.initial()
+      : revision = 0,
+        domains = const {DataRefreshDomain.all};
+
+  final int revision;
+  final Set<DataRefreshDomain> domains;
+
+  bool affects(DataRefreshDomain domain) =>
+      domains.contains(DataRefreshDomain.all) || domains.contains(domain);
+}
 
 class StorageService {
   static final _storage = _StorageServiceImpl();
@@ -227,6 +260,12 @@ class StorageService {
   static ValueNotifier<int> get dataRefreshNotifier =>
       _storage.dataRefreshNotifier;
 
+  static ValueNotifier<int> get screenTimeRefreshNotifier =>
+      _storage.screenTimeRefreshNotifier;
+
+  static ValueNotifier<DataRefreshSignal> get scopedDataRefreshNotifier =>
+      _storage.scopedDataRefreshNotifier;
+
   static ValueNotifier<int> get wallpaperRefreshNotifier =>
       _storage.wallpaperRefreshNotifier;
 
@@ -313,7 +352,10 @@ class StorageService {
           String username, DateTime day) =>
       _storage.getPlanBlocksByDay(username, day);
 
-  static void triggerRefresh() => _storage.triggerRefresh();
+  static void triggerRefresh([
+    Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
+  ]) =>
+      _storage.triggerRefresh(domains);
 
   static void triggerWallpaperRefresh() => _storage.triggerWallpaperRefresh();
 
@@ -358,6 +400,8 @@ class StorageService {
       _storage.saveLoginSession(username, token: token);
 
   static Future<String?> getLoginSession() => _storage.getLoginSession();
+
+  static Future<String?> getAuthToken() => _storage.restoreAuthToken();
 
   static Future<void> clearLoginSession() => _storage.clearLoginSession();
 
@@ -480,6 +524,22 @@ class StorageService {
   ) =>
       _storage.deduplicatePersistedRecurrenceOccurrencesForTest(todos);
 
+  static bool pruneRecurrenceOccurrencesAfterEndDateForTest(
+    List<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+  }) =>
+      _storage.pruneRecurrenceOccurrencesAfterEndDateForTest(
+        todos,
+        seriesId: seriesId,
+        recurrenceEndDate: recurrenceEndDate,
+      );
+
+  static Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
+    List<TodoItem> todos,
+  ) =>
+      _storage.pruneRecurrenceOccurrencesAfterEndDatesForTest(todos);
+
   static Future<int> mergeRecurrenceSeries(
     String username, {
     required String targetSeriesId,
@@ -569,6 +629,7 @@ class StorageService {
     bool forceFullSync = false,
     bool uploadAllLocal = false,
     BuildContext? context,
+    bool syncScreenTime = true,
     bool syncTimeLogs = true,
     bool syncPomodoro = true,
     bool syncPlanBlocks = true,
@@ -581,6 +642,7 @@ class StorageService {
           forceFullSync: forceFullSync,
           uploadAllLocal: uploadAllLocal,
           context: context,
+          syncScreenTime: syncScreenTime,
           syncTimeLogs: syncTimeLogs,
           syncPomodoro: syncPomodoro,
           syncPlanBlocks: syncPlanBlocks,

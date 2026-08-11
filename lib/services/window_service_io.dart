@@ -111,6 +111,62 @@ class WindowService extends WindowListener with TrayListener {
     }
   }
 
+  static Future<Map<String, dynamic>> getMacIslandBrowserSettings() async {
+    if (!Platform.isMacOS) {
+      return <String, dynamic>{
+        'browsers': <Map<String, String>>[],
+        'selectedId': '',
+      };
+    }
+    try {
+      final raw = await _macAppStatusBarChannel
+          .invokeMethod<dynamic>('getClipboardBrowserSettings');
+      if (raw is! Map) return <String, dynamic>{};
+
+      final browsers = <Map<String, String>>[];
+      final rawBrowsers = raw['browsers'];
+      if (rawBrowsers is List) {
+        for (final item in rawBrowsers) {
+          if (item is! Map) continue;
+          final id = item['id']?.toString() ?? '';
+          final name = item['name']?.toString() ?? '';
+          if (id.isNotEmpty && name.isNotEmpty) {
+            browsers.add({'id': id, 'name': name});
+          }
+        }
+      }
+      return <String, dynamic>{
+        'browsers': browsers,
+        'selectedId': raw['selectedId']?.toString() ?? '',
+      };
+    } on PlatformException catch (error) {
+      debugPrint('[WindowService] get macOS browser settings failed: $error');
+      return <String, dynamic>{};
+    } on MissingPluginException catch (error) {
+      debugPrint(
+          '[WindowService] macOS browser settings plugin unavailable: $error');
+      return <String, dynamic>{};
+    }
+  }
+
+  static Future<bool> setMacIslandDefaultBrowser(String browserId) async {
+    if (!Platform.isMacOS || browserId.isEmpty) return false;
+    try {
+      return await _macAppStatusBarChannel.invokeMethod<bool>(
+            'setClipboardBrowser',
+            {'browserId': browserId},
+          ) ??
+          false;
+    } on PlatformException catch (error) {
+      debugPrint('[WindowService] set macOS default browser failed: $error');
+      return false;
+    } on MissingPluginException catch (error) {
+      debugPrint(
+          '[WindowService] macOS default browser plugin unavailable: $error');
+      return false;
+    }
+  }
+
   static Future<bool> setMacIslandVisibilityShortcut({
     required String key,
     required bool command,

@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/image_input_reader.dart';
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
 
 class LLMConfig {
   final String provider;
@@ -504,6 +506,7 @@ class LLMService {
   }
 
   static Future<String> testConnection() async {
+    await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
       throw Exception('大模型未配置');
@@ -564,6 +567,7 @@ class LLMService {
 
   static Future<List<Map<String, dynamic>>> parseTodoWithLLM(
       String input) async {
+    await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
       throw Exception('大模型未配置，请先在设置中配置API');
@@ -637,6 +641,7 @@ class LLMService {
 
   static Future<List<Map<String, dynamic>>> parseTodoFromImage(
       String imagePath) async {
+    await _ensureAiInteractionAllowed();
     final config = await getConfig();
     if (config == null || !config.isConfigured) {
       throw Exception('大模型未配置，请先在设置中配置API');
@@ -740,6 +745,13 @@ class LLMService {
     // print('====================================');
 
     return results;
+  }
+
+  static Future<void> _ensureAiInteractionAllowed() async {
+    final allowed = await MinorModeService.instance.authorizeAiInteraction();
+    if (!allowed) {
+      throw const MinorModeAccessException('当前未成年人模式年龄段暂不允许使用高级 AI 功能');
+    }
   }
 
   static List<Map<String, dynamic>> _extractJsonList(String content) {

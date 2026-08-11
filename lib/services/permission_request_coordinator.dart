@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/app_platform.dart';
 import 'band_sync_service.dart';
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
 import 'screen_time_service.dart';
 
 enum AppPermissionKind {
@@ -55,6 +57,23 @@ extension AppPermissionKindDetails on AppPermissionKind {
         AppPermissionKind.liveUpdates =>
           true,
         _ => false,
+      };
+
+  /// Advanced system/device permissions require the same parent gate no
+  /// matter which screen initiated the request. Normal productivity
+  /// permissions and APK installation remain outside this gate.
+  bool get requiresMinorModeAuthorization => switch (this) {
+        AppPermissionKind.usageStats ||
+        AppPermissionKind.batteryOptimization ||
+        AppPermissionKind.liveUpdates ||
+        AppPermissionKind.bandDeviceManagement =>
+          true,
+        AppPermissionKind.notification ||
+        AppPermissionKind.storage ||
+        AppPermissionKind.requestInstall ||
+        AppPermissionKind.exactAlarm ||
+        AppPermissionKind.calendar =>
+          false,
       };
 }
 
@@ -172,6 +191,32 @@ class PermissionRequestCoordinator with WidgetsBindingObserver {
         openedSettings: false,
         cancelledByUser: false,
       );
+    }
+
+    if (permission.requiresMinorModeAuthorization) {
+      final authorized = await MinorModeService.instance.authorizeAction(
+        MinorModeAction.sensitive,
+      );
+      if (!authorized) {
+        if (context.mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(
+                MinorModeService.instance.authorizationFailureMessage(
+                  MinorModeAction.sensitive,
+                ),
+              ),
+            ),
+          );
+        }
+        return PermissionRequestResult(
+          permission: permission,
+          previousStatus: previousStatus,
+          status: previousStatus,
+          openedSettings: false,
+          cancelledByUser: true,
+        );
+      }
     }
 
     var openedSettings = false;

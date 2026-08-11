@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
+import 'storage/user_session_storage.dart';
+import 'storage/storage_key_scope.dart';
 
 class ChatSession {
   final String id;
@@ -54,10 +56,8 @@ class ChatStorageService {
 
   // 🚀 私有助手：获取隔离的存储 Key
   static Future<String> _getScopedKey(String baseKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString('current_login_user');
-    if (username == null || username.isEmpty) return baseKey;
-    return "${baseKey}_$username";
+    final username = await UserSessionStorage.getCurrentUsername();
+    return StorageKeyScope.scoped(baseKey, username);
   }
 
   static const String _defaultPrompt =
@@ -100,7 +100,7 @@ class ChatStorageService {
 
     // 迁移检查：如果用户隔离 Key 为空，尝试从全局 Key 迁移（仅一次）
     if (sessionsStr == null || sessionsStr.isEmpty) {
-      final String? username = prefs.getString('current_login_user');
+      final String? username = await UserSessionStorage.getCurrentUsername();
       if (username != null && username.isNotEmpty) {
         final markerKey = "${_sessionsKey}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {
@@ -314,7 +314,7 @@ class ChatStorageService {
 
     // 迁移检查
     if (model == null) {
-      final String? username = prefs.getString('current_login_user');
+      final String? username = await UserSessionStorage.getCurrentUsername();
       if (username != null && username.isNotEmpty) {
         final markerKey = "${_chatModelKey}_${username}_migrated";
         if (!(prefs.getBool(markerKey) ?? false)) {

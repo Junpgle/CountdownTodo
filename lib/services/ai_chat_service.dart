@@ -3,6 +3,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
+
 class AiChatStreamChunk {
   const AiChatStreamChunk({
     this.content = '',
@@ -99,6 +102,7 @@ class AiChatService {
     Duration timeout = const Duration(seconds: 60),
     Completer<void>? cancelToken,
   }) async* {
+    await _ensureAiInteractionAllowed();
     final client = http.Client();
     var chunkCount = 0;
     var emittedCount = 0;
@@ -235,6 +239,7 @@ class AiChatService {
     int maxTokens = 30,
     Duration timeout = const Duration(seconds: 10),
   }) async {
+    await _ensureAiInteractionAllowed();
     final resolvedUrl = resolveChatUrl(provider, apiUrl);
 
     final body = <String, dynamic>{
@@ -283,6 +288,13 @@ class AiChatService {
     required String provider,
     required String apiKey,
   }) async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized) {
+      throw const MinorModeAccessException('未成年人模式下，模型列表获取需要家长身份认证');
+    }
+
     final baseUrl = providerBaseUrls[provider];
     if (baseUrl == null) {
       throw Exception('该服务商暂不支持拉取模型列表');
@@ -316,4 +328,11 @@ class AiChatService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $apiKey',
       };
+
+  static Future<void> _ensureAiInteractionAllowed() async {
+    final allowed = await MinorModeService.instance.authorizeAiInteraction();
+    if (!allowed) {
+      throw const MinorModeAccessException('当前未成年人模式年龄段暂不允许使用高级 AI 功能');
+    }
+  }
 }

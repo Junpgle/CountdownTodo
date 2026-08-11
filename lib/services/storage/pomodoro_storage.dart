@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../models.dart';
+import '../../utils/json_value_parser.dart';
 import '../database_helper.dart';
 
 typedef TimeLogMigrationSaver = Future<void> Function(
@@ -184,10 +185,7 @@ class PomodoroStorage {
   }
 
   static int? _parseNullableInt(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
+    return JsonValueParser.toNullableInt(raw);
   }
 
   static String? _emptyToNull(dynamic value) {

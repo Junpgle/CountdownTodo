@@ -975,6 +975,23 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   Future<void> _useGlobalModel() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.llmConfiguration,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
     await ChatStorageService.clearChatConfig();
     final globalConfig = await LLMService.getConfig();
     if (mounted) {
@@ -999,6 +1016,23 @@ mixin _TodoChatLayout on _TodoChatScreenStateBase {
   }
 
   Future<void> _showModelConfig() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.llmConfiguration,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final globalConfig = await LLMService.getConfig();
     if (!mounted) return;
     final modelCtrl = TextEditingController(

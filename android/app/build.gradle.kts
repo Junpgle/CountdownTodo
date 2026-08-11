@@ -1,39 +1,28 @@
 import java.util.Properties
-import java.util.regex.Pattern
 
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Auto bump version on every build
-fun bumpPubspecVersion() {
-    val projectRoot = project.projectDir.parentFile.parentFile
-    val pubspecFile = File(projectRoot, "pubspec.yaml")
-    if (!pubspecFile.exists()) return
+// Keep Android's versionCode deterministic and aligned with pubspec.yaml.
+// For example: 5.6.18 -> 5618 and 5.7.0 -> 5700.
+fun versionCodeFromVersionName(versionName: String): Int {
+    val parts = versionName.substringBefore("+").substringBefore("-").split(".")
+    val major = parts.getOrNull(0)?.toIntOrNull()
+    val minor = parts.getOrNull(1)?.toIntOrNull()
+    val patch = parts.getOrNull(2)?.toIntOrNull()
 
-    var content = pubspecFile.readText()
-    val pattern = Pattern.compile("^version:\\s*(\\d+)\\.(\\d+)\\.(\\d+)(\\+\\d+)?\\s*$", Pattern.MULTILINE)
-    val matcher = pattern.matcher(content)
-
-    if (matcher.find()) {
-        val major = matcher.group(1)!!.toInt()
-        val minor = matcher.group(2)!!.toInt()
-        val patch = matcher.group(3)!!.toInt()
-
-        val newPatch = patch + 1
-        val newVersionLine = "version: $major.$minor.$newPatch"
-        content = matcher.replaceFirst(newVersionLine)
-        pubspecFile.writeText(content)
-        println("[VERSION BUMPED] -> $major.$minor.$newPatch")
+    require(major != null && minor != null && patch != null) {
+        "Invalid versionName '$versionName'; expected major.minor.patch"
     }
-}
-
-tasks.whenTaskAdded {
-    if (name == "assemble" || name == "assembleDebug" || name == "assembleRelease" ||
-        name == "bundleDebug" || name == "bundleRelease" || name == "bundle") {
-        doFirst { bumpPubspecVersion() }
+    require(major in 0..999 && minor in 0..9 && patch in 0..99) {
+        "Version '$versionName' cannot be encoded as major*1000 + minor*100 + patch"
     }
+
+    val versionCode = major * 1000 + minor * 100 + patch
+    require(versionCode > 0) { "versionCode must be greater than 0" }
+    return versionCode
 }
 
 // 1. 加载签名配置文件 (key.properties)
@@ -70,7 +59,7 @@ android {
         applicationId = "com.math_quiz.junpgle.com.math_quiz_app"
         minSdk = 26
         targetSdk = 36
-        versionCode = flutter.versionCode
+        versionCode = versionCodeFromVersionName(flutter.versionName)
         versionName = flutter.versionName
     }
 
@@ -89,6 +78,17 @@ android {
             // 调试模式下关闭混淆和资源压缩以加快构建并解决冲突
             isMinifyEnabled = false
             isShrinkResources = false
+        }
+        getByName("profile") {
+            // Profile 与 Debug 共用包名，便于直接覆盖安装测试版本
+            applicationIdSuffix = ".debug"
+
+            // Profile 与 Debug 使用相同的签名，避免安装时与测试版本冲突
+            if (keystoreProperties.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
         getByName("release") {
             // 确保 release 使用正确的签名配置
@@ -128,6 +128,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("com.google.android.material:material:1.12.0")
+    implementation("com.google.android.play:age-signals:0.0.4")
     implementation("io.github.d4viddf:hyperisland_kit:0.4.3")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")

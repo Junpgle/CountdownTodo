@@ -8,6 +8,8 @@ import '../storage_service.dart';
 import 'api_service.dart';
 import 'browser_file_service.dart';
 import 'course_service.dart';
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
 
 class DataExportService {
@@ -105,6 +107,19 @@ class DataExportService {
     required bool saveToFile,
     ExportOptions options = const ExportOptions(),
   }) async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.dataExport,
+    );
+    if (!authorized) {
+      return ExportResult(
+        success: false,
+        errorMessage: MinorModeService.instance.authorizationFailureMessage(
+          MinorModeAction.dataExport,
+        ),
+        totalItems: 0,
+      );
+    }
+
     try {
       final deviceId = await StorageService.getDeviceId();
       final data = <String, dynamic>{};

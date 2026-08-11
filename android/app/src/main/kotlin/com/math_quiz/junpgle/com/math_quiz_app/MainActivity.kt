@@ -11,6 +11,8 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.net.Uri
@@ -19,6 +21,9 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Process
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.CalendarContract
 import android.provider.MediaStore
 import android.provider.Settings
@@ -47,13 +52,16 @@ import io.github.d4viddf.hyperisland_kit.HyperPicture
 
 // 导入 Shizuku 核心类
 import rikka.shizuku.Shizuku
+import com.math_quiz.junpgle.com.math_quiz_app.minors.MinorModeManager
 
 class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener, Shizuku.OnBinderReceivedListener, Shizuku.OnBinderDeadListener {
     private val CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/notifications"
     private val DEEP_LINK_CHANNEL = "com.math_quiz_app/deep_links"
     private val SCREEN_TIME_CHANNEL = "com.math_quiz_app/screen_time"
+    private val STRICT_FOCUS_HAPTICS_CHANNEL = "countdown_todo/strict_focus_haptics"
     private val BAND_CHANNEL = "com.math_quiz_app/band_communication"
     private val BACKGROUND_NOTIFICATION_CHANNEL = "com.math_quiz_app/background_notifications"
+    private val APP_UPDATE_CHANNEL = "com.math_quiz.junpgle.com.math_quiz_app/app_update"
     private val CALENDAR_PERMISSION_REQUEST = 2407
     private val CALENDAR_APP_MARKER = "CountDownTodo"
     private val CALENDAR_EXT_NAME = "countdowntodo_source"
@@ -115,6 +123,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
     // 全局保存 MethodChannel 实例，以便在广播中调用 Flutter
     private var methodChannel: MethodChannel? = null
     private var deepLinkChannel: MethodChannel? = null
+    private var minorModeManager: MinorModeManager? = null
     private var pendingDeepLink: String? = null
     // 保存待处理的番茄钟动作（在methodChannel初始化前）
     private var pendingPomodoroAction: String? = null
@@ -590,6 +599,8 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     override fun onDestroy() {
         super.onDestroy()
+        minorModeManager?.dispose()
+        minorModeManager = null
         // 移除监听器，防止内存泄漏
         Shizuku.removeRequestPermissionResultListener(this)
         Shizuku.removeBinderReceivedListener(this)
@@ -604,6 +615,13 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         lastNotificationTimestampMs.clear()
         methodChannel = null
         deepLinkChannel = null
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (minorModeManager?.onActivityResult(requestCode, resultCode, data) == true) {
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     // Shizuku 服务成功连接的回调
@@ -927,6 +945,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
         createNotificationChannel()
 
+        // 独立的未成年人模式桥接模块：MainActivity 只负责注册入口。
+        minorModeManager = MinorModeManager(this).also { manager ->
+            manager.register(flutterEngine)
+        }
+
         // 赋值给全局变量
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEEP_LINK_CHANNEL)
@@ -935,6 +958,60 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
                 "getInitialDeepLink" -> {
                     result.success(pendingDeepLink)
                     pendingDeepLink = null
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            STRICT_FOCUS_HAPTICS_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    vibrateStrictFocusStart()
+                    result.success(null)
+                }
+                "pause" -> {
+                    vibrateStrictFocusPause()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APP_UPDATE_CHANNEL
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInstalledApkPath" -> {
+                    // The Flutter process can read its own base.apk. Returning
+                    // the path lets the Dart delta applier use the exact
+                    // signed APK currently installed on this device.
+                    result.success(applicationInfo.sourceDir)
+                }
+                "isWifiConnected" -> {
+                    val connectivityManager =
+                        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val network = connectivityManager.activeNetwork
+                    val capabilities = network?.let {
+                        connectivityManager.getNetworkCapabilities(it)
+                    }
+                    result.success(
+                        capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                            == true
+                    )
+                }
+                "setAutoDownloadOnWifi" -> {
+                    val enabled = call.arguments as? Boolean ?: true
+                    getSharedPreferences(
+                        "FlutterSharedPreferences",
+                        Context.MODE_PRIVATE
+                    ).edit()
+                        .putBoolean("flutter.auto_download_updates_on_wifi", enabled)
+                        .apply()
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }
@@ -1505,6 +1582,36 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
     }
 
+    private fun vibrateStrictFocusStart() {
+        vibrateStrictFocus(120L)
+    }
+
+    private fun vibrateStrictFocusPause() {
+        vibrateStrictFocus(80L)
+    }
+
+    private fun vibrateStrictFocus(durationMs: Long) {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (!vibrator.hasVibrator()) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                VibrationEffect.createOneShot(
+                    durationMs,
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(durationMs)
+        }
+    }
+
     private fun hasUsageStatsPermission(): Boolean {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -2019,85 +2126,63 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
 
     // 📸 图片识别待办成功通知（实时通知，点击进入确认页面）
     private fun updateTodoRecognizeSuccessNotification(args: Map<String, Any>) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val todoCount = (args["todoCount"] as? Number)?.toInt() ?: 0
-
-        val title = "✅ 图片识别完成"
-        val text = "发现${todoCount}个待办事项，点击查看详情"
-        val subText = "识别成功"
-        val color = 0xFF4CAF50.toInt() // 绿色
-
-        // 创建点击意图，打开应用并导航到确认页面
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("open_todo_confirm", true)
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        showTodoRecognitionNotification(
+            title = "✅ 图片识别完成",
+            text = "发现${todoCount}个待办事项，点击查看详情",
+            subText = "识别成功",
+            color = 0xFF4CAF50.toInt(),
+            smallIcon = R.drawable.ic_done,
+            contentIntent = intent,
+            intentFlags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
         )
-
-        // 使用 buildAndNotify 创建实时通知，但设置自定义的 pendingIntent
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        val extras = Bundle()
-        extras.putBoolean("android.extra.requestPromotedOngoing", true)
-
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_done)
-            .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(subText)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setWhen(System.currentTimeMillis())
-            .setShowWhen(true)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setColor(color)
-            .setColorized(false)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .setRequestPromotedOngoing(true)
-            .addExtras(extras)
-            .build()
-
-        try {
-            notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeSuccessNotification error", e)
-        }
     }
 
     // 📸 图片识别待办失败通知（实时通知）
     private fun updateTodoRecognizeFailedNotification(args: Map<String, Any>) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val errorMsg = (args["errorMsg"] as? String)?.trim() ?: "未知错误"
         val displayError = if (errorMsg.length > 50) errorMsg.substring(0, 50) + "..." else errorMsg
-
-        val title = "❌ 图片识别失败"
-        val text = displayError
-        val subText = "识别失败"
-        val color = 0xFFF44336.toInt() // 红色
-
-        // 创建点击意图，打开应用
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
-        val pendingIntent = PendingIntent.getActivity(
-            this, TODO_RECOGNIZE_NOTIFICATION_ID, intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        showTodoRecognitionNotification(
+            title = "❌ 图片识别失败",
+            text = displayError,
+            subText = "识别失败",
+            color = 0xFFF44336.toInt(),
+            smallIcon = R.drawable.ic_cancel,
+            contentIntent = intent,
+            intentFlags = Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
+    }
 
-        // 使用 NotificationCompat.Builder 创建实时通知
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        val extras = Bundle()
-        extras.putBoolean("android.extra.requestPromotedOngoing", true)
+    private fun showTodoRecognitionNotification(
+        title: String,
+        text: String,
+        subText: String,
+        color: Int,
+        smallIcon: Int,
+        contentIntent: Intent,
+        intentFlags: Int,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
+        contentIntent.flags = intentFlags
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            TODO_RECOGNIZE_NOTIFICATION_ID,
+            contentIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val extras = Bundle().apply {
+            putBoolean("android.extra.requestPromotedOngoing", true)
+        }
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_cancel)
+            .setSmallIcon(smallIcon)
             .setLargeIcon(Icon.createWithResource(this, R.drawable.ic_notification))
             .setContentTitle(title)
             .setContentText(text)
@@ -2117,9 +2202,11 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             .build()
 
         try {
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(TODO_RECOGNIZE_NOTIFICATION_ID, notification)
         } catch (e: Exception) {
-            Log.e(TAG, "updateTodoRecognizeFailedNotification error", e)
+            Log.e(TAG, "showTodoRecognitionNotification error", e)
         }
     }
 

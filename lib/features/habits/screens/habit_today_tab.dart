@@ -5,6 +5,7 @@ import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/platform_backdrop_filter.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
@@ -336,7 +337,7 @@ class _HabitTodayTabState extends State<HabitTodayTab> {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
+      child: PlatformBackdropFilter(
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),

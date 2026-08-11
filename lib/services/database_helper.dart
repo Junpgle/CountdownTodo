@@ -6,6 +6,7 @@ import 'environment_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models.dart';
 import '../utils/app_platform.dart';
+import '../utils/json_value_parser.dart';
 import 'database_path_resolver.dart';
 import 'database_schema_history.dart';
 
@@ -14,6 +15,9 @@ class DatabaseHelper {
   static Database? _database;
   static Future<Database>? _openingDatabase;
   static String? _activeUsername;
+  bool? _todoFtsAvailable;
+  Database? _todoFtsDatabase;
+  Future<bool>? _todoFtsAvailabilityFuture;
   static const int _todoTextChunkSize = 8192;
   static const List<String> _todoBaseColumns = [
     'uuid',
@@ -95,6 +99,9 @@ class DatabaseHelper {
       _database = null;
     }
     _activeUsername = null;
+    _todoFtsAvailable = null;
+    _todoFtsDatabase = null;
+    _todoFtsAvailabilityFuture = null;
   }
 
   static Future<void> ensureCourseTableSchema(Database db) async {
@@ -304,6 +311,30 @@ class DatabaseHelper {
           updated_at INTEGER NOT NULL
         )
       ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS habit_sleep_coaching_plans (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          kind TEXT NOT NULL DEFAULT 'sleep_routine',
+          enabled INTEGER NOT NULL DEFAULT 0,
+          paused INTEGER NOT NULL DEFAULT 0,
+          step_minutes INTEGER NOT NULL DEFAULT 15,
+          stage_days INTEGER NOT NULL DEFAULT 4,
+          started_logical_date TEXT,
+          baseline_bedtime_minute INTEGER,
+          baseline_wake_minute INTEGER,
+          baseline_sleep_minutes INTEGER,
+          paused_stage_index INTEGER,
+          paused_progress_days INTEGER,
+          paused_logical_date TEXT,
+          timezone_offset_minutes INTEGER,
+          is_deleted INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_habit_goals_active '
         'ON habit_goals(is_deleted, is_archived, sort_order)',
@@ -321,6 +352,41 @@ class DatabaseHelper {
         'ON habit_checkins(updated_at)',
       );
       await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_habit_sleep_coaching_plans_updated '
+        'ON habit_sleep_coaching_plans(updated_at)',
+      );
+
+      // V42：旧版本允许同一导入日志产生多个相同 dedupe_key。先保留
+      // updated_at/version 最新的一条，再创建唯一索引；否则已有重复数据
+      // 会让数据库升级直接失败。
+      final duplicateDedupeKeys = await db.rawQuery('''
+        SELECT dedupe_key
+        FROM habit_checkins
+        WHERE dedupe_key IS NOT NULL
+        GROUP BY dedupe_key
+        HAVING COUNT(*) > 1
+      ''');
+      for (final duplicate in duplicateDedupeKeys) {
+        final dedupeKey = duplicate['dedupe_key']?.toString();
+        if (dedupeKey == null || dedupeKey.isEmpty) continue;
+        final rows = await db.query(
+          'habit_checkins',
+          columns: ['uuid'],
+          where: 'dedupe_key = ?',
+          whereArgs: [dedupeKey],
+          orderBy: 'updated_at DESC, version DESC, uuid DESC',
+        );
+        for (final row in rows.skip(1)) {
+          final uuid = row['uuid']?.toString();
+          if (uuid == null || uuid.isEmpty) continue;
+          await db.delete(
+            'habit_checkins',
+            where: 'uuid = ?',
+            whereArgs: [uuid],
+          );
+        }
+      }
+      await db.execute(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_habit_checkins_dedupe '
         'ON habit_checkins(dedupe_key) WHERE dedupe_key IS NOT NULL',
       );
@@ -334,6 +400,47 @@ class DatabaseHelper {
         }
       } catch (e) {
         // 忽略：新建库时该列已存在。
+      }
+      // V41：为已存在的睡眠训练计划补充逻辑时区字段（幂等）。
+      try {
+        final planInfo = await db.rawQuery(
+          'PRAGMA table_info(habit_sleep_coaching_plans)',
+        );
+        if (!planInfo.any((row) => row['name'] == 'timezone_offset_minutes')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN timezone_offset_minutes INTEGER',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时该列已存在。
+      }
+      // V43：为已存在的睡眠训练计划补充暂停检查点字段（幂等）。
+      try {
+        final planInfo = await db.rawQuery(
+          'PRAGMA table_info(habit_sleep_coaching_plans)',
+        );
+        final planColumns = planInfo.map((row) => row['name']).toSet();
+        if (!planColumns.contains('paused_stage_index')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_stage_index INTEGER',
+          );
+        }
+        if (!planColumns.contains('paused_progress_days')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_progress_days INTEGER',
+          );
+        }
+        if (!planColumns.contains('paused_logical_date')) {
+          await db.execute(
+            'ALTER TABLE habit_sleep_coaching_plans '
+            'ADD COLUMN paused_logical_date TEXT',
+          );
+        }
+      } catch (e) {
+        // 忽略：新建库时这些列已存在。
       }
       // V38：为规则表补充同步字段 device_id / has_conflict / conflict_data（幂等）。
       try {
@@ -430,6 +537,13 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 38) {
+              // 重建 FTS 会清除历史软删除条目，并安装仅监听搜索字段的触发器。
+              await _setupFts(db);
+            }
+            if (oldVersion < 43) {
+              await ensureHabitSchema(db);
+            }
             if (oldVersion < 37) {
               await ensureHabitSchema(db);
             }
@@ -1515,11 +1629,21 @@ class DatabaseHelper {
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_plan_blocks_day ON todo_plan_blocks(is_deleted, start_time)');
     await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_plan_blocks_todo_active ON todo_plan_blocks(todo_uuid, is_deleted, start_time)');
+    await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_todos_created ON todos(is_deleted, created_at)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_todos_completed_updated ON todos(is_deleted, is_completed, updated_at)');
     await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(is_deleted, due_date)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_overdue ON todos(is_deleted, is_completed, due_date)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_todos_created_date ON todos(is_deleted, created_date)');
+    await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_pomodoro_start ON pomodoro_records(is_deleted, start_time)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pomodoro_todo_active ON pomodoro_records(todo_uuid, is_deleted, start_time)');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_time_logs_start ON time_logs(is_deleted, start_time)');
     await db.execute(
@@ -1533,6 +1657,9 @@ class DatabaseHelper {
       'DROP TRIGGER IF EXISTS todos_after_insert',
       'DROP TRIGGER IF EXISTS todos_after_update',
       'DROP TRIGGER IF EXISTS todos_after_delete',
+      'DROP TRIGGER IF EXISTS todos_after_soft_delete',
+      'DROP TRIGGER IF EXISTS todos_after_restore',
+      'DROP TRIGGER IF EXISTS todos_after_searchable_update',
       'DROP TABLE IF EXISTS todos_fts',
     ];
     for (var sql in cleanups) {
@@ -1603,13 +1730,32 @@ class DatabaseHelper {
   /// 🚀 创建 FTS 实时同步触发器
   Future<void> _createFtsTriggers(Database db) async {
     await db.execute('''
-      CREATE TRIGGER IF NOT EXISTS todos_after_insert AFTER INSERT ON todos BEGIN
+      CREATE TRIGGER IF NOT EXISTS todos_after_insert
+      AFTER INSERT ON todos WHEN new.is_deleted = 0 BEGIN
         INSERT INTO todos_fts(uuid, content, remark, team_name) VALUES (new.uuid, new.content, new.remark, new.team_name);
       END;
     ''');
 
     await db.execute('''
-      CREATE TRIGGER IF NOT EXISTS todos_after_update AFTER UPDATE ON todos BEGIN
+      CREATE TRIGGER IF NOT EXISTS todos_after_soft_delete
+      AFTER UPDATE OF is_deleted ON todos WHEN new.is_deleted != 0 BEGIN
+        DELETE FROM todos_fts WHERE uuid = old.uuid;
+      END;
+    ''');
+
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS todos_after_restore
+      AFTER UPDATE OF is_deleted ON todos
+      WHEN old.is_deleted != 0 AND new.is_deleted = 0 BEGIN
+        DELETE FROM todos_fts WHERE uuid = new.uuid;
+        INSERT INTO todos_fts(uuid, content, remark, team_name) VALUES (new.uuid, new.content, new.remark, new.team_name);
+      END;
+    ''');
+
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS todos_after_searchable_update
+      AFTER UPDATE OF content, remark, team_name ON todos
+      WHEN new.is_deleted = 0 BEGIN
         UPDATE todos_fts SET content = new.content, remark = new.remark, team_name = new.team_name WHERE uuid = old.uuid;
       END;
     ''');
@@ -1651,21 +1797,8 @@ class DatabaseHelper {
     final Map<String, int> resultScores = {};
 
     // 1. 尝试 FTS 搜索引擎 (高性能前缀匹配)
-    final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
-    if (tables.isNotEmpty) {
+    if (await _canUseTodoFts(db)) {
       try {
-        final ftsCount = Sqflite.firstIntValue(
-                await db.rawQuery("SELECT COUNT(*) FROM todos_fts")) ??
-            0;
-        final actualCount = Sqflite.firstIntValue(await db
-                .rawQuery("SELECT COUNT(*) FROM todos WHERE is_deleted = 0")) ??
-            0;
-        if (ftsCount == 0 && actualCount > 0) {
-          await db.execute(
-              "INSERT INTO todos_fts(uuid, content, remark, team_name) SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0");
-        }
-
         final ftsQuery = query
             .split(' ')
             .where((s) => s.isNotEmpty)
@@ -1715,6 +1848,98 @@ class DatabaseHelper {
     return finalResults.take(20).toList();
   }
 
+  Future<void> warmSearchIndex() async {
+    final db = await instance.database;
+    await _canUseTodoFts(db);
+  }
+
+  Future<bool> _canUseTodoFts(Database db) async {
+    if (!identical(_todoFtsDatabase, db)) {
+      _todoFtsDatabase = db;
+      _todoFtsAvailable = null;
+      _todoFtsAvailabilityFuture = null;
+    }
+    final cached = _todoFtsAvailable;
+    if (cached != null) return cached;
+
+    return _todoFtsAvailabilityFuture ??= _probeTodoFts(db);
+  }
+
+  Future<bool> _probeTodoFts(Database db) async {
+    var available = false;
+    try {
+      final tables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='todos_fts'");
+      if (tables.isEmpty) {
+        return _cacheTodoFtsAvailability(db, available);
+      }
+      final ftsCount = Sqflite.firstIntValue(
+              await db.rawQuery("SELECT COUNT(*) FROM todos_fts")) ??
+          0;
+      final actualCount = Sqflite.firstIntValue(await db
+              .rawQuery("SELECT COUNT(*) FROM todos WHERE is_deleted = 0")) ??
+          0;
+      if (ftsCount == 0 && actualCount > 0) {
+        await db.execute(
+            "INSERT INTO todos_fts(uuid, content, remark, team_name) SELECT uuid, content, remark, team_name FROM todos WHERE is_deleted = 0");
+      }
+      available = true;
+    } catch (_) {}
+    return _cacheTodoFtsAvailability(db, available);
+  }
+
+  bool _cacheTodoFtsAvailability(Database db, bool available) {
+    if (identical(_todoFtsDatabase, db)) {
+      _todoFtsAvailable = available;
+    }
+    return available;
+  }
+
+  Future<List<Map<String, dynamic>>> searchTodosByDate(
+    int startInclusive,
+    int endExclusive,
+  ) async {
+    final db = await instance.database;
+    final ids = await db.rawQuery('''
+      SELECT uuid, updated_at
+      FROM todos
+      WHERE is_deleted = 0
+        AND (
+          (due_date >= ? AND due_date < ?)
+          OR
+          (created_date >= ? AND created_date < ?)
+        )
+      ORDER BY updated_at DESC
+      LIMIT 20
+    ''', [startInclusive, endExclusive, startInclusive, endExclusive]);
+    if (ids.isEmpty) return const [];
+
+    final scoreById = <String, int>{
+      for (final row in ids)
+        row['uuid'].toString(): (row['updated_at'] as num?)?.toInt() ?? 0,
+    };
+    final rows = await getTodoMaps(
+      includeDeleted: true,
+      uuids: scoreById.keys.toList(),
+    );
+    rows.sort((a, b) => (scoreById[b['uuid'].toString()] ?? 0)
+        .compareTo(scoreById[a['uuid'].toString()] ?? 0));
+    return rows;
+  }
+
+  Future<int> countOverdueTodos(int beforeExclusive) async {
+    final db = await instance.database;
+    return Sqflite.firstIntValue(await db.rawQuery('''
+      SELECT COUNT(*)
+      FROM todos
+      WHERE is_deleted = 0
+        AND is_completed = 0
+        AND due_date IS NOT NULL
+        AND due_date != 0
+        AND due_date < ?
+    ''', [beforeExclusive])) ?? 0;
+  }
+
   Future<List<Map<String, dynamic>>> searchTodoGroups(String query) async {
     final db = await instance.database;
     return await db.rawQuery('''
@@ -1757,6 +1982,21 @@ class DatabaseHelper {
       ORDER BY start_time DESC
       LIMIT 15
     ''', ['%$query%', '%$query%']);
+  }
+
+  Future<List<Map<String, dynamic>>> searchTimeLogsByDate(
+    int startInclusive,
+    int endExclusive,
+  ) async {
+    final db = await instance.database;
+    return db.rawQuery('''
+      SELECT * FROM time_logs
+      WHERE is_deleted = 0
+        AND start_time >= ?
+        AND start_time < ?
+      ORDER BY start_time DESC
+      LIMIT 15
+    ''', [startInclusive, endExclusive]);
   }
 
   // ==========================================
@@ -1893,10 +2133,21 @@ class DatabaseHelper {
     } else {
       sql
         ..write(projectedColumns.join(', '))
+        // Most todo text is tiny. Returning those values with the primary
+        // query avoids one query per populated text column and row. Oversized
+        // values keep using the chunked fallback below so a legacy/invalid
+        // record cannot create a large platform-channel allocation.
+        ..write(
+            ', CASE WHEN LENGTH(t.content) <= $_todoTextChunkSize THEN t.content END AS content')
+        ..write(
+            ', CASE WHEN LENGTH(t.remark) <= $_todoTextChunkSize THEN t.remark END AS remark')
         ..write(', LENGTH(t.content) AS _content_length')
         ..write(', LENGTH(t.remark) AS _remark_length');
       if (includeConflictData) {
-        sql.write(', LENGTH(t.conflict_data) AS _conflict_length');
+        sql
+          ..write(
+              ', CASE WHEN LENGTH(t.conflict_data) <= $_todoTextChunkSize THEN t.conflict_data END AS conflict_data')
+          ..write(', LENGTH(t.conflict_data) AS _conflict_length');
       }
     }
     sql.write(
@@ -1912,6 +2163,25 @@ class DatabaseHelper {
     final rows = await db.rawQuery(sql.toString(), whereArgs);
     if (inlineTextColumns) {
       return rows;
+    }
+    final hasOversizedText = rows.any((row) {
+      final contentLength = _toNullableInt(row['_content_length']) ?? 0;
+      final remarkLength = _toNullableInt(row['_remark_length']) ?? 0;
+      final conflictLength = includeConflictData
+          ? (_toNullableInt(row['_conflict_length']) ?? 0)
+          : 0;
+      return contentLength > _todoTextChunkSize ||
+          remarkLength > _todoTextChunkSize ||
+          conflictLength > _todoTextChunkSize;
+    });
+    if (!hasOversizedText) {
+      return rows.map((row) {
+        final hydrated = Map<String, dynamic>.from(row)
+          ..remove('_content_length')
+          ..remove('_remark_length');
+        if (includeConflictData) hydrated.remove('_conflict_length');
+        return hydrated;
+      }).toList();
     }
     final hydrated = <Map<String, dynamic>>[];
     for (final row in rows) {
@@ -1935,25 +2205,31 @@ class DatabaseHelper {
       return hydrated;
     }
 
-    hydrated['content'] = await _readTodoTextColumn(
-      db,
-      uuid,
-      'content',
-      _toNullableInt(row['_content_length']),
-    );
-    hydrated['remark'] = await _readTodoTextColumn(
-      db,
-      uuid,
-      'remark',
-      _toNullableInt(row['_remark_length']),
-    );
-    if (includeConflictData) {
-      hydrated['conflict_data'] = await _readTodoTextColumn(
+    if (hydrated['content'] == null) {
+      hydrated['content'] = await _readTodoTextColumn(
         db,
         uuid,
-        'conflict_data',
-        _toNullableInt(row['_conflict_length']),
+        'content',
+        _toNullableInt(row['_content_length']),
       );
+    }
+    if (hydrated['remark'] == null) {
+      hydrated['remark'] = await _readTodoTextColumn(
+        db,
+        uuid,
+        'remark',
+        _toNullableInt(row['_remark_length']),
+      );
+    }
+    if (includeConflictData) {
+      if (hydrated['conflict_data'] == null) {
+        hydrated['conflict_data'] = await _readTodoTextColumn(
+          db,
+          uuid,
+          'conflict_data',
+          _toNullableInt(row['_conflict_length']),
+        );
+      }
     }
     hydrated.remove('_content_length');
     hydrated.remove('_remark_length');
@@ -1984,9 +2260,7 @@ class DatabaseHelper {
   }
 
   int? _toNullableInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    return int.tryParse(value.toString());
+    return JsonValueParser.toNullableInt(value);
   }
 
   // 🚀 Uni-Sync 4.0: 获取所有待办事项（用于缓存重载）

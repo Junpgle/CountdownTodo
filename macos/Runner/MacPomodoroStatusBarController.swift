@@ -5,6 +5,7 @@ import FlutterMacOS
 import QuartzCore
 import Carbon
 import CoreAudio
+import CoreServices
 import Darwin
 import SQLite3
 
@@ -39,7 +40,14 @@ private struct MacIslandTodoSummary: Identifiable, Equatable {
     let groupName: String
 }
 
+fileprivate struct MacClipboardBrowser: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let applicationURL: URL
+}
+
 private struct MacNowPlayingSnapshot {
+    var sourceBundleIdentifier = ""
     var trackIdentifier = ""
     var title = ""
     var artist = ""
@@ -99,6 +107,10 @@ private final class MacNowPlayingMonitor {
     private struct NeteaseLyricResponse: Decodable {
         let lrc: NeteaseLyricSection?
         let tlyric: NeteaseLyricSection?
+    }
+
+    private struct LrclibLyricResponse: Decodable {
+        let syncedLyrics: String?
     }
 
     private struct NeteaseTrackRecord {
@@ -209,7 +221,7 @@ private final class MacNowPlayingMonitor {
         refreshSequence += 1
         let sequence = refreshSequence
         guard let getInfo = getInfo else {
-            refreshNeteaseFallback(sequence: sequence)
+            refreshSystemPlaybackOrNetease(sequence: sequence)
             return
         }
         let callback: InfoCallback = { [weak self] rawInfo in
@@ -217,7 +229,7 @@ private final class MacNowPlayingMonitor {
             let info = (rawInfo as NSDictionary?) as? [String: Any] ?? [:]
             let title = self.stringValue(info["kMRMediaRemoteNowPlayingInfoTitle"])
             guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                self.refreshNeteaseFallback(sequence: sequence)
+                self.refreshSystemPlaybackOrNetease(sequence: sequence)
                 return
             }
 
@@ -231,7 +243,7 @@ private final class MacNowPlayingMonitor {
             let artwork = artworkData.flatMap(NSImage.init(data:))
 
             let deliver: (Bool) -> Void = { [weak self] isPlaying in
-                self?.publish(MacNowPlayingSnapshot(
+                let snapshot = MacNowPlayingSnapshot(
                     trackIdentifier: "\(title)\u{001F}\(artist)",
                     title: title,
                     artist: artist,
@@ -242,7 +254,12 @@ private final class MacNowPlayingMonitor {
                     playbackRate: rate,
                     updatedAt: timestamp,
                     isPlaying: isPlaying
-                ), sequence: sequence)
+                )
+                self?.publish(snapshot, sequence: sequence)
+                self?.loadAppleMusicLyricsIfNeeded(
+                    for: snapshot,
+                    sequence: sequence
+                )
             }
 
             if let getPlaying = self.getPlaying {
@@ -257,10 +274,42 @@ private final class MacNowPlayingMonitor {
         getInfo(.main, callback)
     }
 
+    /// MediaRemote 在新系统上可能拒绝第三方读取。先尝试读取系统媒体状态，
+    /// 再尝试 Apple Music 的公开 AppleScript 接口，最后才进入网易云兼容层。
+    private func refreshSystemPlaybackOrNetease(sequence: Int) {
+        fallbackQueue.async { [weak self] in
+            guard let self = self else { return }
+            let systemPlayback = self.readSystemPlaybackState()
+            if let systemPlayback = systemPlayback {
+                if systemPlayback.bundleIdentifier != "com.netease.163music" {
+                    self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
+                    return
+                }
+                self.refreshNeteaseFallback(
+                    sequence: sequence,
+                    systemPlayback: systemPlayback
+                )
+                return
+            }
+
+            if let appleMusicPlayback = self.readAppleMusicState() {
+                self.publishSystemPlaybackState(
+                    appleMusicPlayback,
+                    sequence: sequence
+                )
+                return
+            }
+            self.refreshNeteaseFallback(sequence: sequence)
+        }
+    }
+
     /// 网易云音乐 3.x 有时会正常更新自己的 MPNowPlayingInfoCenter，却不
-    /// 出现在系统 MediaRemote 客户端列表中。仅在系统结果为空时读取其
-    /// 本地最近播放记录，并用 CoreAudio 判断该进程是否仍在输出声音。
-    private func refreshNeteaseFallback(sequence: Int) {
+    /// 出现在系统 MediaRemote 客户端列表中。读取其本地最近播放记录，并用
+    /// CoreAudio 判断该进程是否仍在输出声音。
+    private func refreshNeteaseFallback(
+        sequence: Int,
+        systemPlayback: SystemPlaybackState? = nil
+    ) {
         guard let app = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.netease.163music"
         ).first(where: { !$0.isTerminated }) else {
@@ -270,10 +319,11 @@ private final class MacNowPlayingMonitor {
         let processIdentifier = app.processIdentifier
         let previousSnapshot = currentSnapshot
         let optimisticState = optimisticPlaybackState
+        let providedSystemPlayback = systemPlayback
 
         fallbackQueue.async { [weak self] in
             guard let self = self else { return }
-            let systemPlayback = self.readSystemPlaybackState()
+            let systemPlayback = providedSystemPlayback ?? self.readSystemPlaybackState()
             if let systemPlayback = systemPlayback,
                systemPlayback.bundleIdentifier != "com.netease.163music" {
                 self.publishSystemPlaybackState(systemPlayback, sequence: sequence)
@@ -363,6 +413,7 @@ private final class MacNowPlayingMonitor {
                 }
             }
             var snapshot = MacNowPlayingSnapshot(
+                sourceBundleIdentifier: "com.netease.163music",
                 trackIdentifier: record.track.id,
                 title: matchingSystemPlayback?.title ?? record.track.name,
                 artist: matchingSystemPlayback?.artist ?? artist,
@@ -541,6 +592,7 @@ private final class MacNowPlayingMonitor {
         sequence: Int
     ) {
         let snapshot = MacNowPlayingSnapshot(
+            sourceBundleIdentifier: state.bundleIdentifier,
             trackIdentifier: "\(state.title)\u{001F}\(state.artist)",
             title: state.title,
             artist: state.artist,
@@ -555,7 +607,23 @@ private final class MacNowPlayingMonitor {
             isPlaying: state.playbackRate > 0
         )
         DispatchQueue.main.async { [weak self] in
-            self?.publish(snapshot, sequence: sequence)
+            guard let self = self else { return }
+            var snapshotWithLyrics = snapshot
+            if state.bundleIdentifier == "com.apple.Music" {
+                let cacheKey = self.appleMusicLyricCacheKey(for: snapshot)
+                snapshotWithLyrics.lyrics = self.lyricCache[cacheKey] ?? []
+                self.publish(snapshotWithLyrics, sequence: sequence)
+                if self.lyricCache[cacheKey] == nil,
+                   self.lyricRetryAfter[cacheKey, default: .distantPast] <= Date() {
+                    self.loadAppleMusicLyrics(
+                        for: snapshotWithLyrics,
+                        cacheKey: cacheKey,
+                        sequence: sequence
+                    )
+                }
+            } else {
+                self.publish(snapshotWithLyrics, sequence: sequence)
+            }
         }
     }
 
@@ -639,6 +707,85 @@ private final class MacNowPlayingMonitor {
         return state
     }
 
+    /// Apple Music 提供了公开的 AppleScript 字典。它不依赖 MediaRemote 的
+    /// 私有读取权限，作为新系统上的媒体信息与播放进度兜底；首次使用时
+    /// macOS 可能会要求允许 CountDownTodo 控制 Music。
+    private func readAppleMusicState() -> SystemPlaybackState? {
+        guard NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Music"
+        ).contains(where: { !$0.isTerminated }) else {
+            return nil
+        }
+
+        let script = #"""
+        tell application id "com.apple.Music"
+          try
+            set currentTrack to current track
+            set trackTitle to name of currentTrack as text
+            set trackArtist to artist of currentTrack as text
+            set trackAlbum to album of currentTrack as text
+            set trackDuration to duration of currentTrack as real
+            set trackPosition to player position as real
+            set trackRate to 0
+            if player state is playing then set trackRate to 1
+
+            set previousDelimiters to AppleScript's text item delimiters
+            set AppleScript's text item delimiters to (ASCII character 31)
+            set payload to {trackTitle, trackArtist, trackAlbum, trackDuration as text, trackPosition as text, trackRate as text}
+            set output to payload as text
+            set AppleScript's text item delimiters to previousDelimiters
+            return output
+          on error
+            return ""
+          end try
+        end tell
+        """#
+
+        let process = Process()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        guard exitSemaphore.wait(timeout: .now() + 1.5) == .success else {
+            process.terminate()
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fields = output
+            .split(separator: "\u{001F}", omittingEmptySubsequences: false)
+            .map(String.init)
+        guard fields.count >= 6 else { return nil }
+
+        let title = fields[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        let duration = Double(fields[3].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let elapsedTime = Double(fields[4].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let playbackRate = Double(fields[5].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        return SystemPlaybackState(
+            bundleIdentifier: "com.apple.Music",
+            title: title,
+            artist: fields[1],
+            album: fields[2],
+            duration: max(0, duration),
+            elapsedTime: max(0, elapsedTime),
+            playbackRate: max(0, playbackRate)
+        )
+    }
+
     private func mediaTitlesMatch(_ lhs: String, _ rhs: String) -> Bool {
         let normalize: (String) -> String = {
             $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -718,6 +865,156 @@ private final class MacNowPlayingMonitor {
             snapshotWithArtwork.artwork = artwork
             DispatchQueue.main.async { [weak self] in
                 self?.publish(snapshotWithArtwork, sequence: sequence)
+            }
+        }.resume()
+    }
+
+    private func appleMusicLyricCacheKey(
+        for snapshot: MacNowPlayingSnapshot
+    ) -> String {
+        let values = [
+            snapshot.title,
+            snapshot.artist,
+            snapshot.album,
+            String(Int(snapshot.duration.rounded())),
+        ].map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .lowercased()
+        }
+        return "apple:\(values.joined(separator: "\u{001F}"))"
+    }
+
+    /// MediaRemote 直接返回的媒体信息没有播放器 bundle id。若 Apple Music
+    /// 正在运行，额外用 AppleScript 核对当前歌曲，确保歌词不会错配到其他
+    /// 播放器的同名歌曲。
+    private func loadAppleMusicLyricsIfNeeded(
+        for snapshot: MacNowPlayingSnapshot,
+        sequence: Int
+    ) {
+        guard snapshot.isAvailable else { return }
+        if snapshot.sourceBundleIdentifier == "com.apple.Music" {
+            let cacheKey = appleMusicLyricCacheKey(for: snapshot)
+            guard lyricCache[cacheKey] == nil,
+                  lyricRetryAfter[cacheKey, default: .distantPast] <= Date() else {
+                return
+            }
+            loadAppleMusicLyrics(
+                for: snapshot,
+                cacheKey: cacheKey,
+                sequence: sequence
+            )
+            return
+        }
+        guard snapshot.sourceBundleIdentifier.isEmpty else { return }
+
+        fallbackQueue.async { [weak self] in
+            guard let self = self,
+                  let appleMusicState = self.readAppleMusicState(),
+                  self.mediaTitlesMatch(appleMusicState.title, snapshot.title),
+                  (snapshot.artist.isEmpty
+                      || self.mediaTitlesMatch(appleMusicState.artist, snapshot.artist)) else {
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self,
+                      sequence == self.refreshSequence,
+                      self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
+                    return
+                }
+                var appleMusicSnapshot = snapshot
+                appleMusicSnapshot.sourceBundleIdentifier = "com.apple.Music"
+                let cacheKey = self.appleMusicLyricCacheKey(for: appleMusicSnapshot)
+                guard self.lyricCache[cacheKey] == nil,
+                      self.lyricRetryAfter[cacheKey, default: .distantPast] <= Date() else {
+                    return
+                }
+                self.loadAppleMusicLyrics(
+                    for: appleMusicSnapshot,
+                    cacheKey: cacheKey,
+                    sequence: sequence
+                )
+            }
+        }
+    }
+
+    /// LRCLIB 根据歌曲元数据返回带时间戳的 LRC 歌词。歌词来源独立于
+    /// Apple Music 播放控制，因此 Apple Music 仍只需要授予音乐自动化权限。
+    private func loadAppleMusicLyrics(
+        for snapshot: MacNowPlayingSnapshot,
+        cacheKey: String,
+        sequence: Int
+    ) {
+        guard !cacheKey.isEmpty,
+              !lyricRequestsInFlight.contains(cacheKey) else { return }
+        let title = snapshot.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = snapshot.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let album = snapshot.album.trimmingCharacters(in: .whitespacesAndNewlines)
+        let duration = Int(snapshot.duration.rounded())
+        guard !title.isEmpty, !artist.isEmpty, !album.isEmpty, duration > 0 else {
+            return
+        }
+
+        lyricRequestsInFlight.insert(cacheKey)
+        lyricRetryAfter[cacheKey] = Date().addingTimeInterval(60)
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "lrclib.net"
+        components.path = "/api/get"
+        components.queryItems = [
+            URLQueryItem(name: "track_name", value: title),
+            URLQueryItem(name: "artist_name", value: artist),
+            URLQueryItem(name: "album_name", value: album),
+            URLQueryItem(name: "duration", value: String(duration)),
+        ]
+        guard let url = components.url else {
+            lyricRequestsInFlight.remove(cacheKey)
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue(
+            "CountDownTodo macOS (https://github.com/Junpgle/CountdownTodo)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self = self else { return }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let decodedResponse = data.flatMap {
+                try? JSONDecoder().decode(LrclibLyricResponse.self, from: $0)
+            }
+            let lines = decodedResponse?.syncedLyrics.map {
+                self.parseLyrics($0, translation: "")
+            } ?? []
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.lyricRequestsInFlight.remove(cacheKey)
+                guard statusCode == 200,
+                      decodedResponse != nil,
+                      !lines.isEmpty else {
+                    return
+                }
+                self.lyricCache[cacheKey] = lines
+                if self.lyricCache.count > 32,
+                   let oldestKey = self.lyricCache.keys.first(where: {
+                       $0 != cacheKey
+                   }) {
+                    self.lyricCache.removeValue(forKey: oldestKey)
+                }
+                guard sequence == self.refreshSequence,
+                      self.currentSnapshot.trackIdentifier == snapshot.trackIdentifier else {
+                    return
+                }
+                var snapshotWithLyrics = snapshot
+                snapshotWithLyrics.lyrics = lines
+                self.publish(snapshotWithLyrics, sequence: sequence)
+                #if DEBUG
+                NSLog("[MacIsland] Apple Music 歌词已加载：%d 行", lines.count)
+                #endif
             }
         }.resume()
     }
@@ -873,7 +1170,12 @@ private final class MacNowPlayingMonitor {
     }
 
     func previous() {
-        send(command: 5)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("previous track")
+            scheduleCommandRefreshes()
+        } else {
+            send(command: 5)
+        }
     }
 
     func togglePlayPause() {
@@ -900,17 +1202,54 @@ private final class MacNowPlayingMonitor {
             )
             onChange?(optimisticSnapshot)
         }
-        sendCommandFunction?(2, nil)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("playpause")
+        } else {
+            sendCommandFunction?(2, nil)
+        }
         scheduleCommandRefreshes()
     }
 
     func next() {
-        send(command: 4)
+        if currentSnapshot.sourceBundleIdentifier == "com.apple.Music" {
+            sendAppleMusicCommand("next track")
+            scheduleCommandRefreshes()
+        } else {
+            send(command: 4)
+        }
     }
 
     private func send(command: UInt32) {
         sendCommandFunction?(command, nil)
         scheduleCommandRefreshes()
+    }
+
+    private func sendAppleMusicCommand(_ command: String) {
+        guard NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.Music"
+        ).contains(where: { !$0.isTerminated }) else {
+            return
+        }
+        let script = """
+        tell application id "com.apple.Music"
+          \(command)
+        end tell
+        """
+        let process = Process()
+        let errorPipe = Pipe()
+        let exitSemaphore = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardError = errorPipe
+        process.terminationHandler = { _ in exitSemaphore.signal() }
+        do {
+            try process.run()
+            if exitSemaphore.wait(timeout: .now() + 1.5) == .timedOut {
+                process.terminate()
+            }
+        } catch {
+            return
+        }
     }
 
     private func scheduleCommandRefreshes() {
@@ -1098,6 +1437,8 @@ class IslandStateModel: ObservableObject {
     @Published var countdownDays = -1
     @Published var clipboardLinkActive = false
     @Published var clipboardLinkDisplay = ""
+    @Published fileprivate var clipboardBrowsers: [MacClipboardBrowser] = []
+    @Published var selectedClipboardBrowserID = ""
     @Published var nowPlayingActive = false
     @Published var nowPlayingTitle = ""
     @Published var nowPlayingArtist = ""
@@ -1123,6 +1464,7 @@ class IslandStateModel: ObservableObject {
     var onSnoozeReminder: (() -> Void)?
     var onOpenClipboardLink: (() -> Void)?
     var onDismissClipboardLink: (() -> Void)?
+    var onSelectClipboardBrowser: ((String) -> Void)?
     var onPreviousTrack: (() -> Void)?
     var onToggleMediaPlayback: (() -> Void)?
     var onNextTrack: (() -> Void)?
@@ -1186,6 +1528,12 @@ class IslandStateModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "M月d日"
         return formatter.string(from: Date(timeIntervalSince1970: Double(countdownTargetMs) / 1000))
+    }
+
+    var selectedClipboardBrowserName: String {
+        clipboardBrowsers.first(where: {
+            $0.id == selectedClipboardBrowserID
+        })?.name ?? "系统默认浏览器"
     }
 }
 
@@ -2468,6 +2816,10 @@ struct MacIslandSwiftUIView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+            if !model.clipboardBrowsers.isEmpty {
+                clipboardBrowserSelector
+            }
+
             HStack(spacing: 12) {
                 Button(action: { model.onDismissClipboardLink?() }) {
                     Text("忽略")
@@ -2506,35 +2858,84 @@ struct MacIslandSwiftUIView: View {
     }
 
     var clipboardLinkCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "link")
-                .foregroundColor(.blue)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("剪贴板链接")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(model.clipboardLinkDisplay)
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.white.opacity(0.55))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "link")
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("剪贴板链接")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text(model.clipboardLinkDisplay)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 8)
+                Button(action: { model.onOpenClipboardLink?() }) {
+                    Text("打开网址")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.85))
+                        .cornerRadius(9)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            Spacer(minLength: 8)
-            Button(action: { model.onOpenClipboardLink?() }) {
-                Text("打开网址")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.85))
-                    .cornerRadius(9)
-                    .contentShape(Rectangle())
+
+            if !model.clipboardBrowsers.isEmpty {
+                clipboardBrowserSelector
             }
-            .buttonStyle(.plain)
         }
         .padding(12)
         .background(Color.white.opacity(0.1))
         .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private var clipboardBrowserSelector: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.65))
+            Text("打开方式")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.7))
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(model.clipboardBrowsers) { browser in
+                    Button(action: {
+                        model.onSelectClipboardBrowser?(browser.id)
+                    }) {
+                        HStack {
+                            Text(browser.name)
+                            if browser.id == model.selectedClipboardBrowserID {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(model.selectedClipboardBrowserName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.14))
+                .cornerRadius(8)
+            }
+            .menuStyle(.borderlessButton)
+        }
     }
     
     var activityCard: some View {
@@ -2587,6 +2988,11 @@ class MacPomodoroStatusBarController {
     private var clipboardURL: URL?
     private var clipboardLinkExpiresAt: TimeInterval = 0
     private var clipboardDidForceExpansion = false
+    private var clipboardBrowsers: [MacClipboardBrowser] = []
+    private var selectedClipboardBrowserID = ""
+
+    private let selectedClipboardBrowserPreferenceKey =
+        "macos_island_clipboard_selected_browser"
 
     private var phase = "idle"
     private var targetEndMs: Int64 = 0
@@ -2630,7 +3036,11 @@ class MacPomodoroStatusBarController {
     private var countdownTargetMs: Int64 = 0
     private var countdownDays = -1
 
-    private init() {}
+    private init() {
+        selectedClipboardBrowserID = UserDefaults.standard.string(
+            forKey: selectedClipboardBrowserPreferenceKey
+        ) ?? ""
+    }
 
     func setup() {
         guard observers.isEmpty else { return }
@@ -3115,6 +3525,8 @@ class MacPomodoroStatusBarController {
         view.countdownDays = countdownDays
         view.clipboardLinkActive = hasClipboardLink
         view.clipboardLinkDisplay = clipboardURL.map(clipboardDisplayText) ?? ""
+        view.clipboardBrowsers = clipboardBrowsers
+        view.selectedClipboardBrowserID = selectedClipboardBrowserID
         view.nowPlayingActive = hasNowPlaying
         view.nowPlayingTitle = nowPlayingSnapshot.title
         view.nowPlayingArtist = nowPlayingSnapshot.artist
@@ -3187,14 +3599,19 @@ class MacPomodoroStatusBarController {
                 if hasReminder && !view.reminderTitle.isEmpty {
                     contentHeight += 12 + 39
                 } else if hasClipboardLink {
-                    contentHeight += 12 + 54
+                    // clipboardLinkCard includes the browser selector and a
+                    // little extra room for accessibility/font metric changes.
+                    contentHeight += 12 + 112
                 } else if hasActivity && !view.activityTitle.isEmpty {
                     contentHeight += 12 + 39
                 }
             } else if hasReminder {
                 contentHeight = 104
             } else if hasClipboardLink {
-                contentHeight = 104
+                // The expanded clipboard card now has four rows: title, URL,
+                // browser selector, and actions. Keep a safety margin so the
+                // selector cannot be clipped by the window mask.
+                contentHeight = 164
             } else if hasActivity {
                 // 标题 36 + 时间卡 48 + 操作区 48。
                 contentHeight = 132
@@ -3444,6 +3861,9 @@ class MacPomodoroStatusBarController {
         view.onDismissClipboardLink = { [weak self] in
             self?.dismissClipboardLink()
         }
+        view.onSelectClipboardBrowser = { [weak self] browserID in
+            self?.selectClipboardBrowser(browserID)
+        }
         view.onPreviousTrack = { [weak self] in
             self?.nowPlayingMonitor.previous()
         }
@@ -3604,9 +4024,135 @@ class MacPomodoroStatusBarController {
             clipboardDidForceExpansion = !isExpanded
         }
         clipboardURL = url
+        updateClipboardBrowsers(for: url)
         clipboardLinkExpiresAt = Date().timeIntervalSince1970 + 15
         isExpanded = true
         refreshDisplay()
+    }
+
+    private func updateClipboardBrowsers(for url: URL) {
+        clipboardBrowsers = discoverClipboardBrowsers(for: url)
+        normalizeSelectedClipboardBrowser()
+    }
+
+    func clipboardBrowserSettings() -> [String: Any] {
+        guard let sampleURL = URL(string: "https://example.com") else {
+            return ["browsers": [], "selectedId": selectedClipboardBrowserID]
+        }
+        let browsers = discoverClipboardBrowsers(for: sampleURL)
+        if clipboardURL == nil {
+            clipboardBrowsers = browsers
+        }
+        normalizeSelectedClipboardBrowser(using: browsers)
+        return [
+            "browsers": browsers.map { browser in
+                ["id": browser.id, "name": browser.name]
+            },
+            "selectedId": selectedClipboardBrowserID,
+        ]
+    }
+
+    func setPreferredClipboardBrowser(_ browserID: String) -> Bool {
+        let browsers: [MacClipboardBrowser]
+        if clipboardBrowsers.isEmpty {
+            guard let sampleURL = URL(string: "https://example.com") else { return false }
+            browsers = discoverClipboardBrowsers(for: sampleURL)
+        } else {
+            browsers = clipboardBrowsers
+        }
+        guard browsers.contains(where: { $0.id == browserID }) else { return false }
+        selectedClipboardBrowserID = browserID
+        UserDefaults.standard.set(browserID, forKey: selectedClipboardBrowserPreferenceKey)
+        if clipboardURL != nil {
+            refreshDisplay()
+        }
+        return true
+    }
+
+    private func discoverClipboardBrowsers(for url: URL) -> [MacClipboardBrowser] {
+        let defaultApplicationURL = NSWorkspace.shared.urlForApplication(toOpen: url)
+        var applicationURLs: [URL] = []
+        if let defaultApplicationURL = defaultApplicationURL {
+            applicationURLs.append(defaultApplicationURL)
+        }
+        if #available(macOS 12.0, *) {
+            applicationURLs.append(contentsOf: NSWorkspace.shared.urlsForApplications(toOpen: url))
+        } else {
+            // urlsForApplications(toOpen:) was introduced in macOS 12.
+            // LaunchServices provides the equivalent URL-based lookup on the
+            // app's macOS 11 deployment target and also finds browser variants
+            // that do not have a fixed bundle identifier in our code.
+            if let legacyURLs = LSCopyApplicationURLsForURL(
+                url as CFURL,
+                LSRolesMask(rawValue: UInt32.max)
+            )?.takeRetainedValue() as? [URL] {
+                applicationURLs.append(contentsOf: legacyURLs)
+            }
+        }
+
+        var seenPaths = Set<String>()
+        var seenBundleIdentifiers = Set<String>()
+        let browsers: [MacClipboardBrowser] = applicationURLs.compactMap { applicationURL in
+            let standardizedURL = applicationURL.standardizedFileURL
+            let path = standardizedURL.path
+            guard seenPaths.insert(path).inserted else { return nil }
+
+            let bundle = Bundle(url: standardizedURL)
+            let bundleIdentifier = bundle?.bundleIdentifier ?? path
+            guard seenBundleIdentifiers.insert(bundleIdentifier).inserted else {
+                return nil
+            }
+            let isDefaultApplication = defaultApplicationURL?.standardizedFileURL == standardizedURL
+            guard isDefaultApplication || declaresWebURLScheme(bundle) else {
+                return nil
+            }
+            let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                ?? standardizedURL.deletingPathExtension().lastPathComponent
+            return MacClipboardBrowser(
+                id: bundleIdentifier,
+                name: name,
+                applicationURL: standardizedURL
+            )
+        }
+        return browsers
+    }
+
+    private func declaresWebURLScheme(_ bundle: Bundle?) -> Bool {
+        guard let urlTypes = bundle?.object(forInfoDictionaryKey: "CFBundleURLTypes")
+                as? [[String: Any]] else {
+            return false
+        }
+        return urlTypes.contains { urlType in
+            guard let schemes = urlType["CFBundleURLSchemes"] as? [String] else {
+                return false
+            }
+            return schemes.contains { scheme in
+                let normalizedScheme = scheme.lowercased()
+                return normalizedScheme == "http" || normalizedScheme == "https"
+            }
+        }
+    }
+
+    private func normalizeSelectedClipboardBrowser(
+        using browsers: [MacClipboardBrowser]? = nil
+    ) {
+        let availableBrowsers = browsers ?? clipboardBrowsers
+        if !availableBrowsers.contains(where: {
+            $0.id == selectedClipboardBrowserID
+        }) {
+            selectedClipboardBrowserID = availableBrowsers.first?.id ?? ""
+            if !selectedClipboardBrowserID.isEmpty {
+                UserDefaults.standard.set(
+                    selectedClipboardBrowserID,
+                    forKey: selectedClipboardBrowserPreferenceKey
+                )
+            }
+        }
+    }
+
+    private func selectClipboardBrowser(_ browserID: String) {
+        _ = setPreferredClipboardBrowser(browserID)
     }
 
     private func normalizedClipboardURL(_ value: String) -> URL? {
@@ -3665,8 +4211,25 @@ class MacPomodoroStatusBarController {
 
     private func openClipboardLink() {
         guard let url = clipboardURL else { return }
-        NSWorkspace.shared.open(url)
-        dismissClipboardLink()
+        guard let browser = clipboardBrowsers.first(where: {
+            $0.id == selectedClipboardBrowserID
+        }) else {
+            NSWorkspace.shared.open(url)
+            dismissClipboardLink()
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: browser.applicationURL,
+            configuration: configuration
+        ) { [weak self] _, error in
+            guard error == nil else { return }
+            DispatchQueue.main.async {
+                self?.dismissClipboardLink()
+            }
+        }
     }
 
     private func dismissClipboardLink() {
@@ -3677,6 +4240,7 @@ class MacPomodoroStatusBarController {
         guard clipboardURL != nil else { return }
         clipboardURL = nil
         clipboardLinkExpiresAt = 0
+        clipboardBrowsers = []
         if restoreExpansion,
            clipboardDidForceExpansion,
            currentReminder == nil,

@@ -68,26 +68,91 @@ class ApiService {
 
   static String get _effectiveBaseUrl => _baseUrlOverride ?? baseUrl;
   static String get effectiveBaseUrl => _effectiveBaseUrl;
+
+  /// Stable namespace for sync watermarks. Test/custom endpoints must not
+  /// share the production or Cloudflare watermark.
+  static String get syncServerKey {
+    final normalized = _effectiveBaseUrl.replaceFirst(RegExp(r'/$'), '');
+    if (normalized == aliyunProdUrl) return 'aliyun';
+    if (normalized == aliyunTestUrl) return 'aliyun_test';
+    if (normalized == cloudflareUrl || normalized == webAliyunProxyUrl) {
+      return 'cf';
+    }
+    return 'custom_${base64Url.encode(utf8.encode(normalized)).replaceAll('=', '')}';
+  }
+
+  static bool get isTestServer => _effectiveBaseUrl.contains(':8084');
   // -----------------------------
 
   // 统一构建安全 Header
-  static Map<String, String> _getHeaders() {
+  static Map<String, String> _getHeaders({bool includeAuth = true}) {
     return {
       'Content-Type': 'application/json',
-      if (_authToken != null && _authToken!.isNotEmpty)
+      if (includeAuth && _authToken != null && _authToken!.isNotEmpty)
         'Authorization': 'Bearer $_authToken',
     };
+  }
+
+  /// 统一构造 API 请求，避免各接口重复处理 Base URL、Header、JSON body
+  /// 和超时。接口方法仍负责解释状态码和响应数据。
+  static Future<http.Response> _request(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+    Duration? timeout,
+    bool includeAuth = true,
+  }) async {
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    final uri = path.startsWith('http://') || path.startsWith('https://')
+        ? Uri.parse(path)
+        : Uri.parse('$_effectiveBaseUrl$normalizedPath');
+    final requestHeaders = headers ?? _getHeaders(includeAuth: includeAuth);
+    final encodedBody = body == null
+        ? null
+        : body is String
+            ? body
+            : jsonEncode(body);
+
+    late Future<http.Response> responseFuture;
+    switch (method.toUpperCase()) {
+      case 'GET':
+        responseFuture = _client.get(uri, headers: requestHeaders);
+      case 'POST':
+        responseFuture = _client.post(
+          uri,
+          headers: requestHeaders,
+          body: encodedBody,
+        );
+      case 'PUT':
+        responseFuture = _client.put(
+          uri,
+          headers: requestHeaders,
+          body: encodedBody,
+        );
+      case 'DELETE':
+        responseFuture = _client.delete(
+          uri,
+          headers: requestHeaders,
+          body: encodedBody,
+        );
+      default:
+        throw ArgumentError.value(method, 'method', 'Unsupported HTTP method');
+    }
+
+    return timeout == null ? responseFuture : responseFuture.timeout(timeout);
   }
 
   /// 🚀 链路健康检查：探测服务器是否在线
   static Future<bool> ping() async {
     try {
       // 访问基础路径，只要有任何响应（即使是 404）也说明网络通畅且服务器在线
-      await _client
-          .get(
-            Uri.parse('$_effectiveBaseUrl/'),
-          )
-          .timeout(const Duration(seconds: 5));
+      await _request(
+        'GET',
+        '/',
+        timeout: const Duration(seconds: 5),
+        includeAuth: false,
+      );
       return true;
     } catch (e) {
       // 网络超时、Socket 错误等均视为离线
@@ -114,10 +179,11 @@ class ApiService {
         bodyMap['turnstile_token'] = turnstileToken;
       }
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(bodyMap),
+      final response = await _request(
+        'POST',
+        '/api/auth/register',
+        body: bodyMap,
+        includeAuth: false,
       );
 
       final data = jsonDecode(response.body);
@@ -148,10 +214,11 @@ class ApiService {
         bodyMap['turnstile_token'] = turnstileToken;
       }
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(bodyMap),
+      final response = await _request(
+        'POST',
+        '/api/auth/login',
+        body: bodyMap,
+        includeAuth: false,
       );
 
       final data = jsonDecode(response.body);
@@ -171,10 +238,11 @@ class ApiService {
 
   static Future<Map<String, dynamic>> forgotPassword(String email) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/auth/forgot_password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
+      final response = await _request(
+        'POST',
+        '/api/auth/forgot_password',
+        body: {'email': email},
+        includeAuth: false,
       );
       final data = jsonDecode(response.body);
       return {
@@ -189,14 +257,15 @@ class ApiService {
   static Future<Map<String, dynamic>> resetPassword(
       String email, String code, String newPassword) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/auth/reset_password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/auth/reset_password',
+        body: {
           'email': email,
           'code': code,
           'new_password': newPassword,
-        }),
+        },
+        includeAuth: false,
       );
       final data = jsonDecode(response.body);
       return {
@@ -211,14 +280,14 @@ class ApiService {
   static Future<Map<String, dynamic>> changePassword(
       int userId, String oldPassword, String newPassword) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/auth/change_password'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/auth/change_password',
+        body: {
           'user_id': userId,
           'old_password': oldPassword,
           'new_password': newPassword,
-        }),
+        },
       );
       final data = jsonDecode(response.body);
       return {
@@ -235,8 +304,11 @@ class ApiService {
   // ==========================================
   static Future<List<dynamic>> fetchLeaderboard() async {
     try {
-      final response =
-          await _client.get(Uri.parse('$_effectiveBaseUrl/api/leaderboard'));
+      final response = await _request(
+        'GET',
+        '/api/leaderboard',
+        includeAuth: false,
+      );
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -250,15 +322,15 @@ class ApiService {
       required int score,
       required int duration}) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/score'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/score',
+        body: {
           'user_id': userId,
           'username': username,
           'score': score,
           'duration': duration
-        }),
+        },
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -287,7 +359,10 @@ class ApiService {
     List<Map<String, dynamic>> habitGoalsChanges = const [],
     List<Map<String, dynamic>> habitRuleChanges = const [],
     List<Map<String, dynamic>> habitCheckInChanges = const [],
+    List<Map<String, dynamic>> habitSleepCoachingPlanChanges = const [],
     bool habitFullSync = false,
+    int? habitLastSyncTime,
+    bool syncHabits = true,
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -306,19 +381,21 @@ class ApiService {
         'habit_goals_changes': habitGoalsChanges,
         'habit_goal_rules_changes': habitRuleChanges,
         'habit_checkins_changes': habitCheckInChanges,
+        'habit_sleep_coaching_plans_changes': habitSleepCoachingPlanChanges,
         'habit_full_sync': habitFullSync,
+        'sync_habits': syncHabits,
         'force_full_sync': forceFullSync,
       };
+
+      if (habitLastSyncTime != null) {
+        body['habit_last_sync_time'] = habitLastSyncTime;
+      }
 
       if (screenTime != null) {
         body['screen_time'] = screenTime;
       }
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/sync'),
-        headers: _getHeaders(),
-        body: jsonEncode(body),
-      );
+      final response = await _request('POST', '/api/sync', body: body);
 
       final data = jsonDecode(response.body);
 
@@ -341,6 +418,9 @@ class ApiService {
           'server_habit_goals': data['server_habit_goals'] ?? [],
           'server_habit_goal_rules': data['server_habit_goal_rules'] ?? [],
           'server_habit_checkins': data['server_habit_checkins'] ?? [],
+          'server_habit_sleep_coaching_plans':
+              data['server_habit_sleep_coaching_plans'] ?? [],
+          'new_habit_sync_time': data['new_habit_sync_time'],
           'sync_capabilities': data['sync_capabilities'],
           'joined_team_uuids': data['joined_team_uuids'],
           'independent_completions':
@@ -368,14 +448,14 @@ class ApiService {
     String? teamUuid,
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/sync/ignore_remote_item'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/sync/ignore_remote_item',
+        body: {
           'uuid': uuid,
           'table_name': table,
           'team_uuid': teamUuid,
-        }),
+        },
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -395,15 +475,15 @@ class ApiService {
     required List<Map<String, dynamic>> apps,
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/screen_time'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/screen_time',
+        body: {
           'user_id': userId,
           'device_name': deviceName,
           'record_date': date,
           'apps': apps,
-        }),
+        },
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -411,15 +491,23 @@ class ApiService {
     }
   }
 
-  static Future<List<dynamic>> fetchScreenTime(int userId, String date) async {
+  static Future<List<dynamic>> fetchScreenTime(
+    int userId,
+    String date, {
+    bool throwOnError = false,
+  }) async {
     try {
-      final response = await _client.get(
-          Uri.parse(
-              '$_effectiveBaseUrl/api/screen_time?user_id=$userId&date=$date'),
-          headers: _getHeaders());
+      final response = await _request(
+        'GET',
+        '/api/screen_time?user_id=$userId&date=$date',
+      );
       if (response.statusCode == 200) return jsonDecode(response.body);
+      if (throwOnError) {
+        throw StateError('screen_time HTTP ${response.statusCode}');
+      }
       return [];
     } catch (e) {
+      if (throwOnError) rethrow;
       return [];
     }
   }
@@ -430,10 +518,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> debugResetDatabase() async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/debug/reset_database'),
-        headers: _getHeaders(),
-      );
+      final response = await _request('POST', '/api/debug/reset_database');
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -446,8 +531,11 @@ class ApiService {
 
   static Future<List<dynamic>> fetchAppMappings() async {
     try {
-      final response =
-          await _client.get(Uri.parse('$_effectiveBaseUrl/api/mappings'));
+      final response = await _request(
+        'GET',
+        '/api/mappings',
+        includeAuth: false,
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -468,7 +556,7 @@ class ApiService {
           ? Uri.parse(
               '$_effectiveBaseUrl/api/courses?user_id=$userId&semester=$semester')
           : Uri.parse('$_effectiveBaseUrl/api/courses?user_id=$userId');
-      final response = await _client.get(uri, headers: _getHeaders());
+      final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -484,14 +572,14 @@ class ApiService {
     String semester = "default",
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/courses'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/courses',
+        body: {
           'user_id': userId,
           'semester': semester,
           'courses': courses,
-        }),
+        },
       );
 
       final data = jsonDecode(response.body);
@@ -530,11 +618,7 @@ class ApiService {
       if (semesters != null) {
         body['semesters'] = semesters;
       }
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/settings'),
-        headers: _getHeaders(),
-        body: jsonEncode(body),
-      );
+      final response = await _request('POST', '/api/settings', body: body);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['success'] == true;
@@ -548,10 +632,7 @@ class ApiService {
   /// 从云端拉取开学/放假时间（返回毫秒时间戳，null 表示未设置）
   static Future<Map<String, dynamic>?> fetchUserSettings() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/settings'),
-        headers: _getHeaders(),
-      );
+      final response = await _request('GET', '/api/settings');
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -564,9 +645,9 @@ class ApiService {
   /// 获取账户状态及注册时间。
   static Future<Map<String, dynamic>?> fetchUserStatus(int userId) async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/user/status?user_id=$userId'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/user/status?user_id=$userId',
       );
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -585,10 +666,7 @@ class ApiService {
   static Future<List<dynamic>> fetchPomodoroTags([int? userId]) async {
     try {
       final String urlPostfix = userId != null ? '?user_id=$userId' : '';
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/pomodoro/tags$urlPostfix'),
-        headers: _getHeaders(),
-      );
+      final response = await _request('GET', '/api/pomodoro/tags$urlPostfix');
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -598,9 +676,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTodos(int userId) async {
     try {
-      final response = await _client.get(
-          Uri.parse('$_effectiveBaseUrl/api/todos?user_id=$userId'),
-          headers: _getHeaders());
+      final response = await _request('GET', '/api/todos?user_id=$userId');
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -610,9 +686,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchCountdowns(int userId) async {
     try {
-      final response = await _client.get(
-          Uri.parse('$_effectiveBaseUrl/api/countdowns?user_id=$userId'),
-          headers: _getHeaders());
+      final response = await _request('GET', '/api/countdowns?user_id=$userId');
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -622,9 +696,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTimeLogs(int userId) async {
     try {
-      final response = await _client.get(
-          Uri.parse('$_effectiveBaseUrl/api/time_logs?user_id=$userId'),
-          headers: _getHeaders());
+      final response = await _request('GET', '/api/time_logs?user_id=$userId');
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -635,10 +707,10 @@ class ApiService {
   /// 上传/同步标签到云端（Delta Sync）
   static Future<bool> syncPomodoroTags(List<Map<String, dynamic>> tags) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/pomodoro/tags'),
-        headers: _getHeaders(),
-        body: jsonEncode({'tags': tags}),
+      final response = await _request(
+        'POST',
+        '/api/pomodoro/tags',
+        body: {'tags': tags},
       );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);
@@ -652,10 +724,10 @@ class ApiService {
   /// 上传单条专注记录（对齐 pomodoro_records 表）
   static Future<bool> uploadPomodoroRecord(Map<String, dynamic> record) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/pomodoro/records'),
-        headers: _getHeaders(),
-        body: jsonEncode({'record': record}),
+      final response = await _request(
+        'POST',
+        '/api/pomodoro/records',
+        body: {'record': record},
       );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);
@@ -674,17 +746,18 @@ class ApiService {
     int? semesterStart,
     int? semesterEnd,
   }) async {
-    final response = await _client.post(
-      Uri.parse('$_effectiveBaseUrl/api/migrate_register'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await _request(
+      'POST',
+      '/api/migrate_register',
+      body: {
         'email': email,
         'username': username,
         'password': password,
         'tier': tier,
         'semester_start': semesterStart,
         'semester_end': semesterEnd
-      }),
+      },
+      includeAuth: false,
     );
     return jsonDecode(response.body);
   }
@@ -693,10 +766,10 @@ class ApiService {
   static Future<bool> uploadPomodoroRecords(
       List<Map<String, dynamic>> records) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/pomodoro/records'),
-        headers: _getHeaders(),
-        body: jsonEncode({'records': records}),
+      final response = await _request(
+        'POST',
+        '/api/pomodoro/records',
+        body: {'records': records},
       );
       if (response.statusCode != 200) return false;
       final data = jsonDecode(response.body);
@@ -717,7 +790,7 @@ class ApiService {
       if (toMs != null) params['to'] = toMs.toString();
       final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/records')
           .replace(queryParameters: params.isEmpty ? null : params);
-      final response = await _client.get(uri, headers: _getHeaders());
+      final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) return jsonDecode(response.body);
       return [];
     } catch (e) {
@@ -729,10 +802,10 @@ class ApiService {
   static Future<bool> syncPomodoroSettings(
       Map<String, dynamic> settings) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/api/pomodoro/settings'),
-        headers: _getHeaders(),
-        body: jsonEncode(settings),
+      final response = await _request(
+        'POST',
+        '/api/pomodoro/settings',
+        body: settings,
       );
       return response.statusCode == 200;
     } catch (e) {
@@ -743,10 +816,7 @@ class ApiService {
   /// 拉取番茄钟设置
   static Future<Map<String, dynamic>?> fetchPomodoroSettings() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$baseUrl/api/pomodoro/settings'),
-        headers: _getHeaders(),
-      );
+      final response = await _request('GET', '/api/pomodoro/settings');
       if (response.statusCode == 200) {
         return Map<String, dynamic>.from(jsonDecode(response.body));
       }
@@ -760,9 +830,9 @@ class ApiService {
   static Future<Map<String, dynamic>?> fetchActivePomodoroFromOtherDevice(
       String currentDeviceId) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/pomodoro/active')
+      final uri = Uri.parse('$_effectiveBaseUrl/api/pomodoro/active')
           .replace(queryParameters: {'device_id': currentDeviceId});
-      final response = await _client.get(uri, headers: _getHeaders());
+      final response = await _request('GET', uri.toString());
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['active'] == true) {
@@ -782,11 +852,11 @@ class ApiService {
   /// 获取当前在线设备分布统计
   static Future<Map<String, dynamic>?> fetchOnlineStats() async {
     try {
-      final response = await _client
-          .get(
-            Uri.parse('$_effectiveBaseUrl/api/online_stats'),
-          )
-          .timeout(const Duration(seconds: 5));
+      final response = await _request(
+        'GET',
+        '/api/online_stats',
+        timeout: const Duration(seconds: 5),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -799,11 +869,11 @@ class ApiService {
   /// 获取所有设备历史版本分布统计（含离线设备）
   static Future<Map<String, dynamic>?> fetchDeviceVersionStats() async {
     try {
-      final response = await _client
-          .get(
-            Uri.parse('$_effectiveBaseUrl/api/device_version_stats'),
-          )
-          .timeout(const Duration(seconds: 5));
+      final response = await _request(
+        'GET',
+        '/api/device_version_stats',
+        timeout: const Duration(seconds: 5),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -827,9 +897,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTeams() async {
     try {
-      final response = await _client.get(
-          Uri.parse('$_effectiveBaseUrl/api/teams'),
-          headers: _getHeaders());
+      final response = await _request('GET', '/api/teams');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['teams'] ?? [];
@@ -842,11 +910,8 @@ class ApiService {
 
   static Future<Map<String, dynamic>> createTeam(String name) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/create'),
-        headers: _getHeaders(),
-        body: jsonEncode({'name': name}),
-      );
+      final response =
+          await _request('POST', '/api/teams/create', body: {'name': name});
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -856,10 +921,10 @@ class ApiService {
   static Future<Map<String, dynamic>> generateInviteCode(
       String teamUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/invite'),
-        headers: _getHeaders(),
-        body: jsonEncode({'team_uuid': teamUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/invite',
+        body: {'team_uuid': teamUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -870,10 +935,10 @@ class ApiService {
   static Future<Map<String, dynamic>> addTeamMemberByEmail(
       String teamUuid, String email) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/members/add'),
-        headers: _getHeaders(),
-        body: jsonEncode({'team_uuid': teamUuid, 'email': email}),
+      final response = await _request(
+        'POST',
+        '/api/teams/members/add',
+        body: {'team_uuid': teamUuid, 'email': email},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -883,11 +948,8 @@ class ApiService {
 
   static Future<Map<String, dynamic>> joinTeamByCode(String code) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/join'),
-        headers: _getHeaders(),
-        body: jsonEncode({'code': code}),
-      );
+      final response =
+          await _request('POST', '/api/teams/join', body: {'code': code});
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -896,10 +958,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> deleteTeam(String teamUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/delete'),
-        headers: _getHeaders(),
-        body: jsonEncode({'team_uuid': teamUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/delete',
+        body: {'team_uuid': teamUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -909,10 +971,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> selfCompleteTodo(String todoUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/self_complete_todo'),
-        headers: _getHeaders(),
-        body: jsonEncode({'todo_uuid': todoUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/self_complete_todo',
+        body: {'todo_uuid': todoUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -922,10 +984,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> selfResetTodo(String todoUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/self_reset_todo'),
-        headers: _getHeaders(),
-        body: jsonEncode({'todo_uuid': todoUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/self_reset_todo',
+        body: {'todo_uuid': todoUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -935,10 +997,9 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getTodoStatus(String todoUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse(
-            '$_effectiveBaseUrl/api/teams/todo_status?todo_uuid=$todoUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/todo_status?todo_uuid=$todoUuid',
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -948,10 +1009,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> leaveTeam(String teamUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/leave'),
-        headers: _getHeaders(),
-        body: jsonEncode({'team_uuid': teamUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/leave',
+        body: {'team_uuid': teamUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -961,9 +1022,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTeamMembers(String teamUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/teams/members?team_uuid=$teamUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/members?team_uuid=$teamUuid',
       );
       final data = jsonDecode(response.body);
       return data['members'] ?? [];
@@ -975,11 +1036,10 @@ class ApiService {
   static Future<Map<String, dynamic>> removeTeamMember(
       String teamUuid, int targetUserId) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/members/remove'),
-        headers: _getHeaders(),
-        body:
-            jsonEncode({'team_uuid': teamUuid, 'target_user_id': targetUserId}),
+      final response = await _request(
+        'POST',
+        '/api/teams/members/remove',
+        body: {'team_uuid': teamUuid, 'target_user_id': targetUserId},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -991,9 +1051,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getPoWChallenge() async {
     try {
-      final response = await _client.get(
-          Uri.parse('$_effectiveBaseUrl/api/auth/pow_challenge'),
-          headers: _getHeaders());
+      final response = await _request('GET', '/api/auth/pow_challenge');
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -1032,15 +1090,15 @@ class ApiService {
       if (nonce == null) return {'success': false, 'error': '算力验证失败'};
 
       // 3. 提交申请
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/request_join'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/teams/request_join',
+        body: {
           'invite_code': normalizedCode,
           'message': message,
           'pow_challenge': challenge,
           'pow_nonce': nonce,
-        }),
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1050,10 +1108,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchPendingRequests(String teamUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse(
-            '$_effectiveBaseUrl/api/teams/pending_requests?team_uuid=$teamUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/pending_requests?team_uuid=$teamUuid',
       );
       final data = jsonDecode(response.body);
       return data['requests'] ?? [];
@@ -1070,14 +1127,14 @@ class ApiService {
         return {'success': false, 'error': '无效操作: $action'};
       }
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/process_request'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/teams/process_request',
+        body: {
           'team_uuid': teamUuid,
           'target_user_id': targetUserId,
           'action': action
-        }),
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1087,10 +1144,7 @@ class ApiService {
 
   static Future<List<dynamic>> fetchMyInvitations() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/teams/invitations'),
-        headers: _getHeaders(),
-      );
+      final response = await _request('GET', '/api/teams/invitations');
       final data = jsonDecode(response.body);
       return data['invitations'] ?? [];
     } catch (e) {
@@ -1106,13 +1160,13 @@ class ApiService {
         return {'success': false, 'error': '无效操作: $action'};
       }
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/respond_invitation'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/teams/respond_invitation',
+        body: {
           'team_uuid': teamUuid,
           'action': action,
-        }),
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1124,10 +1178,9 @@ class ApiService {
   static Future<Map<String, dynamic>> fetchTeamSystemMessages(
       String teamUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse(
-            '$_effectiveBaseUrl/api/teams/system_messages?team_uuid=$teamUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/system_messages?team_uuid=$teamUuid',
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1143,16 +1196,16 @@ class ApiService {
       String teamUuid, String title, String content,
       {bool isPriority = false, int? expiresAt}) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/create'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/teams/announcements/create',
+        body: {
           'team_uuid': teamUuid,
           'title': title,
           'content': content,
           'is_priority': isPriority ? 1 : 0,
           'expires_at': expiresAt,
-        }),
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1163,10 +1216,10 @@ class ApiService {
   static Future<Map<String, dynamic>> deleteTeamAnnouncement(
       String announcementUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/delete'),
-        headers: _getHeaders(),
-        body: jsonEncode({'announcement_uuid': announcementUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/announcements/delete',
+        body: {'announcement_uuid': announcementUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1176,10 +1229,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTeamAnnouncements(String teamUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse(
-            '$_effectiveBaseUrl/api/teams/announcements?team_uuid=$teamUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/announcements?team_uuid=$teamUuid',
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1194,10 +1246,10 @@ class ApiService {
   static Future<Map<String, dynamic>> markAnnouncementAsRead(
       String announcementUuid) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/read'),
-        headers: _getHeaders(),
-        body: jsonEncode({'announcement_uuid': announcementUuid}),
+      final response = await _request(
+        'POST',
+        '/api/teams/announcements/read',
+        body: {'announcement_uuid': announcementUuid},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1208,10 +1260,9 @@ class ApiService {
   static Future<Map<String, dynamic>> fetchAnnouncementStats(
       String announcementUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse(
-            '$_effectiveBaseUrl/api/teams/announcements/stats?announcement_uuid=$announcementUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/announcements/stats?announcement_uuid=$announcementUuid',
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1221,9 +1272,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchUnreadPriorityAnnouncements() async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/teams/announcements/unread_priority'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/announcements/unread_priority',
       );
       final data = jsonDecode(response.body);
       return data['announcements'] ?? [];
@@ -1258,10 +1309,10 @@ class ApiService {
       if (password != null && password.isNotEmpty) body['password'] = password;
       if (expiresHours != null) body['expires_hours'] = expiresHours;
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/shares/create'),
-        headers: _getHeaders(),
-        body: jsonEncode(body),
+      final response = await _request(
+        'POST',
+        '/api/teams/shares/create',
+        body: body,
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1271,9 +1322,9 @@ class ApiService {
 
   static Future<List<dynamic>> fetchTeamShares(String teamUuid) async {
     try {
-      final response = await _client.get(
-        Uri.parse('$_effectiveBaseUrl/api/teams/shares?team_uuid=$teamUuid'),
-        headers: _getHeaders(),
+      final response = await _request(
+        'GET',
+        '/api/teams/shares?team_uuid=$teamUuid',
       );
       final data = jsonDecode(response.body);
       return data['shares'] ?? [];
@@ -1284,10 +1335,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> deleteTeamShare(String shareCode) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/shares/delete'),
-        headers: _getHeaders(),
-        body: jsonEncode({'share_code': shareCode}),
+      final response = await _request(
+        'POST',
+        '/api/teams/shares/delete',
+        body: {'share_code': shareCode},
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1300,13 +1351,13 @@ class ApiService {
     required bool isActive,
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/teams/shares/update'),
-        headers: _getHeaders(),
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/teams/shares/update',
+        body: {
           'share_code': shareCode,
           'is_active': isActive,
-        }),
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1320,10 +1371,11 @@ class ApiService {
       final body = <String, dynamic>{};
       if (password != null && password.isNotEmpty) body['password'] = password;
 
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/shares/$code/verify'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
+      final response = await _request(
+        'POST',
+        '/api/shares/$code/verify',
+        body: body,
+        includeAuth: false,
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1338,9 +1390,10 @@ class ApiService {
       if (token != null && token.isNotEmpty) {
         url += '?token=${Uri.encodeComponent(token)}';
       }
-      final response = await _client.get(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
+      final response = await _request(
+        'GET',
+        url,
+        includeAuth: false,
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1354,13 +1407,14 @@ class ApiService {
     String? message,
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/shares/$shareCode/request_join'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final response = await _request(
+        'POST',
+        '/api/shares/$shareCode/request_join',
+        body: {
           'email': email,
           if (message != null && message.isNotEmpty) 'message': message,
-        }),
+        },
+        includeAuth: false,
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -1378,13 +1432,11 @@ class ApiService {
 
     // 1. 尝试获取云端历史
     try {
-      final response = await _client
-          .get(
-            Uri.parse(
-                '$_effectiveBaseUrl/api/sync/history?uuid=$uuid&table=$table'),
-            headers: _getHeaders(),
-          )
-          .timeout(const Duration(seconds: 3));
+      final response = await _request(
+        'GET',
+        '/api/sync/history?uuid=$uuid&table=$table',
+        timeout: const Duration(seconds: 3),
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1441,10 +1493,10 @@ class ApiService {
     }
 
     try {
-      final response = await _client.post(
-        Uri.parse('$_effectiveBaseUrl/api/sync/rollback'),
-        headers: _getHeaders(),
-        body: jsonEncode({'log_id': logId}),
+      final response = await _request(
+        'POST',
+        '/api/sync/rollback',
+        body: {'log_id': logId},
       );
 
       final Map<String, dynamic> data = jsonDecode(response.body);
@@ -1477,13 +1529,12 @@ class ApiService {
       if (bumpedVersion != null) body['version'] = bumpedVersion;
       if (data != null) body['data'] = data;
 
-      final response = await _client
-          .post(
-            Uri.parse('$_effectiveBaseUrl/api/sync/resolve_conflict'),
-            headers: _getHeaders(),
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 5));
+      final response = await _request(
+        'POST',
+        '/api/sync/resolve_conflict',
+        body: body,
+        timeout: const Duration(seconds: 5),
+      );
 
       final result = jsonDecode(response.body);
       if (response.statusCode == 200 && result['success'] == true) {
@@ -1498,13 +1549,12 @@ class ApiService {
   static Future<bool> markNotificationsRead(List<int> ids) async {
     if (ids.isEmpty) return true;
     try {
-      final response = await _client
-          .post(
-            Uri.parse('$_effectiveBaseUrl/api/notifications/mark_read'),
-            headers: _getHeaders(),
-            body: jsonEncode({'ids': ids}),
-          )
-          .timeout(const Duration(seconds: 5));
+      final response = await _request(
+        'POST',
+        '/api/notifications/mark_read',
+        body: {'ids': ids},
+        timeout: const Duration(seconds: 5),
+      );
       final data = jsonDecode(response.body);
       return response.statusCode == 200 && data['success'] == true;
     } catch (_) {

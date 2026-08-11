@@ -7,6 +7,12 @@ class SyncCapabilityService {
   static const String habits = 'habits';
   static const int habitsVersion = 1;
 
+  static const String sleepCoaching = 'sleep_coaching';
+  static const int sleepCoachingVersion = 1;
+
+  static const String habitSyncCursor = 'habit_sync_cursor';
+  static const int habitSyncCursorVersion = 1;
+
   static bool supportsFixedSchedules(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, fixedSchedules) >=
       fixedSchedulesVersion;
@@ -22,6 +28,13 @@ class SyncCapabilityService {
   /// 习惯云同步能力（服务端声明 habits>=1 时开启）。
   static bool supportsHabits(dynamic rawCapabilities) =>
       capabilityVersion(rawCapabilities, habits) >= habitsVersion;
+
+  static bool supportsSleepCoaching(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, sleepCoaching) >= sleepCoachingVersion;
+
+  static bool supportsHabitSyncCursor(dynamic rawCapabilities) =>
+      capabilityVersion(rawCapabilities, habitSyncCursor) >=
+      habitSyncCursorVersion;
 
   /// 只有本轮实际同步习惯数据，并且服务端明确声明协议版本时，
   /// 才能确认对应 oplog。未知能力必须按旧服务端处理并保留本地操作。

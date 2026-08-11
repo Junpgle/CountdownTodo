@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import '../services/api_service.dart';
@@ -10,6 +10,9 @@ import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 import '../services/reminder_schedule_service.dart';
 import '../services/course_service.dart';
+import '../services/minor_mode_service.dart';
+import '../models/minor_age_signal_state.dart';
+import '../models/minor_mode_state.dart';
 
 import 'animation_settings_page.dart';
 import 'login_screen.dart';
@@ -17,6 +20,7 @@ import 'about_screen.dart';
 import 'help/help_center_screen.dart';
 import 'settings/widgets/account_section.dart';
 import 'settings/widgets/sync_settings_section.dart';
+import 'settings/widgets/update_settings_section.dart';
 import 'settings/notification_settings_page.dart';
 import 'settings/dialogs/change_password_dialog.dart';
 
@@ -25,6 +29,7 @@ import 'settings/pages/course_settings_page.dart';
 import 'settings/pages/interconnect_settings_page.dart';
 import 'settings/pages/platform_specific_settings_page.dart';
 import 'settings/pages/permission_settings_page.dart';
+import 'settings/pages/minor_mode_settings_page.dart';
 import 'settings/llm_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -52,6 +57,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget Function()? _selectedRightPaneBuilder;
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey _updateSettingsSectionKey = GlobalKey();
+  final GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
   List<String> _nestedRouteNames = [];
   late _BreadcrumbObserver _breadcrumbObserver;
 
@@ -93,7 +100,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final accountTargets = [
       'sync_interval',
       'conflict_detection',
-      'server_choice'
+      'server_choice',
+      'update',
+      'force_download',
+      'update_source',
+      'changelog',
     ];
     final preferenceTargets = [
       'theme',
@@ -102,6 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'wallpaper',
       'home_text'
     ];
+    final minorModeTargets = ['minor_mode', 'minor_mode_status'];
     final courseTargets = [
       'no_course_behavior',
       'webview_import',
@@ -131,10 +143,6 @@ class _SettingsPageState extends State<SettingsPage> {
       'migration',
       'cache',
       'storage',
-      'update',
-      'get_beta',
-      'force_download',
-      'update_source',
       'help_center',
       'changelog',
       'feature_guide'
@@ -155,7 +163,13 @@ class _SettingsPageState extends State<SettingsPage> {
       'mac_island_without_notch'
     ];
 
-    if (accountTargets.contains(target)) {
+    if (minorModeTargets.contains(target)) {
+      paneId = 'minor_mode';
+      paneBuilder = () => MinorModeSettingsPage(
+            initialTarget: target,
+            isEmbedded: true,
+          );
+    } else if (accountTargets.contains(target)) {
       paneId = 'account';
       paneBuilder = _buildAccountAndAnnouncementsPane;
     } else if (preferenceTargets.contains(target)) {
@@ -203,11 +217,21 @@ class _SettingsPageState extends State<SettingsPage> {
         _selectedPaneId = paneId;
         _selectedRightPaneBuilder = paneBuilder;
       });
+      if (target == 'update') _ensureUpdateSectionVisible();
     } else {
+      if (target == 'update') {
+        _ensureUpdateSectionVisible();
+        return;
+      }
+
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
-      if (paneId == 'preference') {
+      if (paneId == 'account') {
+        pushWidget = _buildAccountAndAnnouncementsPane();
+      } else if (paneId == 'preference') {
         pushWidget = PreferenceSettingsPage(initialTarget: target);
+      } else if (paneId == 'minor_mode') {
+        pushWidget = MinorModeSettingsPage(initialTarget: target);
       } else if (paneId == 'course') {
         pushWidget = CourseSettingsPage(initialTarget: target);
       } else if (paneId == 'interconnect') {
@@ -229,6 +253,29 @@ class _SettingsPageState extends State<SettingsPage> {
 
       Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
     }
+  }
+
+  void _ensureUpdateSectionVisible([int attempt = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = _updateSettingsSectionKey.currentContext ??
+          _embeddedUpdateSettingsSectionKey.currentContext;
+      if (targetContext != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            targetContext,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOutCubic,
+            alignment: 0.08,
+          ),
+        );
+      } else if (attempt < 4) {
+        Future.delayed(
+          const Duration(milliseconds: 100),
+          () => _ensureUpdateSectionVisible(attempt + 1),
+        );
+      }
+    });
   }
 
   void _loadAllData() {
@@ -294,12 +341,9 @@ class _SettingsPageState extends State<SettingsPage> {
     if (useCache) return;
 
     try {
-      final response = await http.get(
-          Uri.parse('${ApiService.baseUrl}/api/user/status?user_id=$_userId'));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        await prefs.setString(cacheKey, response.body);
+      final data = await ApiService.fetchUserStatus(_userId!);
+      if (data != null) {
+        await prefs.setString(cacheKey, jsonEncode(data));
         await prefs.setInt(timeKey, DateTime.now().millisecondsSinceEpoch);
 
         if (mounted) {
@@ -311,13 +355,11 @@ class _SettingsPageState extends State<SettingsPage> {
             _isLoadingStatus = false;
           });
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            _userTier = "Free";
-            _isLoadingStatus = false;
-          });
-        }
+      } else if (mounted) {
+        setState(() {
+          _userTier = "Free";
+          _isLoadingStatus = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -480,6 +522,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
             ),
+            UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
             SyncSettingsSection(username: _username),
           ],
         ),
@@ -501,6 +544,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _forceFullSync() async {
+    if (!mounted) return;
+
     if (_username.isEmpty || _userId == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('请先登录账号')));
@@ -584,6 +629,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     if (confirm) {
+      final authorized =
+          await MinorModeService.instance.authorizeSensitiveAction();
+      if (!authorized) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要家长身份认证才能退出账号')),
+          );
+        }
+        return;
+      }
       await StorageService.clearLoginSession();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -595,8 +650,22 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showChangePasswordDialog() {
+    unawaited(_openChangePasswordDialog());
+  }
+
+  Future<void> _openChangePasswordDialog() async {
     if (_userId == null) return;
-    showDialog(
+    final authorized =
+        await MinorModeService.instance.authorizeSensitiveAction();
+    if (!authorized || !mounted) {
+      if (mounted && !authorized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('需要家长身份认证才能修改密码')),
+        );
+      }
+      return;
+    }
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => ChangePasswordDialog(
@@ -620,6 +689,8 @@ class _SettingsPageState extends State<SettingsPage> {
     switch (_selectedPaneId) {
       case 'account':
         return '账号与系统公告';
+      case 'minor_mode':
+        return '未成年人模式';
       case 'preference':
         return '系统与外观';
       case 'animation':
@@ -697,7 +768,10 @@ class _SettingsPageState extends State<SettingsPage> {
         centerTitle: true,
       ),
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 600),
+        // 首次进入设置时，600ms 淡入会与大量设置卡片同时栅格化，
+        // Android 真机上会连续超出 120Hz 帧预算。移动端缩短过渡，
+        // 桌面端保留原有动效。
+        duration: Duration(milliseconds: AppPlatform.isAndroid ? 140 : 600),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         child: _isInitialLoading
@@ -714,6 +788,116 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
               ),
       ),
+    );
+  }
+
+  Widget _buildSidebarAccountSummary(ThemeData theme) {
+    final minorModeService = MinorModeService.instance;
+    return ValueListenableBuilder<MinorModeState>(
+      valueListenable: minorModeService.stateNotifier,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<MinorAgeSignalState>(
+          valueListenable: minorModeService.googleAgeSignalNotifier,
+          builder: (context, _, __) {
+            final minorModeEnabled =
+                minorModeService.policyState.effectiveMinorMode;
+            final colorScheme = theme.colorScheme;
+            return Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor:
+                          colorScheme.primary.withValues(alpha: 0.2),
+                      child: Text(
+                        _username.isNotEmpty ? _username[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (minorModeEnabled)
+                      Positioned(
+                        right: -6,
+                        bottom: -3,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.shield_rounded,
+                            size: 16,
+                            color: colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '你好，$_username',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _userTier,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (minorModeEnabled) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '未成年人模式',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -767,42 +951,20 @@ class _SettingsPageState extends State<SettingsPage> {
                                 color: theme.colorScheme.primary, width: 2)
                             : Border.all(color: Colors.transparent, width: 2),
                       ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 20,
-                            backgroundColor: theme.colorScheme.primary
-                                .withValues(alpha: 0.2),
-                            child: Text(
-                                _username.isNotEmpty
-                                    ? _username[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                    color: theme.colorScheme.primary,
-                                    fontWeight: FontWeight.bold)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_username,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
-                                    overflow: TextOverflow.ellipsis),
-                                Text(_userTier,
-                                    style: const TextStyle(
-                                        fontSize: 12, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildSidebarAccountSummary(theme),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                _buildMacSidebarItem(
+                  id: 'minor_mode',
+                  icon: Icons.shield_outlined,
+                  color: theme.colorScheme.primary,
+                  title: '未成年人模式',
+                  widgetBuilder: () =>
+                      const MinorModeSettingsPage(isEmbedded: true),
+                ),
 
                 // 导航菜单
                 _buildMacSidebarItem(
@@ -1018,6 +1180,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
           ),
+          UpdateSettingsSection(key: _updateSettingsSectionKey),
           SyncSettingsSection(username: _username),
           const SizedBox(height: 24),
           const Padding(
@@ -1034,6 +1197,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
+                ListTile(
+                  leading: const Icon(Icons.shield_outlined),
+                  title: const Text('未成年人模式'),
+                  subtitle: const Text('守护未成年人身心健康'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    PageTransitions.slideHorizontal(
+                      const MinorModeSettingsPage(),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
                 ListTile(
                   leading:
                       const Icon(Icons.palette_outlined, color: Colors.indigo),

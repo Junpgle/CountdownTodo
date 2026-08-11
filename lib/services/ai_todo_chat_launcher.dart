@@ -8,6 +8,8 @@ import '../storage_service.dart';
 import '../utils/page_transitions.dart';
 import 'todo_classification_service.dart';
 import 'pomodoro_service.dart';
+import 'minor_mode_policy.dart';
+import 'minor_mode_service.dart';
 
 class AiTodoChatLauncher {
   static final DateFormat _localDateTimeFormat = DateFormat('yyyy-MM-dd HH:mm');
@@ -32,6 +34,22 @@ class AiTodoChatLauncher {
     void Function(List<TodoGroup> groups)? onTodoGroupsChanged,
     void Function(List<FixedScheduleItem> schedules)? onFixedSchedulesChanged,
   }) async {
+    final authorized = await MinorModeService.instance.authorizeAiInteraction();
+    if (!authorized) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.aiInteraction,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     final initialCategorizationActions =
         await TodoClassificationService.buildCategorizeActions(
       todos: todos,

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../utils/page_transitions.dart';
+import 'platform_backdrop_filter.dart';
 
 class PersonalTimelineSection extends StatefulWidget {
   final String username;
@@ -122,7 +123,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
           borderRadius: BorderRadius.circular(24),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
+            child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: Container(
                 padding: const EdgeInsets.all(20),

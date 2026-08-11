@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../services/home_layout_service.dart';
 
 class HomeLayoutSettingsPage extends StatefulWidget {
-  const HomeLayoutSettingsPage({super.key});
+  final bool isEmbedded;
+
+  const HomeLayoutSettingsPage({super.key, this.isEmbedded = false});
 
   @override
   State<HomeLayoutSettingsPage> createState() => _HomeLayoutSettingsPageState();
@@ -340,21 +342,22 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
     final targets = _visibleTargets;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('首页布局'),
-        actions: [
-          TextButton.icon(
-            onPressed: _isLoading ? null : _resetDeviceLayouts,
-            icon: const Icon(Icons.restore_outlined),
-            label: const Text('恢复默认'),
-          ),
-        ],
-      ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: const Text('首页布局'),
+              actions: [_buildResetButton()],
+            ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
+                if (widget.isEmbedded)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildResetButton(),
+                  ),
                 Text(
                   isWide
                       ? '当前为宽屏设备，仅显示宽屏布局。组件可在左右栏之间迁移。'
@@ -384,6 +387,14 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                 ],
               ],
             ),
+    );
+  }
+
+  Widget _buildResetButton() {
+    return TextButton.icon(
+      onPressed: _isLoading ? null : _resetDeviceLayouts,
+      icon: const Icon(Icons.restore_outlined),
+      label: const Text('恢复默认'),
     );
   }
 }

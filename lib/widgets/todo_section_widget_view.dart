@@ -138,18 +138,8 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                     color: titleColor.withValues(alpha: 0.95), fontSize: 14.5)),
           ),
         ),
-        child: VisibilityDetector(
-          key: Key('todo_item_vis_${todo.id}'),
-          onVisibilityChanged: (info) {
-            if (info.visibleFraction > 0.1 &&
-                !_animatedTodoIds.contains(todo.id)) {
-              if (mounted) {
-                setState(() {
-                  _animatedTodoIds.add(todo.id);
-                });
-              }
-            }
-          },
+        child: KeyedSubtree(
+          key: Key('todo_item_${todo.id}'),
           child: Dismissible(
             key: key ?? _getTodoDismissKey('dismiss', todo.id),
             direction: DismissDirection.endToStart,
@@ -348,11 +338,9 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                                   curve: Curves.easeOutQuart,
                                   tween: Tween<double>(
                                       begin: 0.0,
-                                      end: _animatedTodoIds.contains(todo.id)
-                                          ? (progress < 0.08
-                                              ? 0.08
-                                              : progress.clamp(0.0, 1.0))
-                                          : 0.0),
+                                      end: progress < 0.08
+                                          ? 0.08
+                                          : progress.clamp(0.0, 1.0)),
                                   builder: (context, value, child) {
                                     final fillColor =
                                         _getProgressFillColor(progress, isPast);
@@ -382,14 +370,20 @@ mixin _TodoSectionViewMixin on _TodoSectionStateBase {
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(14),
                                 onTap: () => _editTodo(todo, cardCtx),
-                                child: IntrinsicHeight(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 52,
+                                  ),
                                   child: Row(
+                                    // Stack 中的任务行只有松垂直约束；使用 stretch
+                                    // 会让行高退化为 0，显式高度可避免额外 intrinsic pass。
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
+                                        CrossAxisAlignment.center,
                                     children: [
                                       if (todo.teamUuid != null)
                                         Container(
                                           width: 4,
+                                          height: 36,
                                           margin: const EdgeInsets.symmetric(
                                               vertical: 8),
                                           decoration: BoxDecoration(

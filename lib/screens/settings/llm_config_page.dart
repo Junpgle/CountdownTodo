@@ -3,6 +3,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/ai_chat_service.dart';
 import '../../services/llm_service.dart';
+import '../../services/minor_mode_policy.dart';
+import '../../services/minor_mode_service.dart';
 
 class TextModelInfo {
   final String id;
@@ -57,6 +59,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   final _textPromptCtrl = TextEditingController();
   final _visionPromptCtrl = TextEditingController();
   bool _isLoading = true;
+  bool _accessDenied = false;
   bool _isTesting = false;
   String? _selectedTextModel;
   String? _selectedVisionModel;
@@ -338,7 +341,23 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   @override
   void initState() {
     super.initState();
-    _loadConfig();
+    _authorizeAndLoadConfig();
+  }
+
+  Future<void> _authorizeAndLoadConfig() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized) {
+      if (mounted) {
+        setState(() {
+          _accessDenied = true;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+    await _loadConfig();
   }
 
   Future<void> _loadConfig() async {
@@ -565,6 +584,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Future<void> _testConnection() async {
+    if (!await _ensureLlmConfigurationAllowed()) return;
     setState(() => _isTesting = true);
     try {
       final textModel = _selectedTextModel ?? '';
@@ -608,6 +628,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Future<void> _saveConfig() async {
+    if (!await _ensureLlmConfigurationAllowed()) return;
     final textModel = _selectedTextModel ?? '';
     if (textModel.isEmpty) {
       if (mounted) {
@@ -654,6 +675,60 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   bool _useWideLayout(double width) => width >= 820;
+
+  Future<bool> _ensureLlmConfigurationAllowed() async {
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.llmConfiguration,
+    );
+    if (!authorized && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            MinorModeService.instance.authorizationFailureMessage(
+              MinorModeAction.llmConfiguration,
+            ),
+          ),
+        ),
+      );
+    }
+    return authorized;
+  }
+
+  Widget _buildAccessDeniedBody(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 52,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '大模型功能已受未成年人模式保护',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                MinorModeService.instance.authorizationFailureMessage(
+                  MinorModeAction.llmConfiguration,
+                ),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   double _responsiveItemWidth(
     double maxWidth, {
@@ -1122,6 +1197,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Future<void> _fetchProviderModels(String provider) async {
+    if (!await _ensureLlmConfigurationAllowed()) return;
     final apiKey = switch (provider) {
       'mimo' => _mimoApiKey,
       'deepseek' => _deepseekApiKey,
@@ -1721,145 +1797,154 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
           ? null
           : AppBar(
               title: const Text('大模型API配置'),
-              actions: [
-                IconButton(
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('清除配置'),
-                        content: const Text('确定要清除所有大模型配置吗？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red,
+              actions: _accessDenied
+                  ? const []
+                  : [
+                      IconButton(
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('清除配置'),
+                              content: const Text('确定要清除所有大模型配置吗？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('取消'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                  ),
+                                  child: const Text('清除'),
+                                ),
+                              ],
                             ),
-                            child: const Text('清除'),
-                          ),
-                        ],
+                          );
+                          if (confirmed == true) {
+                            if (!await _ensureLlmConfigurationAllowed()) {
+                              return;
+                            }
+                            await LLMService.clearConfig();
+                            if (context.mounted) {
+                              Navigator.pop(context, true);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('已清除大模型配置')),
+                              );
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: '清除配置',
                       ),
-                    );
-                    if (confirmed == true) {
-                      await LLMService.clearConfig();
-                      if (context.mounted) {
-                        Navigator.pop(context, true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('已清除大模型配置')),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: '清除配置',
-                ),
-              ],
+                    ],
             ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = _useWideLayout(constraints.maxWidth);
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1180),
-                    child: Stepper(
-                      type:
-                          wide ? StepperType.horizontal : StepperType.vertical,
-                      margin: wide
-                          ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
-                          : null,
-                      currentStep: _currentStep,
-                      onStepContinue: () {
-                        if (_currentStep < 2) {
-                          setState(() => _currentStep++);
-                        } else {
-                          _saveConfig();
-                        }
-                      },
-                      onStepCancel: () {
-                        if (_currentStep > 0) {
-                          setState(() => _currentStep--);
-                        }
-                      },
-                      onStepTapped: (step) {
-                        // 只允许点击已完成的步骤或当前步骤
-                        if (step <= _currentStep) {
-                          setState(() => _currentStep = step);
-                        }
-                      },
-                      controlsBuilder: (context, details) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 20),
-                          child: Row(
-                            mainAxisAlignment: wide
-                                ? MainAxisAlignment.end
-                                : MainAxisAlignment.start,
-                            children: [
-                              if (_currentStep < 2)
-                                FilledButton.icon(
-                                  onPressed: details.onStepContinue,
-                                  icon:
-                                      const Icon(Icons.arrow_forward, size: 18),
-                                  label: const Text('下一步'),
-                                )
-                              else
-                                FilledButton.icon(
-                                  onPressed: _isTesting
-                                      ? null
-                                      : details.onStepContinue,
-                                  icon: const Icon(Icons.save, size: 18),
-                                  label: const Text('保存配置'),
-                                ),
-                              if (_currentStep > 0) ...[
-                                const SizedBox(width: 12),
-                                OutlinedButton.icon(
-                                  onPressed: details.onStepCancel,
-                                  icon: const Icon(Icons.arrow_back, size: 18),
-                                  label: const Text('上一步'),
-                                ),
-                              ],
-                            ],
-                          ),
-                        );
-                      },
-                      steps: [
-                        Step(
-                          title: const Text('选择服务商'),
-                          content: _buildStep1Provider(),
-                          isActive: _currentStep >= 0,
-                          state: _currentStep > 0
-                              ? StepState.complete
-                              : StepState.indexed,
-                        ),
-                        Step(
-                          title: const Text('配置 API Key'),
-                          content: _buildStep2ApiKey(),
-                          isActive: _currentStep >= 1,
-                          state: _currentStep > 1
-                              ? StepState.complete
-                              : _currentStep == 1
+          : _accessDenied
+              ? _buildAccessDeniedBody(context)
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = _useWideLayout(constraints.maxWidth);
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1180),
+                        child: Stepper(
+                          type: wide
+                              ? StepperType.horizontal
+                              : StepperType.vertical,
+                          margin: wide
+                              ? const EdgeInsets.fromLTRB(24, 12, 24, 24)
+                              : null,
+                          currentStep: _currentStep,
+                          onStepContinue: () {
+                            if (_currentStep < 2) {
+                              setState(() => _currentStep++);
+                            } else {
+                              _saveConfig();
+                            }
+                          },
+                          onStepCancel: () {
+                            if (_currentStep > 0) {
+                              setState(() => _currentStep--);
+                            }
+                          },
+                          onStepTapped: (step) {
+                            // 只允许点击已完成的步骤或当前步骤
+                            if (step <= _currentStep) {
+                              setState(() => _currentStep = step);
+                            }
+                          },
+                          controlsBuilder: (context, details) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 20),
+                              child: Row(
+                                mainAxisAlignment: wide
+                                    ? MainAxisAlignment.end
+                                    : MainAxisAlignment.start,
+                                children: [
+                                  if (_currentStep < 2)
+                                    FilledButton.icon(
+                                      onPressed: details.onStepContinue,
+                                      icon: const Icon(Icons.arrow_forward,
+                                          size: 18),
+                                      label: const Text('下一步'),
+                                    )
+                                  else
+                                    FilledButton.icon(
+                                      onPressed: _isTesting
+                                          ? null
+                                          : details.onStepContinue,
+                                      icon: const Icon(Icons.save, size: 18),
+                                      label: const Text('保存配置'),
+                                    ),
+                                  if (_currentStep > 0) ...[
+                                    const SizedBox(width: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: details.onStepCancel,
+                                      icon: const Icon(Icons.arrow_back,
+                                          size: 18),
+                                      label: const Text('上一步'),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                          steps: [
+                            Step(
+                              title: const Text('选择服务商'),
+                              content: _buildStep1Provider(),
+                              isActive: _currentStep >= 0,
+                              state: _currentStep > 0
+                                  ? StepState.complete
+                                  : StepState.indexed,
+                            ),
+                            Step(
+                              title: const Text('配置 API Key'),
+                              content: _buildStep2ApiKey(),
+                              isActive: _currentStep >= 1,
+                              state: _currentStep > 1
+                                  ? StepState.complete
+                                  : _currentStep == 1
+                                      ? StepState.indexed
+                                      : StepState.disabled,
+                            ),
+                            Step(
+                              title: const Text('选择模型'),
+                              content: _buildStep3Models(),
+                              isActive: _currentStep >= 2,
+                              state: _currentStep == 2
                                   ? StepState.indexed
                                   : StepState.disabled,
+                            ),
+                          ],
                         ),
-                        Step(
-                          title: const Text('选择模型'),
-                          content: _buildStep3Models(),
-                          isActive: _currentStep >= 2,
-                          state: _currentStep == 2
-                              ? StepState.indexed
-                              : StepState.disabled,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 
@@ -1879,6 +1964,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Future<void> _showAddCustomTextModelDialog(
       {CustomTextModel? existing}) async {
+    if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
     final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
@@ -1984,6 +2070,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Future<void> _deleteCustomTextModel(CustomTextModel model) async {
+    if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2019,6 +2106,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
 
   Future<void> _showAddCustomVisionModelDialog(
       {CustomVisionModel? existing}) async {
+    if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final modelIdCtrl = TextEditingController(text: existing?.modelId ?? '');
     final apiUrlCtrl = TextEditingController(text: existing?.apiUrl ?? '');
@@ -2123,6 +2211,7 @@ class _LLMConfigPageState extends State<LLMConfigPage> {
   }
 
   Future<void> _deleteCustomVisionModel(CustomVisionModel model) async {
+    if (!await _ensureLlmConfigurationAllowed() || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

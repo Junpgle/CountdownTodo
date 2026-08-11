@@ -11,6 +11,7 @@ import '../api_service.dart';
 import '../background_notification_service.dart';
 import '../database_helper.dart';
 import '../../utils/app_platform.dart';
+import 'storage_key_scope.dart';
 
 class UserSessionStorage {
   const UserSessionStorage._();
@@ -57,29 +58,38 @@ class UserSessionStorage {
     if (token != null && token.isNotEmpty) {
       await prefs.setString(_authToken, token);
       ApiService.setToken(token);
+    } else {
+      await prefs.remove(_authToken);
+      ApiService.setToken('');
     }
     await DatabaseHelper.instance.closeDatabase();
   }
 
   static Future<String?> getLoginSession() async {
     final prefs = await _prefs;
-    final token = prefs.getString(_authToken);
-    if (token != null && token.isNotEmpty) {
-      ApiService.setToken(token);
-    }
+    await restoreAuthToken(prefs: prefs);
     return prefs.getString(_currentUser);
+  }
+
+  static Future<String?> restoreAuthToken({SharedPreferences? prefs}) async {
+    final storage = prefs ?? await _prefs;
+    final token = storage.getString(_authToken);
+    ApiService.setToken(token ?? '');
+    return token;
   }
 
   static Future<void> clearLoginSession() async {
     final prefs = await _prefs;
     final username = prefs.getString(_currentUser);
     await prefs.remove(_currentUser);
+    await prefs.remove('current_user_id');
     await prefs.remove(_scopedKey(_lastScreenTimeSync, username));
     await prefs.remove(_scopedKey(_screenTimeCache, username));
     await prefs.remove(_scopedKey(_screenTimeHistory, username));
     await prefs.remove(_scopedKey(_localScreenTime, username));
     await prefs.remove(_authToken);
     ApiService.setToken('');
+    ApiService.currentUserId = 0;
     unawaited(BackgroundNotificationService.stopNotificationPoll());
     await DatabaseHelper.instance.closeDatabase();
   }
@@ -97,7 +107,7 @@ class UserSessionStorage {
 
   static Future<String> _getUniqueDeviceId(String username) async {
     final prefs = await _prefs;
-    final accountDeviceKey = "${_deviceId}_$username";
+    final accountDeviceKey = StorageKeyScope.scoped(_deviceId, username);
     var deviceId = prefs.getString(accountDeviceKey);
     if (deviceId == null) {
       deviceId = const Uuid().v4();
@@ -140,7 +150,6 @@ class UserSessionStorage {
   }
 
   static String _scopedKey(String baseKey, String? username) {
-    if (username == null || username.isEmpty) return baseKey;
-    return "${baseKey}_$username";
+    return StorageKeyScope.scoped(baseKey, username);
   }
 }

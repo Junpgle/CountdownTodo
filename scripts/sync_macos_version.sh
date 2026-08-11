@@ -32,8 +32,11 @@ if [ ! -f "$PBXPROJ_FILE" ]; then
     exit 1
 fi
 
-# 备份原文件
-cp "$PBXPROJ_FILE" "$PBXPROJ_FILE.backup"
+# 备份原文件；发布脚本可将临时备份放到临时目录，避免污染工作区
+BACKUP_DIR="${MACOS_VERSION_BACKUP_DIR:-$(dirname "$PBXPROJ_FILE")}"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/project.pbxproj.backup"
+cp "$PBXPROJ_FILE" "$BACKUP_FILE"
 
 # 更新所有 CURRENT_PROJECT_VERSION 和 MARKETING_VERSION
 # 使用 sed 替换所有匹配的行
@@ -48,4 +51,4 @@ grep -n "CURRENT_PROJECT_VERSION\|MARKETING_VERSION" "$PBXPROJ_FILE" | head -10
 
 echo ""
 echo "版本同步完成！"
-echo "备份文件: $PBXPROJ_FILE.backup"
+echo "备份文件: $BACKUP_FILE"

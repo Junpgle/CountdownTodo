@@ -28,6 +28,7 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import storage from '@system.storage'
 import SyncService from '../../common/sync_service.js'
+import BandUtils from '../../common/band_utils.js'
 
 export default {
   data: {
@@ -61,9 +62,10 @@ export default {
         key: 'sync_pending_alert',
         success: function(data) {
           if (data) {
-            try {
-              self.applyAlertData(JSON.parse(data))
-            } catch (e) {
+            var alertData = BandUtils.parseJson(data, null)
+            if (alertData) {
+              self.applyAlertData(alertData)
+            } else {
               self.goHome()
             }
           } else {
@@ -92,12 +94,8 @@ export default {
       var date = new Date(this.timestamp)
       var hours = date.getHours()
       var minutes = date.getMinutes()
-      this.timeText = this.padZero(hours) + ':' + this.padZero(minutes)
+      this.timeText = BandUtils.padZero(hours) + ':' + BandUtils.padZero(minutes)
     }
-  },
-
-  padZero(num) {
-    return num < 10 ? '0' + num : '' + num
   },
 
   getTypeConfig(type) {

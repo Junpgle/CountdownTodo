@@ -189,7 +189,8 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
   }
 
   void _setupWallpaperListeners() {
-    UpdateService.wallpaperShowNotifier.addListener(() {
+    _disposeWallpaperListeners();
+    _wallpaperShowListener = () {
       if (mounted) {
         final show = UpdateService.wallpaperShowNotifier.value;
         final url = UpdateService.wallpaperUrlNotifier.value;
@@ -212,8 +213,8 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
           });
         }
       }
-    });
-    UpdateService.wallpaperUrlNotifier.addListener(() {
+    };
+    _wallpaperUrlListener = () {
       if (mounted) {
         final show = UpdateService.wallpaperShowNotifier.value;
         final url = UpdateService.wallpaperUrlNotifier.value;
@@ -226,7 +227,22 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
           });
         }
       }
-    });
+    };
+    UpdateService.wallpaperShowNotifier.addListener(_wallpaperShowListener!);
+    UpdateService.wallpaperUrlNotifier.addListener(_wallpaperUrlListener!);
+  }
+
+  void _disposeWallpaperListeners() {
+    final showListener = _wallpaperShowListener;
+    if (showListener != null) {
+      UpdateService.wallpaperShowNotifier.removeListener(showListener);
+      _wallpaperShowListener = null;
+    }
+    final urlListener = _wallpaperUrlListener;
+    if (urlListener != null) {
+      UpdateService.wallpaperUrlNotifier.removeListener(urlListener);
+      _wallpaperUrlListener = null;
+    }
   }
 
   Future<void> _fetchRandomWallpaper({bool isFallback = false}) async {
@@ -293,6 +309,9 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
   }
 
   void _showGlobalSearch() {
+    if (!_isSearchOpen) {
+      setState(() => _isSearchOpen = true);
+    }
     PageTransitions.pushFromRect(
       context: context,
       page: const GlobalSearchOverlay(),
@@ -301,12 +320,9 @@ mixin _HomeDashboardWallpaperMixin on _HomeDashboardStateBase {
       // 🚀 延迟 200ms 恢复，确保键盘收起后再允许背景重排，彻底消除跳变
       await Future.delayed(const Duration(milliseconds: 200));
       if (mounted) {
-        setState(() {
-          _isSearchOpen = false;
-          _timelineRevision.value++; // 🚀 搜索完成后刷新时间轴（记录搜索历史）
-        });
+        setState(() => _isSearchOpen = false);
+        _timelineRevision.value++; // 搜索历史只影响时间轴，无需重读首页全部数据。
       }
-      _loadAllData(deferred: true);
     });
   }
 }

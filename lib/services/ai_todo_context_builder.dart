@@ -1166,12 +1166,12 @@ JSON操作块必须且只能使用以下协议：
         final start = _formatEpochMillis(r.startMs);
         final end = _formatEpochMillis(r.endMs);
         final minutes = _focusOverlapMinutes(r, period);
-        return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${_formatDuration(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+        return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | 本时段计入${formatMinutesChinese(minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
       }).join('\n');
       return '''专注记录:
 ${period.label}范围: ${_formatDateTime(period.start)} 至 ${_formatDateTime(period.end)}
-${period.label}合计: ${_formatDuration(totalMinutes)}
-其中补录: ${_formatDuration(timeLogMinutes)}，番茄钟: ${_formatDuration(pomodoroMinutes)}
+${period.label}合计: ${formatMinutesChinese(totalMinutes)}
+其中补录: ${formatMinutesChinese(timeLogMinutes)}，番茄钟: ${formatMinutesChinese(pomodoroMinutes)}
 ${period.label}记录:
 ${lines.isEmpty ? '暂无' : lines}''';
     }
@@ -1179,7 +1179,7 @@ ${lines.isEmpty ? '暂无' : lines}''';
     final lines = scopedRecords.map((r) {
       final start = _formatEpochMillis(r.startMs);
       final end = _formatEpochMillis(r.endMs);
-      return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${_formatDuration(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
+      return '- [${r.source} ID: ${r.id}] $start-$end ${r.title} | ${formatMinutesChinese(r.minutes)}${r.status != null ? ' | 状态: ${r.status}' : ''}';
     }).join('\n');
     return '专注记录（最近30条，按开始时间倒序）:\n$lines';
   }
@@ -1308,8 +1308,6 @@ ${lines.isEmpty ? '暂无' : lines}''';
       end: e.add(const Duration(days: 1)),
     );
   }
-
-  static String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   static List<Map<String, dynamic>> _scopeTodosByTime(
     List<Map<String, dynamic>> todos, {

@@ -10,6 +10,7 @@ import 'package:countdown_todo/screens/app_board_screen.dart';
 import '../services/pomodoro_sync_service.dart';
 import '../widgets/home_sections.dart';
 import '../utils/page_transitions.dart';
+import 'platform_backdrop_filter.dart';
 import 'version_history_sheet.dart';
 
 class CountdownSectionWidget extends StatefulWidget {
@@ -522,7 +523,7 @@ class _CountdownSectionWidgetState extends State<CountdownSectionWidget>
                   },
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
+                    child: PlatformBackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         width: 130,

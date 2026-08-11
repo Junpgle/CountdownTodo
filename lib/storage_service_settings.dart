@@ -64,7 +64,7 @@ mixin _StorageSettings on _StorageServiceBase {
     if (!globalSettings.contains(key)) {
       final String? username = prefs.getString(keyCurrentUser);
       if (username != null && username.isNotEmpty) {
-        finalKey = "${key}_$username";
+        finalKey = StorageKeyScope.scoped(key, username);
       }
     }
 
@@ -78,7 +78,7 @@ mixin _StorageSettings on _StorageServiceBase {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getInt("${keySyncInterval}_$username") ??
+      return prefs.getInt(StorageKeyScope.scoped(keySyncInterval, username)) ??
           (prefs.getInt(keySyncInterval) ?? 0);
     }
     return prefs.getInt(keySyncInterval) ?? 0;
@@ -88,7 +88,9 @@ mixin _StorageSettings on _StorageServiceBase {
     final prefs = await StorageService.prefs;
     final String? username = prefs.getString(keyCurrentUser);
     if (username != null && username.isNotEmpty) {
-      return prefs.getBool("${keyConflictDetectionEnabled}_$username") ??
+      return prefs.getBool(
+            StorageKeyScope.scoped(keyConflictDetectionEnabled, username),
+          ) ??
           (prefs.getBool(keyConflictDetectionEnabled) ?? false);
     }
     return prefs.getBool(keyConflictDetectionEnabled) ?? false;
@@ -779,14 +781,21 @@ mixin _StorageSettings on _StorageServiceBase {
 
     // Invalidate SharedPreferences cache so next load picks up the resolved item
     final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(keyCurrentUser) ?? 'default';
     final key = table == 'todos'
-        ? '${keyTodos}_${prefs.getString(keyCurrentUser) ?? 'default'}'
+        ? StorageKeyScope.scoped(keyTodos, username)
         : table == 'countdowns'
-            ? '${keyCountdowns}_${prefs.getString(keyCurrentUser) ?? 'default'}'
-            : '${keyTodoGroups}_${prefs.getString(keyCurrentUser) ?? 'default'}';
+            ? StorageKeyScope.scoped(keyCountdowns, username)
+            : StorageKeyScope.scoped(keyTodoGroups, username);
     await prefs.remove(key);
 
-    triggerRefresh();
+    triggerRefresh({
+      if (table == 'todos') DataRefreshDomain.todos,
+      if (table == 'todo_groups') DataRefreshDomain.todoGroups,
+      if (table == 'countdowns') DataRefreshDomain.countdowns,
+      if (table == 'todo_plan_blocks') DataRefreshDomain.planBlocks,
+      if (table == 'fixed_schedules') DataRefreshDomain.fixedSchedules,
+    });
     recentlyResolvedUuids.add(uuid);
     recentlyResolvedTimes[uuid] = DateTime.now();
     debugPrint(

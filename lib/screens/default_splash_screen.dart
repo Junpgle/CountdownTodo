@@ -32,7 +32,7 @@ class _DefaultSplashScreenState extends State<DefaultSplashScreen>
 
     // Start timeout after first frame to avoid finishing before splash is visible.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _completeTimer = Timer(const Duration(milliseconds: 900), _completeOnce);
+      _completeTimer = Timer(const Duration(milliseconds: 650), _completeOnce);
     });
   }
 

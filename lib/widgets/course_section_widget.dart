@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import 'home_sections.dart';
 
+import '../screens/add_todo_screen.dart';
 import '../screens/course_screens.dart';
 import '../screens/fixed_schedule_editor_screen.dart';
 import '../screens/todo_plan_screen.dart';
@@ -36,6 +37,7 @@ class CourseSectionWidget extends StatelessWidget {
   final String? username;
   final int refreshTrigger;
   final Key? actionKey;
+  final Future<void> Function(TodoItem todo)? onTodoAdded;
 
   const CourseSectionWidget({
     super.key,
@@ -45,6 +47,7 @@ class CourseSectionWidget extends StatelessWidget {
     this.username,
     this.refreshTrigger = 0,
     this.actionKey,
+    this.onTodoAdded,
   });
 
   void _showCourseDetail(
@@ -79,6 +82,7 @@ class CourseSectionWidget extends StatelessWidget {
         isLight: isLight,
         refreshTrigger: refreshTrigger,
         actionKey: actionKey,
+        onTodoAdded: onTodoAdded,
         onCourseTap: (course, cardKey) =>
             _showCourseDetail(context, course, cardKey),
       );
@@ -204,6 +208,7 @@ class _TodayScheduleList extends StatefulWidget {
     required this.refreshTrigger,
     required this.onCourseTap,
     this.actionKey,
+    this.onTodoAdded,
   });
 
   final String username;
@@ -213,6 +218,7 @@ class _TodayScheduleList extends StatefulWidget {
   final int refreshTrigger;
   final void Function(CourseItem course, GlobalKey cardKey) onCourseTap;
   final Key? actionKey;
+  final Future<void> Function(TodoItem todo)? onTodoAdded;
 
   @override
   State<_TodayScheduleList> createState() => _TodayScheduleListState();
@@ -346,8 +352,15 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
     } else if (action == 'fixed') {
       await Navigator.of(context).push(
         PageTransitions.material(
-          builder: (_) => FixedScheduleEditorScreen(
-            username: widget.username,
+          builder: (_) => AddTodoScreen(
+            initialMode: AddTodoInitialMode.fixedSchedule,
+            onTodoAdded: widget.onTodoAdded ?? (_) async {},
+            onFixedScheduleAdded: (item) async {
+              await StorageService.saveFixedSchedules(
+                widget.username,
+                [item],
+              );
+            },
           ),
         ),
       );

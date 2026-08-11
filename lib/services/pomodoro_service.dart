@@ -10,6 +10,9 @@ import '../storage_service.dart';
 import '../utils/time_utils.dart';
 export '../utils/time_utils.dart';
 import 'api_service.dart';
+import 'storage/storage_key_scope.dart';
+import 'storage/user_session_storage.dart';
+import '../utils/json_value_parser.dart';
 
 // ============================================================
 // 番茄钟数据模型（对齐数据库 pomodoro_tags 表）
@@ -62,7 +65,7 @@ class PomodoroTag {
         color: j['color']?.toString() ?? '#607D8B',
         isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
         isArchived: j['is_archived'] == 1 || j['is_archived'] == true,
-        version: j['version'] as int? ?? 1,
+        version: JsonValueParser.toInt(j['version'], fallback: 1),
         createdAt: _ms(j['created_at']),
         updatedAt: _ms(j['updated_at']),
         hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
@@ -109,8 +112,8 @@ class PauseInterval {
 
   factory PauseInterval.fromJson(Map<String, dynamic> j) {
     return PauseInterval(
-      startMs: (j['startMs'] as num?)?.toInt() ?? 0,
-      endMs: (j['endMs'] as num?)?.toInt(),
+      startMs: JsonValueParser.toInt(j['startMs']),
+      endMs: JsonValueParser.toNullableInt(j['endMs']),
     );
   }
 
@@ -307,16 +310,20 @@ class PomodoroRecord {
       tagUuids: tags,
       startTime: _ms(j['start_time']),
       endTime: j['end_time'] != null ? _ms(j['end_time']) : null,
-      plannedDuration: (j['planned_duration'] as num?)?.toInt() ?? 25 * 60,
-      actualDuration: (j['actual_duration'] as num?)?.toInt(),
+      plannedDuration: JsonValueParser.toInt(
+        j['planned_duration'],
+        fallback: 25 * 60,
+      ),
+      actualDuration: JsonValueParser.toNullableInt(j['actual_duration']),
       status: _parseStatus(j['status']),
       deviceId: j['device_id']?.toString(),
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
       note: j['note']?.toString(),
-      totalPauseSeconds: (j['total_pause_seconds'] as num?)?.toInt(),
+      totalPauseSeconds:
+          JsonValueParser.toNullableInt(j['total_pause_seconds']),
       pauseIntervals: _parseRecordPauseIntervals(j['pause_intervals']),
       isDeleted: j['is_deleted'] == 1 || j['is_deleted'] == true,
-      version: (j['version'] as num?)?.toInt() ?? 1,
+      version: JsonValueParser.toInt(j['version'], fallback: 1),
       createdAt: _ms(j['created_at']),
       updatedAt: _ms(j['updated_at']),
       hasConflict: j['has_conflict'] == 1 || j['has_conflict'] == true,
@@ -388,12 +395,14 @@ class PomodoroSettings {
   int breakMinutes; // default_rest_duration  / 60
   int cycles; // default_loop_count
   TimerMode mode; // 🚀 新增：倒计时或正计时模式
+  bool strictFreeFocus; // 严格自由专注：通过手机翻转控制计时
 
   PomodoroSettings({
     this.focusMinutes = 25,
     this.breakMinutes = 5,
     this.cycles = 4,
     this.mode = TimerMode.countdown,
+    this.strictFreeFocus = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -401,6 +410,7 @@ class PomodoroSettings {
         'breakMinutes': breakMinutes,
         'cycles': cycles,
         'mode': mode.index,
+        'strictFreeFocus': strictFreeFocus,
         // 后端字段（秒）
         'default_focus_duration': focusMinutes * 60,
         'default_rest_duration': breakMinutes * 60,
@@ -412,10 +422,13 @@ class PomodoroSettings {
     final focusRaw = j['focusMinutes'] ?? j['default_focus_duration'];
     final breakRaw = j['breakMinutes'] ?? j['default_rest_duration'];
     final cyclesRaw = j['cycles'] ?? j['default_loop_count'];
-    final modeIdx = j['mode'] as int? ?? 0;
+    final modeIdx = JsonValueParser.toInt(j['mode']);
+    final strictFreeFocus = j['strictFreeFocus'] == true ||
+        j['strict_free_focus'] == true ||
+        j['strictMode'] == true;
 
     int toMinutes(dynamic v, int def) {
-      final n = v as int? ?? def;
+      final n = JsonValueParser.toInt(v, fallback: def);
       // 若 > 60 认为是秒，转换为分钟
       return n > 60 ? n ~/ 60 : n;
     }
@@ -423,8 +436,10 @@ class PomodoroSettings {
     return PomodoroSettings(
       focusMinutes: toMinutes(focusRaw, 25),
       breakMinutes: toMinutes(breakRaw, 5),
-      cycles: cyclesRaw as int? ?? 4,
-      mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+      cycles: JsonValueParser.toInt(cyclesRaw, fallback: 4),
+      mode: TimerMode
+          .values[modeIdx.clamp(0, TimerMode.values.length - 1).toInt()],
+      strictFreeFocus: strictFreeFocus,
     );
   }
 }
@@ -450,6 +465,8 @@ class PomodoroRunState {
   int sessionStartMs;
   int plannedFocusSeconds;
   TimerMode mode;
+  bool strictFreeFocus;
+  bool strictWaitingForFlip;
   // 🚀 暂停状态持久化
   bool isPaused;
   int pausedAtMs;
@@ -474,6 +491,8 @@ class PomodoroRunState {
     this.sessionStartMs = 0,
     this.plannedFocusSeconds = 25 * 60,
     this.mode = TimerMode.countdown,
+    this.strictFreeFocus = false,
+    this.strictWaitingForFlip = false,
     this.isPaused = false,
     this.pausedAtMs = 0,
     this.accumulatedMs = 0,
@@ -515,6 +534,8 @@ class PomodoroRunState {
         'plannedFocusSeconds': plannedFocusSeconds,
         'mode': mode.index,
         'isCountUp': mode == TimerMode.countUp,
+        'strictFreeFocus': strictFreeFocus,
+        'strictWaitingForFlip': strictWaitingForFlip,
         'isPaused': isPaused,
         'paused_at_ms': pausedAtMs,
         'accumulated_ms': accumulatedMs,
@@ -525,39 +546,56 @@ class PomodoroRunState {
       };
 
   factory PomodoroRunState.fromJson(Map<String, dynamic> j) {
-    final focusSecs = j['focusSeconds'] as int? ?? 25 * 60;
-    final modeIdx =
-        j['mode'] as int? ?? (j['isCountUp'] == true || focusSecs == 0 ? 1 : 0);
+    final focusSecs =
+        JsonValueParser.toInt(j['focusSeconds'], fallback: 25 * 60);
+    final modeIdx = JsonValueParser.toInt(
+      j['mode'],
+      fallback: j['isCountUp'] == true || focusSecs == 0 ? 1 : 0,
+    );
+    final phaseIdx = JsonValueParser.toInt(j['phase'])
+        .clamp(0, PomodoroPhase.values.length - 1)
+        .toInt();
 
     return PomodoroRunState(
-      phase: PomodoroPhase.values[j['phase'] as int? ?? 0],
+      phase: PomodoroPhase.values[phaseIdx],
       sessionUuid: j['sessionUuid']?.toString() ?? const Uuid().v4(),
-      targetEndMs: j['targetEndMs'] as int? ?? 0,
-      currentCycle: j['currentCycle'] as int? ?? 1,
-      totalCycles: j['totalCycles'] as int? ?? 4,
+      targetEndMs: JsonValueParser.toInt(j['targetEndMs']),
+      currentCycle: JsonValueParser.toInt(j['currentCycle'], fallback: 1),
+      totalCycles: JsonValueParser.toInt(j['totalCycles'], fallback: 4),
       focusSeconds: focusSecs,
-      breakSeconds: j['breakSeconds'] as int? ?? 5 * 60,
-      todoUuid: j['todoUuid'] as String?,
-      todoTitle: j['todoTitle'] as String?,
+      breakSeconds: JsonValueParser.toInt(j['breakSeconds'], fallback: 5 * 60),
+      todoUuid: j['todoUuid']?.toString(),
+      todoTitle: j['todoTitle']?.toString(),
       tagUuids:
           (j['tagUuids'] as List?)?.map((e) => e.toString()).toList() ?? [],
       tagNames:
           (j['tagNames'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      sessionStartMs: j['sessionStartMs'] as int? ?? 0,
-      plannedFocusSeconds: j['plannedFocusSeconds'] as int? ??
-          j['actualFocusedSeconds'] as int? ??
+      sessionStartMs: JsonValueParser.toInt(j['sessionStartMs']),
+      plannedFocusSeconds: JsonValueParser.toNullableInt(
+            j['plannedFocusSeconds'],
+          ) ??
+          JsonValueParser.toNullableInt(j['actualFocusedSeconds']) ??
           focusSecs,
-      mode: TimerMode.values[modeIdx.clamp(0, TimerMode.values.length - 1)],
+      mode: TimerMode
+          .values[modeIdx.clamp(0, TimerMode.values.length - 1).toInt()],
+      strictFreeFocus: j['strictFreeFocus'] == true ||
+          j['strict_free_focus'] == true ||
+          j['strictMode'] == true,
+      strictWaitingForFlip: j['strictWaitingForFlip'] == true ||
+          j['strict_waiting_for_flip'] == true,
       isPaused: j['is_paused'] == 1 ||
           j['is_paused'] == true ||
           j['isPaused'] == 1 ||
           j['isPaused'] == true,
-      pausedAtMs:
-          ((j['paused_at_ms'] ?? j['pausedAtMs']) as num?)?.toInt() ?? 0,
-      accumulatedMs:
-          ((j['accumulated_ms'] ?? j['accumulatedMs']) as num?)?.toInt() ?? 0,
-      pauseStartMs:
-          ((j['pause_start_ms'] ?? j['pauseStartMs']) as num?)?.toInt() ?? 0,
+      pausedAtMs: JsonValueParser.toInt(
+        j['paused_at_ms'] ?? j['pausedAtMs'],
+      ),
+      accumulatedMs: JsonValueParser.toInt(
+        j['accumulated_ms'] ?? j['accumulatedMs'],
+      ),
+      pauseStartMs: JsonValueParser.toInt(
+        j['pause_start_ms'] ?? j['pauseStartMs'],
+      ),
       pauseIntervals: _parsePauseIntervals(j['pause_intervals']),
       planBlockId: (j['plan_block_id'] ?? j['planBlockId'])?.toString(),
       note: j['note']?.toString(),
@@ -603,10 +641,8 @@ class PomodoroService {
 
   // ── 私有助手：获取隔离的存储 Key ──────────────────────────
   static Future<String> _getScopedKey(String baseKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? username = prefs.getString(StorageService.keyCurrentUser);
-    if (username == null || username.isEmpty) return baseKey;
-    return "${baseKey}_$username";
+    final username = await UserSessionStorage.getCurrentUsername();
+    return StorageKeyScope.scoped(baseKey, username);
   }
 
   // ── 设置 ─────────────────────────────────────────────────
@@ -1080,13 +1116,13 @@ class PomodoroService {
     }
   }
 
-  /// 按时间范围查询（仅有效）
+  /// 按半开时间范围 `[from, to)` 查询有效记录。
   static Future<List<PomodoroRecord>> getRecordsInRange(
       DateTime from, DateTime to) async {
     try {
       final db = await DatabaseHelper.instance.database;
       final List<Map<String, dynamic>> maps = await db.query('pomodoro_records',
-          where: 'is_deleted = 0 AND start_time >= ? AND start_time <= ?',
+          where: 'is_deleted = 0 AND start_time >= ? AND start_time < ?',
           whereArgs: [from.millisecondsSinceEpoch, to.millisecondsSinceEpoch],
           orderBy: 'start_time DESC');
       if (maps.isNotEmpty) {
@@ -1101,7 +1137,7 @@ class PomodoroService {
     final fromMs = from.millisecondsSinceEpoch;
     final toMs = to.millisecondsSinceEpoch;
     return all
-        .where((r) => r.startTime >= fromMs && r.startTime <= toMs)
+        .where((r) => r.startTime >= fromMs && r.startTime < toMs)
         .toList();
   }
 
@@ -1524,10 +1560,56 @@ class PomodoroService {
   }
 
   /// 查询绑定到指定 todoUuid 的所有专注记录
-  static Future<List<PomodoroRecord>> getRecordsByTodoUuid(
-      String todoUuid) async {
-    final all = await getRecords();
-    return all.where((r) => r.todoUuid == todoUuid).toList();
+  static Future<List<PomodoroRecord>> getRecordsByTodoUuid(String todoUuid) =>
+      getRecordsByTodoUuids([todoUuid]);
+
+  /// 查询绑定到一组待办的有效专注记录。
+  ///
+  /// 编辑循环待办时，一个编辑对象可能对应多个历史 occurrence。这里直接
+  /// 按 todo_uuid 查询，避免先读取、反序列化全部专注历史再在 Dart 侧过滤。
+  static Future<List<PomodoroRecord>> getRecordsByTodoUuids(
+      Iterable<String> todoUuids) async {
+    final ids = todoUuids.where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return const <PomodoroRecord>[];
+
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final records = <PomodoroRecord>[];
+      const chunkSize = 500;
+      for (var start = 0; start < ids.length; start += chunkSize) {
+        final end =
+            start + chunkSize < ids.length ? start + chunkSize : ids.length;
+        final chunk = ids.sublist(start, end);
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final maps = await db.query(
+          'pomodoro_records',
+          where: 'is_deleted = 0 AND todo_uuid IN ($placeholders)',
+          whereArgs: chunk,
+          orderBy: 'start_time DESC',
+        );
+        records.addAll(maps.map(PomodoroRecord.fromJson));
+      }
+      records.sort((a, b) => b.startTime.compareTo(a.startTime));
+      if (records.isNotEmpty) return records;
+
+      // SQL 为空时，getRecords 会负责一次性的 Prefs -> SQL 迁移。已有
+      // SQL 历史但当前待办没有记录时直接返回，避免退回全表读取。
+      final count = Sqflite.firstIntValue(
+            await db.rawQuery('SELECT COUNT(*) FROM pomodoro_records'),
+          ) ??
+          0;
+      if (count > 0) return records;
+      final idsSet = ids.toSet();
+      final all = await getRecords();
+      return all.where((record) => idsSet.contains(record.todoUuid)).toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    } catch (_) {
+      // SQL 不可用时保留旧路径，保证历史 Prefs 数据仍能访问。
+      final idsSet = ids.toSet();
+      final all = await getRecords();
+      return all.where((record) => idsSet.contains(record.todoUuid)).toList()
+        ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    }
   }
 
   static Future<List<PomodoroRecord>> getSessions() => getRecords();

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../services/storage/user_session_storage.dart';
+import '../../../services/storage/storage_key_scope.dart';
 import '../models/thirty_day_challenge.dart';
 
 /// 30 天挑战的本地存储。
@@ -163,8 +164,7 @@ abstract final class ThirtyDayChallengeRepository {
 
   static Future<String> _scopedKey() async {
     final username = await UserSessionStorage.getCurrentUsername();
-    if (username == null || username.isEmpty) return _storageKey;
-    return '${_storageKey}_$username';
+    return StorageKeyScope.scoped(_storageKey, username);
   }
 
   static Future<String> _scopedIntroKey() async {

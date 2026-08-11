@@ -2,13 +2,10 @@ package com.math_quiz.junpgle.com.math_quiz_app
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetProvider
 
@@ -21,22 +18,25 @@ class TodoOnlyWidgetProvider : HomeWidgetProvider() {
         newOptions: Bundle
     ) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        val prefs = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
+        val prefs = WidgetProviderSupport.preferences(context)
         onUpdate(context, appWidgetManager, intArrayOf(appWidgetId), prefs)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        val prefs = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
+        val prefs = WidgetProviderSupport.preferences(context)
         val appWidgetManager = AppWidgetManager.getInstance(context)
-        val appWidgetIds = intent.getIntArrayExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS)
-            ?: appWidgetManager.getAppWidgetIds(ComponentName(context, TodoOnlyWidgetProvider::class.java))
+        val appWidgetIds = WidgetProviderSupport.widgetIds(
+            context,
+            intent,
+            TodoOnlyWidgetProvider::class.java
+        )
 
         if (intent.action == "MARK_TODO_DONE") {
             val todoId = intent.getStringExtra("todo_id")
             if (todoId != null) {
                 val flutterIntent = Intent(context, es.antonborri.home_widget.HomeWidgetBackgroundReceiver::class.java).apply {
-                    data = Uri.parse("todowidget://markdone/$todoId")
+                    data = android.net.Uri.parse("todowidget://markdone/$todoId")
                     action = "es.antonborri.home_widget.action.BACKGROUND"
                 }
                 context.sendBroadcast(flutterIntent)
@@ -44,10 +44,14 @@ class TodoOnlyWidgetProvider : HomeWidgetProvider() {
             }
         }
 
-        if (intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE || intent.action == "es.antonborri.home_widget.action.UPDATE") {
-            if (appWidgetIds != null && appWidgetIds.isNotEmpty()) {
+        if (WidgetProviderSupport.isUpdateAction(intent)) {
+            if (appWidgetIds.isNotEmpty()) {
                 onUpdate(context, appWidgetManager, appWidgetIds, prefs)
-                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.list_todos)
+                WidgetProviderSupport.notifyListChanged(
+                    appWidgetManager,
+                    appWidgetIds,
+                    R.id.list_todos
+                )
             }
         }
     }
@@ -58,28 +62,18 @@ class TodoOnlyWidgetProvider : HomeWidgetProvider() {
         appWidgetIds: IntArray,
         widgetData: SharedPreferences
     ) {
-        val titleColor = context.getColor(R.color.widget_text_primary)
-        val bgColor = context.getColor(R.color.widget_bg)
-
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_todo_only)
-
-            val bgImageId = context.resources.getIdentifier("widget_bg_image", "id", context.packageName)
-            if (bgImageId != 0) {
-                views.setInt(bgImageId, "setColorFilter", bgColor)
-            }
-
-            views.setTextColor(R.id.widget_title, titleColor)
-
-            val serviceIntent = Intent(context, TodoOnlyWidgetService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
-            }
+            WidgetProviderSupport.applyCommonChrome(context, views, R.id.widget_title)
+            val serviceIntent = WidgetProviderSupport.serviceIntent(
+                context,
+                appWidgetId,
+                TodoOnlyWidgetService::class.java
+            )
             views.setRemoteAdapter(R.id.list_todos, serviceIntent)
             views.setEmptyView(R.id.list_todos, R.id.empty_todos)
 
-            val appIntent = Intent(context, MainActivity::class.java)
-            val appPendingIntent = PendingIntent.getActivity(context, 0, appIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val appPendingIntent = WidgetProviderSupport.mainActivityPendingIntent(context)
             views.setOnClickPendingIntent(R.id.widget_root, appPendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)

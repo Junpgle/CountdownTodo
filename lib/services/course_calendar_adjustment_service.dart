@@ -263,7 +263,10 @@ class CourseCalendarAdjustmentService {
   static Future<void> save(CourseCalendarAdjustment adjustment) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode(adjustment.toJson()));
-    StorageService.triggerRefresh();
+    StorageService.triggerRefresh(const {
+      DataRefreshDomain.courses,
+      DataRefreshDomain.fixedSchedules,
+    });
   }
 
   static Future<void> markOfficialHolidayHandled(String key) async {

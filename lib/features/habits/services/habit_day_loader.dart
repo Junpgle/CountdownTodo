@@ -7,6 +7,7 @@ import '../repositories/habit_repository.dart';
 import 'habit_progress_calculator.dart';
 import 'habit_rule_resolver.dart';
 import 'habit_sleep_duration_service.dart';
+import 'habit_sleep_goal_resolver.dart';
 
 /// 某个日期（或所在周期）全部习惯的快照，供今日视图复用。
 class HabitDaySnapshot {
@@ -56,7 +57,9 @@ abstract final class HabitDayLoader {
   static Future<HabitDaySnapshot> loadForDate(DateTime date) async {
     // 早睡/早起新增或修正后，睡眠时长在下一次刷新首页时自动重算。
     await HabitSleepDurationService.syncAll();
-    final goals = await HabitRepository.getActiveGoals();
+    final goals = HabitSleepGoalResolver.forDisplay(
+      await HabitRepository.getActiveGoals(),
+    );
     final allRules = await HabitRepository.getRules();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final effective = <String, HabitGoalRuleRevision>{};

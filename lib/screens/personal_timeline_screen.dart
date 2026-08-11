@@ -1551,9 +1551,15 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       width: size,
       height: size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-          child: Container(color: Colors.transparent)),
+      // Android 的 BackdropFilter 会把其后的整个滚动层带入离屏合成，
+      // 在首轮滚动时会产生数百毫秒的 Raster 峰值。这个 blob 只是装饰，
+      // 移动端保留半透明圆形即可，桌面端继续使用柔和模糊。
+      child: AppPlatform.isAndroid
+          ? const SizedBox.shrink()
+          : BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              child: Container(color: Colors.transparent),
+            ),
     );
   }
 

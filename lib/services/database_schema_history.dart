@@ -11,10 +11,52 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 37;
+  static const int currentVersion = 43;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 43,
+      title: '睡眠训练暂停检查点',
+      changes: [
+        '保存暂停时的阶段、稳定天数和逻辑日期，确保恢复训练时多端继续同一进度。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 42,
+      title: '习惯打卡去重索引安全迁移',
+      changes: [
+        '升级前清理历史重复 dedupe_key，避免唯一索引创建失败。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 41,
+      title: '睡眠训练逻辑时区',
+      changes: [
+        '为睡眠训练计划保存训练起始时区，确保不同设备使用同一逻辑日期推进阶段。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 40,
+      title: '待办专注记录定向查询索引',
+      changes: [
+        '为待办关联的专注记录增加联合索引，避免编辑待办时读取全部历史记录。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 39,
+      title: '规划块关联查询索引',
+      changes: [
+        '为待办关联规划块增加联合索引，提升编辑待办时的规划记录加载速度。',
+      ],
+    ),
+    DatabaseSchemaChange(
+      version: 38,
+      title: '待办全文索引维护',
+      changes: [
+        '重建待办 FTS 触发器：软删除时移除索引条目，并仅在可搜索字段变化时更新索引。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 37,
       title: '习惯默认专注时长',

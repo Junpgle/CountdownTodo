@@ -102,6 +102,7 @@ import router from '@system.router'
 import prompt from '@system.prompt'
 import storage from '@system.storage'
 import SyncService from '../../common/sync_service.js'
+import BandUtils from '../../common/band_utils.js'
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -167,10 +168,6 @@ export default {
     }
   },
 
-  padZero(num) {
-    return num < 10 ? '0' + num : '' + num
-  },
-
   setCurrentDate() {
     const now = new Date()
     const month = now.getMonth() + 1
@@ -187,32 +184,29 @@ export default {
   },
 
   checkPendingAlert() {
-    var self = this
     storage.get({
       key: 'sync_pending_alert',
       success: function(data) {
         if (data) {
-          try {
-            var alertData = JSON.parse(data)
-            if (alertData && alertData.timestamp) {
-              var now = Date.now()
-              var age = now - alertData.timestamp
-              if (age < 5 * 60 * 1000) {
-                router.push({
-                  uri: '/pages/alert',
-                  params: {
-                    title: alertData.title,
-                    content: alertData.content,
-                    todoType: alertData.todoType,
-                    notificationId: String(alertData.notificationId),
-                    timestamp: String(alertData.timestamp)
-                  }
-                })
-              } else {
-                storage.set({ key: 'sync_pending_alert', value: '' })
-              }
+          var alertData = BandUtils.parseJson(data, null)
+          if (alertData && alertData.timestamp) {
+            var now = Date.now()
+            var age = now - alertData.timestamp
+            if (age < 5 * 60 * 1000) {
+              router.push({
+                uri: '/pages/alert',
+                params: {
+                  title: alertData.title,
+                  content: alertData.content,
+                  todoType: alertData.todoType,
+                  notificationId: String(alertData.notificationId),
+                  timestamp: String(alertData.timestamp)
+                }
+              })
+            } else {
+              storage.set({ key: 'sync_pending_alert', value: '' })
             }
-          } catch (e) {
+          } else {
             storage.set({ key: 'sync_pending_alert', value: '' })
           }
         }
@@ -227,18 +221,16 @@ export default {
       key: 'sync_latest_version',
       success: function(data) {
         if (data) {
-          try {
-            var info = JSON.parse(data)
-            if (info && info.version_name) {
-              // 简单的字符串对比，实际可用 versionCode 更稳
-              var current = self.bandVersion.replace('v', '')
-              if (info.version_name !== current && current !== '...') {
-                self.hasUpdate = true
-                self.updateDetail = info
-                return
-              }
+          var info = BandUtils.parseJson(data, null)
+          if (info && info.version_name) {
+            // 简单的字符串对比，实际可用 versionCode 更稳
+            var current = self.bandVersion.replace('v', '')
+            if (info.version_name !== current && current !== '...') {
+              self.hasUpdate = true
+              self.updateDetail = info
+              return
             }
-          } catch(e) {}
+          }
         }
         self.hasUpdate = false
       }
@@ -264,7 +256,7 @@ export default {
       key: 'sync_todo',
       success: (data) => {
         if (data) {
-          const todos = JSON.parse(data)
+          const todos = BandUtils.parseJsonArray(data)
           this.todoPendingCount = todos.filter(t => {
             const isDone = t.status === 'done' || t.is_completed === 1 || t.is_completed === true
             return !isDone
@@ -279,7 +271,7 @@ export default {
       key: 'sync_countdown',
       success: (data) => {
         if (data) {
-          const countdowns = JSON.parse(data)
+          const countdowns = BandUtils.parseJsonArray(data)
           if (countdowns.length > 0) {
             const now = Date.now()
             let nearest = null
@@ -320,9 +312,9 @@ export default {
       key: 'sync_course',
       success: (data) => {
         if (data) {
-          const courses = JSON.parse(data)
+          const courses = BandUtils.parseJsonArray(data)
           const now = new Date()
-          const todayStr = `${now.getFullYear()}-${this.padZero(now.getMonth() + 1)}-${this.padZero(now.getDate())}`
+          const todayStr = `${now.getFullYear()}-${BandUtils.padZero(now.getMonth() + 1)}-${BandUtils.padZero(now.getDate())}`
 
           const todayCourses = courses.filter(c => {
             if (c.date) {
@@ -346,7 +338,7 @@ export default {
       key: 'sync_pomodoro',
       success: (data) => {
         if (data) {
-          const items = JSON.parse(data)
+          const items = BandUtils.parseJsonArray(data)
           if (items && items.length > 0) {
             const item = items[0]
             const phase = item.phase
@@ -488,7 +480,7 @@ export default {
               self.lastSyncTimeText = Math.floor(diff / 3600000) + '小时前'
             } else {
               var d = new Date(ts)
-              self.lastSyncTimeText = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + self.padZero(d.getHours()) + ':' + self.padZero(d.getMinutes())
+              self.lastSyncTimeText = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + BandUtils.padZero(d.getHours()) + ':' + BandUtils.padZero(d.getMinutes())
             }
           } catch (e) {
             self.lastSyncTimeText = ''

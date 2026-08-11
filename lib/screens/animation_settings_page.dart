@@ -19,9 +19,10 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _lazyLoadEnabled = true;
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
-  int _animationDuration = 500;
-  int _pageLayerDepth = 60;
-  int _containerContentStart = 28;
+  int _animationDuration = 220;
+  int _pageLayerDepth = 18;
+  int _containerContentStart = 12;
+  AnimationPreset? _preset;
 
   @override
   void initState() {
@@ -40,7 +41,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.getAnimationDuration(),
       AnimationConfigService.getPageLayerDepth(),
       AnimationConfigService.getContainerContentStart(),
+      AnimationConfigService.getPreset(),
     ]);
+    if (!mounted) return;
     setState(() {
       _animationsEnabled = results[0] as bool;
       _motionBlurEnabled = results[1] as bool;
@@ -51,7 +54,15 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _animationDuration = results[6] as int;
       _pageLayerDepth = results[7] as int;
       _containerContentStart = results[8] as int;
+      _preset = results[9] as AnimationPreset?;
     });
+  }
+
+  Future<void> _applyPreset(AnimationPreset preset) async {
+    setState(() => _preset = preset);
+    await AnimationConfigService.setPreset(preset);
+    await PageTransitions.init();
+    await _loadSettings();
   }
 
   Future<void> _update({
@@ -65,6 +76,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     int? pageLayerDepth,
     int? containerContentStart,
   }) async {
+    if (_preset != null && mounted) {
+      setState(() => _preset = null);
+    }
     if (enabled != null) {
       await AnimationConfigService.setAnimationsEnabled(enabled);
     }
@@ -100,6 +114,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
     return Scaffold(
       appBar: widget.isEmbedded
           ? null
@@ -107,256 +122,439 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
               title: const Text('动画设置'),
               centerTitle: true,
             ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
-            child: Text('核心特效开关',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.3,
-            children: [
-              _buildToggleCard(
-                title: '启用页面动画',
-                subtitle: '开启/关闭过渡动画',
-                icon: Icons.animation,
-                value: _animationsEnabled,
-                onChanged: (val) {
-                  setState(() => _animationsEnabled = val);
-                  _update(enabled: val);
-                },
-              ),
-              _buildToggleCard(
-                title: '懒加载优化',
-                subtitle: '动画进行中再渲染内容',
-                icon: Icons.hourglass_empty,
-                value: _lazyLoadEnabled,
-                onChanged: (val) {
-                  setState(() => _lazyLoadEnabled = val);
-                  _update(lazyLoad: val);
-                },
-              ),
-              _buildToggleCard(
-                title: '屏幕圆角适配',
-                subtitle: '动画过程中适配屏幕圆角',
-                icon: Icons.rounded_corner,
-                value: _screenRadiusEnabled,
-                onChanged: (val) {
-                  setState(() => _screenRadiusEnabled = val);
-                  _update(screenRadius: val);
-                },
-              ),
-              if (!AppPlatform.isWeb)
-                _buildToggleCard(
-                  title: '预测性返回',
-                  subtitle: 'Android 14+ 返回手势',
-                  icon: Icons.swipe_left,
-                  value: _predictiveBackEnabled,
-                  onChanged: (val) {
-                    setState(() => _predictiveBackEnabled = val);
-                    _update(predictiveBack: val);
-                  },
-                ),
-              _buildToggleCard(
-                title: '运动模糊',
-                subtitle: '滑动动态模糊 (影响性能)',
-                icon: Icons.blur_linear,
-                value: _motionBlurEnabled,
-                onChanged: (val) {
-                  setState(() => _motionBlurEnabled = val);
-                  _update(motionBlur: val);
-                },
-              ),
-              _buildToggleCard(
-                title: '层级模糊',
-                subtitle: '背景页面模糊 (影响性能)',
-                icon: Icons.blur_on,
-                value: _layerBlurEnabled,
-                onChanged: (val) {
-                  setState(() => _layerBlurEnabled = val);
-                  _update(layerBlur: val);
-                },
-              ),
-            ],
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
-            child: Text('参数微调',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey)),
-          ),
-          Card(
-            elevation: 1,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              children: [
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('动画时长',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('${_animationDuration}ms',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Slider(
-                        value: _animationDuration.toDouble(),
-                        min: 150,
-                        max: 600,
-                        divisions: 9,
-                        label: '${_animationDuration}ms',
-                        onChanged: (val) {
-                          setState(() => _animationDuration = val.round());
-                          _update(duration: val.round());
-                        },
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('快',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('慢',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('层级深度',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_pageLayerDepth%',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text('控制背景页缩小、压暗和层级模糊强度',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurfaceVariant)),
-                      const SizedBox(height: 8),
-                      Slider(
-                        value: _pageLayerDepth.toDouble(),
-                        min: 0,
-                        max: 100,
-                        divisions: 10,
-                        label: '$_pageLayerDepth%',
-                        onChanged: (val) {
-                          final next = val.round();
-                          setState(() => _pageLayerDepth = next);
-                          _update(pageLayerDepth: next);
-                        },
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('轻',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('强',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('元素展开内容显现',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
-                          Text('$_containerContentStart%',
-                              style: TextStyle(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text('控制从卡片、按钮展开页面时内容出现的早晚',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: colorScheme.onSurfaceVariant)),
-                      const SizedBox(height: 8),
-                      Slider(
-                        value: _containerContentStart.toDouble(),
-                        min: 0,
-                        max: 60,
-                        divisions: 12,
-                        label: '$_containerContentStart%',
-                        onChanged: (val) {
-                          final next = val.round();
-                          setState(() => _containerContentStart = next);
-                          _update(containerContentStart: next);
-                        },
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('早',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                          Text('晚',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final content = ListView(
+            padding: EdgeInsets.fromLTRB(
+              isDesktop ? 24 : 16,
+              isDesktop ? 20 : 16,
+              isDesktop ? 24 : 16,
+              isDesktop ? 32 : 16,
             ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0, bottom: 8.0),
+                child: Text(
+                  '性能预设',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              _buildPresetGrid(isDesktop: isDesktop),
+              SizedBox(height: isDesktop ? 28 : 24),
+              Padding(
+                padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                child: Text('核心特效开关',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant)),
+              ),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: isDesktop ? 2.45 : 1.3,
+                children: [
+                  _buildToggleCard(
+                    title: '启用页面动画',
+                    subtitle: '开启/关闭过渡动画',
+                    icon: Icons.animation,
+                    value: _animationsEnabled,
+                    onChanged: (val) {
+                      setState(() => _animationsEnabled = val);
+                      _update(enabled: val);
+                    },
+                  ),
+                  _buildToggleCard(
+                    title: '懒加载优化',
+                    subtitle: '动画进行中再渲染内容',
+                    icon: Icons.hourglass_empty,
+                    value: _lazyLoadEnabled,
+                    onChanged: (val) {
+                      setState(() => _lazyLoadEnabled = val);
+                      _update(lazyLoad: val);
+                    },
+                  ),
+                  _buildToggleCard(
+                    title: '屏幕圆角适配',
+                    subtitle: '动画过程中适配屏幕圆角',
+                    icon: Icons.rounded_corner,
+                    value: _screenRadiusEnabled,
+                    onChanged: (val) {
+                      setState(() => _screenRadiusEnabled = val);
+                      _update(screenRadius: val);
+                    },
+                  ),
+                  if (!AppPlatform.isWeb)
+                    _buildToggleCard(
+                      title: '预测性返回',
+                      subtitle: 'Android 14+ 返回手势',
+                      icon: Icons.swipe_left,
+                      value: _predictiveBackEnabled,
+                      onChanged: (val) {
+                        setState(() => _predictiveBackEnabled = val);
+                        _update(predictiveBack: val);
+                      },
+                    ),
+                  _buildToggleCard(
+                    title: '运动模糊',
+                    subtitle: '滑动动态模糊 (影响性能)',
+                    icon: Icons.blur_linear,
+                    value: _motionBlurEnabled,
+                    onChanged: (val) {
+                      setState(() => _motionBlurEnabled = val);
+                      _update(motionBlur: val);
+                    },
+                  ),
+                  _buildToggleCard(
+                    title: '层级模糊',
+                    subtitle: '背景页面模糊 (影响性能)',
+                    icon: Icons.blur_on,
+                    value: _layerBlurEnabled,
+                    onChanged: (val) {
+                      setState(() => _layerBlurEnabled = val);
+                      _update(layerBlur: val);
+                    },
+                  ),
+                ],
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 32.0),
+                child: Text('参数微调',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant)),
+              ),
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('动画时长',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w600)),
+                              Text('${_animationDuration}ms',
+                                  style: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: _animationDuration.toDouble(),
+                            min: 150,
+                            max: 600,
+                            divisions: 9,
+                            label: '${_animationDuration}ms',
+                            onChanged: (val) {
+                              setState(() => _animationDuration = val.round());
+                              _update(duration: val.round());
+                            },
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('快',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                              Text('慢',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('层级深度',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w600)),
+                              Text('$_pageLayerDepth%',
+                                  style: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('控制背景页缩小、压暗和层级模糊强度',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant)),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: _pageLayerDepth.toDouble(),
+                            min: 0,
+                            max: 100,
+                            divisions: 10,
+                            label: '$_pageLayerDepth%',
+                            onChanged: (val) {
+                              final next = val.round();
+                              setState(() => _pageLayerDepth = next);
+                              _update(pageLayerDepth: next);
+                            },
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('轻',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                              Text('强',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('元素展开内容显现',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.w600)),
+                              Text('$_containerContentStart%',
+                                  style: TextStyle(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('控制从卡片、按钮展开页面时内容出现的早晚',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurfaceVariant)),
+                          const SizedBox(height: 8),
+                          Slider(
+                            value: _containerContentStart.toDouble(),
+                            min: 0,
+                            max: 60,
+                            divisions: 12,
+                            label: '$_containerContentStart%',
+                            onChanged: (val) {
+                              final next = val.round();
+                              setState(() => _containerContentStart = next);
+                              _update(containerContentStart: next);
+                            },
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('早',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                              Text('晚',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: isDesktop ? 24 : 40),
+            ],
+          );
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isDesktop ? 1440 : constraints.maxWidth,
+              ),
+              child: content,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPresetGrid({required bool isDesktop}) {
+    final isWide = MediaQuery.of(context).size.width > 600;
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      // 三种策略始终并排，便于快速对比和切换；窄屏使用更紧凑的卡片
+      // 排版，避免把性能选项推到很深的位置。
+      crossAxisCount: 3,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: isDesktop ? 2.35 : (isWide ? 1.45 : 0.78),
+      children: [
+        _buildPresetCard(
+          preset: AnimationPreset.performance,
+          title: '极致流畅',
+          subtitle: '优先稳定帧率，适合大多数 Android 机型',
+          icon: Icons.speed_rounded,
+        ),
+        _buildPresetCard(
+          preset: AnimationPreset.balanced,
+          title: '均衡模式',
+          subtitle: '保留主要过渡，兼顾观感与性能',
+          icon: Icons.tune_rounded,
+        ),
+        _buildPresetCard(
+          preset: AnimationPreset.expressive,
+          title: '完整动效',
+          subtitle: '开启模糊和层级动画，视觉优先',
+          icon: Icons.auto_awesome_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPresetCard({
+    required AnimationPreset preset,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _preset == preset;
+    final compact = MediaQuery.of(context).size.width <= 600;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _applyPreset(preset),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: selected ? 2 : 0,
+        color: selected
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+            width: selected ? 2 : 1,
           ),
-          const SizedBox(height: 40),
-        ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 14,
+            vertical: compact ? 8 : 10,
+          ),
+          child: compact
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 22,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            icon,
+                            size: 22,
+                            color: selected
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                          if (selected)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Icon(Icons.check_circle_rounded,
+                                  size: 17, color: colorScheme.primary),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Flexible(
+                      child: Text(
+                        subtitle,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 9, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Icon(icon,
+                        color: selected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text(subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      Icon(Icons.check_circle_rounded,
+                          color: colorScheme.primary),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -371,13 +569,66 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = value;
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeInBack,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return ScaleTransition(
+          scale: animation,
+          child: RotationTransition(
+            turns: Tween<double>(begin: -0.1, end: 0.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: Icon(
+        icon,
+        key: ValueKey<bool>(isSelected),
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+        size: isDesktop ? 28 : 32,
+      ),
+    );
+    final switchWidget = SizedBox(
+      height: 24,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: colorScheme.primary,
+        ),
+      ),
+    );
+    final titleWidget = AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 300),
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 14,
+        color: isSelected
+            ? colorScheme.primary
+            : theme.textTheme.bodyMedium?.color,
+        fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      child: Text(title),
+    );
+    final subtitleWidget = Text(
+      subtitle,
+      maxLines: isDesktop ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
 
     return GestureDetector(
       onTap: () => onChanged(!value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(isDesktop ? 16 : 12),
         decoration: BoxDecoration(
           color: isSelected
               ? colorScheme.primary.withValues(alpha: 0.1)
@@ -390,69 +641,39 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
             width: 2,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  switchInCurve: Curves.easeOutBack,
-                  switchOutCurve: Curves.easeInBack,
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) {
-                    return ScaleTransition(
-                      scale: animation,
-                      child: RotationTransition(
-                        turns: Tween<double>(begin: -0.1, end: 0.0)
-                            .animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: Icon(
-                    icon,
-                    key: ValueKey<bool>(isSelected),
-                    color: isSelected ? colorScheme.primary : Colors.grey,
-                    size: 32,
-                  ),
-                ),
-                SizedBox(
-                  height: 24,
-                  child: FittedBox(
-                    fit: BoxFit.fill,
-                    child: Switch(
-                      value: value,
-                      onChanged: onChanged,
-                      activeThumbColor: colorScheme.primary,
+        child: isDesktop
+            ? Row(
+                children: [
+                  iconWidget,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleWidget,
+                        const SizedBox(height: 3),
+                        subtitleWidget,
+                      ],
                     ),
                   ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 300),
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: isSelected
-                    ? colorScheme.primary
-                    : theme.textTheme.bodyMedium?.color,
-                fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+                  const SizedBox(width: 12),
+                  switchWidget,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [iconWidget, switchWidget],
+                  ),
+                  const Spacer(),
+                  titleWidget,
+                  const SizedBox(height: 2),
+                  subtitleWidget,
+                ],
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              child: Text(title),
-            ),
-            const SizedBox(height: 2),
-            Text(subtitle,
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-          ],
-        ),
       ),
     );
   }

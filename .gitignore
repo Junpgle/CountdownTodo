@@ -100,6 +100,8 @@ todo.md
 /test/
 !/test/
 /test/*
+!/test/app_performance_monitor_test.dart
+!/test/android_delta_service_test.dart
 !/test/coach_mark_overlay_test.dart
 !/test/services/
 /test/services/*
@@ -109,10 +111,14 @@ todo.md
 !/test/services/timeline_statistics_service_test.dart
 !/test/services/calendar_sync_service_test.dart
 !/test/services/data_import_fixed_schedule_preview_test.dart
+!/test/services/data_refresh_domain_test.dart
+!/test/services/timeout_http_client_test.dart
 !/test/services/item_semantics_service_test.dart
 !/test/services/schedule_conflict_service_test.dart
 !/test/services/sync_capability_service_test.dart
 !/test/services/sync_oplog_policy_test.dart
+!/test/services/strict_focus_sensor_service_test.dart
+!/test/services/user_session_storage_test.dart
 !/test/services/todo_notification_policy_test.dart
 !/test/services/todo_parser_time_semantics_test.dart
 !/test/services/todo_lww_service_test.dart
@@ -126,6 +132,7 @@ todo.md
 !/test/models/todo_time_semantics_test.dart
 !/test/models/fixed_schedule_model_test.dart
 !/test/models/widget_snapshot_test.dart
+!/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
 !/test/widgets/add_todo_screen_test.dart
@@ -137,6 +144,7 @@ todo.md
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
+!/test/utils/json_value_parser_test.dart
 !/test/features/
 /test/features/*
 !/test/features/habits/

@@ -3,7 +3,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_platform.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
-import '../../../widgets/app_state_views.dart';
 
 class SystemSection extends StatelessWidget {
   final String? highlightTarget;
@@ -13,8 +12,6 @@ class SystemSection extends StatelessWidget {
   final String cacheSizeStr;
   final VoidCallback onClearCache;
   final VoidCallback onShowStorageAnalysis;
-  final bool isCheckingUpdate;
-  final VoidCallback onCheckUpdates;
 
   const SystemSection({
     super.key,
@@ -25,8 +22,6 @@ class SystemSection extends StatelessWidget {
     required this.cacheSizeStr,
     required this.onClearCache,
     required this.onShowStorageAnalysis,
-    required this.isCheckingUpdate,
-    required this.onCheckUpdates,
   });
 
   Widget _buildTile({
@@ -117,27 +112,6 @@ class SystemSection extends StatelessWidget {
             ),
           ),
         ],
-        const AppSettingsDivider(),
-        _buildTile(
-          context: context,
-          targetId: 'about',
-          child: ListTile(
-            leading: Icon(Icons.system_update, color: colorScheme.cdtSuccess),
-            title: const Text('检查新版本'),
-            trailing: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: isCheckingUpdate
-                  ? const AppLoadingIndicator(
-                      key: ValueKey('checking'),
-                    )
-                  : const Icon(
-                      Icons.chevron_right,
-                      key: ValueKey('ready'),
-                    ),
-            ),
-            onTap: isCheckingUpdate ? null : onCheckUpdates,
-          ),
-        ),
         const AppSettingsDivider(),
         _buildTile(
           context: context,

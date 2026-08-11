@@ -74,6 +74,23 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('固定日程入口直接打开日程标签', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AddTodoScreen(
+          initialMode: AddTodoInitialMode.fixedSchedule,
+          onTodoAdded: (_) {},
+          onFixedScheduleAdded: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('要记录什么日程？'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fixed-schedule-date')), findsOneWidget);
+    expect(find.text('某天内完成'), findsNothing);
+  });
+
   testWidgets('AI确认页按固定日程保存地点且不捏造结束时间', (tester) async {
     FixedScheduleItem? savedSchedule;
     await tester.pumpWidget(

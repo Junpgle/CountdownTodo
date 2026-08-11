@@ -25,6 +25,7 @@ class PlatformBootstrap {
   PlatformBootstrap._();
 
   static Future<bool> routeSecondaryWindow(List<String> args) async {
+    if (!AppPlatform.isWindows) return false;
     if (args.isNotEmpty && args[0] == 'multi_window') {
       await appendIslandIpcLog(
           'main routed multi_window args=${args.join('|')}');

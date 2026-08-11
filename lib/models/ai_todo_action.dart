@@ -1,3 +1,5 @@
+import '../utils/json_value_parser.dart';
+
 enum AiTodoActionType {
   createTodo,
   updateTodo,
@@ -494,10 +496,7 @@ class AiTodoAction {
   }
 
   static int? _parseInt(dynamic value) {
-    if (value == null) return null;
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value.toString());
+    return JsonValueParser.toNullableInt(value);
   }
 
   static String _parseRecurrenceScope(dynamic value) {

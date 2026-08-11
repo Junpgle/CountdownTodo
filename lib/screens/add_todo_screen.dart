@@ -27,6 +27,8 @@ enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
 
 enum _ManualCaptureKind { todo, fixedSchedule }
 
+enum AddTodoInitialMode { todo, fixedSchedule }
+
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
   final Function(List<TodoItem>)? onTodosBatchAdded;
@@ -38,6 +40,7 @@ class AddTodoScreen extends StatefulWidget {
   final String? initialGroupId;
   final String? initialTeamUuid;
   final String? initialTeamName;
+  final AddTodoInitialMode initialMode;
 
   const AddTodoScreen({
     super.key,
@@ -49,6 +52,7 @@ class AddTodoScreen extends StatefulWidget {
     this.initialGroupId,
     this.initialTeamUuid,
     this.initialTeamName,
+    this.initialMode = AddTodoInitialMode.todo,
   });
 
   @override
@@ -147,12 +151,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   TodoClassificationSuggestion? _classificationSuggestion;
   Timer? _estimationDebounce;
   DateTime? _suggestedDueDate;
-  late Timer _timer;
   List<TodoGroup> _localTodoGroups = [];
 
   @override
   void initState() {
     super.initState();
+    _manualCaptureKind = widget.initialMode == AddTodoInitialMode.fixedSchedule
+        ? _ManualCaptureKind.fixedSchedule
+        : _ManualCaptureKind.todo;
     final now = DateTime.now();
     _scheduleDate = DateTime(now.year, now.month, now.day);
     _scheduleStartTime = const TimeOfDay(hour: 9, minute: 0);
@@ -161,9 +167,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     if (_localTodoGroups.isEmpty) {
       _loadTodoGroups();
     }
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() {});
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = ModalRoute.of(context);
       if (route != null && route.animation != null) {
@@ -314,7 +317,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
     _aiInputCtrl.dispose();
     _customDaysCtrl.dispose();
     _dotsController.dispose();
-    _timer.cancel();
     super.dispose();
   }
 
@@ -1392,7 +1394,7 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           if (est != null)
             _buildSuggestionItem(
               icon: Icons.timer_outlined,
-              label: '预估耗时: ~${_formatDuration(est.estimatedMinutes)}',
+              label: '预估耗时: ~${formatMinutesChinese(est.estimatedMinutes)}',
               sub: _estimationConfidenceLabel(est),
               subColor: _estimationConfidenceColor(est),
               showAccept: false,
@@ -1622,8 +1624,6 @@ class _AddTodoScreenState extends State<AddTodoScreen>
       ),
     );
   }
-
-  String _formatDuration(int minutes) => formatMinutesChinese(minutes);
 
   List<String> _extractKeywords() {
     final text = _titleCtrl.text.trim().toLowerCase();

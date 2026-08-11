@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -17,7 +18,6 @@ import '../widgets/app_detail_widgets.dart';
 import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import '../services/feature_tip_service.dart';
-import '../features/habits/screens/habit_center_screen.dart';
 import '../widgets/coach_mark_overlay.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
 
@@ -138,6 +138,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   List<TodoPlanBlock> _allPlanBlocks = [];
   _EntryMode _entryMode = _EntryMode.log;
   bool _showCoachMarks = false;
+  int _loadGeneration = 0;
+  bool _didOpenInitialTag = false;
 
   void _checkCoachMarks() async {
     if (!mounted || _showCoachMarks) return;
@@ -215,6 +217,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     super.initState();
     _weekStart = _dayStart(DateTime.now())
         .subtract(Duration(days: DateTime.now().weekday - 1));
+    StorageService.scopedDataRefreshNotifier.addListener(_onScopedDataRefresh);
     _loadData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -222,14 +225,41 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
   }
 
+  void _onScopedDataRefresh() {
+    if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    if (signal.affects(DataRefreshDomain.timeLogs) ||
+        signal.affects(DataRefreshDomain.pomodoro) ||
+        signal.affects(DataRefreshDomain.todos) ||
+        signal.affects(DataRefreshDomain.todoGroups) ||
+        signal.affects(DataRefreshDomain.planBlocks)) {
+      unawaited(_loadData());
+    }
+  }
+
+  @override
+  void dispose() {
+    StorageService.scopedDataRefreshNotifier
+        .removeListener(_onScopedDataRefresh);
+    super.dispose();
+  }
+
   Future<void> _loadData({bool forceSync = false}) async {
     if (!mounted) return;
+    final loadGeneration = ++_loadGeneration;
     setState(() => _isLoading = true);
 
     if (forceSync) {
       try {
         await StorageService.syncData(widget.username,
-            syncTimeLogs: true, syncTodos: false, syncCountdowns: false);
+            syncTimeLogs: true,
+            syncScreenTime: false,
+            syncTodos: false,
+            syncCountdowns: false,
+            syncPomodoro: false,
+            syncPlanBlocks: false,
+            syncFixedSchedules: false,
+            syncHabits: false);
       } catch (e) {
         if (mounted) {
           AppSnackBars.error(context, '同步失败: $e');
@@ -238,16 +268,25 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     }
 
     // 🚀 核心优化：并行加载所有统计所需数据
-    final results = await Future.wait([
-      PomodoroService.getTags(),
-      StorageService.getTimeLogs(widget.username),
-      PomodoroService.getRecords(),
-      StorageService.getTodos(widget.username),
-      StorageService.getPlanBlocks(widget.username),
-      StorageService.getTodoGroups(widget.username),
-    ]);
+    late final List<dynamic> results;
+    try {
+      results = await Future.wait([
+        PomodoroService.getTags(),
+        StorageService.getTimeLogs(widget.username),
+        PomodoroService.getRecords(),
+        StorageService.getTodos(widget.username),
+        StorageService.getPlanBlocks(widget.username),
+        StorageService.getTodoGroups(widget.username),
+      ]);
+    } catch (error) {
+      debugPrint('TimeLog load failed: $error');
+      if (mounted && loadGeneration == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
 
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
 
     setState(() {
       _allTags = results[0] as List<PomodoroTag>;
@@ -266,7 +305,8 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     });
 
     // 🚀 如果从搜索跳转并指定了标签，数据加载完成后自动弹出统计面板
-    if (widget.initialTagUuid != null) {
+    if (widget.initialTagUuid != null && !_didOpenInitialTag) {
+      _didOpenInitialTag = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final tag =
             _tags.where((t) => t.uuid == widget.initialTagUuid).firstOrNull;
@@ -370,13 +410,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   List<Widget> _buildActions() {
     final acts = <Widget>[];
-    acts.add(
-      IconButton(
-        icon: const Icon(Icons.bedtime_outlined, size: 20),
-        tooltip: '迁移睡眠日志到早睡早起习惯',
-        onPressed: _openHabitSleepMigration,
-      ),
-    );
     if (_view == _ViewMode.day) {
       // 只保留标签管理，不再有切换图标
       if (_dayMode == _DayMode.edit) {
@@ -394,17 +427,6 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
         icon: const Icon(Icons.refresh, size: 20),
         onPressed: () => _loadData(forceSync: true)));
     return acts;
-  }
-
-  Future<void> _openHabitSleepMigration() async {
-    await Navigator.of(context).push(
-      PageTransitions.material(
-        builder: (_) => HabitCenterScreen(
-          username: widget.username,
-          openSleepMigration: true,
-        ),
-      ),
-    );
   }
 
   Future<void> _openAiAssistant() async {
@@ -464,6 +486,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   onPressed: _goWeek)
               : null,
           title: _buildTitle(),
+          centerTitle: true,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(34),
             child: Container(

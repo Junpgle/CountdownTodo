@@ -33,11 +33,36 @@ class SearchService {
   SearchService._();
 
   int _latestSearchId = 0;
-  bool _isWarmedUp = false;
+  Future<void>? _warmupFuture;
+  String? _preparedTimeLogsUsername;
+  Future<void>? _timeLogsReadyFuture;
 
-  Future<void> warmup() async {
-    if (_isWarmedUp) return;
-    _isWarmedUp = true;
+  Future<void> warmup() {
+    return _warmupFuture ??= _runWarmup();
+  }
+
+  Future<void> _runWarmup() async {
+    try {
+      await Future.wait<void>([
+        DatabaseHelper.instance.warmSearchIndex(),
+        _prepareTimeLogs(),
+      ]);
+    } catch (error) {
+      _warmupFuture = null;
+      debugPrint('Search warmup failed: $error');
+    }
+  }
+
+  Future<void> _prepareTimeLogs() async {
+    final username = await StorageService.getLoginSession() ?? 'default';
+    if (_preparedTimeLogsUsername == username && _timeLogsReadyFuture != null) {
+      return _timeLogsReadyFuture!;
+    }
+    _preparedTimeLogsUsername = username;
+    return _timeLogsReadyFuture = StorageService.getTimeLogs(
+      username,
+      limit: 1,
+    ).then<void>((_) {});
   }
 
   // --- 静态设置项索引库 ---
@@ -305,6 +330,18 @@ class SearchService {
       type: SearchResultType.setting,
       breadcrumb: '设置 > 平台专属',
       extraData: {'route': '/settings', 'target': 'mac_island_clipboard_links'},
+    ),
+    SearchResult(
+      id: 'setting_mac_island_clipboard_browser',
+      title: '剪贴板网址默认浏览器 / 灵动岛浏览器',
+      subtitle: '设置复制网址时默认使用的浏览器',
+      icon: Icons.language_rounded,
+      type: SearchResultType.setting,
+      breadcrumb: '设置 > 平台专属',
+      extraData: {
+        'route': '/settings',
+        'target': 'mac_island_clipboard_browser',
+      },
     ),
     SearchResult(
       id: 'setting_mac_island_test',
@@ -621,6 +658,10 @@ class SearchService {
 
     final searchTerms = _extractSearchTerms(q);
     final scoredResults = <SearchResultWithScore>[];
+    final featureSearch = _searchHabitsAndChallenges(searchTerms)
+        .catchError((_) => <SearchResult>[]);
+    final databaseSearch =
+        _searchDatabase(q, searchTerms).catchError((_) => <SearchResult>[]);
 
     // 1. 静态索引扫描
     for (var s in _staticSettings) {
@@ -634,47 +675,38 @@ class SearchService {
       if (score > 0) scoredResults.add(SearchResultWithScore(s, score));
     }
 
-    // 2. 习惯与挑战扫描
-    try {
-      final featureItems = await _searchHabitsAndChallenges(searchTerms);
-      if (currentSearchId != _latestSearchId) return [];
-      for (final item in featureItems) {
-        final score = _calculateScore(
-          item.title.toLowerCase(),
-          item.subtitle?.toLowerCase(),
-          null,
-          q,
-          searchTerms,
-        );
-        if (score > 0) {
-          scoredResults.add(SearchResultWithScore(item, score + 8));
-        }
+    // 2. 习惯、挑战与数据库查询互不依赖，并行执行以缩短输入后的等待。
+    final searchResults = await Future.wait([featureSearch, databaseSearch]);
+    if (currentSearchId != _latestSearchId) return [];
+
+    for (final item in searchResults[0]) {
+      final score = _calculateScore(
+        item.title.toLowerCase(),
+        item.subtitle?.toLowerCase(),
+        null,
+        q,
+        searchTerms,
+      );
+      if (score > 0) {
+        scoredResults.add(SearchResultWithScore(item, score + 8));
       }
-    } catch (_) {
-      // 习惯/挑战属于增强搜索，读取失败不影响其他搜索结果。
     }
 
     // 3. 数据库扫描
     // 🚀 修复：DB 查询结果已经由 SQL LIKE/FTS 确认与 query 相关，
     // 不能再用 _calculateScore 二次过滤（否则备注匹配但不在 subtitle 里的条目会被丢弃）。
     // 用 score+10 保证 DB 结果优先展示，同时仍按标题相关度排序。
-    try {
-      final dbItems = await _searchDatabase(q, searchTerms);
-      if (currentSearchId != _latestSearchId) return [];
-      for (var item in dbItems) {
-        final score = _calculateScore(
-          item.title.toLowerCase(),
-          item.subtitle?.toLowerCase(),
-          null,
-          q,
-          searchTerms,
-        );
-        // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
-        scoredResults
-            .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
-      }
-    } catch (e) {
-      // debugPrint("Database search error: $e");
+    for (final item in searchResults[1]) {
+      final score = _calculateScore(
+        item.title.toLowerCase(),
+        item.subtitle?.toLowerCase(),
+        null,
+        q,
+        searchTerms,
+      );
+      // DB 已过滤，保底给 score=1，避免备注命中却被丢弃
+      scoredResults
+          .add(SearchResultWithScore(item, (score > 0 ? score : 1) + 10));
     }
 
     scoredResults.sort((a, b) => b.score.compareTo(a.score));
@@ -905,21 +937,24 @@ class SearchService {
     List<Map<String, dynamic>> todos = [];
     try {
       if (isDateQuery) {
+        // Date searches must use the storage facade so recurring series are
+        // materialized for the requested day before filtering.
         final allTodos = await StorageService.getTodos(username);
         final matchedTodos = allTodos
             .where((t) {
               if (t.isDeleted) return false;
-              if (t.dueDate != null &&
-                  t.dueDate!.isAfter(
-                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                  t.dueDate!.isBefore(endOfDay!)) {
+              final dueDate = t.dueDate;
+              if (dueDate != null &&
+                  !dueDate.isBefore(startOfDay!) &&
+                  dueDate.isBefore(endOfDay!)) {
                 return true;
               }
-              if (t.createdDate != null) {
-                final cd = DateTime.fromMillisecondsSinceEpoch(t.createdDate!);
-                if (cd.isAfter(startOfDay!
-                        .subtract(const Duration(milliseconds: 1))) &&
-                    cd.isBefore(endOfDay!)) {
+              final createdDate = t.createdDate;
+              if (createdDate != null) {
+                final created =
+                    DateTime.fromMillisecondsSinceEpoch(createdDate);
+                if (!created.isBefore(startOfDay!) &&
+                    created.isBefore(endOfDay!)) {
                   return true;
                 }
               }
@@ -927,7 +962,6 @@ class SearchService {
             })
             .take(20)
             .toList();
-
         todos = matchedTodos
             .map((t) => {
                   'uuid': t.id,
@@ -1106,38 +1140,52 @@ class SearchService {
     }
 
     // ── 时间日志 ──────────────────────────────────────────────────────────
-    // 🚀 修复：时间日志存在 SharedPreferences，统一用 StorageService
     try {
-      final allLogs = await StorageService.getTimeLogs(username);
-      final matchedLogs = allLogs
-          .where((l) {
-            if (l.isDeleted) return false;
-            if (isDateQuery) {
-              final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
-              return start.isAfter(
-                      startOfDay!.subtract(const Duration(milliseconds: 1))) &&
-                  start.isBefore(endOfDay!);
-            }
-            final haystack =
-                [l.title, l.remark].whereType<String>().join(' ').toLowerCase();
-            return _matchesAllTerms(haystack, searchTerms);
-          })
-          .take(15)
-          .toList();
+      // Keep the legacy SharedPreferences-to-SQL migration guarantee while
+      // all actual search filtering stays inside SQLite.
+      await _prepareTimeLogs();
+      List<Map<String, dynamic>> matchedLogs;
+      if (isDateQuery) {
+        matchedLogs = await db.searchTimeLogsByDate(
+          startOfDay!.millisecondsSinceEpoch,
+          endOfDay!.millisecondsSinceEpoch,
+        );
+      } else {
+        final logMap = <String, Map<String, dynamic>>{};
+        for (final term in searchTerms) {
+          for (final row in await db.searchTimeLogs(term)) {
+            logMap[row['uuid'].toString()] = row;
+          }
+        }
+        matchedLogs = logMap.values
+            .where((log) {
+              final haystack = [log['title'], log['remark']]
+                  .whereType<String>()
+                  .join(' ')
+                  .toLowerCase();
+              return _matchesAllTerms(haystack, searchTerms);
+            })
+            .take(15)
+            .toList();
+      }
 
-      for (var l in matchedLogs) {
-        final start = DateTime.fromMillisecondsSinceEpoch(l.startTime);
-        final end = DateTime.fromMillisecondsSinceEpoch(l.endTime);
+      for (final log in matchedLogs) {
+        final startMs = (log['start_time'] as num?)?.toInt() ?? 0;
+        final endMs = (log['end_time'] as num?)?.toInt() ?? startMs;
+        final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+        final end = DateTime.fromMillisecondsSinceEpoch(endMs);
         final mins = end.difference(start).inMinutes;
+        final title = log['title']?.toString() ?? '';
+        final remark = log['remark']?.toString();
         dbItems.add(SearchResult(
-          id: 'db_log_${l.id}',
-          title: l.title.isNotEmpty ? l.title : '未命名专注',
+          id: 'db_log_${log['uuid']}',
+          title: title.isNotEmpty ? title : '未命名专注',
           subtitle: '$mins 分钟 · ${DateFormat('MM/dd HH:mm').format(start)}'
-              '${l.remark?.isNotEmpty == true ? ' · ${l.remark}' : ''}',
+              '${remark?.isNotEmpty == true ? ' · $remark' : ''}',
           icon: Icons.history_edu_rounded,
           type: SearchResultType.log,
           extraData: {
-            'uuid': l.id,
+            'uuid': log['uuid'],
             'table': 'time_logs',
             if (dateQueryHint != null) 'date_query_hint': dateQueryHint,
           },
@@ -1348,73 +1396,83 @@ class SearchService {
     final db = DatabaseHelper.instance;
     final now = DateTime.now();
     final username = await StorageService.getLoginSession() ?? 'default';
+    // Start independent recommendation inputs together. Processing remains
+    // ordered so the visible ranking is stable.
+    final coursesFuture =
+        CourseService.getAllCourses(username).catchError((_) => <CourseItem>[]);
+    final overdueCountFuture =
+        db.countOverdueTodos(now.millisecondsSinceEpoch).catchError((_) => 0);
+    final topHistoryFuture = db
+        .getRecentSearches(limit: 1)
+        .catchError((_) => <Map<String, dynamic>>[]);
+    final recentHistoryFuture = db
+        .getRecentSearches(limit: 5, currentHour: now.hour)
+        .catchError((_) => <Map<String, dynamic>>[]);
+    final pomodoroFuture =
+        PomodoroService.getRecords().catchError((_) => <PomodoroRecord>[]);
 
     // 1. 时间维度：根据时刻推荐
     final hour = now.hour;
 
     // 🚀 新增：基于“最近”课程的推荐 (全量时间轴最近)
     try {
-      final username = await StorageService.getLoginSession();
-      if (username != null) {
-        final allCourses = await CourseService.getAllCourses(username);
-        if (allCourses.isNotEmpty) {
-          CourseItem? nearestCourse;
-          int minDiffSeconds = 0x7FFFFFFF; // 很大一个数
-          String reason = "";
+      final allCourses = await coursesFuture;
+      if (allCourses.isNotEmpty) {
+        CourseItem? nearestCourse;
+        int minDiffSeconds = 0x7FFFFFFF; // 很大一个数
+        String reason = "";
 
-          for (var c in allCourses) {
-            try {
-              final dateParts = c.date.split('-');
-              if (dateParts.length != 3) continue;
+        for (var c in allCourses) {
+          try {
+            final dateParts = c.date.split('-');
+            if (dateParts.length != 3) continue;
 
-              final startDt = DateTime(
-                  int.parse(dateParts[0]),
-                  int.parse(dateParts[1]),
-                  int.parse(dateParts[2]),
-                  c.startTime ~/ 100,
-                  c.startTime % 100);
-              final endDt = DateTime(
-                  int.parse(dateParts[0]),
-                  int.parse(dateParts[1]),
-                  int.parse(dateParts[2]),
-                  c.endTime ~/ 100,
-                  c.endTime % 100);
+            final startDt = DateTime(
+                int.parse(dateParts[0]),
+                int.parse(dateParts[1]),
+                int.parse(dateParts[2]),
+                c.startTime ~/ 100,
+                c.startTime % 100);
+            final endDt = DateTime(
+                int.parse(dateParts[0]),
+                int.parse(dateParts[1]),
+                int.parse(dateParts[2]),
+                c.endTime ~/ 100,
+                c.endTime % 100);
 
-              // 1. 如果正在进行，优先级最高
-              if (now.isAfter(startDt) && now.isBefore(endDt)) {
-                nearestCourse = c;
-                minDiffSeconds = 0;
-                reason = "正在进行的课程";
-                break;
-              }
+            // 1. 如果正在进行，优先级最高
+            if (now.isAfter(startDt) && now.isBefore(endDt)) {
+              nearestCourse = c;
+              minDiffSeconds = 0;
+              reason = "正在进行的课程";
+              break;
+            }
 
-              // 2. 计算绝对距离
-              final diffToStart = now.difference(startDt).inSeconds.abs();
-              final diffToEnd = now.difference(endDt).inSeconds.abs();
-              final localMin =
-                  diffToStart < diffToEnd ? diffToStart : diffToEnd;
+            // 2. 计算绝对距离
+            final diffToStart = now.difference(startDt).inSeconds.abs();
+            final diffToEnd = now.difference(endDt).inSeconds.abs();
+            final localMin = diffToStart < diffToEnd ? diffToStart : diffToEnd;
 
-              if (localMin < minDiffSeconds) {
-                minDiffSeconds = localMin;
-                nearestCourse = c;
-                reason = now.isBefore(startDt) ? "即将开始的课程" : "最近结束的课程";
-              }
-            } catch (_) {}
-          }
+            if (localMin < minDiffSeconds) {
+              minDiffSeconds = localMin;
+              nearestCourse = c;
+              reason = now.isBefore(startDt) ? "即将开始的课程" : "最近结束的课程";
+            }
+          } catch (_) {}
+        }
 
-          if (nearestCourse != null) {
-            suggestions.add(SearchResult(
-              id: 'guess_recent_course',
-              title: nearestCourse.courseName,
-              subtitle: '🎓 $reason · ${nearestCourse.roomName}',
-              icon: Icons.school_rounded,
-              type: SearchResultType.recommend,
-              extraData: {
-                'action': 'apply_query',
-                'query': nearestCourse.courseName,
-              },
-            ));
-          }
+        if (nearestCourse != null) {
+          suggestions.add(SearchResult(
+            id: 'guess_recent_course',
+            title: nearestCourse.courseName,
+            subtitle: '🎓 $reason · ${nearestCourse.roomName}',
+            icon: Icons.school_rounded,
+            type: SearchResultType.recommend,
+            extraData: {
+              'action': 'apply_query',
+              'query': nearestCourse.courseName,
+            },
+          ));
         }
       }
     } catch (_) {}
@@ -1445,18 +1503,11 @@ class SearchService {
 
     // 2. 紧急维度：逾期任务探测 (权重最高)
     try {
-      final allTodos = await StorageService.getTodos(username);
-      final overdue = allTodos
-          .where((t) =>
-              !t.isDone &&
-              !t.isDeleted &&
-              t.dueDate != null &&
-              t.dueDate!.isBefore(now))
-          .toList();
-      if (overdue.isNotEmpty) {
+      final overdueCount = await overdueCountFuture;
+      if (overdueCount > 0) {
         suggestions.add(SearchResult(
           id: 'guess_overdue',
-          title: '处理逾期任务 (${overdue.length})',
+          title: '处理逾期任务 ($overdueCount)',
           subtitle: '⚠️ 发现已截止但未完成的任务，建议优先处理',
           icon: Icons.priority_high_rounded,
           type: SearchResultType.recommend,
@@ -1467,7 +1518,7 @@ class SearchService {
 
     // 3. 历史频率维度：最常搜索 (Top 1)
     try {
-      final topHistory = await db.getRecentSearches(limit: 1); // 不按时段，按绝对频率
+      final topHistory = await topHistoryFuture; // 不按时段，按绝对频率
       if (topHistory.isNotEmpty) {
         final h = topHistory.first;
         suggestions.add(SearchResult(
@@ -1483,8 +1534,7 @@ class SearchService {
 
     // 4. 历史时间维度：最近搜索 (时段敏感型，展示前 5 条)
     try {
-      final history =
-          await db.getRecentSearches(limit: 5, currentHour: now.hour);
+      final history = await recentHistoryFuture;
       for (var h in history) {
         // 如果已经作为“最常搜索”推荐过了，就不再在历史里重复显示（可选）
         suggestions.add(SearchResult(
@@ -1500,7 +1550,7 @@ class SearchService {
 
     // 4. 活动维度：近期专注活动
     try {
-      final poms = await PomodoroService.getRecords();
+      final poms = await pomodoroFuture;
       if (poms.isNotEmpty) {
         final lastPom = poms.first;
         if (lastPom.todoTitle != null && lastPom.todoTitle!.isNotEmpty) {

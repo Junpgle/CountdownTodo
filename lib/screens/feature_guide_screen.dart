@@ -21,9 +21,12 @@ import '../widgets/global_search_overlay.dart';
 import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
 import '../services/permission_request_coordinator.dart';
+import '../services/minor_mode_service.dart';
+import '../models/minor_mode_state.dart';
 import '../models.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
+import '../widgets/app_settings_widgets.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -199,6 +202,8 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   bool _hasExactAlarm = false;
   bool _ignoringBatteryOptimizations = false;
   bool _showDatabaseUpdatePage = false;
+  DateTime? _minorBirthDate;
+  bool _minorBirthDateSaving = false;
 
   // Tai目录
   String _taiDbPath = '';
@@ -220,6 +225,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   bool _importingSemester = false;
 
   late List<Widget Function()> _pagesBuilder;
+  Future<void>? _guideConfigurationFuture;
 
   @override
   void initState() {
@@ -229,6 +235,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       platformChannel: platform,
       onResult: (_) => _checkPermissions(),
     );
+    _guideConfigurationFuture = _loadGuideConfiguration();
 
     if (_isManualReview) {
       // 手动查看：直接同步设置页面，跳过自动启动逻辑。
@@ -236,21 +243,27 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       _pagesBuilder = _isChangelogOnly
           ? [_buildChangelogPage]
           : [_buildChangelogPage, ..._buildPlatformGuidePages()];
-      if (AppPlatform.isWindows) _loadTaiConfig();
       _loadInfo();
-      _checkPermissions();
-      _loadGlobalSettings();
     } else {
       // 默认只放第一页（更新日志），防止异步加载前数组越界
       _pagesBuilder = [_buildChangelogPage];
       _loadInfo();
-      _checkPermissions();
-      _loadGlobalSettings();
       _setupPages();
     }
   }
 
+  Future<void> _loadGuideConfiguration() async {
+    final tasks = <Future<void>>[
+      _checkPermissions(),
+      _loadGlobalSettings(),
+      _loadMinorModeGuideState(),
+    ];
+    if (AppPlatform.isWindows) tasks.add(_loadTaiConfig());
+    await Future.wait<void>(tasks);
+  }
+
   Future<void> _setupPages() async {
+    await _guideConfigurationFuture;
     final prefs = await SharedPreferences.getInstance();
     final shownVersion = prefs.getString(FeatureGuideScreen._guideKey);
 
@@ -269,12 +282,17 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       pages.add(_buildUniSyncMigrationPage);
     }
 
+    final onlyUnconfigured = !isFirstLaunch && !_isManualReview;
+    final platformGuidePages = _buildPlatformGuidePages(
+      onlyUnconfigured: onlyUnconfigured,
+    );
     final shouldShowGuide = widget.mode == FeatureGuideMode.guide ||
         (widget.mode == FeatureGuideMode.automatic &&
-            (isFirstLaunch || widget.isManualReview));
+            (isFirstLaunch ||
+                widget.isManualReview ||
+                platformGuidePages.isNotEmpty));
     if (shouldShowGuide) {
-      pages.addAll(_buildPlatformGuidePages());
-      if (AppPlatform.isWindows) _loadTaiConfig();
+      pages.addAll(platformGuidePages);
     }
 
     if (mounted) {
@@ -284,32 +302,60 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
   }
 
-  List<Widget Function()> _buildPlatformGuidePages() {
+  List<Widget Function()> _buildPlatformGuidePages({
+    bool onlyUnconfigured = false,
+  }) {
     if (AppPlatform.isWeb) {
-      return [
-        _buildWebFeaturePage,
-        _buildWebCapabilityPage,
-        _buildGlobalCourseSetupPage,
-        _buildGlobalThemeSetupPage,
-      ];
+      if (!onlyUnconfigured) {
+        return [
+          _buildWebFeaturePage,
+          _buildWebCapabilityPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ];
+      }
+      return _semesterEnabled ? [] : [_buildGlobalCourseSetupPage];
     }
     if (AppPlatform.isWindows) {
+      if (!onlyUnconfigured) {
+        return [
+          _buildWinFeaturePage1,
+          _buildWinFeaturePage2,
+          _buildTaiSetupPage,
+          _buildGlobalCourseSetupPage,
+          _buildGlobalThemeSetupPage,
+        ];
+      }
       return [
-        _buildWinFeaturePage1,
-        _buildWinFeaturePage2,
-        _buildTaiSetupPage,
+        if (_taiDbPath.isEmpty) _buildTaiSetupPage,
+        if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+      ];
+    }
+    if (!onlyUnconfigured) {
+      return [
+        _buildAndroidFeaturePage1,
+        _buildAndroidFeaturePage2,
+        _buildAndroidFeaturePage3,
+        _buildAndroidWidgetGuidePage,
+        _buildMinorModeGuidePage,
         _buildGlobalCourseSetupPage,
         _buildGlobalThemeSetupPage,
       ];
     }
+
     return [
-      _buildAndroidFeaturePage1,
-      _buildAndroidFeaturePage2,
-      _buildAndroidFeaturePage3,
-      _buildAndroidWidgetGuidePage,
-      _buildGlobalCourseSetupPage,
-      _buildGlobalThemeSetupPage,
+      if (!_hasUsageStats) _buildAndroidFeaturePage1,
+      if (_notificationStatus?.isGranted != true || !_hasExactAlarm)
+        _buildAndroidFeaturePage2,
+      if (!_ignoringBatteryOptimizations) _buildAndroidFeaturePage3,
+      if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
+      if (!_semesterEnabled) _buildGlobalCourseSetupPage,
     ];
+  }
+
+  bool get _minorModeGuideConfigured {
+    final service = MinorModeService.instance;
+    return service.policyState.systemEnabled || service.manualBirthDate != null;
   }
 
   Future<void> _loadGlobalSettings() async {
@@ -668,6 +714,39 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         _hasExactAlarm = hasExact;
         _ignoringBatteryOptimizations = ignoringBattery;
       });
+    }
+  }
+
+  Future<void> _loadMinorModeGuideState() async {
+    await MinorModeService.instance.initialize();
+    final birthDate = MinorModeService.instance.manualBirthDate;
+    if (mounted) {
+      setState(() => _minorBirthDate = birthDate);
+    }
+  }
+
+  Future<void> _pickMinorBirthDate() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final defaultDate = DateTime(today.year - 12, today.month, today.day);
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _minorBirthDate ?? defaultDate,
+      firstDate: DateTime(1900),
+      lastDate: today,
+      helpText: '选择出生日期',
+      cancelText: '暂不设置',
+      confirmText: '确定',
+    );
+    if (selected == null || !mounted) return;
+
+    setState(() {
+      _minorBirthDate = selected;
+      _minorBirthDateSaving = true;
+    });
+    try {
+      await MinorModeService.instance.setManualBirthDate(selected);
+    } finally {
+      if (mounted) setState(() => _minorBirthDateSaving = false);
     }
   }
 
@@ -1448,6 +1527,115 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         ),
       ],
     ));
+  }
+
+  Widget _buildMinorModeGuidePage() {
+    final scheme = Theme.of(context).colorScheme;
+    final ageBand = _minorBirthDate == null
+        ? MinorAgeBand.unknown
+        : MinorAgeBandSystemMapping.fromBirthDate(_minorBirthDate!);
+    final selectedDateLabel = _minorBirthDate == null
+        ? '未设置'
+        : '${_minorBirthDate!.year.toString().padLeft(4, '0')}-'
+            '${_minorBirthDate!.month.toString().padLeft(2, '0')}-'
+            '${_minorBirthDate!.day.toString().padLeft(2, '0')}';
+
+    return ValueListenableBuilder<MinorModeState>(
+      valueListenable: MinorModeService.instance.stateNotifier,
+      builder: (context, state, _) {
+        return _buildPageContainer(
+          content: Column(
+            children: [
+              const SizedBox(height: 16),
+              _buildStepHeader(
+                icon: Icons.shield_outlined,
+                iconColor: scheme.primary,
+                title: '未成年人模式',
+                subtitle: '选择出生日期，自动匹配适龄保护策略。出生日期仅保存在本机，不会上传。',
+              ),
+              const SizedBox(height: 24),
+              Card(
+                margin: EdgeInsets.zero,
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                child: ListTile(
+                  leading: Icon(
+                    state.systemEnabled
+                        ? Icons.phonelink_lock_outlined
+                        : Icons.cake_outlined,
+                    color: scheme.primary,
+                  ),
+                  title: Text(
+                    state.systemEnabled ? '已跟随手机系统开启' : '设置出生日期',
+                  ),
+                  subtitle: Text(
+                    state.systemEnabled
+                        ? '系统年龄范围：${state.ageBand.label}；由系统管理，应用内无法绕过。'
+                        : '用于开启 App 未成年人模式并应用适龄策略',
+                  ),
+                  trailing: state.systemEnabled
+                      ? null
+                      : OutlinedButton(
+                          onPressed: _minorBirthDateSaving
+                              ? null
+                              : _pickMinorBirthDate,
+                          child: Text(
+                            _minorBirthDate == null ? '选择' : '修改',
+                          ),
+                        ),
+                ),
+              ),
+              if (!state.systemEnabled) ...[
+                const SizedBox(height: 16),
+                AppSettingsSection(
+                  title: '当前选择',
+                  children: [
+                    ListTile(
+                      leading: Icon(Icons.calendar_month_outlined,
+                          color: scheme.primary),
+                      title: const Text('出生日期'),
+                      trailing: Text(
+                        selectedDateLabel,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: Icon(Icons.groups_2_outlined,
+                          color: scheme.onSurfaceVariant),
+                      title: const Text('年龄段'),
+                      trailing: Text(
+                        ageBand.label,
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _minorBirthDate == null
+                        ? '可以跳过，之后在 设置 > 未成年人模式 中补充。'
+                        : ageBand == MinorAgeBand.adult
+                            ? '当前年龄段为成人，App 未成年人模式不会开启。'
+                            : '当前年龄段为${ageBand.label}，App 未成年人模式已按年龄策略准备。',
+                    style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ── 新增：Android 桌面小部件引导 ──────────────────────────

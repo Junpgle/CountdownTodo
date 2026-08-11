@@ -465,12 +465,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           : ((_localPomodoro!.targetEndMs - nowMs) / 1000).ceil();
 
       final m = rem ~/ 60;
-      final s = rem % 60;
       final timeStr = isCountUp
           ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60
-              ? '$m 分钟'
-              : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+          : (rem > 60 ? '$m 分钟' : formatTimerMMSS(rem));
 
       // 规划块即将结束时显示停止按钮
       final hasActivePlanBlock = _planBlocks
@@ -495,7 +492,6 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             page: PomodoroScreen(username: widget.username),
             sourceKey: _focusBannerKey,
           );
-          if (mounted) _loadAllData();
         },
       ));
     } else if (_remotePomodoro != null) {
@@ -505,13 +501,10 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
           '其他设备';
       final rem = _remotePomodoroRemaining;
       final m = rem ~/ 60;
-      final s = rem % 60;
       final isCountUp = _remotePomodoro!.mode == 1;
       final timeStr = isCountUp
           ? '已专注 ${rem ~/ 60}m'
-          : (rem > 60
-              ? '$m 分钟'
-              : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}');
+          : (rem > 60 ? '$m 分钟' : formatTimerMMSS(rem));
 
       events.add(HomeBannerEvent(
         type: 'pomodoro',
@@ -575,7 +568,13 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
             );
             _scheduleRevision.value++;
             _timelineRevision.value++;
-            _loadAllData();
+            _loadAllData(
+              domains: const {
+                DataRefreshDomain.todos,
+                DataRefreshDomain.planBlocks,
+                DataRefreshDomain.fixedSchedules,
+              },
+            );
           },
           onAction: () => _startPlanBlockFocus(activeBlock),
         ));
@@ -639,7 +638,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
 
       final specialType = IslandSlotProvider.detectTodoType(todo.title);
       if (specialType == 'default') continue;
-      if (!_isSameDay(todo.dueDate!.toLocal(), now)) continue;
+      if (!AppTimeFormats.isSameDay(todo.dueDate!.toLocal(), now)) continue;
 
       events.add(HomeBannerEvent(
         type: 'special_todo',
@@ -734,7 +733,9 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
               }
             }
             await StorageService.saveTodoGroups(widget.username, allGroups);
-            _loadAllData();
+            _loadAllData(
+              domains: const {DataRefreshDomain.todoGroups},
+            );
           },
           username: widget.username,
         ),
@@ -967,7 +968,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       if (t.dueDate == null) return false;
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType == 'default') return false;
-      return _isSameDay(t.dueDate!.toLocal(), now);
+      return AppTimeFormats.isSameDay(t.dueDate!.toLocal(), now);
     }).toList();
 
     for (final todo in specialTodosToday) {
@@ -1017,7 +1018,7 @@ mixin _HomeDashboardBannerMixin on _HomeDashboardStateBase {
       final todoType = ItemSemanticsService.specialTodoTypeForTitle(t.title);
       if (todoType != 'default') return false;
       DateTime localDueDate = t.dueDate!.toLocal();
-      if (!_isSameDay(localDueDate, now)) return false;
+      if (!AppTimeFormats.isSameDay(localDueDate, now)) return false;
       DateTime startDate = DateTime.fromMillisecondsSinceEpoch(
               t.createdDate ?? t.createdAt,
               isUtc: true)

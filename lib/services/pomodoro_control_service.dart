@@ -36,8 +36,14 @@ class PomodoroControlService {
     bool sync = true,
     bool ensureSyncConnection = false,
     bool syncBand = true,
+    bool startPaused = false,
+    bool strictWaitingForFlip = false,
   }) async {
     final isCountUp = settings.mode == TimerMode.countUp;
+    final isStrictWaiting = startPaused &&
+        strictWaitingForFlip &&
+        isCountUp &&
+        settings.strictFreeFocus;
     final focusSeconds =
         isCountUp ? 0 : (durationMinutes ?? settings.focusMinutes) * 60;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -87,10 +93,13 @@ class PomodoroControlService {
       sessionStartMs: now,
       plannedFocusSeconds: focusSeconds,
       mode: settings.mode,
-      isPaused: false,
-      pausedAtMs: 0,
+      strictFreeFocus: settings.strictFreeFocus,
+      strictWaitingForFlip: isStrictWaiting,
+      isPaused: isStrictWaiting,
+      pausedAtMs: isStrictWaiting ? now : 0,
       accumulatedMs: 0,
-      pauseStartMs: 0,
+      pauseStartMs: isStrictWaiting ? now : 0,
+      pauseIntervals: isStrictWaiting ? [PauseInterval(startMs: now)] : null,
       planBlockId: activePlanBlockId,
       note: note,
     );

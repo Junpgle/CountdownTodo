@@ -7,6 +7,7 @@ import '../services/search_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/theme_color_tokens.dart';
 import 'app_state_views.dart';
+import 'platform_backdrop_filter.dart';
 import 'dart:async';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -281,7 +282,7 @@ class _GlobalSearchOverlayState extends State<GlobalSearchOverlay>
               onTap: _close,
               child: isDesktop
                   ? Container(color: desktopOverlayColor)
-                  : BackdropFilter(
+                  : PlatformBackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                       child: Container(color: mobileBackdropColor),
                     ),

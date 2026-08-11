@@ -2,10 +2,29 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 mixin _StorageCore on _StorageServiceBase {
-  void triggerRefresh() {
+  void triggerRefresh([
+    Set<DataRefreshDomain> domains = const {DataRefreshDomain.all},
+  ]) {
+    if (domains.contains(DataRefreshDomain.all)) {
+      _pendingRefreshDomains
+        ..clear()
+        ..add(DataRefreshDomain.all);
+    } else if (!_pendingRefreshDomains.contains(DataRefreshDomain.all)) {
+      _pendingRefreshDomains.addAll(domains);
+    }
     _refreshDebouncer?.cancel();
     _refreshDebouncer = Timer(const Duration(milliseconds: 100), () {
+      final emittedDomains = Set<DataRefreshDomain>.unmodifiable(
+        _pendingRefreshDomains.isEmpty
+            ? const {DataRefreshDomain.all}
+            : _pendingRefreshDomains,
+      );
+      _pendingRefreshDomains.clear();
       dataRefreshNotifier.value++;
+      scopedDataRefreshNotifier.value = DataRefreshSignal(
+        revision: scopedDataRefreshNotifier.value.revision + 1,
+        domains: emittedDomains,
+      );
       onDataChangedHook?.call();
     });
   }
@@ -86,10 +105,7 @@ mixin _StorageCore on _StorageServiceBase {
   }
 
   int? _parseNullableInt(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is int) return raw;
-    if (raw is num) return raw.toInt();
-    return int.tryParse(raw.toString());
+    return JsonValueParser.toNullableInt(raw);
   }
 
   Future<void> ignoreRemoteItem({
@@ -137,14 +153,15 @@ mixin _StorageCore on _StorageServiceBase {
 
   Future<void> _clearTodoPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${keyTodos}_$username");
+    await prefs.remove(StorageKeyScope.scoped(keyTodos, username));
     await prefs.remove(keyTodos);
   }
 
   String _scopedKey(String baseKey, String? username) {
-    if (username == null || username.isEmpty) return baseKey;
-    return "${baseKey}_$username";
+    return StorageKeyScope.scoped(baseKey, username);
   }
+
+  Future<String?> restoreAuthToken() => UserSessionStorage.restoreAuthToken();
 
   Future<String> getDeviceFriendlyName() async =>
       UserSessionStorage.getDeviceFriendlyName();
@@ -170,7 +187,10 @@ mixin _StorageCore on _StorageServiceBase {
       }
 
       // 3. 触发 UI 刷新信号
-      triggerRefresh();
+      triggerRefresh({
+        if (table == 'todos') DataRefreshDomain.todos,
+        if (table == 'countdowns') DataRefreshDomain.countdowns,
+      });
       return true;
     } catch (e) {
       debugPrint("❌ rollbackLocalItem error: $e");
@@ -348,7 +368,10 @@ mixin _StorageCore on _StorageServiceBase {
         hasSubstantialChange: _hasSubstantialChange,
         recordLocalAudit: _recordLocalAuditOptimized,
         requestSync: requestSync,
-        onCommitted: _inflightTodoRequests.clear,
+        onCommitted: () {
+          _inflightTodoRequests.clear();
+          triggerRefresh(const {DataRefreshDomain.countdowns});
+        },
       );
   Future<void> _clearGhostConflictFlags(dynamic db) =>
       StorageConflictCleanup.clearGhostConflictFlags(db);

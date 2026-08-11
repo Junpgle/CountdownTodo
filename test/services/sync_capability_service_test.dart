@@ -95,5 +95,24 @@ void main() {
         isTrue,
       );
     });
+
+    test('recognizes the independent habits sync cursor capability', () {
+      expect(
+        SyncCapabilityService.supportsHabitSyncCursor(
+          {'habit_sync_cursor': 1},
+        ),
+        isTrue,
+      );
+      expect(
+        SyncCapabilityService.supportsHabitSyncCursor(
+          {'habit_sync_cursor': 0},
+        ),
+        isFalse,
+      );
+      expect(
+        SyncCapabilityService.supportsHabitSyncCursor(null),
+        isFalse,
+      );
+    });
   });
 }

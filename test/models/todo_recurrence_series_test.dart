@@ -622,6 +622,100 @@ void main() {
     expect(days, [17]);
   });
 
+  test(
+      'moving recurrence end date back deletes already materialized future days',
+      () {
+    final endDate = DateTime(2026, 7, 17);
+    final current = TodoItem(
+      id: 'recurrence-current',
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'series-end-date-prune',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 15, 22),
+      recurrenceEndDate: DateTime(2026, 7, 30),
+    );
+    final retained = TodoItem(
+      id: 'recurrence-retained',
+      title: '每日循环',
+      recurrenceSeriesId: 'series-end-date-prune',
+      createdDate: DateTime(2026, 7, 17, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 17, 22),
+    );
+    final removed = TodoItem(
+      id: 'recurrence-removed',
+      title: '每日循环',
+      recurrenceSeriesId: 'series-end-date-prune',
+      createdDate: DateTime(2026, 7, 18, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 18, 22),
+    );
+
+    final changed =
+        StorageService.pruneRecurrenceOccurrencesAfterEndDateForTest(
+      [current, retained, removed],
+      seriesId: 'series-end-date-prune',
+      recurrenceEndDate: endDate,
+    );
+
+    expect(changed, isTrue);
+    expect(current.isDeleted, isFalse);
+    expect(retained.isDeleted, isFalse);
+    expect(removed.isDeleted, isTrue);
+    expect(removed.recurrence, RecurrenceType.none);
+  });
+
+  test('sync boundary repair does not restore an expired remote occurrence',
+      () {
+    final active = TodoItem(
+      id: 'sync-active-rule',
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'sync-expired-series',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 15, 22),
+      recurrenceEndDate: DateTime(2099, 1, 2),
+    );
+    final remoteOldOccurrence = TodoItem(
+      id: 'sync-remote-old-occurrence',
+      title: '每日循环',
+      recurrenceSeriesId: 'sync-expired-series',
+      createdDate: DateTime(2099, 1, 3, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2099, 1, 3, 22),
+    );
+
+    final changed =
+        StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(
+      [active, remoteOldOccurrence],
+    );
+
+    expect(changed, contains(remoteOldOccurrence.id));
+    expect(remoteOldOccurrence.isDeleted, isTrue);
+    expect(remoteOldOccurrence.recurrence, RecurrenceType.none);
+    expect(active.recurrence, RecurrenceType.daily);
+  });
+
+  test('sync boundary repair deactivates a recurrence whose end date passed',
+      () {
+    final active = TodoItem(
+      id: 'sync-ended-rule',
+      title: '每日循环',
+      recurrence: RecurrenceType.daily,
+      recurrenceSeriesId: 'sync-ended-series',
+      createdDate: DateTime(2026, 7, 15, 19).millisecondsSinceEpoch,
+      dueDate: DateTime(2026, 7, 15, 22),
+      recurrenceEndDate: DateTime(2026, 7, 17),
+    );
+
+    final changed =
+        StorageService.pruneRecurrenceOccurrencesAfterEndDatesForTest(
+      [active],
+    );
+
+    expect(changed, contains(active.id));
+    expect(active.recurrence, RecurrenceType.none);
+    expect(active.isDeleted, isFalse);
+  });
+
   test('existing recurrence series repairs missing past occurrences', () {
     final previous = TodoItem(
       title: '每日循环',

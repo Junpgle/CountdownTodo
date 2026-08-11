@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
+import '../utils/app_performance_monitor.dart';
 import '../utils/app_platform.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
@@ -67,6 +68,8 @@ class _AboutScreenState extends State<AboutScreen> {
     _loadDatabaseVersion();
     _checkMigration();
     _loadSyncFailures();
+    AppPerformanceMonitor.setCurrentScreen('关于此应用');
+    AppPerformanceMonitor.loadSettings();
   }
 
   void _checkMigration() async {
@@ -469,6 +472,8 @@ class _AboutScreenState extends State<AboutScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Column(
                     children: [
+                      _buildPerformanceCard(context),
+                      const SizedBox(height: 16),
                       _buildDatabaseCard(context),
                       const SizedBox(height: 16),
                       _buildCleanupCard(context),
@@ -585,6 +590,8 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           const SizedBox(height: 16),
           _buildDeviceCard(context),
+          const SizedBox(height: 16),
+          _buildPerformanceCard(context),
           const SizedBox(height: 16),
           _buildDatabaseCard(context),
           const SizedBox(height: 16),
@@ -724,6 +731,185 @@ class _AboutScreenState extends State<AboutScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPerformanceCard(BuildContext context) {
+    if (!AppPerformanceMonitor.isAvailable) {
+      return const SizedBox.shrink();
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: AppPerformanceMonitor.changes,
+      builder: (context, _, __) {
+        final monitor = AppPerformanceMonitor.snapshot;
+        final colorScheme = Theme.of(context).colorScheme;
+        final events = monitor.events.take(8).toList();
+
+        return _buildInfoCard(
+          context,
+          title: '帧性能测试器（调试）',
+          icon: Icons.speed_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('启用帧性能记录'),
+                subtitle: const Text('仅 Debug/Profile 构建可见，记录超过阈值的帧'),
+                value: AppPerformanceMonitor.isEnabled,
+                onChanged: AppPerformanceMonitor.setEnabled,
+              ),
+              if (AppPerformanceMonitor.isEnabled) ...[
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('触发阈值'),
+                    const SizedBox(width: 12),
+                    DropdownButton<int>(
+                      value: monitor.thresholdMilliseconds,
+                      isDense: true,
+                      underline: const SizedBox.shrink(),
+                      items: AppPerformanceMonitor.availableThresholds
+                          .map(
+                            (value) => DropdownMenuItem<int>(
+                              value: value,
+                              child: Text('$value ms'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          AppPerformanceMonitor.setThresholdMilliseconds(value);
+                        }
+                      },
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: AppPerformanceMonitor.clear,
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                      label: const Text('清空'),
+                    ),
+                  ],
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('记录触发界面'),
+                  subtitle: const Text('在每条超时帧后显示当前页面名称'),
+                  value: AppPerformanceMonitor.isScreenTrackingEnabled,
+                  onChanged: AppPerformanceMonitor.setScreenTrackingEnabled,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildPerformanceMetric(
+                        context, '采样帧', '${monitor.frameCount}'),
+                    _buildPerformanceMetric(
+                        context, '超阈值', '${monitor.overThresholdCount}'),
+                    _buildPerformanceMetric(
+                        context, '慢构建', '${monitor.slowBuildCount}'),
+                    _buildPerformanceMetric(
+                        context, '慢光栅', '${monitor.slowRasterCount}'),
+                    _buildPerformanceMetric(
+                      context,
+                      '最大耗时',
+                      _formatPerformanceDuration(monitor.maxFrameSpan),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text('最近触发记录', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 6),
+                if (events.isEmpty)
+                  Text(
+                    monitor.frameCount == 0
+                        ? '操作应用中的页面后，这里会显示详细帧耗时。'
+                        : '当前采样帧均未超过 ${monitor.thresholdMilliseconds} ms。',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  )
+                else
+                  ...events.map(
+                    (event) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: colorScheme.errorContainer.withValues(
+                            alpha: 0.35,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_formatPerformanceTime(event.observedAt)}  ·  ${_formatPerformanceDuration(event.totalSpan)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'build ${_formatPerformanceDuration(event.buildDuration)}  ·  '
+                              'raster ${_formatPerformanceDuration(event.rasterDuration)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '触发界面：${event.screen}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPerformanceMetric(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text('$label $value'),
+    );
+  }
+
+  String _formatPerformanceDuration(Duration duration) {
+    if (duration == Duration.zero) return '0.0 ms';
+    return '${(duration.inMicroseconds / 1000).toStringAsFixed(1)} ms';
+  }
+
+  String _formatPerformanceTime(DateTime time) {
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    String threeDigits(int value) => value.toString().padLeft(3, '0');
+    return '${twoDigits(time.hour)}:${twoDigits(time.minute)}:'
+        '${twoDigits(time.second)}.${threeDigits(time.millisecond)}';
   }
 
   Widget _buildInfoCard(

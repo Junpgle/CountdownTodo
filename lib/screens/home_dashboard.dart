@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_zoom_drawer/flutter_zoom_drawer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import '../widgets/home_drawer_menu.dart';
 import 'package:intl/intl.dart';
@@ -41,9 +42,11 @@ import '../services/reminder_schedule_service.dart';
 import '../services/float_window_service.dart';
 import '../services/island_slot_provider.dart';
 import '../services/item_semantics_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../utils/app_platform.dart';
+import '../utils/json_value_parser.dart';
 import '../utils/local_image_provider.dart';
 
 // 引入其他页面
@@ -117,12 +120,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   late final PermissionRequestCoordinator _permissionCoordinator;
   final GitHubResourceService _githubResourceService = GitHubResourceService();
 
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
-  }
-
   // === 状态变量 ===
   List<CountdownItem> _countdowns = [];
   List<TodoItem> _todos = [];
@@ -145,6 +142,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   bool _wallpaperShow = false;
   bool _isLoadingScreenTime = true;
   bool _isThirtyDayChallengeActive = false;
+  int _screenTimeLoadGeneration = 0;
   int _thirtyDayChallengeCompletedCount = 0;
   int _thirtyDayChallengeTaskCount = 30;
   String _thirtyDayChallengeTitle = ThirtyDayChallengeState.defaultTitle;
@@ -209,7 +207,6 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   final GlobalKey _countdownHistoryKey = GlobalKey();
   final GlobalKey _todayPlanChartKey = GlobalKey();
   // 独立刷新信号，避免单一计数器同时触发多个重型模块
-  final ValueNotifier<int> _todoRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _scheduleRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _timelineRevision = ValueNotifier<int>(0);
   final ValueNotifier<int> _pomodoroRevision = ValueNotifier<int>(0);
@@ -252,6 +249,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   // ── 跨端专注感知 ──
   CrossDevicePomodoroState? _remotePomodoro; // 其他设备正在进行的专注
   Timer? _remotePomodoroTicker;
+  bool _isDashboardInForeground = true;
   int _remotePomodoroRemaining = 0;
   StreamSubscription? _remotePomodoroSub;
   StreamSubscription? _connStateSub; // 🚀 兼容性修复：改为通配订阅类型
@@ -268,7 +266,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   PomodoroRunState? _localPomodoro;
   List<TodoPlanBlock> _planBlocks = [];
   List<FixedScheduleItem> _fixedSchedules = [];
-  bool _pendingReloadRequested = false;
+  final Set<DataRefreshDomain> _pendingReloadDomains = <DataRefreshDomain>{};
   Timer? _dashboardLoadRetryTimer;
   int _dashboardLoadRetryAttempt = 0;
 
@@ -289,6 +287,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   StreamSubscription<PomodoroRunState?>? _localPomodoroSub; // 🚀 新增：本地专注状态订阅
   StreamSubscription<MacIslandCommand>? _macIslandCommandSub;
   Timer? _collaborativeSyncDebouncer; // 🚀 协同同步防抖器
+  Timer? _syncWatchdogTimer;
+  int _syncAttemptGeneration = 0;
   Timer? _bannerRefreshTimer; // 🚀 新增：Banner 倒计时刷新定时器
   Timer? _todoNotificationDebouncer;
   Timer? _teamPendingDebouncer;
@@ -306,6 +306,7 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
 
   final ValueNotifier<bool> _isGlobalLoadingNotifier =
       ValueNotifier<bool>(false);
+  bool _isDashboardLoadInProgress = false;
   final ValueNotifier<int> _todoUpdateSignalNotifier = ValueNotifier<int>(0);
 
   // 🚀 GlobalKeys for Zoom Animations
@@ -319,6 +320,8 @@ abstract class _HomeDashboardStateBase extends State<HomeDashboard>
   int _wallpaperRetryCount = 0;
   List<String> _randomWallpaperUrls = [];
   bool _isWallpaperLoadingError = false;
+  VoidCallback? _wallpaperShowListener;
+  VoidCallback? _wallpaperUrlListener;
   bool _isSearchOpen = false;
   bool _isCheckingClipboardShare = false;
   bool _isClipboardShareDialogVisible = false;
@@ -388,103 +391,77 @@ class _WallpaperNetworkImage extends StatefulWidget {
   State<_WallpaperNetworkImage> createState() => _WallpaperNetworkImageState();
 }
 
-class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage>
-    with SingleTickerProviderStateMixin {
-  late final GitHubResourceService _resourceService;
-  Uint8List? _imageBytes;
-  bool _loading = true;
+class _WallpaperNetworkImageState extends State<_WallpaperNetworkImage> {
   bool _reported = false;
-  late AnimationController _fadeController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _resourceService = GitHubResourceService();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeInOut,
-    );
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _resourceService.dispose();
-    _fadeController.dispose();
-    super.dispose();
-  }
 
   @override
   void didUpdateWidget(covariant _WallpaperNetworkImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      _imageBytes = null;
-      _loading = true;
       _reported = false;
-      _fadeController.reset();
-      _load();
     }
   }
 
-  Future<void> _load() async {
-    try {
-      final resp = await _resourceService.get(
-        Uri.parse(widget.url),
-        headers: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        },
-      );
-      if (resp.statusCode == 200 && mounted) {
-        setState(() {
-          _imageBytes = resp.bodyBytes;
-          _loading = false;
-        });
-        _fadeController.forward();
-        widget.onSuccess();
-        if (_imageBytes != null) {
-          widget.onImageProvider?.call(MemoryImage(_imageBytes!));
-        }
-      } else {
-        _fail();
-      }
-    } catch (_) {
-      _fail();
-    }
+  void _reportSuccess(ImageProvider provider) {
+    if (_reported) return;
+    _reported = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onSuccess();
+      widget.onImageProvider?.call(provider);
+    });
   }
 
-  void _fail() {
-    if (mounted) {
-      setState(() => _loading = false);
-      if (!_reported) {
-        _reported = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          widget.onError();
-          widget.onImageProvider
-              ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
-        });
-      }
-    }
+  void _reportFailure() {
+    if (_reported) return;
+    _reported = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onError();
+      widget.onImageProvider
+          ?.call(const AssetImage('assets/images/default_wallpaper.webp'));
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Image.asset('assets/images/default_wallpaper.webp',
-          fit: BoxFit.cover);
-    }
-    if (_imageBytes == null) {
-      return Image.asset('assets/images/default_wallpaper.webp',
-          fit: BoxFit.cover);
-    }
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Image.memory(_imageBytes!, fit: BoxFit.cover),
+    final media = MediaQuery.sizeOf(context);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final cacheWidth =
+        (media.width * pixelRatio).round().clamp(1, 4096).toInt();
+    final cacheHeight =
+        (media.height * pixelRatio).round().clamp(1, 4096).toInt();
+    return CachedNetworkImage(
+      imageUrl: widget.url,
+      cacheManager: WallpaperCacheService.cacheManager,
+      fit: BoxFit.cover,
+      memCacheWidth: cacheWidth,
+      memCacheHeight: cacheHeight,
+      fadeInDuration: const Duration(milliseconds: 350),
+      useOldImageOnUrlChange: true,
+      httpHeaders: const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      },
+      imageBuilder: (context, provider) {
+        _reportSuccess(provider);
+        return Image(
+          image: provider,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+        );
+      },
+      placeholder: (context, url) => Image.asset(
+        'assets/images/default_wallpaper.webp',
+        fit: BoxFit.cover,
+      ),
+      errorWidget: (context, url, error) {
+        _reportFailure();
+        return Image.asset(
+          'assets/images/default_wallpaper.webp',
+          fit: BoxFit.cover,
+        );
+      },
     );
   }
 }

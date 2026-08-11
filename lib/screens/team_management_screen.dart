@@ -16,6 +16,7 @@ import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
+import '../services/conflict_visibility_service.dart';
 import '../services/storage/habit_storage.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
@@ -55,12 +56,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   int _totalConflictCount = 0;
   bool _isLoading = true;
   bool _isCheckingClipboard = false;
+  int _teamLoadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    StorageService.dataRefreshNotifier.addListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.addListener(_onDataRefreshed);
     _restoreCachedSnapshot();
     _loadTeams(isSilent: _hasCachedSnapshot);
     _setupWsListener();
@@ -85,6 +87,18 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
 
   void _onDataRefreshed() {
     if (!mounted) return;
+    final signal = StorageService.scopedDataRefreshNotifier.value;
+    const relevantDomains = {
+      DataRefreshDomain.teams,
+      DataRefreshDomain.todos,
+      DataRefreshDomain.todoGroups,
+      DataRefreshDomain.countdowns,
+      DataRefreshDomain.habits,
+    };
+    if (!signal.domains.contains(DataRefreshDomain.all) &&
+        signal.domains.intersection(relevantDomains).isEmpty) {
+      return;
+    }
     _loadTeams(isSilent: true);
   }
 
@@ -112,7 +126,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    StorageService.dataRefreshNotifier.removeListener(_onDataRefreshed);
+    StorageService.scopedDataRefreshNotifier.removeListener(_onDataRefreshed);
     _wsSub?.cancel();
     super.dispose();
   }
@@ -303,6 +317,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
   }
 
   Future<void> _loadTeams({bool isSilent = false}) async {
+    final loadGeneration = ++_teamLoadGeneration;
     final hasLocalContent = _teams.isNotEmpty || _myInvitations.isNotEmpty;
     if (!isSilent && !hasLocalContent) {
       setState(() => _isLoading = true);
@@ -325,38 +340,40 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       if (adminTeamUuids.isNotEmpty) {
         final pendingResults = await Future.wait(adminTeamUuids
             .map((uuid) => ApiService.fetchPendingRequests(uuid)));
+        if (!mounted || loadGeneration != _teamLoadGeneration) return;
         for (int i = 0; i < adminTeamUuids.length; i++) {
           pendingCounts[adminTeamUuids[i]] = pendingResults[i].length;
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
-          _myInvitations = invitations;
-          _teamPendingCounts = pendingCounts;
-          _isLoading = false;
-          // 🚀 默认选中第一个
-          if (_selectedTeam == null && _teams.isNotEmpty) {
-            _selectedTeam = _teams.first;
-          } else if (_selectedTeam != null) {
-            // 同步更新已选中的团队数据
-            try {
-              _selectedTeam =
-                  _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
-            } catch (_) {
-              _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
-            }
+      if (!mounted || loadGeneration != _teamLoadGeneration) return;
+      setState(() {
+        _teams = rawTeams.map((t) => Team.fromJson(t)).toList();
+        _myInvitations = invitations;
+        _teamPendingCounts = pendingCounts;
+        _isLoading = false;
+        // 🚀 默认选中第一个
+        if (_selectedTeam == null && _teams.isNotEmpty) {
+          _selectedTeam = _teams.first;
+        } else if (_selectedTeam != null) {
+          // 同步更新已选中的团队数据
+          try {
+            _selectedTeam =
+                _teams.firstWhere((t) => t.uuid == _selectedTeam!.uuid);
+          } catch (_) {
+            _selectedTeam = _teams.isNotEmpty ? _teams.first : null;
           }
-        });
-        _cachedTeams = List<Team>.from(_teams);
-        _cachedInvitations = List<dynamic>.from(_myInvitations);
-        _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
-      }
+        }
+      });
+      _cachedTeams = List<Team>.from(_teams);
+      _cachedInvitations = List<dynamic>.from(_myInvitations);
+      _cachedPendingCounts = Map<String, int>.from(_teamPendingCounts);
 
-      unawaited(_loadTeamConflictCounts());
+      unawaited(_loadTeamConflictCounts(loadGeneration));
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && loadGeneration == _teamLoadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
 
     // 🚀 核心：处理搜索直达逻辑
@@ -367,7 +384,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     }
   }
 
-  Future<void> _loadTeamConflictCounts() async {
+  Future<void> _loadTeamConflictCounts(int loadGeneration) async {
     try {
       final results = await Future.wait([
         StorageService.getTodos(widget.username, includeDeleted: true),
@@ -384,57 +401,24 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
       int total = 0;
 
       for (final item in allItems) {
-        bool hasConflict = false;
-        String? teamUuid;
+        if (!ConflictVisibilityService.isVisibleConflict(item)) continue;
 
-        if (item is TodoItem) {
-          if (item.isDeleted) continue;
-          if (!item.hasConflict) continue;
-          // 独立完成待办的时间冲突同样展示
-          if (item.isAllDayTask) continue;
-
-          // 🚀 对齐 ConflictInboxScreen：如果是日程冲突，且所有冲突对象都是全天任务，也跳过
-          final data = item.serverVersionData;
-          if (data != null &&
-              (data['type'] == 'schedule' || data['conflict_with'] != null)) {
-            final peers = data['conflict_with'];
-            if (peers is List) {
-              final hasValidPeer = peers.any((p) =>
-                  p is Map &&
-                  !TodoItem.fromJson(Map<String, dynamic>.from(p))
-                      .isAllDayTask);
-              if (!hasValidPeer) continue; // 🚀 使用 continue 跳过当前有冲突但均非有效对等体的任务
-            }
-          }
-          hasConflict = true;
-          teamUuid = item.teamUuid;
-        } else if (item is TodoGroup) {
-          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
-          hasConflict = item.hasConflict;
-          teamUuid = item.teamUuid;
-        } else if (item is CountdownItem) {
-          if (item.isDeleted) continue; // 🚀 对齐 ConflictInboxScreen：跳过已删除的冲突
-          hasConflict = item.hasConflict;
-          teamUuid = item.teamUuid;
-        }
-
-        if (hasConflict) {
-          total++;
-          if (teamUuid != null && teamUuid.isNotEmpty) {
-            conflictCounts[teamUuid] = (conflictCounts[teamUuid] ?? 0) + 1;
-          }
+        total++;
+        final teamUuid = ConflictVisibilityService.teamUuidOf(item);
+        if (ConflictVisibilityService.hasTeamUuid(teamUuid)) {
+          conflictCounts[teamUuid!] = (conflictCounts[teamUuid] ?? 0) + 1;
         }
       }
 
       // 冲突中心内部还会展示习惯目标和规则，入口角标必须使用同一口径。
       total += habitGoals
-          .where((goal) => !goal.isDeleted && goal.hasConflict)
+          .where(ConflictVisibilityService.isVisibleHabitGoalConflict)
           .length;
       total += habitRules
-          .where((rule) => !rule.isDeleted && rule.hasConflict)
+          .where(ConflictVisibilityService.isVisibleHabitRuleConflict)
           .length;
 
-      if (!mounted) return;
+      if (!mounted || loadGeneration != _teamLoadGeneration) return;
       setState(() {
         _teamConflictCounts = conflictCounts;
         _totalConflictCount = total;

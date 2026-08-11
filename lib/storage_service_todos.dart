@@ -2,10 +2,7 @@ part of 'storage_service.dart';
 // ignore_for_file: annotate_overrides, unused_element, unused_element_parameter
 
 int? _parseNullableIntForIsolate(dynamic raw) {
-  if (raw == null) return null;
-  if (raw is int) return raw;
-  if (raw is num) return raw.toInt();
-  return int.tryParse(raw.toString());
+  return JsonValueParser.toNullableInt(raw);
 }
 
 List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
@@ -19,15 +16,13 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
             version: m['version'] ?? 1,
             updatedAt: m['updated_at'] ?? DateTime.now().millisecondsSinceEpoch,
             createdAt: m['created_at'] ?? DateTime.now().millisecondsSinceEpoch,
-            createdDate: m['created_date'] != null
-                ? int.tryParse(m['created_date'].toString())
-                : null,
+            createdDate: JsonValueParser.toNullableInt(m['created_date']),
             dueDate: (m['due_date'] != null &&
                     m['due_date'].toString() != '0' &&
                     m['due_date'].toString() != 'null' &&
                     m['due_date'].toString().isNotEmpty)
                 ? DateTime.fromMillisecondsSinceEpoch(
-                    int.tryParse(m['due_date'].toString()) ?? 0)
+                    JsonValueParser.toInt(m['due_date']))
                 : null,
             teamUuid: m['team_uuid'],
             teamName: m['team_name'],
@@ -44,21 +39,17 @@ List<TodoItem> _parseTodoItemsIsolate(List<Map<String, dynamic>> maps) {
             recurrenceEndDate: (m['recurrence_end_date'] != null &&
                     m['recurrence_end_date'].toString() != '0')
                 ? DateTime.fromMillisecondsSinceEpoch(
-                    int.tryParse(m['recurrence_end_date'].toString()) ?? 0)
+                    JsonValueParser.toInt(m['recurrence_end_date']))
                 : null,
             reminderMinutes: (m['reminder_minutes'] != null &&
                     m['reminder_minutes'].toString() != '-1')
-                ? int.tryParse(m['reminder_minutes'].toString())
+                ? JsonValueParser.toNullableInt(m['reminder_minutes'])
                 : null,
             imagePath: m['image_path']?.toString(),
             originalText: m['original_text']?.toString(),
             isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
             hasConflict: m['has_conflict'] == 1 || m['has_conflict'] == true,
-            serverVersionData: m['conflict_data'] != null
-                ? (m['conflict_data'] is String
-                    ? Map<String, dynamic>.from(jsonDecode(m['conflict_data']))
-                    : Map<String, dynamic>.from(m['conflict_data']))
-                : null,
+            serverVersionData: JsonValueParser.toMap(m['conflict_data']),
           ))
       .toList();
 }
@@ -128,6 +119,20 @@ mixin _StorageTodos on _StorageServiceBase {
         existingItemsMap[row['uuid']] = row;
       }
     }
+    // 同步来源也需要旧的时间字段，用来只重算被修改待办所在的日期；它不参与
+    // 审计或 LWW 判定，避免改变同步写入语义。
+    Map<String, Map<String, dynamic>> existingScheduleItemsMap =
+        existingItemsMap;
+    if (isSyncSource && dedupeList.isNotEmpty) {
+      final existing = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        uuids: dedupeList.map((item) => item.id).toList(),
+      );
+      existingScheduleItemsMap = {
+        for (final row in existing) row['uuid'].toString(): row,
+      };
+    }
+    final affectedScheduleConflictDays = <String>{};
     // 🚀 同步写入时，查询 force-flush 保护或有待同步 oplog 的待办的 is_completed，防止同步覆盖用户本地修改
     // 优先级：force-flush > pending oplog > normal sync
     Map<String, int> existingCompletionMap = {};
@@ -243,6 +248,15 @@ mixin _StorageTodos on _StorageServiceBase {
       }
 
       if (hasChanged || oldData == null) {
+        final previousScheduleData = existingScheduleItemsMap[item.id];
+        if (_requiresScheduleConflictRefresh(item, previousScheduleData)) {
+          affectedScheduleConflictDays.addAll(
+            _scheduleConflictDayKeysFor(
+              item,
+              previousData: previousScheduleData,
+            ),
+          );
+        }
         // 🚀 同步写入时，如果有待同步 oplog，保留 DB 中的 is_completed，
         // 防止 syncData 的 saveTodos 覆盖用户本地修改（force-flush 写入的值）
         final int isCompleted;
@@ -328,13 +342,17 @@ mixin _StorageTodos on _StorageServiceBase {
       }
     }
 
-    if (recomputeScheduleConflicts) {
-      await _refreshTodoScheduleConflicts(username);
+    if (recomputeScheduleConflicts && affectedScheduleConflictDays.isNotEmpty) {
+      await _refreshTodoScheduleConflicts(
+        username,
+        affectedDayKeys: affectedScheduleConflictDays,
+        affectedTodoIds: dedupeList.map((item) => item.id).toSet(),
+      );
     }
 
     if (sync) requestSync(username);
     Future.microtask(() => _syncTodosToBand(dedupeList));
-    triggerRefresh();
+    triggerRefresh(const {DataRefreshDomain.todos});
   }
 
   bool _hasSubstantialChange(Map<String, dynamic> before,
@@ -362,14 +380,34 @@ mixin _StorageTodos on _StorageServiceBase {
     return false;
   }
 
-  Future<void> _refreshTodoScheduleConflicts(String username) async {
+  Future<void> _refreshTodoScheduleConflicts(
+    String username, {
+    Set<String>? affectedDayKeys,
+    Set<String>? affectedTodoIds,
+  }) async {
     try {
-      final allTodos = await getTodos(username, includeDeleted: true);
+      final ids = affectedTodoIds ?? const <String>{};
+      final todos = await _loadScheduleConflictCandidates(
+        username,
+        affectedDayKeys: affectedDayKeys,
+        affectedTodoIds: ids,
+      );
+      if (todos.isEmpty) return;
+      final beforeConflictState = <String, String>{
+        for (final todo in todos)
+          todo.id: '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}',
+      };
       if (!await getConflictDetectionEnabled()) {
-        if (_clearLocalTodoScheduleConflicts(allTodos)) {
+        _clearLocalTodoScheduleConflicts(todos);
+        final changedTodos = todos
+            .where((todo) =>
+                beforeConflictState[todo.id] !=
+                '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}')
+            .toList();
+        if (changedTodos.isNotEmpty) {
           await saveTodos(
             username,
-            allTodos,
+            changedTodos,
             sync: false,
             isSyncSource: true,
             recomputeScheduleConflicts: false,
@@ -378,11 +416,17 @@ mixin _StorageTodos on _StorageServiceBase {
         return;
       }
       final ignoredKeys = await _getIgnoredScheduleConflictKeys(username);
-      if (_recomputeLocalTodoScheduleConflicts(allTodos,
-          ignoredScheduleConflictKeys: ignoredKeys)) {
+      _recomputeLocalTodoScheduleConflicts(todos,
+          ignoredScheduleConflictKeys: ignoredKeys);
+      final changedTodos = todos
+          .where((todo) =>
+              beforeConflictState[todo.id] !=
+              '${todo.hasConflict}:${jsonEncode(todo.serverVersionData)}')
+          .toList();
+      if (changedTodos.isNotEmpty) {
         await saveTodos(
           username,
-          allTodos,
+          changedTodos,
           sync: false,
           isSyncSource: true,
           recomputeScheduleConflicts: false,
@@ -391,6 +435,115 @@ mixin _StorageTodos on _StorageServiceBase {
     } catch (e) {
       debugPrint('refreshTodoScheduleConflicts error: $e');
     }
+  }
+
+  Future<List<TodoItem>> _loadScheduleConflictCandidates(
+    String username, {
+    Set<String>? affectedDayKeys,
+    Set<String> affectedTodoIds = const <String>{},
+  }) async {
+    if (affectedDayKeys == null) {
+      return getTodos(username, includeDeleted: true);
+    }
+
+    final rowsById = <String, Map<String, dynamic>>{};
+    if (affectedTodoIds.isNotEmpty) {
+      final rows = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        uuids: affectedTodoIds.toList(),
+        includeConflictData: true,
+      );
+      for (final row in rows) {
+        rowsById[row['uuid'].toString()] = row;
+      }
+    }
+
+    for (final dayKey in affectedDayKeys) {
+      final day = DateTime.tryParse(dayKey);
+      if (day == null) continue;
+      final startMs = day.millisecondsSinceEpoch;
+      final endMs = day.add(const Duration(days: 1)).millisecondsSinceEpoch;
+      final rows = await DatabaseHelper.instance.getTodoMaps(
+        includeDeleted: true,
+        includeConflictData: true,
+        where: '(t.created_date >= $startMs AND t.created_date < $endMs) '
+            'OR (t.due_date >= $startMs AND t.due_date < $endMs)',
+      );
+      for (final row in rows) {
+        rowsById[row['uuid'].toString()] = row;
+      }
+    }
+
+    return rowsById.values.map(TodoItem.fromSql).toList();
+  }
+
+  bool _requiresScheduleConflictRefresh(
+    TodoItem item,
+    Map<String, dynamic>? previousData,
+  ) {
+    if (previousData == null) {
+      return _scheduleConflictDayKeysFor(item).isNotEmpty;
+    }
+    final previousStart = _parseMillis(
+      previousData['created_date'] ?? previousData['createdDate'],
+    );
+    final previousEnd = _parseMillis(
+      previousData['due_date'] ?? previousData['dueDate'],
+    );
+    final previousAllDay =
+        previousData['is_all_day'] == 1 || previousData['is_all_day'] == true;
+    final previousDeleted =
+        previousData['is_deleted'] == 1 || previousData['is_deleted'] == true;
+    return previousStart != (item.createdDate ?? item.createdAt) ||
+        previousEnd != item.dueDate?.millisecondsSinceEpoch ||
+        previousAllDay != item.isAllDay ||
+        previousDeleted != item.isDeleted ||
+        previousData['content']?.toString() != item.title ||
+        previousData['team_uuid']?.toString() != item.teamUuid?.toString() ||
+        previousData['recurrence_series_id']?.toString() !=
+            item.recurrenceSeriesId?.toString();
+  }
+
+  Set<String> _scheduleConflictDayKeysFor(
+    TodoItem item, {
+    Map<String, dynamic>? previousData,
+  }) {
+    final days = <String>{};
+
+    void addRange(int? startMs, int? endMs, bool isAllDay) {
+      if (isAllDay || startMs == null || endMs == null) return;
+      if (startMs <= 0 || endMs <= 0 || startMs >= endMs) return;
+      final startDay = _localDayKey(startMs);
+      if (startDay == _localDayKey(endMs)) days.add(startDay);
+    }
+
+    addRange(
+      item.createdDate ?? item.createdAt,
+      item.dueDate?.millisecondsSinceEpoch,
+      item.isAllDay,
+    );
+    if (previousData != null) {
+      addRange(
+        _parseMillis(
+            previousData['created_date'] ?? previousData['createdDate']),
+        _parseMillis(previousData['due_date'] ?? previousData['dueDate']),
+        previousData['is_all_day'] == 1 || previousData['is_all_day'] == true,
+      );
+    }
+    return days;
+  }
+
+  Set<String> _scheduleConflictDayKeysForRow(Map<String, dynamic> row) {
+    if (row['is_all_day'] == 1 || row['is_all_day'] == true) {
+      return const <String>{};
+    }
+    final startMs = _parseMillis(row['created_date'] ?? row['created_at']);
+    final endMs = _parseMillis(row['due_date']);
+    if (startMs == null || endMs == null || startMs <= 0 || endMs <= startMs) {
+      return const <String>{};
+    }
+    final startDay = _localDayKey(startMs);
+    return startDay == _localDayKey(endMs) ? {startDay} : const <String>{};
   }
 
   Future<Map<String, int>> scanAllTodoConflicts(String username) async {
@@ -407,7 +560,7 @@ mixin _StorageTodos on _StorageServiceBase {
             recomputeScheduleConflicts: false,
           );
         } else {
-          triggerRefresh();
+          triggerRefresh(const {DataRefreshDomain.todos});
         }
       } finally {
         conflictScanNotifier.value = {
@@ -451,7 +604,7 @@ mixin _StorageTodos on _StorageServiceBase {
           recomputeScheduleConflicts: false,
         );
       } else {
-        triggerRefresh();
+        triggerRefresh(const {DataRefreshDomain.todos});
       }
     } finally {
       conflictScanNotifier.value = {
@@ -788,6 +941,15 @@ mixin _StorageTodos on _StorageServiceBase {
     await _recordLocalAudit('todos', item.id, item.toJson(), item.teamUuid);
 
     final db = await DatabaseHelper.instance.database;
+    final previousRows = await db.query(
+      'todos',
+      where: 'uuid = ?',
+      whereArgs: [item.id],
+      limit: 1,
+    );
+    final previousData = previousRows.isEmpty
+        ? null
+        : Map<String, dynamic>.from(previousRows.first);
 
     // 2. 同步更新 SQLite
     await db.insert(
@@ -817,6 +979,11 @@ mixin _StorageTodos on _StorageServiceBase {
           'recurrence_end_date':
               item.recurrenceEndDate?.millisecondsSinceEpoch ?? 0,
           'reminder_minutes': item.reminderMinutes ?? -1,
+          'is_all_day': item.isAllDay ? 1 : 0,
+          'has_conflict': item.hasConflict ? 1 : 0,
+          'conflict_data': item.serverVersionData != null
+              ? jsonEncode(item.serverVersionData)
+              : null,
           'image_path': item.imagePath,
           'original_text': item.originalText,
         },
@@ -857,12 +1024,34 @@ mixin _StorageTodos on _StorageServiceBase {
     // 不再维护超大的 SharedPreferences Todo 镜像，避免 Android 插件层 OOM
     await _clearTodoPrefsMirror(username);
 
+    if (_requiresScheduleConflictRefresh(item, previousData)) {
+      final affectedDayKeys =
+          _scheduleConflictDayKeysFor(item, previousData: previousData);
+      if (affectedDayKeys.isNotEmpty) {
+        await _refreshTodoScheduleConflicts(
+          username,
+          affectedDayKeys: affectedDayKeys,
+          affectedTodoIds: {item.id},
+        );
+      }
+    }
+
     if (sync) requestSync(username);
-    triggerRefresh(); // 🚀 触发 UI 刷新
+    triggerRefresh(const {DataRefreshDomain.todos});
   }
 
   Future<void> permanentlyDeleteTodo(String username, String uuid) async {
     final db = await DatabaseHelper.instance.database;
+    final existingRows = await db.query(
+      'todos',
+      columns: const ['created_date', 'created_at', 'due_date', 'is_all_day'],
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    final affectedDays = existingRows.isEmpty
+        ? <String>{}
+        : _scheduleConflictDayKeysForRow(existingRows.first);
     await db.delete('todos', where: 'uuid = ?', whereArgs: [uuid]);
 
     await _clearTodoPrefsMirror(username);
@@ -877,15 +1066,34 @@ mixin _StorageTodos on _StorageServiceBase {
       'sync_error': '',
     });
 
-    triggerRefresh();
+    if (affectedDays.isNotEmpty) {
+      await _refreshTodoScheduleConflicts(
+        username,
+        affectedDayKeys: affectedDays,
+      );
+    }
+    triggerRefresh(const {DataRefreshDomain.todos});
   }
 
   Future<void> clearTodoRecycleBin(String username) async {
     final db = await DatabaseHelper.instance.database;
 
     // 1. 获取所有待删除的 UUID，用于记录 Oplog
-    final List<Map<String, dynamic>> deletedItems =
-        await db.query('todos', columns: ['uuid'], where: 'is_deleted = 1');
+    final List<Map<String, dynamic>> deletedItems = await db.query(
+      'todos',
+      columns: const [
+        'uuid',
+        'created_date',
+        'created_at',
+        'due_date',
+        'is_all_day',
+      ],
+      where: 'is_deleted = 1',
+    );
+    final affectedDays = <String>{};
+    for (final item in deletedItems) {
+      affectedDays.addAll(_scheduleConflictDayKeysForRow(item));
+    }
 
     final batch = db.batch();
     for (var item in deletedItems) {
@@ -905,7 +1113,13 @@ mixin _StorageTodos on _StorageServiceBase {
 
     await _clearTodoPrefsMirror(username);
 
-    triggerRefresh();
+    if (affectedDays.isNotEmpty) {
+      await _refreshTodoScheduleConflicts(
+        username,
+        affectedDayKeys: affectedDays,
+      );
+    }
+    triggerRefresh(const {DataRefreshDomain.todos});
   }
 
   bool _isHistoricalTodo(TodoItem todo, DateTime today) {
@@ -955,7 +1169,7 @@ mixin _StorageTodos on _StorageServiceBase {
     await batch.commit(noResult: true);
 
     await _clearTodoPrefsMirror(username);
-    triggerRefresh();
+    triggerRefresh(const {DataRefreshDomain.todos});
     requestSync(username);
     return historicalIds.length;
   }
@@ -966,7 +1180,8 @@ mixin _StorageTodos on _StorageServiceBase {
 
     // 同步清理 Prefs 缓存
     final prefs = await SharedPreferences.getInstance();
-    List<String> list = prefs.getStringList("${keyCountdowns}_$username") ?? [];
+    final countdownsKey = _scopedKey(keyCountdowns, username);
+    List<String> list = prefs.getStringList(countdownsKey) ?? [];
     list.removeWhere((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
@@ -975,7 +1190,7 @@ mixin _StorageTodos on _StorageServiceBase {
         return false;
       }
     });
-    await prefs.setStringList("${keyCountdowns}_$username", list);
+    await prefs.setStringList(countdownsKey, list);
 
     // 记录删除操作到 Oplog
     await db.insert('op_logs', {
@@ -987,7 +1202,7 @@ mixin _StorageTodos on _StorageServiceBase {
       'sync_error': '',
     });
 
-    triggerRefresh();
+    triggerRefresh(const {DataRefreshDomain.countdowns});
   }
 
   Future<List<TodoItem>> getTodos(String username,
@@ -1041,7 +1256,7 @@ mixin _StorageTodos on _StorageServiceBase {
       // 🚀 核心补丁：清理先前版本迁移后遗留的超大数据 (解决 170MB+ 内存占用与启动卡顿)
       final String cleanupKey = "cleanup_done_${username}_v4_repair";
       if (alreadyMigrated && !(prefs.getBool(cleanupKey) ?? false)) {
-        await prefs.remove("${keyTodos}_$username");
+        await prefs.remove(_scopedKey(keyTodos, username));
         await prefs.remove(keyTodos);
         await prefs.setBool(cleanupKey, true);
         debugPrint("🗑️ Todos 残留数据修复清理完成。");
@@ -1049,7 +1264,7 @@ mixin _StorageTodos on _StorageServiceBase {
 
       if (!alreadyMigrated) {
         List<String> legacyJsonList =
-            prefs.getStringList("${keyTodos}_$username") ?? [];
+            prefs.getStringList(_scopedKey(keyTodos, username)) ?? [];
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
           legacyJsonList = prefs.getStringList(keyTodos) ?? [];
         }
@@ -1067,7 +1282,7 @@ mixin _StorageTodos on _StorageServiceBase {
               sync: false, isSyncSource: true);
           // 🚀 迁移成功后，必须物理清除 SharedPreferences 中的巨大 JSON 块
           // 否则 Android 的原生 SharedPreferences 会一直将此 170MB+ 的数据留在内存中导致 OOM
-          await prefs.remove("${keyTodos}_$username");
+          await prefs.remove(_scopedKey(keyTodos, username));
           await prefs.remove(keyTodos);
           debugPrint("✅ 老数据增量迁移完成并已物理清理。");
         }
@@ -1119,15 +1334,15 @@ mixin _StorageTodos on _StorageServiceBase {
                         DateTime.now().millisecondsSinceEpoch,
                     createdAt: m['created_at'] ??
                         DateTime.now().millisecondsSinceEpoch,
-                    createdDate: m['created_date'] != null
-                        ? int.tryParse(m['created_date'].toString())
-                        : null,
+                    createdDate: JsonValueParser.toNullableInt(
+                      m['created_date'],
+                    ),
                     dueDate: (m['due_date'] != null &&
                             m['due_date'].toString() != '0' &&
                             m['due_date'].toString() != 'null' &&
                             m['due_date'].toString().isNotEmpty)
                         ? DateTime.fromMillisecondsSinceEpoch(
-                            int.tryParse(m['due_date'].toString()) ?? 0)
+                            JsonValueParser.toInt(m['due_date']))
                         : null,
                     teamUuid: m['team_uuid'],
                     teamName: m['team_name'],
@@ -1144,24 +1359,19 @@ mixin _StorageTodos on _StorageServiceBase {
                     recurrenceEndDate: (m['recurrence_end_date'] != null &&
                             m['recurrence_end_date'].toString() != '0')
                         ? DateTime.fromMillisecondsSinceEpoch(
-                            int.tryParse(m['recurrence_end_date'].toString()) ??
-                                0)
+                            JsonValueParser.toInt(m['recurrence_end_date']))
                         : null,
                     reminderMinutes: (m['reminder_minutes'] != null &&
                             m['reminder_minutes'].toString() != '-1')
-                        ? int.tryParse(m['reminder_minutes'].toString())
+                        ? JsonValueParser.toNullableInt(m['reminder_minutes'])
                         : null,
                     imagePath: m['image_path']?.toString(),
                     originalText: m['original_text']?.toString(),
                     isAllDay: m['is_all_day'] == 1 || m['is_all_day'] == true,
                     hasConflict:
                         m['has_conflict'] == 1 || m['has_conflict'] == true,
-                    serverVersionData: m['conflict_data'] != null
-                        ? (m['conflict_data'] is String
-                            ? Map<String, dynamic>.from(
-                                jsonDecode(m['conflict_data']))
-                            : Map<String, dynamic>.from(m['conflict_data']))
-                        : null,
+                    serverVersionData:
+                        JsonValueParser.toMap(m['conflict_data']),
                   ))
               .toList();
         }
@@ -1180,7 +1390,8 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     // 🚀 逃生通道：兜底读取 Prefs
-    List<String> list = prefs.getStringList("${keyTodos}_$username") ?? [];
+    List<String> list =
+        prefs.getStringList(_scopedKey(keyTodos, username)) ?? [];
     List<TodoItem> legacyTodos;
 
     if (list.length > 50) {
@@ -1231,6 +1442,13 @@ mixin _StorageTodos on _StorageServiceBase {
     await db.rawUpdate(
         "UPDATE fixed_schedules SET is_deleted = 1, version = version + 1, updated_at = ? WHERE team_uuid = ? AND is_deleted = 0",
         [now, teamUuid]);
+    // 规划块本身不保存 team_uuid，需通过关联待办级联清理；否则退出团队后
+    // 仍会在首页计划区看到已经失去权限的团队安排。
+    await db.rawUpdate('''UPDATE todo_plan_blocks
+           SET is_deleted = 1, version = version + 1, updated_at = ?
+           WHERE todo_uuid IN (
+             SELECT uuid FROM todos WHERE team_uuid = ?
+           ) AND is_deleted = 0''', [now, teamUuid]);
 
     await db.delete(
       'todo_completions',
@@ -1319,6 +1537,28 @@ mixin _StorageTodos on _StorageServiceBase {
         'sync_error': '',
       });
     }
+    final deletedPlanBlocks = await db.query('todo_plan_blocks',
+        columns: ['uuid', 'version', 'updated_at'],
+        where: '''todo_uuid IN (
+                   SELECT uuid FROM todos WHERE team_uuid = ?
+                 ) AND is_deleted = 1 AND updated_at = ?''',
+        whereArgs: [teamUuid, now]);
+    for (var row in deletedPlanBlocks) {
+      await db.insert('op_logs', {
+        'op_type': 'UPSERT',
+        'target_table': 'todo_plan_blocks',
+        'target_uuid': row['uuid'],
+        'data_json': jsonEncode({
+          'uuid': row['uuid'],
+          'is_deleted': true,
+          'version': row['version'],
+          'updated_at': row['updated_at'],
+        }),
+        'timestamp': now,
+        'is_synced': 0,
+        'sync_error': '',
+      });
+    }
 
     // 2. 🚀 关键：同步清理 SharedPreferences 缓存，防止主页残余
     final prefs = await SharedPreferences.getInstance();
@@ -1351,7 +1591,15 @@ mixin _StorageTodos on _StorageServiceBase {
     }
 
     debugPrint("🧹 已清理团队 $teamUuid 的本地数据 (SQL + Cache)");
-    triggerRefresh(); // 🚀 触发 UI 刷新
+    triggerRefresh(const {
+      DataRefreshDomain.todos,
+      DataRefreshDomain.todoGroups,
+      DataRefreshDomain.countdowns,
+      DataRefreshDomain.fixedSchedules,
+      DataRefreshDomain.courses,
+      DataRefreshDomain.timeLogs,
+      DataRefreshDomain.planBlocks,
+    });
   }
 
   Future<List<TodoItem>> _handleRecurrenceLogic(
@@ -1403,6 +1651,21 @@ mixin _StorageTodos on _StorageServiceBase {
               );
         final keepSeriesActive =
             recurrenceEndDay == null || !todayDay.isAfter(recurrenceEndDay);
+        if (recurrenceEndDay != null) {
+          // 结束日期可能只修改了当前锚点，或来自另一台设备的同步；不能
+          // 依赖编辑页一定把所有未来实例一起带回来。存储层每次处理规则
+          // 时都清理结束日期之后的旧实例，避免它们继续留在系列中，或在
+          // 旧锚点仍存活时被再次生成。
+          if (_pruneRecurrenceOccurrencesAfterEndDate(
+            todos
+                .where((occurrence) => occurrence.id != todo.id)
+                .followedBy(generatedOccurrences),
+            seriesId: seriesId,
+            recurrenceEndDate: recurrenceEndDay,
+          )) {
+            needSave = true;
+          }
+        }
         final seriesChain = <TodoItem>[todo];
         var activeOccurrence = todo;
         var todoChanged = !hasSeriesId;
@@ -1446,6 +1709,13 @@ mixin _StorageTodos on _StorageServiceBase {
 
         if (rollOffsets.isNotEmpty) {
           // 原实例保留自己的完成状态，当前日期对应实例接管循环锚点。
+          todo.recurrence = RecurrenceType.none;
+          todoChanged = true;
+        }
+
+        // 如果结束日期被改到了当前锚点之前，rollOffsets 为空，原有逻辑
+        // 会错误地继续保留 recurrence，导致后续每次读取都把它当作活动规则。
+        if (!keepSeriesActive && todo.recurrence != RecurrenceType.none) {
           todo.recurrence = RecurrenceType.none;
           todoChanged = true;
         }
@@ -1652,6 +1922,22 @@ mixin _StorageTodos on _StorageServiceBase {
     );
   }
 
+  bool pruneRecurrenceOccurrencesAfterEndDateForTest(
+    List<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+  }) =>
+      _pruneRecurrenceOccurrencesAfterEndDate(
+        todos,
+        seriesId: seriesId,
+        recurrenceEndDate: recurrenceEndDate,
+      );
+
+  Set<String> pruneRecurrenceOccurrencesAfterEndDatesForTest(
+    List<TodoItem> todos,
+  ) =>
+      _pruneRecurrenceOccurrencesAfterEndDates(todos);
+
   String recurrenceOccurrenceIdForTest(
     String seriesId,
     int startMs,
@@ -1683,7 +1969,7 @@ mixin _StorageTodos on _StorageServiceBase {
       recomputeScheduleConflicts: false,
     );
     await _refreshTodoScheduleConflicts(username);
-    triggerRefresh();
+    triggerRefresh(const {DataRefreshDomain.todos});
     return changedItems.length;
   }
 
@@ -2090,6 +2376,84 @@ mixin _StorageTodos on _StorageServiceBase {
     return changed;
   }
 
+  bool _pruneRecurrenceOccurrencesAfterEndDate(
+    Iterable<TodoItem> todos, {
+    required String seriesId,
+    required DateTime recurrenceEndDate,
+    Set<String>? changedIds,
+  }) {
+    final endDay = DateTime(
+      recurrenceEndDate.year,
+      recurrenceEndDate.month,
+      recurrenceEndDate.day,
+    );
+    var changed = false;
+    for (final occurrence in todos) {
+      if (occurrence.isDeleted || occurrence.recurrenceSeriesId != seriesId) {
+        continue;
+      }
+      final startMs = occurrence.createdDate ?? occurrence.createdAt;
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        startMs,
+        isUtc: true,
+      ).toLocal();
+      final startDay = DateTime(start.year, start.month, start.day);
+      if (!startDay.isAfter(endDay)) continue;
+
+      occurrence.isDeleted = true;
+      occurrence.recurrence = RecurrenceType.none;
+      occurrence.markAsChanged();
+      changedIds?.add(occurrence.id);
+      changed = true;
+    }
+    return changed;
+  }
+
+  Set<String> _pruneRecurrenceOccurrencesAfterEndDates(
+    List<TodoItem> todos,
+  ) {
+    final activeRulesBySeries = <String, TodoItem>{};
+    for (final todo in todos) {
+      if (todo.isDeleted || todo.recurrence == RecurrenceType.none) continue;
+      final seriesId = todo.recurrenceSeriesId?.trim();
+      if (seriesId == null || seriesId.isEmpty) continue;
+
+      final current = activeRulesBySeries[seriesId];
+      if (current == null ||
+          _compareRecurrenceOccurrenceLwwDescending(todo, current) < 0) {
+        activeRulesBySeries[seriesId] = todo;
+      }
+    }
+
+    final changedIds = <String>{};
+    final now = DateTime.now();
+    final todayDay = DateTime(now.year, now.month, now.day);
+    for (final entry in activeRulesBySeries.entries) {
+      final rule = entry.value;
+      final recurrenceEndDate = rule.recurrenceEndDate;
+      if (recurrenceEndDate == null) continue;
+      final endDay = DateTime(
+        recurrenceEndDate.year,
+        recurrenceEndDate.month,
+        recurrenceEndDate.day,
+      );
+
+      if (todayDay.isAfter(endDay) && rule.recurrence != RecurrenceType.none) {
+        rule.recurrence = RecurrenceType.none;
+        rule.markAsChanged();
+        changedIds.add(rule.id);
+      }
+
+      _pruneRecurrenceOccurrencesAfterEndDate(
+        todos.where((todo) => todo.id != rule.id),
+        seriesId: entry.key,
+        recurrenceEndDate: endDay,
+        changedIds: changedIds,
+      );
+    }
+    return changedIds;
+  }
+
   int _compareRecurrenceOccurrenceLwwDescending(TodoItem a, TodoItem b) {
     final lwwOrder = TodoLwwService.compare(
       incomingUpdatedAt: a.updatedAt,
@@ -2317,11 +2681,12 @@ mixin _StorageTodos on _StorageServiceBase {
 
     unawaited(_clearTodoGroupPrefsMirror(username));
     if (sync) requestSync(username);
+    triggerRefresh(const {DataRefreshDomain.todoGroups});
   }
 
   Future<void> _clearTodoGroupPrefsMirror(String username) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("${keyTodoGroups}_$username");
+    await prefs.remove(_scopedKey(keyTodoGroups, username));
     await prefs.remove(keyTodoGroups);
   }
 
@@ -2338,7 +2703,7 @@ mixin _StorageTodos on _StorageServiceBase {
           await db.rawQuery('SELECT COUNT(*) as cnt FROM todo_groups');
       if (sqliteCount.first['cnt'] == 0) {
         List<String> legacyJsonList =
-            prefs.getStringList("${keyTodoGroups}_$username") ?? [];
+            prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
 
         // 🚀 核心修复：增加一次性迁移保护
         if (legacyJsonList.isEmpty && username.isNotEmpty) {
@@ -2395,7 +2760,8 @@ mixin _StorageTodos on _StorageServiceBase {
 
     // 逃生通道
     final prefs = await StorageService.prefs;
-    List<String> list = prefs.getStringList("${keyTodoGroups}_$username") ?? [];
+    List<String> list =
+        prefs.getStringList(_scopedKey(keyTodoGroups, username)) ?? [];
     List<TodoGroup> result = [];
 
     for (var e in list) {

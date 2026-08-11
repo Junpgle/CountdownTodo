@@ -6,6 +6,7 @@ import 'island_config.dart';
 import 'island_state_stack.dart';
 import 'island_win32.dart';
 import '../services/system_control_service.dart';
+import '../utils/time_utils.dart';
 
 // 导入鼠标事件类型
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
@@ -513,9 +514,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         // 同步更新暂停显示
         final pSecs =
             (DateTime.now().millisecondsSinceEpoch - pauseStartMs) ~/ 1000;
-        final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
-        final pss = (pSecs % 60).toString().padLeft(2, '0');
-        _pauseTimeNotifier.value = '$pmm:$pss';
+        _pauseTimeNotifier.value = formatTimerMMSS(pSecs);
       } else {
         final now = DateTime.now().millisecondsSinceEpoch;
         if (isCountUp) {
@@ -577,9 +576,7 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
         if (pStart > 0) {
           final pSecs =
               (DateTime.now().millisecondsSinceEpoch - pStart) ~/ 1000;
-          final pmm = (pSecs ~/ 60).toString().padLeft(2, '0');
-          final pss = (pSecs % 60).toString().padLeft(2, '0');
-          _pauseTimeNotifier.value = '$pmm:$pss';
+          _pauseTimeNotifier.value = formatTimerMMSS(pSecs);
         }
         return;
       }
@@ -599,14 +596,12 @@ class _IslandUIState extends State<IslandUI> with TickerProviderStateMixin {
       _timeNotifier.value = _clockTimeNotifier.value;
       return;
     }
-    _timeNotifier.value =
-        '${(_remainingSecs ~/ 60).toString().padLeft(2, '0')}:${(_remainingSecs % 60).toString().padLeft(2, '0')}';
+    _timeNotifier.value = formatTimerMMSS(_remainingSecs);
   }
 
   void _updateClockTime() {
     final now = DateTime.now();
-    _clockTimeNotifier.value =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    _clockTimeNotifier.value = AppTimeFormats.clock(now);
   }
 
   // ── 尺寸配置 ─────────────────────────────────────────────────────────────

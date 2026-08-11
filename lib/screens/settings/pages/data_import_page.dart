@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../../../models/data_export_models.dart';
 import '../../../services/api_service.dart';
 import '../../../services/data_import_service.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 import '../../../storage_service.dart';
 import '../../../utils/text_file_reader.dart';
 
@@ -147,6 +149,24 @@ class _DataImportPageState extends State<DataImportPage> {
 
   Future<void> _import() async {
     if (_filePath == null && _fileContent == null) return;
+
+    final authorized = await MinorModeService.instance.authorizeAction(
+      MinorModeAction.dataImport,
+    );
+    if (!authorized) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MinorModeService.instance.authorizationFailureMessage(
+                MinorModeAction.dataImport,
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _isImporting = true);
 

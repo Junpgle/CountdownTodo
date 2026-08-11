@@ -41,6 +41,7 @@ class SyncOplogPolicy {
     required Set<String> blockingConflictUuids,
     required bool acknowledgeFixedScheduleOps,
     required bool acknowledgeHabitOps,
+    bool acknowledgeSleepCoachingOps = false,
   }) {
     final acknowledgedIds = <int>{};
     final blockedIds = <int>{};
@@ -52,7 +53,9 @@ class SyncOplogPolicy {
           (!acknowledgeHabitOps &&
               (entry.table == 'habit_goals' ||
                   entry.table == 'habit_goal_rule_revisions' ||
-                  entry.table == 'habit_checkins'))) {
+                  entry.table == 'habit_checkins')) ||
+          (!acknowledgeSleepCoachingOps &&
+              entry.table == 'habit_sleep_coaching_plans')) {
         continue;
       }
       if (blockingConflictUuids.contains(entry.uuid)) {

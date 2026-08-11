@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -219,7 +218,6 @@ abstract class _TodoSectionStateBase extends State<TodoSectionWidget>
   final Map<String, bool> _isCompleting = {};
   bool _inlineFolders = true;
   _TodoFolderDisplayMode _folderDisplayMode = _TodoFolderDisplayMode.inline;
-  final Set<String> _animatedTodoIds = {};
   _TodoSectionViewModel? _cachedVm;
   int? _cachedVmSignature;
   Map<String, List<TodoItem>> _recurrenceSeriesOccurrences = const {};

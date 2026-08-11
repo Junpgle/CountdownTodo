@@ -21,9 +21,13 @@ dart format lib test
 ```
 
 Run targeted tests while iterating, then the widest practical checks. Platform
-builds require the corresponding toolchain. The scripts actually present in
-`scripts/` are `build_macos.sh`, `sync_macos_version.sh`, and
-`deploy_web_beta.sh`.
+builds require the corresponding toolchain. The release scripts in `scripts/`
+include `build_macos.sh`, `sync_macos_version.sh`, `deploy_web_beta.sh`, and
+`release_all.sh`.
+
+`release_all.sh` calls the existing macOS and Web scripts, builds the three
+Android APK ABIs, generates the arm64-v8a delta, and collects the macOS ZIP,
+three APKs, and delta into one versioned directory for manual upload.
 
 For the retained Worker:
 

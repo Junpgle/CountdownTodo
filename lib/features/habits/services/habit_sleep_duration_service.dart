@@ -5,6 +5,7 @@ import '../models/habit_goal_rule.dart';
 import '../repositories/habit_repository.dart';
 import 'habit_adaptation_service.dart';
 import 'habit_rule_resolver.dart';
+import 'habit_sleep_goal_resolver.dart';
 
 /// 早睡 / 早起打卡配对后生成睡眠时长打卡。
 ///
@@ -126,12 +127,30 @@ abstract final class HabitSleepDurationService {
         continue;
       }
 
+      final occurredAt = localBedtime.toUtc().millisecondsSinceEpoch;
+      final timezoneOffsetMinutes = localBedtime.timeZoneOffset.inMinutes;
+      // syncAll() runs whenever the today-habits card is refreshed.  Avoid
+      // rewriting an identical generated record: updateCheckIn() increments
+      // its version and emits a habits refresh, which would otherwise cause
+      // the card to reload itself indefinitely.
+      if (!existing.isDeleted &&
+          existing.ruleRevisionUuid == rule.uuid &&
+          existing.occurredAt == occurredAt &&
+          existing.logicalDate == logicalDate &&
+          existing.timezoneOffsetMinutes == timezoneOffsetMinutes &&
+          existing.value == seconds &&
+          existing.note == note &&
+          existing.source == HabitCheckInSource.import &&
+          existing.dedupeKey == dedupeKey) {
+        continue;
+      }
+
       final updated = HabitCheckIn.fromJson(existing.toJson())
         ..isDeleted = false
         ..ruleRevisionUuid = rule.uuid
-        ..occurredAt = localBedtime.toUtc().millisecondsSinceEpoch
+        ..occurredAt = occurredAt
         ..logicalDate = logicalDate
-        ..timezoneOffsetMinutes = localBedtime.timeZoneOffset.inMinutes
+        ..timezoneOffsetMinutes = timezoneOffsetMinutes
         ..value = seconds
         ..note = note
         ..source = HabitCheckInSource.import
@@ -209,17 +228,8 @@ abstract final class HabitSleepDurationService {
   static HabitGoal? _firstGoal(
     Iterable<HabitGoal> goals,
     HabitAdaptationKind kind,
-  ) {
-    for (final goal in goals) {
-      if (goal.isDeleted ||
-          goal.isArchived ||
-          goal.sourceType != HabitSourceType.timeCheckIn) {
-        continue;
-      }
-      if (HabitAdaptationService.forHabit(goal)?.kind == kind) return goal;
-    }
-    return null;
-  }
+  ) =>
+      HabitSleepGoalResolver.canonical(goals, kind);
 
   static HabitGoalRuleRevision? _currentRule(
     HabitGoal goal,

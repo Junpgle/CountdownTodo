@@ -145,10 +145,7 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     if (!mounted) return;
     final editingTodoId = _editingTodo.id;
     final todoIds = _focusRecordTodoIds(_editingTodo, widget.todos);
-    final records = (await PomodoroService.getRecords())
-        .where((record) => todoIds.contains(record.todoUuid))
-        .toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    final records = await PomodoroService.getRecordsByTodoUuids(todoIds);
     if (!mounted || _editingTodo.id != editingTodoId) return;
     setState(() {
       _focusRecords = records;
@@ -231,10 +228,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
     final editedDuration = normalizedStart == null || normalizedDue == null
         ? null
         : normalizedDue.difference(normalizedStart);
+    final recurrenceEndDateChanged =
+        _recurrenceEndDate?.millisecondsSinceEpoch !=
+            todo.recurrenceEndDate?.millisecondsSinceEpoch;
 
-    if (widget.applyToFutureOccurrences &&
-        seriesId != null &&
-        seriesId.isNotEmpty) {
+    if (seriesId != null && seriesId.isNotEmpty) {
       final originalStartMs = _originalCreatedDate.millisecondsSinceEpoch;
       for (final occurrence in widget.todos) {
         if (occurrence.id == todo.id ||
@@ -262,9 +260,19 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           shiftedStart.month,
           shiftedStart.day,
         );
-        if (_recurrence == RecurrenceType.none ||
-            (recurrenceEndDay != null &&
-                shiftedDay.isAfter(recurrenceEndDay))) {
+        // 循环结束日期是系列规则的一部分，即使用户选择“只修改本期”，
+        // 结束日期之后的已物化实例也必须删除；否则存储层下次滚动时仍
+        // 会把它们视为系列成员。其它字段仍遵循“修改后续周期”开关。
+        if (recurrenceEndDateChanged &&
+            recurrenceEndDay != null &&
+            shiftedDay.isAfter(recurrenceEndDay)) {
+          occurrence.isDeleted = true;
+          occurrence.recurrence = RecurrenceType.none;
+          occurrence.markAsChanged();
+          continue;
+        }
+        if (!widget.applyToFutureOccurrences) continue;
+        if (_recurrence == RecurrenceType.none) {
           occurrence.isDeleted = true;
           occurrence.recurrence = RecurrenceType.none;
           occurrence.markAsChanged();
@@ -824,7 +832,9 @@ class TodoEditScreenState extends State<TodoEditScreen> {
                     onTap: () async {
                       final picked = await showDatePicker(
                           context: context,
-                          firstDate: DateTime.now(),
+                          // 循环结束日期是系列规则，不是当前实例的截止时间；
+                          // 允许把规则结束日期回调到今天之前。
+                          firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                           initialDate: _recurrenceEndDate ??
                               DateTime.now().add(const Duration(days: 30)));

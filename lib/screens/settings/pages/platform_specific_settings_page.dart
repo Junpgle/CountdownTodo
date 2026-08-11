@@ -47,6 +47,7 @@ class _PlatformSpecificSettingsPageState
     'mac_island_shortcut': GlobalKey(),
     'mac_island_reminders': GlobalKey(),
     'mac_island_clipboard_links': GlobalKey(),
+    'mac_island_clipboard_browser': GlobalKey(),
     'mac_island_without_notch': GlobalKey(),
     'mac_island_test': GlobalKey(),
   };
@@ -67,6 +68,8 @@ class _PlatformSpecificSettingsPageState
   bool _macIslandRemindersEnabled = true;
   bool _macIslandClipboardLinksEnabled = true;
   bool _macIslandShowWithoutNotch = true;
+  List<Map<String, String>> _macIslandBrowsers = [];
+  String _macIslandDefaultBrowserId = '';
   String _macIslandShortcutKey = '';
   bool _macIslandShortcutCommand = false;
   bool _macIslandShortcutOption = false;
@@ -132,6 +135,23 @@ class _PlatformSpecificSettingsPageState
       }
     }
     if (AppPlatform.isMacOS) {
+      final browserSettings = await WindowService.getMacIslandBrowserSettings();
+      final rawBrowsers = browserSettings['browsers'];
+      final browsers = <Map<String, String>>[];
+      if (rawBrowsers is List) {
+        for (final item in rawBrowsers) {
+          if (item is! Map) continue;
+          final id = item['id']?.toString() ?? '';
+          final name = item['name']?.toString() ?? '';
+          if (id.isNotEmpty && name.isNotEmpty) {
+            browsers.add({'id': id, 'name': name});
+          }
+        }
+      }
+      final nativeSelectedId = browserSettings['selectedId']?.toString() ?? '';
+      final selectedBrowserId = nativeSelectedId.isNotEmpty
+          ? nativeSelectedId
+          : (prefs.getString('macos_island_clipboard_selected_browser') ?? '');
       if (mounted) {
         setState(() {
           _macIslandEnabled = prefs.getBool('macos_island_enabled') ??
@@ -143,6 +163,8 @@ class _PlatformSpecificSettingsPageState
               prefs.getBool('macos_island_reminders_enabled') ?? true;
           _macIslandClipboardLinksEnabled =
               prefs.getBool('macos_island_clipboard_links_enabled') ?? true;
+          _macIslandBrowsers = browsers;
+          _macIslandDefaultBrowserId = selectedBrowserId;
           _macIslandShortcutKey =
               prefs.getString('macos_island_shortcut_key') ?? '';
           _macIslandShortcutCommand =
@@ -156,6 +178,25 @@ class _PlatformSpecificSettingsPageState
         });
       }
     }
+  }
+
+  String _macIslandBrowserName(String browserId) {
+    for (final browser in _macIslandBrowsers) {
+      if (browser['id'] == browserId) return browser['name'] ?? browserId;
+    }
+    return '未选择';
+  }
+
+  Future<void> _selectMacIslandDefaultBrowser(String? browserId) async {
+    if (browserId == null || browserId == _macIslandDefaultBrowserId) return;
+    final browserName = _macIslandBrowserName(browserId);
+    final changed = await WindowService.setMacIslandDefaultBrowser(browserId);
+    if (!changed || !mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('macos_island_clipboard_selected_browser', browserId);
+    if (!mounted) return;
+    setState(() => _macIslandDefaultBrowserId = browserId);
+    AppSnackBars.success(context, '剪贴板网址默认浏览器已设为 $browserName');
   }
 
   _MacIslandShortcut get _macIslandShortcut => _MacIslandShortcut(
@@ -336,12 +377,14 @@ class _PlatformSpecificSettingsPageState
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: AppSettingsSection(
                 title: '屏幕时间统计',
-                headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                headerPadding:
+                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
                 children: [
                   _buildTile(
                     targetId: 'tai_db',
                     child: ListTile(
-                      leading: Icon(Icons.timer_outlined, color: colorScheme.primary),
+                      leading: Icon(Icons.timer_outlined,
+                          color: colorScheme.primary),
                       title: const Text('Tai 屏幕时间数据库'),
                       subtitle: Text(
                         _taiDbPath.isEmpty ? '未设置，点击选择 data.db 文件' : _taiDbPath,
@@ -365,13 +408,14 @@ class _PlatformSpecificSettingsPageState
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: AppSettingsSection(
                 title: '桌面挂件设置',
-                headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                headerPadding:
+                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
                 children: [
                   _buildTile(
                     targetId: 'float_window_style',
                     child: ListTile(
-                      leading:
-                          Icon(Icons.layers_outlined, color: colorScheme.primary),
+                      leading: Icon(Icons.layers_outlined,
+                          color: colorScheme.primary),
                       title: const Text('桌面灵动岛'),
                       subtitle: const Text('开启灵动岛式浮动窗口'),
                       trailing: Switch(
@@ -393,7 +437,8 @@ class _PlatformSpecificSettingsPageState
                             try {
                               IslandDataProvider().invalidateCache();
                               IslandManagerBridge.clearIslandCache('island-1');
-                              await IslandManagerBridge.createIsland('island-1');
+                              await IslandManagerBridge.createIsland(
+                                  'island-1');
                             } catch (_) {
                               // Ignore stale island window errors during style changes.
                             }
@@ -417,7 +462,8 @@ class _PlatformSpecificSettingsPageState
                       trailing: TextButton(
                         onPressed: () async {
                           try {
-                            await StorageService.saveIslandBounds('island-1', {});
+                            await StorageService.saveIslandBounds(
+                                'island-1', {});
                           } catch (_) {}
                           try {
                             IslandDataProvider().invalidateCache();
@@ -438,8 +484,8 @@ class _PlatformSpecificSettingsPageState
                     _buildTile(
                       targetId: 'island_priority',
                       child: ListTile(
-                        leading:
-                            Icon(Icons.priority_high, color: colorScheme.primary),
+                        leading: Icon(Icons.priority_high,
+                            color: colorScheme.primary),
                         title: const Text('灵动岛优先级设置'),
                         subtitle: const Text('配置哪些应用可以抢占灵动岛显示'),
                         trailing: const Icon(Icons.chevron_right),
@@ -456,12 +502,14 @@ class _PlatformSpecificSettingsPageState
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: AppSettingsSection(
                 title: 'Android 系统特性',
-                headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                headerPadding:
+                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
                 children: [
                   _buildTile(
                     targetId: 'live_updates',
                     child: ListTile(
-                      leading: Icon(Icons.update, color: colorScheme.cdtSuccess),
+                      leading:
+                          Icon(Icons.update, color: colorScheme.cdtSuccess),
                       title: const Text('Android 16 实时活动 (Live Updates)'),
                       subtitle: Text(_liveUpdatesStatus,
                           style: TextStyle(
@@ -477,7 +525,8 @@ class _PlatformSpecificSettingsPageState
                   _buildTile(
                     targetId: 'island_support',
                     child: ListTile(
-                      leading: Icon(Icons.phone_android, color: colorScheme.primary),
+                      leading:
+                          Icon(Icons.phone_android, color: colorScheme.primary),
                       title: const Text('检测状态栏超级岛支持 (OriginOS/ColorOS等)'),
                       subtitle: Text(_islandStatus,
                           style: TextStyle(
@@ -498,7 +547,8 @@ class _PlatformSpecificSettingsPageState
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: AppSettingsSection(
                 title: 'Mac 灵动岛',
-                headerPadding: const EdgeInsets.only(left: 8, bottom: 8, top: 0),
+                headerPadding:
+                    const EdgeInsets.only(left: 8, bottom: 8, top: 0),
                 children: [
                   _buildTile(
                     targetId: 'mac_status_bar',
@@ -519,7 +569,8 @@ class _PlatformSpecificSettingsPageState
                           if (!val) {
                             MacPomodoroStatusBarService.clearNative();
                           } else {
-                            await MacPomodoroStatusBarService.syncCurrentStatus();
+                            await MacPomodoroStatusBarService
+                                .syncCurrentStatus();
                           }
                           if (!context.mounted) return;
                           AppSnackBars.success(
@@ -546,7 +597,8 @@ class _PlatformSpecificSettingsPageState
                             : '按 ${_macIslandShortcut.displayText} 隐藏，再按一次恢复',
                       ),
                       trailing: OutlinedButton(
-                        onPressed: _macIslandEnabled ? _editMacIslandShortcut : null,
+                        onPressed:
+                            _macIslandEnabled ? _editMacIslandShortcut : null,
                         child: Text(_macIslandShortcut.isEmpty ? '设置' : '修改'),
                       ),
                       onTap: _macIslandEnabled ? _editMacIslandShortcut : null,
@@ -565,8 +617,10 @@ class _PlatformSpecificSettingsPageState
                         activeThumbColor: colorScheme.primary,
                         onChanged: _macIslandEnabled
                             ? (val) async {
-                                setState(() => _macIslandRemindersEnabled = val);
-                                final prefs = await SharedPreferences.getInstance();
+                                setState(
+                                    () => _macIslandRemindersEnabled = val);
+                                final prefs =
+                                    await SharedPreferences.getInstance();
                                 await prefs.setBool(
                                     'macos_island_reminders_enabled', val);
                                 await WindowService.configureMacIsland();
@@ -580,7 +634,8 @@ class _PlatformSpecificSettingsPageState
                                     restoring: true,
                                   );
                                 } else {
-                                  MacPomodoroStatusBarService.clearIslandReminders();
+                                  MacPomodoroStatusBarService
+                                      .clearIslandReminders();
                                 }
                               }
                             : null,
@@ -605,13 +660,62 @@ class _PlatformSpecificSettingsPageState
                         activeThumbColor: colorScheme.primary,
                         onChanged: _macIslandEnabled
                             ? (val) async {
-                                setState(() => _macIslandClipboardLinksEnabled = val);
-                                final prefs = await SharedPreferences.getInstance();
+                                setState(() =>
+                                    _macIslandClipboardLinksEnabled = val);
+                                final prefs =
+                                    await SharedPreferences.getInstance();
                                 await prefs.setBool(
-                                    'macos_island_clipboard_links_enabled', val);
+                                    'macos_island_clipboard_links_enabled',
+                                    val);
                                 await WindowService.configureMacIsland();
                               }
                             : null,
+                      ),
+                    ),
+                  ),
+                  const AppSettingsDivider(),
+                  _buildTile(
+                    targetId: 'mac_island_clipboard_browser',
+                    child: ListTile(
+                      enabled: _macIslandEnabled,
+                      leading: Icon(
+                        Icons.language_rounded,
+                        color: _macIslandEnabled
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      title: const Text('剪贴板网址默认浏览器'),
+                      subtitle: Text(
+                        _macIslandBrowsers.isEmpty
+                            ? '未检测到可用浏览器'
+                            : '复制网址时默认使用 ${_macIslandBrowserName(_macIslandDefaultBrowserId)}，展开灵动岛后仍可临时切换',
+                      ),
+                      trailing: SizedBox(
+                        width: 170,
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: _macIslandBrowsers.any((browser) =>
+                                    browser['id'] == _macIslandDefaultBrowserId)
+                                ? _macIslandDefaultBrowserId
+                                : null,
+                            hint: const Text('选择浏览器'),
+                            items: _macIslandBrowsers.map((browser) {
+                              final id = browser['id'];
+                              return DropdownMenuItem<String>(
+                                value: id,
+                                child: Text(
+                                  browser['name'] ?? '',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: _macIslandEnabled &&
+                                    _macIslandBrowsers.isNotEmpty
+                                ? _selectMacIslandDefaultBrowser
+                                : null,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -629,7 +733,8 @@ class _PlatformSpecificSettingsPageState
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _macIslandEnabled && _macIslandRemindersEnabled
                           ? () async {
-                              await MacPomodoroStatusBarService.showTestReminder();
+                              await MacPomodoroStatusBarService
+                                  .showTestReminder();
                             }
                           : null,
                     ),
@@ -638,8 +743,8 @@ class _PlatformSpecificSettingsPageState
                   _buildTile(
                     targetId: 'mac_island_without_notch',
                     child: ListTile(
-                      leading:
-                          Icon(Icons.desktop_mac_rounded, color: colorScheme.primary),
+                      leading: Icon(Icons.desktop_mac_rounded,
+                          color: colorScheme.primary),
                       title: const Text('无刘海屏幕也显示'),
                       subtitle: const Text('在外接显示器或无刘海 Mac 顶部显示居中胶囊'),
                       trailing: Switch(
@@ -647,8 +752,10 @@ class _PlatformSpecificSettingsPageState
                         activeThumbColor: colorScheme.primary,
                         onChanged: _macIslandEnabled
                             ? (val) async {
-                                setState(() => _macIslandShowWithoutNotch = val);
-                                final prefs = await SharedPreferences.getInstance();
+                                setState(
+                                    () => _macIslandShowWithoutNotch = val);
+                                final prefs =
+                                    await SharedPreferences.getInstance();
                                 await prefs.setBool(
                                     'macos_island_show_without_notch', val);
                                 await WindowService.configureMacIsland();

@@ -9,14 +9,7 @@ import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
 
 class AboutSection extends StatefulWidget {
-  final bool isCheckingUpdate;
-  final VoidCallback onCheckUpdates;
-
-  const AboutSection({
-    super.key,
-    required this.isCheckingUpdate,
-    required this.onCheckUpdates,
-  });
+  const AboutSection({super.key});
 
   @override
   State<AboutSection> createState() => _AboutSectionState();
@@ -299,15 +292,6 @@ class _AboutSectionState extends State<AboutSection> {
               AppSnackBars.success(context, '版本号已复制到剪贴板');
             },
           ),
-        ),
-        const AppSettingsDivider(),
-        ListTile(
-          leading: Icon(Icons.system_update, color: colorScheme.cdtWarning),
-          title: const Text('检查更新'),
-          trailing: widget.isCheckingUpdate
-              ? const AppLoadingIndicator()
-              : const Icon(Icons.chevron_right),
-          onTap: widget.isCheckingUpdate ? null : widget.onCheckUpdates,
         ),
         const AppSettingsDivider(),
         ListTile(

@@ -6,10 +6,13 @@ class WorkbenchActions extends StatefulWidget {
   final bool isIdle;
   final bool isFocusing;
   final bool isRemoteWatching;
+  final bool isStrictWaitingForFlip;
+  final bool isStrictMode;
   final PomodoroPhase phase;
   final TodoItem? boundTodo;
   final VoidCallback onShowBindTodo;
   final VoidCallback onStartFocus;
+  final VoidCallback? onCancelStrictWaiting;
   final VoidCallback onFinishEarly;
   final VoidCallback onAbandonFocus;
   final VoidCallback? onPauseFocus;
@@ -25,10 +28,13 @@ class WorkbenchActions extends StatefulWidget {
     required this.isIdle,
     required this.isFocusing,
     required this.isRemoteWatching,
+    this.isStrictWaitingForFlip = false,
+    this.isStrictMode = false,
     required this.phase,
     this.boundTodo,
     required this.onShowBindTodo,
     required this.onStartFocus,
+    this.onCancelStrictWaiting,
     required this.onFinishEarly,
     required this.onAbandonFocus,
     this.onPauseFocus,
@@ -129,6 +135,47 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
               ),
             ],
           ),
+        ),
+      );
+    }
+
+    if (widget.isStrictWaitingForFlip) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: widget.isCompact ? 6 : 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.screen_lock_portrait_outlined,
+                  size: widget.isCompact ? 18 : 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '请将手机屏幕朝下翻转',
+                  style: TextStyle(
+                    fontSize: widget.isCompact ? 13 : 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: widget.onCancelStrictWaiting,
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('取消等待'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -235,9 +282,10 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
       return Padding(
         key: const ValueKey('focus_btns'),
         padding: EdgeInsets.only(top: widget.isCompact ? 8 : 12),
-        child: Row(
-          mainAxisAlignment:
-              isLandscape ? MainAxisAlignment.start : MainAxisAlignment.center,
+        child: Wrap(
+          alignment: isLandscape ? WrapAlignment.start : WrapAlignment.center,
+          spacing: widget.isCompact ? 8 : 16,
+          runSpacing: 4,
           children: [
             TextButton.icon(
               onPressed: widget.onAbandonFocus,
@@ -253,30 +301,41 @@ class _WorkbenchActionsState extends State<WorkbenchActions>
                     horizontal: widget.isCompact ? 12 : 16, vertical: 12),
               ),
             ),
-            SizedBox(width: widget.isCompact ? 8 : 16),
-            TextButton.icon(
-              onPressed: widget.onShowPauseDialog,
-              icon: Icon(
-                  widget.onPauseFocus == null
-                      ? Icons.play_arrow_rounded
-                      : Icons.pause_rounded,
-                  size: widget.isCompact ? 18 : 20),
-              label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
-                  style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.6),
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerHighest
-                    .withValues(alpha: 0.3),
-                padding: EdgeInsets.symmetric(
-                    horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+            if (widget.isStrictMode)
+              TextButton.icon(
+                onPressed: null,
+                icon: Icon(Icons.screen_rotation_alt_rounded,
+                    size: widget.isCompact ? 18 : 20),
+                label: Text('翻转控制',
+                    style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.symmetric(
+                      horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+                ),
+              )
+            else
+              TextButton.icon(
+                onPressed: widget.onShowPauseDialog,
+                icon: Icon(
+                    widget.onPauseFocus == null
+                        ? Icons.play_arrow_rounded
+                        : Icons.pause_rounded,
+                    size: widget.isCompact ? 18 : 20),
+                label: Text(widget.onPauseFocus == null ? '继续' : '暂停',
+                    style: TextStyle(fontSize: widget.isCompact ? 14 : 15)),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withValues(alpha: 0.3),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: widget.isCompact ? 20 : 24, vertical: 12),
+                ),
               ),
-            ),
-            SizedBox(width: widget.isCompact ? 8 : 16),
             TextButton.icon(
               onPressed: widget.onFinishEarly,
               icon: Icon(Icons.check_rounded, size: widget.isCompact ? 16 : 18),

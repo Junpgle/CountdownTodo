@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../storage_service.dart';
+import 'storage/storage_key_scope.dart';
 
 /// The four persisted dashboard groups. A pair of groups shares one component
 /// pool so a component can move from one group to the other.
@@ -313,15 +314,13 @@ class HomeLayoutService {
   static Future<String> _scopedKey(String base) async {
     final prefs = await StorageService.prefs;
     final username = prefs.getString(StorageService.keyCurrentUser);
-    final suffix = username == null || username.isEmpty ? '' : '_$username';
-    return '$base$suffix';
+    return StorageKeyScope.scoped(base, username);
   }
 
   static Future<String> _habitDisplayLimitKey() async {
     final prefs = await StorageService.prefs;
     final username = prefs.getString(StorageService.keyCurrentUser);
-    final suffix = username == null || username.isEmpty ? '' : '_$username';
-    return 'home_habit_display_limit$suffix';
+    return StorageKeyScope.scoped('home_habit_display_limit', username);
   }
 
   static int _normalizeHabitDisplayLimit(int? value) {

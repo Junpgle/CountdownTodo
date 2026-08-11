@@ -59,6 +59,7 @@
 import router from '@system.router'
 import storage from '@system.storage'
 import prompt from '@system.prompt'
+import BandUtils from '../../common/band_utils.js'
 
 export default {
   data: {
@@ -81,17 +82,13 @@ export default {
     this.countdownList = null
   },
 
-  padZero(num) {
-    return num < 10 ? '0' + num : '' + num
-  },
-
   loadCountdownData() {
     storage.get({
       key: 'sync_countdown',
       success: (data) => {
         if (data) {
           try {
-            let list = JSON.parse(data)
+            let list = BandUtils.parseJsonArray(data)
             list = this.removeDuplicates(list)
             this.calculateRemainingDaysForList(list)
             this.formatTargetDatesForList(list)
@@ -159,7 +156,7 @@ export default {
         } else {
           date = new Date()
         }
-        item.formattedDate = `${date.getFullYear()}-${this.padZero(date.getMonth() + 1)}-${this.padZero(date.getDate())}`
+        item.formattedDate = `${date.getFullYear()}-${BandUtils.padZero(date.getMonth() + 1)}-${BandUtils.padZero(date.getDate())}`
       }
     }
   },

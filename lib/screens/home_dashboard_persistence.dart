@@ -39,13 +39,11 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     final oldTodos = List<TodoItem>.from(_todos);
     final nextTodos = List<TodoItem>.from(newTodos);
 
-    if (mounted) {
-      setState(() => _todos = nextTodos);
-    } else {
-      _todos = nextTodos;
-    }
-    _todoRevision.value++;
+    _todos = nextTodos;
+    _todosNotifier.value = List<TodoItem>.from(nextTodos);
+    _todoUpdateSignalNotifier.value++;
     _timelineRevision.value++;
+    _pomodoroTickNotifier.value++;
 
     for (var nt in nextTodos) {
       if (nt.isDone) {
@@ -121,31 +119,36 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPomodoro = true,
     bool syncTimeLogs = true,
     bool syncPlanBlocks = true,
+    bool syncFixedSchedules = true,
+    bool syncHabits = true,
   }) async {
-    if (_isSyncing) return;
+    if (_isSyncing || !mounted) return;
 
-    // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
-    // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
-    final pendingSnapshotBeforeSync = _pendingTodosToPersist;
-    if (pendingSnapshotBeforeSync != null) {
-      _pendingTodosToPersist = null;
-      _todoPersistDebounce?.cancel();
-      await StorageService.saveTodos(
-          widget.username, pendingSnapshotBeforeSync);
-      // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
-      StorageService.setForceFlushProtectedUuids(
-          pendingSnapshotBeforeSync.map((t) => t.id).toSet());
-    }
-
-    setState(() {
-      _isSyncing = true;
-    });
+    // 在任何 await 之前取得本地同步锁。待持久化快照可能需要一次 SQLite
+    // 写入；若锁在其后才设置，快速连点会并行进入两次同步流程。
+    setState(() => _isSyncing = true);
+    final syncAttempt = ++_syncAttemptGeneration;
 
     try {
-      // 🚀 核心加固：增加 30 秒超时强制释放锁，防止由于网络异常导致的图标“永动机”
-      Timer(const Duration(seconds: 30), () {
-        if (mounted && _isSyncing) {
-          setState(() => _isSyncing = false);
+      // 🚀 核心修复：同步前先强制保存用户未持久化的修改（如取消勾选），
+      // 防止 syncData 的 saveTodos(isSyncSource=true) 覆盖用户意图。
+      final pendingSnapshotBeforeSync = _pendingTodosToPersist;
+      if (pendingSnapshotBeforeSync != null) {
+        _pendingTodosToPersist = null;
+        _todoPersistDebounce?.cancel();
+        await StorageService.saveTodos(
+            widget.username, pendingSnapshotBeforeSync);
+        // 🚀 设置保护：merge 时跳过这些待办，防止同步覆盖用户刚做的修改
+        StorageService.setForceFlushProtectedUuids(
+            pendingSnapshotBeforeSync.map((t) => t.id).toSet());
+      }
+
+      // 仅记录长耗时诊断，不释放逻辑锁。释放锁必须由真实的同步 Future
+      // 结束时的 finally 完成，否则第二次点击会与仍在运行的同步重叠。
+      _syncWatchdogTimer?.cancel();
+      _syncWatchdogTimer = Timer(const Duration(seconds: 30), () {
+        if (mounted && syncAttempt == _syncAttemptGeneration && _isSyncing) {
+          debugPrint('[DashboardSync] sync still running after 30 seconds');
         }
       });
       final prefs = await SharedPreferences.getInstance();
@@ -155,17 +158,29 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
 
       bool hasChanges = false;
 
-      // 🚀 2. 判断条件加入 syncTimeLogs
-      if (syncTodos || syncCountdowns || syncTimeLogs || syncPlanBlocks) {
+      if (syncTodos ||
+          syncCountdowns ||
+          syncTimeLogs ||
+          syncPomodoro ||
+          syncPlanBlocks ||
+          syncFixedSchedules ||
+          syncHabits) {
         final syncResult = await StorageService.syncData(
           widget.username,
           syncTodos: syncTodos,
           syncCountdowns: syncCountdowns,
+          syncScreenTime: syncScreenTime,
           syncTimeLogs: syncTimeLogs,
           syncPlanBlocks: syncPlanBlocks,
-          syncPomodoro: false,
+          syncPomodoro: syncPomodoro,
+          syncFixedSchedules: syncFixedSchedules,
+          syncHabits: syncHabits,
           context: context,
         );
+        if (syncResult['success'] != true) {
+          final error = syncResult['error']?.toString() ?? '同步请求未成功';
+          throw StateError(error);
+        }
         hasChanges = syncResult['hasChanges'] ?? false;
         final List<String> updatedTodoIds =
             (syncResult['updatedTodoIds'] as List?)
@@ -211,13 +226,6 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
         }
       }
 
-      if (syncPomodoro) {
-        await PomodoroService.syncRecordsToCloud();
-        await PomodoroService.syncRecordsFromCloud();
-        await PomodoroService.syncTagsToCloud();
-        await PomodoroService.syncTagsFromCloud();
-      }
-
       if (syncScreenTime) {
         await ScreenTimeService.syncScreenTime(userId);
         await _loadCachedScreenTime();
@@ -234,11 +242,6 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
           // 同步后数据有变化，刷新 Island 槽位缓存
           FloatWindowService.invalidateSlotCache();
           _rescheduleAlarms();
-          _loadAllData();
-        }
-        
-        if (!silent) {
-          StorageService.triggerRefresh();
         }
 
         // 🚀 同步手环版本信息
@@ -272,15 +275,20 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
             SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-        });
+      if (syncAttempt == _syncAttemptGeneration) {
+        _syncWatchdogTimer?.cancel();
+        _syncWatchdogTimer = null;
+        if (mounted) {
+          setState(() {
+            _isSyncing = false;
+          });
+        }
+        // 🚀 同步完成后清除保护，防止后续加载被干扰。旧同步结束时不能
+        // 清除下一次同步刚建立的保护状态。
+        _pendingTodosToPersist = null;
+        _persistingTodosSnapshot = null;
+        StorageService.setForceFlushProtectedUuids({});
       }
-      // 🚀 同步完成后清除保护，防止后续加载被干扰
-      _pendingTodosToPersist = null;
-      _persistingTodosSnapshot = null;
-      StorageService.setForceFlushProtectedUuids({});
     }
   }
 
@@ -402,7 +410,7 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
   }
 
   Widget _buildEnvironmentInfo() {
-    final isTest = ApiService.baseUrl.contains(':8084');
+    final isTest = ApiService.isTestServer;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -446,6 +454,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
     bool syncPomodoro = true;
     bool syncTimeLogs = true;
     bool syncPlanBlocks = true;
+    bool syncFixedSchedules = true;
+    bool syncHabits = true;
 
     showDialog(
       context: context,
@@ -498,6 +508,18 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                   onChanged: (val) =>
                       setDialogState(() => syncPlanBlocks = val ?? false),
                 ),
+                CheckboxListTile(
+                  title: const Text("固定日程"),
+                  value: syncFixedSchedules,
+                  onChanged: (val) =>
+                      setDialogState(() => syncFixedSchedules = val ?? false),
+                ),
+                CheckboxListTile(
+                  title: const Text("习惯"),
+                  value: syncHabits,
+                  onChanged: (val) =>
+                      setDialogState(() => syncHabits = val ?? false),
+                ),
               ],
             ),
           ),
@@ -511,7 +533,9 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                       syncScreenTime ||
                       syncPomodoro ||
                       syncTimeLogs ||
-                      syncPlanBlocks)
+                      syncPlanBlocks ||
+                      syncFixedSchedules ||
+                      syncHabits)
                   ? () {
                       Navigator.pop(ctx);
                       _handleManualSync(
@@ -522,6 +546,8 @@ mixin _HomeDashboardPersistenceMixin on _HomeDashboardStateBase {
                         syncPomodoro: syncPomodoro,
                         syncTimeLogs: syncTimeLogs,
                         syncPlanBlocks: syncPlanBlocks,
+                        syncFixedSchedules: syncFixedSchedules,
+                        syncHabits: syncHabits,
                       );
                     }
                   : null,

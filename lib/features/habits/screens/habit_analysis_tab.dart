@@ -7,6 +7,7 @@ import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_progress_calculator.dart';
 import '../services/habit_rule_resolver.dart';
+import '../services/habit_sleep_goal_resolver.dart';
 import '../services/habit_streak_service.dart';
 import '../widgets/habit_format.dart';
 import 'habit_detail_screen.dart';
@@ -60,7 +61,9 @@ class _HabitAnalysisTabState extends State<HabitAnalysisTab> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final goals = await HabitRepository.getActiveGoals();
+    final goals = HabitSleepGoalResolver.forDisplay(
+      await HabitRepository.getActiveGoals(),
+    );
     final allRules = await HabitRepository.getRules();
     final rulesByHabit = <String, List<HabitGoalRuleRevision>>{};
     final summaries = <String, HabitStreakSummary>{};

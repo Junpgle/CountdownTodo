@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import '../../../services/migration_service.dart';
+import '../../../services/minor_mode_policy.dart';
+import '../../../services/minor_mode_service.dart';
 
 class MigrationDialog extends StatefulWidget {
   final VoidCallback onSuccess;
@@ -84,6 +86,29 @@ class _MigrationDialogState extends State<MigrationDialog> {
                     });
 
                     try {
+                      final authorized =
+                          await MinorModeService.instance.authorizeAction(
+                        MinorModeAction.dataImport,
+                      );
+                      if (!authorized) {
+                        if (!context.mounted) return;
+                        setState(() {
+                          isMigrating = false;
+                          statusText = "";
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              MinorModeService.instance
+                                  .authorizationFailureMessage(
+                                MinorModeAction.dataImport,
+                              ),
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      if (!context.mounted) return;
                       await MigrationService.runMigration(
                           context: context,
                           oldUrl: ApiService.cloudflareUrl, // D1 URL
