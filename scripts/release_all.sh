@@ -46,6 +46,9 @@ usage() {
   FLUTTER_BIN              Flutter 命令路径，默认 flutter
   RELEASE_OUTPUT_DIR       默认产物目录
   WEB_PROJECT / WEB_BRANCH / WEB_MESSAGE
+  BASE_APK_URL             Android 增量包基线 APK 地址，默认使用 GitHub 的 v<基线版本> 资产
+  BASE_APK_FALLBACK_URL    可选的显式备用基线地址
+  BASE_APK_SHA256          可选的基线 APK SHA-256，匹配失败时拒绝生成
 
 完成后可直接全选产物目录中的文件，上传到 GitHub/Gitee Release。
 EOF
