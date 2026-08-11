@@ -79,6 +79,17 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
         }
+        getByName("profile") {
+            // Profile 与 Debug 共用包名，便于直接覆盖安装测试版本
+            applicationIdSuffix = ".debug"
+
+            // Profile 与 Debug 使用相同的签名，避免安装时与测试版本冲突
+            if (keystoreProperties.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
+        }
         getByName("release") {
             // 确保 release 使用正确的签名配置
             signingConfig = signingConfigs.getByName("release")
