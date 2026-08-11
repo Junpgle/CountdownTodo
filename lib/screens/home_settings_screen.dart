@@ -58,6 +58,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
   final GlobalKey _updateSettingsSectionKey = GlobalKey();
+  final GlobalKey _embeddedUpdateSettingsSectionKey = GlobalKey();
   List<String> _nestedRouteNames = [];
   late _BreadcrumbObserver _breadcrumbObserver;
 
@@ -218,6 +219,11 @@ class _SettingsPageState extends State<SettingsPage> {
       });
       if (target == 'update') _ensureUpdateSectionVisible();
     } else {
+      if (target == 'update') {
+        _ensureUpdateSectionVisible();
+        return;
+      }
+
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
       if (paneId == 'account') {
@@ -246,14 +252,14 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
-      if (target == 'update') _ensureUpdateSectionVisible();
     }
   }
 
   void _ensureUpdateSectionVisible([int attempt = 0]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final targetContext = _updateSettingsSectionKey.currentContext;
+      final targetContext = _updateSettingsSectionKey.currentContext ??
+          _embeddedUpdateSettingsSectionKey.currentContext;
       if (targetContext != null) {
         unawaited(
           Scrollable.ensureVisible(
@@ -516,7 +522,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
             ),
-            UpdateSettingsSection(key: _updateSettingsSectionKey),
+            UpdateSettingsSection(key: _embeddedUpdateSettingsSectionKey),
             SyncSettingsSection(username: _username),
           ],
         ),
