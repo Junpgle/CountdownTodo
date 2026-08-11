@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../models/minor_age_signal_state.dart';
 import '../../../models/minor_mode_state.dart';
+import '../../../services/minor_mode_policy.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../utils/app_platform.dart';
 import '../../../widgets/app_settings_widgets.dart';
@@ -106,6 +107,8 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                 children: [
                   _buildStatusSection(context, state, googleAgeSignal),
+                  const SizedBox(height: 16),
+                  _buildCapabilityMatrix(context, state, googleAgeSignal),
                   const SizedBox(height: 16),
                   _buildManualSection(context, state),
                   if (AppPlatform.isAndroid) ...[
@@ -275,6 +278,207 @@ class _MinorModeSettingsPageState extends State<MinorModeSettingsPage> {
         ],
       ],
     );
+  }
+
+  Widget _buildCapabilityMatrix(
+    BuildContext context,
+    MinorModeState state,
+    MinorAgeSignalState googleAgeSignal,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final currentAgeBand = googleAgeSignal.isMinor
+        ? googleAgeSignal.ageBand
+        : state.effectiveMinorMode
+            ? state.ageBand
+            : MinorAgeBand.unknown;
+    final currentAgeLabel =
+        currentAgeBand == MinorAgeBand.unknown ? '尚未识别' : currentAgeBand.label;
+
+    return AppSettingsSection(
+      title: '年龄段功能权限',
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '当前识别年龄段：$currentAgeLabel。下表按应用策略列出各年龄段的功能状态。',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            horizontalMargin: 12,
+            columnSpacing: 12,
+            headingRowHeight: 56,
+            dataRowMinHeight: 58,
+            dataRowMaxHeight: 72,
+            columns: [
+              const DataColumn(
+                label: SizedBox(width: 176, child: Text('功能')),
+              ),
+              ...MinorModePolicy.capabilityAgeBands.map(
+                (ageBand) => DataColumn(
+                  label: SizedBox(
+                    width: 82,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          ageBand.label,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: ageBand == currentAgeBand
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: ageBand == currentAgeBand
+                                ? colorScheme.primary
+                                : null,
+                          ),
+                        ),
+                        if (ageBand == currentAgeBand)
+                          Text(
+                            '当前',
+                            style: TextStyle(
+                              color: colorScheme.primary,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            rows: MinorModePolicy.capabilityRows
+                .map(
+                  (row) => DataRow(
+                    cells: [
+                      DataCell(
+                        SizedBox(
+                          width: 176,
+                          child: Text(row.label),
+                        ),
+                      ),
+                      ...row.availability.map(
+                        (availability) => DataCell(
+                          _buildAvailabilityCell(context, availability),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const AppSettingsDivider(indent: 0),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: MinorModeAvailability.values
+                .map(
+                  (availability) => _buildAvailabilityLegend(
+                    context,
+                    availability,
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Text(
+            '家长认证由手机系统提供；系统未提供认证接口时，应用会采用兼容策略处理受保护操作。年龄未知时按更严格的策略处理。',
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvailabilityCell(
+    BuildContext context,
+    MinorModeAvailability availability,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (icon, color) = switch (availability) {
+      MinorModeAvailability.available => (
+          Icons.check_circle_outline,
+          colorScheme.primary
+        ),
+      MinorModeAvailability.parentAuthentication => (
+          Icons.verified_user_outlined,
+          colorScheme.tertiary
+        ),
+      MinorModeAvailability.unavailable => (
+          Icons.block_outlined,
+          colorScheme.error
+        ),
+      MinorModeAvailability.systemManaged => (
+          Icons.settings_outlined,
+          colorScheme.onSurfaceVariant
+        ),
+    };
+    return SizedBox(
+      width: 82,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              availability.label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityLegend(
+    BuildContext context,
+    MinorModeAvailability availability,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = switch (availability) {
+      MinorModeAvailability.available => colorScheme.primary,
+      MinorModeAvailability.parentAuthentication => colorScheme.tertiary,
+      MinorModeAvailability.unavailable => colorScheme.error,
+      MinorModeAvailability.systemManaged => colorScheme.onSurfaceVariant,
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, size: 8, color: color),
+        const SizedBox(width: 6),
+        Text(
+          '${availability.label}：${_availabilityDescription(availability)}',
+          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  String _availabilityDescription(MinorModeAvailability availability) {
+    return switch (availability) {
+      MinorModeAvailability.available => '无需额外验证',
+      MinorModeAvailability.parentAuthentication => '验证后可用',
+      MinorModeAvailability.unavailable => '当前年龄段禁止',
+      MinorModeAvailability.systemManaged => '由手机系统执行',
+    };
   }
 
   Widget _buildManualSection(BuildContext context, MinorModeState state) {

@@ -9,6 +9,32 @@ enum MinorModeAction {
   sensitive,
 }
 
+enum MinorModeAvailability {
+  available,
+  parentAuthentication,
+  unavailable,
+  systemManaged,
+}
+
+extension MinorModeAvailabilityLabel on MinorModeAvailability {
+  String get label => switch (this) {
+        MinorModeAvailability.available => '可用',
+        MinorModeAvailability.parentAuthentication => '家长认证',
+        MinorModeAvailability.unavailable => '不可用',
+        MinorModeAvailability.systemManaged => '系统管理',
+      };
+}
+
+class MinorModeCapabilityRow {
+  final String label;
+  final List<MinorModeAvailability> availability;
+
+  const MinorModeCapabilityRow({
+    required this.label,
+    required this.availability,
+  });
+}
+
 extension MinorModeActionLabel on MinorModeAction {
   String get label => switch (this) {
         MinorModeAction.aiInteraction => 'AI 功能',
@@ -36,6 +62,111 @@ class MinorModeAccessException implements Exception {
 /// fallback so users are not permanently locked out of their account.
 class MinorModePolicy {
   const MinorModePolicy._();
+
+  static const capabilityAgeBands = [
+    MinorAgeBand.under3,
+    MinorAgeBand.age3to7,
+    MinorAgeBand.age8to11,
+    MinorAgeBand.age12to15,
+    MinorAgeBand.age16to17,
+  ];
+
+  /// The visible permission matrix for the minor-mode settings page.
+  ///
+  /// The order of each row follows [capabilityAgeBands]. Keep this matrix in
+  /// sync with the policy checks below when adding a protected operation.
+  static const capabilityRows = [
+    MinorModeCapabilityRow(
+      label: '基础待办、课程、倒计时、专注',
+      availability: [
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '提醒、同步、同步重试、时间记录恢复',
+      availability: [
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+        MinorModeAvailability.available,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: 'AI 对话与高级 AI',
+      availability: [
+        MinorModeAvailability.unavailable,
+        MinorModeAvailability.unavailable,
+        MinorModeAvailability.unavailable,
+        MinorModeAvailability.unavailable,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '大模型配置与模型列表',
+      availability: [
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '数据导入',
+      availability: [
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '数据导出',
+      availability: [
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '更新源切换',
+      availability: [
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '敏感权限与设备控制',
+      availability: [
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+        MinorModeAvailability.parentAuthentication,
+      ],
+    ),
+    MinorModeCapabilityRow(
+      label: '使用时长、休息提醒、应用安装限制',
+      availability: [
+        MinorModeAvailability.systemManaged,
+        MinorModeAvailability.systemManaged,
+        MinorModeAvailability.systemManaged,
+        MinorModeAvailability.systemManaged,
+        MinorModeAvailability.systemManaged,
+      ],
+    ),
+  ];
 
   static bool isEffective(MinorModeState state) => state.effectiveMinorMode;
 
