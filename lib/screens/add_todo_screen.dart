@@ -27,6 +27,8 @@ enum _CaptureSaveTarget { todo, fixedSchedule, cancel }
 
 enum _ManualCaptureKind { todo, fixedSchedule }
 
+enum AddTodoInitialMode { todo, fixedSchedule }
+
 class AddTodoScreen extends StatefulWidget {
   final Function(TodoItem) onTodoAdded;
   final Function(List<TodoItem>)? onTodosBatchAdded;
@@ -38,6 +40,7 @@ class AddTodoScreen extends StatefulWidget {
   final String? initialGroupId;
   final String? initialTeamUuid;
   final String? initialTeamName;
+  final AddTodoInitialMode initialMode;
 
   const AddTodoScreen({
     super.key,
@@ -49,6 +52,7 @@ class AddTodoScreen extends StatefulWidget {
     this.initialGroupId,
     this.initialTeamUuid,
     this.initialTeamName,
+    this.initialMode = AddTodoInitialMode.todo,
   });
 
   @override
@@ -152,6 +156,9 @@ class _AddTodoScreenState extends State<AddTodoScreen>
   @override
   void initState() {
     super.initState();
+    _manualCaptureKind = widget.initialMode == AddTodoInitialMode.fixedSchedule
+        ? _ManualCaptureKind.fixedSchedule
+        : _ManualCaptureKind.todo;
     final now = DateTime.now();
     _scheduleDate = DateTime(now.year, now.month, now.day);
     _scheduleStartTime = const TimeOfDay(hour: 9, minute: 0);
