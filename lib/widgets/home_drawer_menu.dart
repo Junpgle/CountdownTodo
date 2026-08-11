@@ -52,8 +52,29 @@ Future<int?> _loadCompanionDays() async {
 class _VersionReleaseInfo {
   final String? date;
   final bool isInternalBuild;
+  final bool hasUpdate;
 
-  const _VersionReleaseInfo({this.date, this.isInternalBuild = false});
+  const _VersionReleaseInfo({
+    this.date,
+    this.isInternalBuild = false,
+    this.hasUpdate = false,
+  });
+}
+
+int _compareVersionNames(String left, String right) {
+  final leftParts =
+      left.split('.').map((part) => int.tryParse(part) ?? 0).toList();
+  final rightParts =
+      right.split('.').map((part) => int.tryParse(part) ?? 0).toList();
+  final length = leftParts.length > rightParts.length
+      ? leftParts.length
+      : rightParts.length;
+  for (var index = 0; index < length; index++) {
+    final leftPart = index < leftParts.length ? leftParts[index] : 0;
+    final rightPart = index < rightParts.length ? rightParts[index] : 0;
+    if (leftPart != rightPart) return leftPart.compareTo(rightPart);
+  }
+  return 0;
 }
 
 class HomeDrawerMenu extends StatefulWidget {
@@ -65,6 +86,7 @@ class HomeDrawerMenu extends StatefulWidget {
   final VoidCallback onChangelog;
   final VoidCallback onChallengeCenter;
   final VoidCallback onUpdate;
+  final VoidCallback onOpenUpdateSettings;
   final VoidCallback onTimeline;
   final VoidCallback onScreenTime;
   final VoidCallback onPlanCenter;
@@ -82,6 +104,7 @@ class HomeDrawerMenu extends StatefulWidget {
     required this.onChangelog,
     required this.onChallengeCenter,
     required this.onUpdate,
+    required this.onOpenUpdateSettings,
     required this.onTimeline,
     required this.onScreenTime,
     required this.onPlanCenter,
@@ -122,16 +145,23 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
 
       final currentVersion =
           packageInfo.version.trim().split('+').first.split('-').first;
+      final latestVersion =
+          manifest.versionName.trim().split('+').first.split('-').first;
+      final hasUpdate = _compareVersionNames(latestVersion, currentVersion) > 0;
       for (final entry in manifest.changelogHistory) {
         final entryVersion =
             entry.versionName.trim().split('+').first.split('-').first;
         if (entryVersion == currentVersion) {
           return _VersionReleaseInfo(
             date: entry.date.isNotEmpty ? entry.date : null,
+            hasUpdate: hasUpdate,
           );
         }
       }
-      return const _VersionReleaseInfo(isInternalBuild: true);
+      return _VersionReleaseInfo(
+        isInternalBuild: true,
+        hasUpdate: hasUpdate,
+      );
     } catch (_) {
       // 清单不可用时无法判断版本是否为内部测试版，保留纯版本号显示。
       return const _VersionReleaseInfo();
@@ -477,27 +507,72 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                                   : releaseInfo.isInternalBuild
                                       ? '内部测试版'
                                       : releaseInfo.date;
-                              return Row(
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text('v${snapshot.data!.version}',
-                                      style: versionStyle),
-                                  if (updateLabel != null) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      width: 1,
-                                      height: 12,
-                                      color: versionColor,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      updateLabel,
-                                      style: versionStyle.copyWith(
-                                        fontWeight: FontWeight.normal,
-                                        letterSpacing: 0.2,
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('v${snapshot.data!.version}',
+                                          style: versionStyle),
+                                      if (updateLabel != null) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          width: 1,
+                                          height: 12,
+                                          color: versionColor,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          updateLabel,
+                                          style: versionStyle.copyWith(
+                                            fontWeight: FontWeight.normal,
+                                            letterSpacing: 0.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (releaseInfo?.hasUpdate == true)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(6),
+                                        onTap: () {
+                                          ZoomDrawer.of(context)?.close();
+                                          widget.onOpenUpdateSettings();
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 2, vertical: 2),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.new_releases_outlined,
+                                                size: 14,
+                                                color: colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                '发现新版本！',
+                                                style: versionStyle.copyWith(
+                                                  color: colorScheme.primary,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                              Icon(
+                                                Icons.chevron_right_rounded,
+                                                size: 16,
+                                                color: colorScheme.primary,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ],
                                 ],
                               );
                             },

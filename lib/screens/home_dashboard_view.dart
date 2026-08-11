@@ -884,6 +884,21 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             _loadAllData(deferred: true);
           });
         },
+        onOpenUpdateSettings: () {
+          Future.delayed(const Duration(milliseconds: 350), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: const SettingsPage(initialTarget: 'update'),
+              sourceKey: _settingsButtonKey,
+            );
+            if (!mounted) return;
+            _loadSectionPreferences();
+            _loadSemesterSettings();
+            await _loadHomeTextConfig();
+            _loadAllData(deferred: true);
+          });
+        },
         onAiAssistant: () {
           Future.delayed(const Duration(milliseconds: 300), () {
             if (!mounted) return;

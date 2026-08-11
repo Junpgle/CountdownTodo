@@ -57,6 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget Function()? _selectedRightPaneBuilder;
 
   GlobalKey<NavigatorState> _nestedNavigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey _updateSettingsSectionKey = GlobalKey();
   List<String> _nestedRouteNames = [];
   late _BreadcrumbObserver _breadcrumbObserver;
 
@@ -215,6 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _selectedPaneId = paneId;
         _selectedRightPaneBuilder = paneBuilder;
       });
+      if (target == 'update') _ensureUpdateSectionVisible();
     } else {
       // 窄屏下，需要重新构建一个非 embedded 的页面来 push
       Widget pushWidget;
@@ -244,7 +246,30 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       Navigator.push(context, PageTransitions.slideHorizontal(pushWidget));
+      if (target == 'update') _ensureUpdateSectionVisible();
     }
+  }
+
+  void _ensureUpdateSectionVisible([int attempt = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = _updateSettingsSectionKey.currentContext;
+      if (targetContext != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            targetContext,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOutCubic,
+            alignment: 0.08,
+          ),
+        );
+      } else if (attempt < 4) {
+        Future.delayed(
+          const Duration(milliseconds: 100),
+          () => _ensureUpdateSectionVisible(attempt + 1),
+        );
+      }
+    });
   }
 
   void _loadAllData() {
@@ -491,7 +516,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onLogout: () => _handleLogout(force: false),
               onChangePassword: _showChangePasswordDialog,
             ),
-            const UpdateSettingsSection(),
+            UpdateSettingsSection(key: _updateSettingsSectionKey),
             SyncSettingsSection(username: _username),
           ],
         ),
@@ -1149,7 +1174,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onLogout: () => _handleLogout(force: false),
             onChangePassword: _showChangePasswordDialog,
           ),
-          const UpdateSettingsSection(),
+          UpdateSettingsSection(key: _updateSettingsSectionKey),
           SyncSettingsSection(username: _username),
           const SizedBox(height: 24),
           const Padding(
