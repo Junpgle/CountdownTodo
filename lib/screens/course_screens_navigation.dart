@@ -138,7 +138,9 @@ mixin _WeeklyCourseNavigation on _WeeklyCourseScreenStateBase {
     if (label1.split(' ').first == label2.split(' ').first) {
       final week1 = label1.split(' ').last;
       final week2 = label2.split(' ').last;
-      return '${label1.split(' ').first} $week1-$week2';
+      final weekNumber1 = week1.replaceAll(RegExp(r'[^0-9]'), '');
+      final weekNumber2 = week2.replaceAll(RegExp(r'[^0-9]'), '');
+      return '${label1.split(' ').first} 第$weekNumber1-$weekNumber2周';
     } else {
       return '$label1-$label2';
     }
