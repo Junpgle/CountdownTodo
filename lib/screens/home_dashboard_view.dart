@@ -191,6 +191,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           refreshTrigger:
                                               _scheduleRevision.value,
                                           actionKey: _todayPlanChartKey,
+                                          onTodoAdded: (todo) =>
+                                              _handleTodosChanged([
+                                            ..._todos,
+                                            todo,
+                                          ]),
                                         );
                                       },
                                     );
@@ -749,116 +754,124 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         ],
       ),
       bottomNavigationBar: null,
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.small(
-            key: _fabPomodoroKey,
-            heroTag: 'fab_pomodoro',
-            onPressed: () async {
-              await PageTransitions.pushFromRect(
-                context: context,
-                page: PomodoroScreen(username: widget.username),
-                sourceKey: _fabPomodoroKey,
-                sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
-              );
-              if (mounted) {
-                _pomodoroRevision.value++;
-                _timelineRevision.value++;
-              }
-            },
-            tooltip: '番茄钟',
-            child: const Text('🍅', style: TextStyle(fontSize: 18)),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton.extended(
-            key: _fabTodoKey,
-            heroTag: 'fab_todo',
-            onPressed: () => PageTransitions.pushFromRect(
-              context: context,
-              page: AddTodoScreen(
-                todoGroups: _todoGroups,
-                initialTeamUuid: _currentSelectedTeamUuid,
-                initialTeamName: _currentSelectedTeamName,
-                onFixedScheduleAdded: (item) async {
-                  await StorageService.saveFixedSchedules(
-                    widget.username,
-                    [item],
-                  );
-                  if (mounted) {
-                    _scheduleRevision.value++;
-                    _timelineRevision.value++;
-                    await _loadAllData(
-                      deferred: true,
-                      domains: const {DataRefreshDomain.fixedSchedules},
+      // 专注页的卡片自身带有「开始专注/查看记录」按钮，悬浮按钮会覆盖
+      // 这些操作，因此仅在首页显示浮动入口。
+      floatingActionButton: (!isTablet && _selectedTabIndex == 2)
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.small(
+                  key: _fabPomodoroKey,
+                  heroTag: 'fab_pomodoro',
+                  onPressed: () async {
+                    await PageTransitions.pushFromRect(
+                      context: context,
+                      page: PomodoroScreen(username: widget.username),
+                      sourceKey: _fabPomodoroKey,
+                      sourceBorderRadius:
+                          const BorderRadius.all(Radius.circular(16)),
                     );
-                  }
-                },
-                onTodoAdded: (todo) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
-                  allTodos.add(todo);
-                  await StorageService.saveTodos(widget.username, allTodos);
-                  if (todo.teamUuid != null) {
-                    PomodoroSyncService.instance
-                        .sendTeamUpdateSignal(todo.teamUuid!);
-                  }
-                  await _saveTodosToSharedFile(allTodos);
-                  FloatWindowService.triggerReminderCheck();
-                  FloatWindowService.invalidateSlotCache();
-                  _syncTodoNotification();
-                  _rescheduleAlarms();
-                  await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) {
-                    await _loadAllData(
-                      deferred: true,
-                      domains: const {DataRefreshDomain.todos},
-                    );
-                  }
-                },
-                onTodosBatchAdded: (todos) async {
-                  final allTodos =
-                      await StorageService.getTodos(widget.username);
-                  allTodos.addAll(todos);
-                  await StorageService.saveTodos(widget.username, allTodos);
-                  final updatedTeamUuid = todos
-                      .firstWhere((t) => t.teamUuid != null,
-                          orElse: () => todos.first)
-                      .teamUuid;
-                  if (updatedTeamUuid != null) {
-                    PomodoroSyncService.instance
-                        .sendTeamUpdateSignal(updatedTeamUuid);
-                  }
-                  await _saveTodosToSharedFile(allTodos);
-                  FloatWindowService.triggerReminderCheck();
-                  FloatWindowService.invalidateSlotCache();
-                  _syncTodoNotification();
-                  _rescheduleAlarms();
-                  await WidgetService.updateTodoWidget(allTodos);
-                  if (mounted) {
-                    await _loadAllData(
-                      deferred: true,
-                      domains: const {DataRefreshDomain.todos},
-                    );
-                  }
-                },
-                onLLMResultsParsed:
-                    (results, imagePath, originalText, tUuid, tName) {
-                  Navigator.pop(context);
-                  _navigateToTodoConfirm(
-                      results, imagePath, originalText, tUuid, tName);
-                },
-              ),
-              sourceKey: _fabTodoKey,
-              sourceBorderRadius: const BorderRadius.all(Radius.circular(16)),
+                    if (mounted) {
+                      _pomodoroRevision.value++;
+                      _timelineRevision.value++;
+                    }
+                  },
+                  tooltip: '番茄钟',
+                  child: const Text('🍅', style: TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.extended(
+                  key: _fabTodoKey,
+                  heroTag: 'fab_todo',
+                  onPressed: () => PageTransitions.pushFromRect(
+                    context: context,
+                    page: AddTodoScreen(
+                      todoGroups: _todoGroups,
+                      initialTeamUuid: _currentSelectedTeamUuid,
+                      initialTeamName: _currentSelectedTeamName,
+                      onFixedScheduleAdded: (item) async {
+                        await StorageService.saveFixedSchedules(
+                          widget.username,
+                          [item],
+                        );
+                        if (mounted) {
+                          _scheduleRevision.value++;
+                          _timelineRevision.value++;
+                          await _loadAllData(
+                            deferred: true,
+                            domains: const {DataRefreshDomain.fixedSchedules},
+                          );
+                        }
+                      },
+                      onTodoAdded: (todo) async {
+                        final allTodos =
+                            await StorageService.getTodos(widget.username);
+                        allTodos.add(todo);
+                        await StorageService.saveTodos(
+                            widget.username, allTodos);
+                        if (todo.teamUuid != null) {
+                          PomodoroSyncService.instance
+                              .sendTeamUpdateSignal(todo.teamUuid!);
+                        }
+                        await _saveTodosToSharedFile(allTodos);
+                        FloatWindowService.triggerReminderCheck();
+                        FloatWindowService.invalidateSlotCache();
+                        _syncTodoNotification();
+                        _rescheduleAlarms();
+                        await WidgetService.updateTodoWidget(allTodos);
+                        if (mounted) {
+                          await _loadAllData(
+                            deferred: true,
+                            domains: const {DataRefreshDomain.todos},
+                          );
+                        }
+                      },
+                      onTodosBatchAdded: (todos) async {
+                        final allTodos =
+                            await StorageService.getTodos(widget.username);
+                        allTodos.addAll(todos);
+                        await StorageService.saveTodos(
+                            widget.username, allTodos);
+                        final updatedTeamUuid = todos
+                            .firstWhere((t) => t.teamUuid != null,
+                                orElse: () => todos.first)
+                            .teamUuid;
+                        if (updatedTeamUuid != null) {
+                          PomodoroSyncService.instance
+                              .sendTeamUpdateSignal(updatedTeamUuid);
+                        }
+                        await _saveTodosToSharedFile(allTodos);
+                        FloatWindowService.triggerReminderCheck();
+                        FloatWindowService.invalidateSlotCache();
+                        _syncTodoNotification();
+                        _rescheduleAlarms();
+                        await WidgetService.updateTodoWidget(allTodos);
+                        if (mounted) {
+                          await _loadAllData(
+                            deferred: true,
+                            domains: const {DataRefreshDomain.todos},
+                          );
+                        }
+                      },
+                      onLLMResultsParsed:
+                          (results, imagePath, originalText, tUuid, tName) {
+                        Navigator.pop(context);
+                        _navigateToTodoConfirm(
+                            results, imagePath, originalText, tUuid, tName);
+                      },
+                    ),
+                    sourceKey: _fabTodoKey,
+                    sourceBorderRadius:
+                        const BorderRadius.all(Radius.circular(16)),
+                  ),
+                  icon: const Icon(Icons.add_task),
+                  label: const Text("记待办"),
+                ),
+                const SizedBox(height: 100), // 避开底部的悬浮导航栏
+              ],
             ),
-            icon: const Icon(Icons.add_task),
-            label: const Text("记待办"),
-          ),
-          const SizedBox(height: 100), // 避开底部的悬浮导航栏
-        ],
-      ),
     );
 
     if (isTablet) {
