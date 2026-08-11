@@ -93,5 +93,32 @@ void main() {
 
       expect(oldServer.acknowledgedIds, isEmpty);
     });
+
+    test('sleep coaching ops stay pending without explicit server support', () {
+      const requestSnapshot = [
+        SyncOplogEntry(
+          id: 40,
+          table: 'habit_sleep_coaching_plans',
+          uuid: 'plan-1',
+        ),
+      ];
+
+      final oldServer = SyncOplogPolicy.resolveRequestSnapshot(
+        requestSnapshot: requestSnapshot,
+        blockingConflictUuids: const {},
+        acknowledgeFixedScheduleOps: true,
+        acknowledgeHabitOps: true,
+      );
+      expect(oldServer.acknowledgedIds, isEmpty);
+
+      final newServer = SyncOplogPolicy.resolveRequestSnapshot(
+        requestSnapshot: requestSnapshot,
+        blockingConflictUuids: const {},
+        acknowledgeFixedScheduleOps: true,
+        acknowledgeHabitOps: true,
+        acknowledgeSleepCoachingOps: true,
+      );
+      expect(newServer.acknowledgedIds, {40});
+    });
   });
 }

@@ -505,6 +505,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
                   onPressed: _goWeek)
               : null,
           title: _buildTitle(),
+          centerTitle: true,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(34),
             child: Container(

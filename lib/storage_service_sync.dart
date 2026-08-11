@@ -336,7 +336,26 @@ mixin _StorageSync on _StorageServiceBase {
 
   Future<void> resetSyncTime(String username) async {
     final prefs = await SharedPreferences.getInstance();
+    final habitSyncServerScope = base64Url
+        .encode(utf8.encode(ApiService.effectiveBaseUrl))
+        .replaceAll('=', '');
     await prefs.remove('last_sync_time_${ApiService.syncServerKey}_$username');
+    await prefs.remove(
+      'habit_last_sync_time_${ApiService.syncServerKey}_$username',
+    );
+    await prefs.remove(
+      'habit_sync_cursor_v1_${habitSyncServerScope}_$username',
+    );
+    await prefs.remove(
+      'habit_sync_cursor_capability_v1_${habitSyncServerScope}_$username',
+    );
+    // 兼容早期实现误用 syncServerKey 生成的旧 key。
+    await prefs.remove(
+      'habit_sync_cursor_v1_${ApiService.syncServerKey}_$username',
+    );
+    await prefs.remove(
+      'habit_sync_cursor_capability_v1_${ApiService.syncServerKey}_$username',
+    );
     await prefs.remove('last_sync_time_aliyun_$username');
     await prefs.remove('last_sync_time_aliyun_test_$username');
     await prefs.remove('last_sync_time_cf_$username');
@@ -409,9 +428,28 @@ mixin _StorageSync on _StorageServiceBase {
       final habitBootstrapKey =
           'habit_sync_v1_${fixedScheduleServerScope}_$username';
       final habitSyncInitialized = prefs.getBool(habitBootstrapKey) == true;
+      final habitCursorBootstrapKey =
+          'habit_sync_cursor_v1_${fixedScheduleServerScope}_$username';
+      final habitSyncCursorInitialized =
+          prefs.getBool(habitCursorBootstrapKey) == true;
+      final habitCursorCapabilityKey =
+          'habit_sync_cursor_capability_v1_${fixedScheduleServerScope}_$username';
+      final habitCursorCapabilityKnown =
+          prefs.containsKey(habitCursorCapabilityKey);
+      final habitCursorSupportedByLastServer =
+          prefs.getBool(habitCursorCapabilityKey) == true;
       int lastSyncTime = forceFullSync
           ? 0
           : (prefs.getInt('last_sync_time_${serverKey}_$username') ?? 0);
+      int habitLastSyncTime = forceFullSync
+          ? 0
+          : (!habitSyncCursorInitialized
+              ? 0
+              : (!habitCursorCapabilityKnown || habitCursorSupportedByLastServer
+                  ? (prefs.getInt(
+                          'habit_last_sync_time_${serverKey}_$username') ??
+                      0)
+                  : lastSyncTime));
       _lastSyncRequestAt = DateTime.now().millisecondsSinceEpoch;
 
       // 3. 🛡️ 核心修复：基于 op_logs 识别脏数据，并进行 UUID 去重处理（防止 1000+ 冗余同步）
@@ -425,6 +463,7 @@ mixin _StorageSync on _StorageServiceBase {
       List<Map<String, dynamic>> dirtyHabitGoals = [];
       List<Map<String, dynamic>> dirtyHabitRules = [];
       List<Map<String, dynamic>> dirtyHabitCheckIns = [];
+      List<Map<String, dynamic>> dirtyHabitSleepCoachingPlans = [];
       // Read independent local stores concurrently and skip disabled domains.
       // SQLite may serialize the native queries, but model decoding/isolate
       // work and SharedPreferences-backed stores no longer form one long chain.
@@ -456,6 +495,9 @@ mixin _StorageSync on _StorageServiceBase {
         syncHabits
             ? HabitStorage.getCheckIns(includeDeleted: true)
             : Future<List<HabitCheckIn>>.value(const []),
+        syncHabits
+            ? HabitStorage.getSleepCoachingPlans(includeDeleted: true)
+            : Future<List<HabitSleepCoachingPlan>>.value(const []),
       ]);
       final List<TodoItem> allLocalTodos = localSnapshots[0];
       final List<TodoGroup> allLocalGroups = localSnapshots[1];
@@ -466,6 +508,8 @@ mixin _StorageSync on _StorageServiceBase {
       final List<HabitGoal> allLocalHabitGoals = localSnapshots[6];
       final List<HabitGoalRuleRevision> allLocalHabitRules = localSnapshots[7];
       final List<HabitCheckIn> allLocalHabitCheckIns = localSnapshots[8];
+      final List<HabitSleepCoachingPlan> allLocalHabitSleepCoachingPlans =
+          localSnapshots[9];
       // 有些历史冲突只保存在本地 conflict_data，服务端后续同步不一定
       // 再把它放进 conflicts 或 server_habit_goals，因此这里也要登记快照。
       for (final goal in allLocalHabitGoals) {
@@ -572,6 +616,7 @@ mixin _StorageSync on _StorageServiceBase {
       final Map<String, Map<String, dynamic>> dedupHabitGoals = {};
       final Map<String, Map<String, dynamic>> dedupHabitRules = {};
       final Map<String, Map<String, dynamic>> dedupHabitCheckIns = {};
+      final Map<String, Map<String, dynamic>> dedupHabitSleepCoachingPlans = {};
       final List<int> consumedConflictOpIds = [];
 
       for (var op in pendingOps) {
@@ -656,6 +701,12 @@ mixin _StorageSync on _StorageServiceBase {
             continue;
           }
           dedupHabitCheckIns[uuid] = data;
+        } else if (table == 'habit_sleep_coaching_plans' && syncHabits) {
+          if (op['sync_error'] == 'server_conflict') {
+            if (opId != null) consumedConflictOpIds.add(opId);
+            continue;
+          }
+          dedupHabitSleepCoachingPlans[uuid] = data;
         }
       }
 
@@ -680,6 +731,8 @@ mixin _StorageSync on _StorageServiceBase {
       dirtyHabitGoals = dedupHabitGoals.values.toList();
       dirtyHabitRules = dedupHabitRules.values.toList();
       dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
+      dirtyHabitSleepCoachingPlans =
+          dedupHabitSleepCoachingPlans.values.toList();
 
       // 兜底：除 op_logs 外，再按 updatedAt 增量补采，避免日志遗漏导致改删/新增不同步
       if (syncTodos) {
@@ -746,23 +799,30 @@ mixin _StorageSync on _StorageServiceBase {
       // 习惯因旧水位线而漏传。
       if (syncHabits) {
         for (final item in allLocalHabitGoals) {
-          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+          if (!habitSyncInitialized || item.updatedAt > habitLastSyncTime) {
             dedupHabitGoals[item.uuid] = item.toJson();
           }
         }
         for (final item in allLocalHabitRules) {
-          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+          if (!habitSyncInitialized || item.updatedAt > habitLastSyncTime) {
             dedupHabitRules[item.uuid] = item.toJson();
           }
         }
         for (final item in allLocalHabitCheckIns) {
-          if (!habitSyncInitialized || item.updatedAt > lastSyncTime) {
+          if (!habitSyncInitialized || item.updatedAt > habitLastSyncTime) {
             dedupHabitCheckIns[item.uuid] = item.toJson();
+          }
+        }
+        for (final item in allLocalHabitSleepCoachingPlans) {
+          if (!habitSyncInitialized || item.updatedAt > habitLastSyncTime) {
+            dedupHabitSleepCoachingPlans[item.uuid] = item.toJson();
           }
         }
         dirtyHabitGoals = dedupHabitGoals.values.toList();
         dirtyHabitRules = dedupHabitRules.values.toList();
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
+        dirtyHabitSleepCoachingPlans =
+            dedupHabitSleepCoachingPlans.values.toList();
       }
 
       if (shouldUploadAllLocal) {
@@ -815,6 +875,9 @@ mixin _StorageSync on _StorageServiceBase {
           for (final item in allLocalHabitCheckIns) {
             dedupHabitCheckIns.putIfAbsent(item.uuid, item.toJson);
           }
+          for (final item in allLocalHabitSleepCoachingPlans) {
+            dedupHabitSleepCoachingPlans.putIfAbsent(item.uuid, item.toJson);
+          }
         }
         dirtyTodos = dedupTodos.values.toList();
         dirtyGroups = dedupGroups.values.toList();
@@ -824,6 +887,8 @@ mixin _StorageSync on _StorageServiceBase {
         dirtyHabitGoals = dedupHabitGoals.values.toList();
         dirtyHabitRules = dedupHabitRules.values.toList();
         dirtyHabitCheckIns = dedupHabitCheckIns.values.toList();
+        dirtyHabitSleepCoachingPlans =
+            dedupHabitSleepCoachingPlans.values.toList();
       }
 
       // TimeLogs 暂时保持原有逻辑 (直到迁移至 SQL)
@@ -888,7 +953,10 @@ mixin _StorageSync on _StorageServiceBase {
           habitGoalsChanges: dirtyHabitGoals,
           habitRuleChanges: dirtyHabitRules,
           habitCheckInChanges: dirtyHabitCheckIns,
+          habitSleepCoachingPlanChanges: dirtyHabitSleepCoachingPlans,
           habitFullSync: syncHabits && (!habitSyncInitialized || forceFullSync),
+          habitLastSyncTime: syncHabits ? habitLastSyncTime : null,
+          syncHabits: syncHabits,
           screenTime: syncScreenTime ? screenPayload : null,
           forceFullSync: forceFullSync,
         );
@@ -905,6 +973,7 @@ mixin _StorageSync on _StorageServiceBase {
           dirtyHabitGoals.isNotEmpty ||
           dirtyHabitRules.isNotEmpty ||
           dirtyHabitCheckIns.isNotEmpty ||
+          dirtyHabitSleepCoachingPlans.isNotEmpty ||
           screenPayload != null;
 
       bool isDebounceIgnored(Map<String, dynamic> syncResponse) {
@@ -925,7 +994,10 @@ mixin _StorageSync on _StorageServiceBase {
             (syncResponse['server_habit_goals'] as List?)?.isEmpty == true &&
             (syncResponse['server_habit_goal_rules'] as List?)?.isEmpty ==
                 true &&
-            (syncResponse['server_habit_checkins'] as List?)?.isEmpty == true;
+            (syncResponse['server_habit_checkins'] as List?)?.isEmpty == true &&
+            (syncResponse['server_habit_sleep_coaching_plans'] as List?)
+                    ?.isEmpty ==
+                true;
         final syncTimeUnchanged =
             (syncResponse['new_sync_time'] ?? -1) == lastSyncTime;
         return syncResponse['success'] == true &&
@@ -955,6 +1027,14 @@ mixin _StorageSync on _StorageServiceBase {
         rawCapabilities: response['sync_capabilities'],
       );
       final habitsSupported = SyncCapabilityService.supportsHabits(
+        response['sync_capabilities'],
+      );
+      final sleepCoachingSupported =
+          SyncCapabilityService.supportsSleepCoaching(
+        response['sync_capabilities'],
+      );
+      final habitSyncCursorSupported =
+          SyncCapabilityService.supportsHabitSyncCursor(
         response['sync_capabilities'],
       );
       final acknowledgeHabitOps =
@@ -1055,6 +1135,7 @@ mixin _StorageSync on _StorageServiceBase {
           blockingConflictUuids: blockingConflictUuids,
           acknowledgeFixedScheduleOps: acknowledgeFixedScheduleOps,
           acknowledgeHabitOps: acknowledgeHabitOps,
+          acknowledgeSleepCoachingOps: syncHabits && sleepCoachingSupported,
         );
         await _updateOplogRowsByIds(
           db,
@@ -1842,6 +1923,43 @@ mixin _StorageSync on _StorageServiceBase {
             hasChanges = true;
           }
         }
+
+        // 睡眠训练计划是账号级配置，同一 UUID 按 LWW 合并；阶段本身不在
+        // 这里持久化，而由同步后的打卡记录计算。
+        final serverHabitSleepCoachingPlans =
+            (response['server_habit_sleep_coaching_plans'] as List?) ??
+                const [];
+        final sleepCoachingPlanIndexMap = <String, int>{
+          for (var i = 0; i < allLocalHabitSleepCoachingPlans.length; i++)
+            allLocalHabitSleepCoachingPlans[i].uuid: i,
+        };
+        for (final raw in serverHabitSleepCoachingPlans) {
+          if (raw is! Map) continue;
+          final serverItem = HabitSleepCoachingPlan.fromJson(
+            Map<String, dynamic>.from(raw),
+          );
+          if (ignoredUuids.contains(serverItem.uuid)) continue;
+          final localIndex = sleepCoachingPlanIndexMap[serverItem.uuid];
+          if (localIndex == null) {
+            if (!serverItem.isDeleted) {
+              sleepCoachingPlanIndexMap[serverItem.uuid] =
+                  allLocalHabitSleepCoachingPlans.length;
+              allLocalHabitSleepCoachingPlans.add(serverItem);
+              hasChanges = true;
+            }
+            continue;
+          }
+          final localItem = allLocalHabitSleepCoachingPlans[localIndex];
+          if (TodoLwwService.isIncomingWinner(
+            incomingUpdatedAt: serverItem.updatedAt,
+            incomingVersion: serverItem.version,
+            currentUpdatedAt: localItem.updatedAt,
+            currentVersion: localItem.version,
+          )) {
+            allLocalHabitSleepCoachingPlans[localIndex] = serverItem;
+            hasChanges = true;
+          }
+        }
       }
 
       // 即使服务端暂未声明 habits 能力，也要处理本地遗留的假冲突：这些快照
@@ -2065,6 +2183,10 @@ mixin _StorageSync on _StorageServiceBase {
             allLocalHabitCheckIns,
             isSyncSource: true,
           );
+          await HabitStorage.saveSleepCoachingPlans(
+            allLocalHabitSleepCoachingPlans,
+            isSyncSource: true,
+          );
         }
         _pendingSyncOplogUuids.clear(); // 🚀 清除保护，防止跨同步周期的旧 UUID 干扰
         _forceFlushProtectedUuids.clear(); // 🚀 清除 force-flush 保护
@@ -2102,6 +2224,33 @@ mixin _StorageSync on _StorageServiceBase {
       int newSyncTime =
           response['new_sync_time'] ?? DateTime.now().millisecondsSinceEpoch;
       await prefs.setInt('last_sync_time_${serverKey}_$username', newSyncTime);
+      if (syncHabits && habitsSupported) {
+        await prefs.setBool(
+          habitCursorCapabilityKey,
+          habitSyncCursorSupported,
+        );
+        final rawHabitSyncTime = response['new_habit_sync_time'];
+        final newHabitSyncTime = rawHabitSyncTime is num
+            ? rawHabitSyncTime.toInt()
+            : int.tryParse(rawHabitSyncTime?.toString() ?? '');
+        if (habitSyncCursorSupported &&
+            newHabitSyncTime != null &&
+            newHabitSyncTime > 0) {
+          await prefs.setInt(
+            'habit_last_sync_time_${serverKey}_$username',
+            newHabitSyncTime,
+          );
+          await prefs.setBool(habitCursorBootstrapKey, true);
+        } else if (!habitSyncCursorSupported) {
+          // 旧服务端没有独立 habits 水位，退回旧的全局水位，并标记
+          // legacy cursor 已初始化，避免每次同步都重新全量上传习惯。
+          await prefs.setInt(
+            'habit_last_sync_time_${serverKey}_$username',
+            newSyncTime,
+          );
+          await prefs.setBool(habitCursorBootstrapKey, true);
+        }
+      }
       if (syncFixedSchedules && fixedSchedulesSupported) {
         await prefs.setBool(fixedScheduleBootstrapKey, true);
       }

@@ -359,7 +359,10 @@ class ApiService {
     List<Map<String, dynamic>> habitGoalsChanges = const [],
     List<Map<String, dynamic>> habitRuleChanges = const [],
     List<Map<String, dynamic>> habitCheckInChanges = const [],
+    List<Map<String, dynamic>> habitSleepCoachingPlanChanges = const [],
     bool habitFullSync = false,
+    int? habitLastSyncTime,
+    bool syncHabits = true,
   }) async {
     try {
       final Map<String, dynamic> body = {
@@ -378,9 +381,15 @@ class ApiService {
         'habit_goals_changes': habitGoalsChanges,
         'habit_goal_rules_changes': habitRuleChanges,
         'habit_checkins_changes': habitCheckInChanges,
+        'habit_sleep_coaching_plans_changes': habitSleepCoachingPlanChanges,
         'habit_full_sync': habitFullSync,
+        'sync_habits': syncHabits,
         'force_full_sync': forceFullSync,
       };
+
+      if (habitLastSyncTime != null) {
+        body['habit_last_sync_time'] = habitLastSyncTime;
+      }
 
       if (screenTime != null) {
         body['screen_time'] = screenTime;
@@ -409,6 +418,9 @@ class ApiService {
           'server_habit_goals': data['server_habit_goals'] ?? [],
           'server_habit_goal_rules': data['server_habit_goal_rules'] ?? [],
           'server_habit_checkins': data['server_habit_checkins'] ?? [],
+          'server_habit_sleep_coaching_plans':
+              data['server_habit_sleep_coaching_plans'] ?? [],
+          'new_habit_sync_time': data['new_habit_sync_time'],
           'sync_capabilities': data['sync_capabilities'],
           'joined_team_uuids': data['joined_team_uuids'],
           'independent_completions':
