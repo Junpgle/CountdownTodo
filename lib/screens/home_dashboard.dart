@@ -64,6 +64,7 @@ import 'band_sync_screen.dart';
 import 'conflict_inbox_screen.dart';
 import 'team_management_screen.dart';
 import 'personal_timeline_screen.dart';
+import '../features/journal/screens/journal_home_screen.dart';
 // 引入拆分后的组件
 import '../widgets/home_sections.dart';
 import '../widgets/home_app_bar.dart';

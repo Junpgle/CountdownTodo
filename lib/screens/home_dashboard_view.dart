@@ -954,6 +954,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             );
           });
         },
+        onJournal: () {
+          Future.delayed(const Duration(milliseconds: 300), () async {
+            if (!context.mounted) return;
+            await PageTransitions.pushFromRect(
+              context: context,
+              page: JournalHomeScreen(username: widget.username),
+              sourceKey: GlobalKey(),
+            );
+          });
+        },
         onScreenTime: () {
           Future.delayed(const Duration(milliseconds: 300), () async {
             if (!context.mounted) return;

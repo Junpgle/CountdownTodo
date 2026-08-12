@@ -11,10 +11,18 @@ class DatabaseSchemaChange {
 }
 
 abstract final class DatabaseSchemaHistory {
-  static const int currentVersion = 43;
+  static const int currentVersion = 44;
 
   /// SQLite 架构版本记录，按新到旧排列。
   static const List<DatabaseSchemaChange> changes = [
+    DatabaseSchemaChange(
+      version: 44,
+      title: '本地私密日记',
+      changes: [
+        '新增日记和日记图片表，支持文字与图片的本地记录。',
+        '日记不进入云端同步，也不提供公开分享。',
+      ],
+    ),
     DatabaseSchemaChange(
       version: 43,
       title: '睡眠训练暂停检查点',

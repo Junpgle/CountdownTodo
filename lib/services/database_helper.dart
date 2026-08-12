@@ -490,6 +490,46 @@ class DatabaseHelper {
     }
   }
 
+  /// 本地私密日记表结构。日记不写入 op_logs，也不参与云端同步。
+  static Future<void> ensureJournalSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        title TEXT,
+        content TEXT NOT NULL DEFAULT '',
+        occurred_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        is_deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS journal_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        entry_uuid TEXT NOT NULL,
+        local_path TEXT,
+        image_data BLOB,
+        mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+        width INTEGER,
+        height INTEGER,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY(entry_uuid) REFERENCES journal_entries(uuid) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_journal_entries_date '
+      'ON journal_entries(is_deleted, occurred_at DESC, created_at DESC)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_journal_attachments_entry '
+      'ON journal_attachments(entry_uuid, sort_order)',
+    );
+  }
+
   static Future<void> ensureTeamsSchema(Database db) async {
     try {
       await db.execute('''
@@ -537,6 +577,9 @@ class DatabaseHelper {
           },
           onCreate: _createDB,
           onUpgrade: (db, oldVersion, newVersion) async {
+            if (oldVersion < 44) {
+              await ensureJournalSchema(db);
+            }
             if (oldVersion < 38) {
               // 重建 FTS 会清除历史软删除条目，并安装仅监听搜索字段的触发器。
               await _setupFts(db);
@@ -1084,6 +1127,7 @@ class DatabaseHelper {
             await ensureTeamsSchema(db);
             await ensureScreenTimeSchema(db);
             await ensureHabitSchema(db);
+            await ensureJournalSchema(db);
             await ensureMissingIndexes(db);
           },
         );
@@ -1621,7 +1665,10 @@ class DatabaseHelper {
     // 18. 创建习惯追踪表
     await ensureHabitSchema(db);
 
-    // 19. 创建性能索引
+    // 19. 创建本地私密日记表
+    await ensureJournalSchema(db);
+
+    // 20. 创建性能索引
     await ensureMissingIndexes(db);
   }
 
