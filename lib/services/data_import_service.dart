@@ -16,6 +16,7 @@ import 'database_helper.dart';
 import 'minor_mode_policy.dart';
 import 'minor_mode_service.dart';
 import 'pomodoro_service.dart';
+import 'sidebar_menu_service.dart';
 
 class DataImportService {
   static const Map<String, String> _typeLabels = {
@@ -323,7 +324,10 @@ class DataImportService {
       }
 
       if (data.containsKey('settings') && data['settings'] is Map) {
-        await _importSettings(data['settings'] as Map<String, dynamic>);
+        await _importSettings(
+          data['settings'] as Map<String, dynamic>,
+          username: username,
+        );
         importedCount += 1;
       }
 
@@ -939,9 +943,11 @@ class DataImportService {
     }
   }
 
-  static Future<void> _importSettings(Map<String, dynamic> settings) async {
+  static Future<void> _importSettings(
+    Map<String, dynamic> settings, {
+    required String username,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString(StorageService.keyCurrentUser) ?? '';
 
     for (final entry in settings.entries) {
       final key = entry.key;
@@ -1018,6 +1024,7 @@ class DataImportService {
       StorageService.keySyncInterval,
     };
 
-    return keysNeedingSuffix.contains(key);
+    return keysNeedingSuffix.contains(key) ||
+        SidebarMenuService.isUserSpecificKey(key);
   }
 }

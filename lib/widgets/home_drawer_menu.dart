@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
+import '../services/sidebar_menu_service.dart';
 import '../update_service.dart';
 import 'platform_backdrop_filter.dart';
 
@@ -88,6 +89,7 @@ class HomeDrawerMenu extends StatefulWidget {
   final VoidCallback onUpdate;
   final VoidCallback onOpenUpdateSettings;
   final VoidCallback onTimeline;
+  final VoidCallback onJournal;
   final VoidCallback onScreenTime;
   final VoidCallback onPlanCenter;
   final VoidCallback onHabits;
@@ -106,6 +108,7 @@ class HomeDrawerMenu extends StatefulWidget {
     required this.onUpdate,
     required this.onOpenUpdateSettings,
     required this.onTimeline,
+    required this.onJournal,
     required this.onScreenTime,
     required this.onPlanCenter,
     required this.onHabits,
@@ -122,6 +125,13 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
   late final Future<int?> _companionDaysFuture;
   // 可为空以兼容热重载保留的旧 State；初始化完成前只显示版本号。
   Future<_VersionReleaseInfo>? _versionReleaseInfoFuture;
+  List<String> _featureOrder = SidebarMenuService.defaultOrder(
+    SidebarMenuTarget.features,
+  );
+  List<String> _utilityOrder = SidebarMenuService.defaultOrder(
+    SidebarMenuTarget.utilities,
+  );
+  Map<String, bool> _menuVisibility = SidebarMenuService.defaultVisibility();
 
   Future<_VersionReleaseInfo> get _releaseInfoFuture =>
       _versionReleaseInfoFuture ??= _loadVersionReleaseInfo();
@@ -132,6 +142,58 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
     _packageInfoFuture = PackageInfo.fromPlatform();
     _companionDaysFuture = _loadCompanionDays();
     _versionReleaseInfoFuture = _loadVersionReleaseInfo();
+    SidebarMenuService.revision.addListener(_reloadMenuPreferences);
+    _reloadMenuPreferences();
+  }
+
+  @override
+  void dispose() {
+    SidebarMenuService.revision.removeListener(_reloadMenuPreferences);
+    super.dispose();
+  }
+
+  Future<void> _reloadMenuPreferences() async {
+    final pair = await SidebarMenuService.loadPair();
+    final visibility = await SidebarMenuService.loadVisibility();
+    if (!mounted) return;
+    setState(() {
+      _featureOrder = pair.features;
+      _utilityOrder = pair.utilities;
+      _menuVisibility = visibility;
+    });
+  }
+
+  bool _isMenuVisible(String key) => _menuVisibility[key] ?? true;
+
+  Widget? _buildConfiguredMenuItem(BuildContext context, String key) {
+    if (!_isMenuVisible(key)) return null;
+    final definition = SidebarMenuService.definition(key);
+    final VoidCallback? onTap = switch (key) {
+      'teams' => widget.onTeams,
+      'aiAssistant' => widget.onAiAssistant,
+      'timeline' => widget.onTimeline,
+      'journal' => widget.onJournal,
+      'screenTime' => widget.onScreenTime,
+      'planCenter' => widget.onPlanCenter,
+      'habits' => widget.onHabits,
+      'challengeCenter' => widget.onChallengeCenter,
+      'changelog' => widget.onChangelog,
+      'update' => widget.onUpdate,
+      _ => null,
+    };
+    if (onTap == null) return null;
+    return _buildMenuItem(
+      context,
+      icon: definition.icon,
+      title: definition.title,
+      onTap: () {
+        ZoomDrawer.of(context)?.close();
+        onTap();
+      },
+      badgeCount: key == 'teams' ? widget.teamPendingCount : 0,
+      showAlertDot: key == 'teams' && widget.hasTeamConflictDot,
+      isCompact: true,
+    );
   }
 
   Future<_VersionReleaseInfo> _loadVersionReleaseInfo() async {
@@ -340,136 +402,52 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Features Group
+                  // Menu groups share one scroll area. Users can move all
+                  // feature entries into utilities without overflowing the
+                  // fixed-height drawer on small screens.
                   Expanded(
                     child: SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.people_rounded,
-                            title: '群组团队',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onTeams();
-                            },
-                            badgeCount: widget.teamPendingCount,
-                            showAlertDot: widget.hasTeamConflictDot,
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.smart_toy_outlined,
-                            title: 'AI 助手',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onAiAssistant();
-                            },
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.timeline_rounded,
-                            title: '个人报告',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onTimeline();
-                            },
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.pie_chart_rounded,
-                            title: '时间日志',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onScreenTime();
-                            },
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.edit_calendar_rounded,
-                            title: '规划中心',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onPlanCenter();
-                            },
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.repeat_rounded,
-                            title: '习惯中心',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onHabits();
-                            },
-                            isCompact: true,
-                          ),
-                          _buildMenuItem(
-                            context,
-                            icon: Icons.auto_awesome_rounded,
-                            title: '挑战中心',
-                            onTap: () {
-                              ZoomDrawer.of(context)?.close();
-                              widget.onChallengeCenter();
-                            },
-                            isCompact: true,
+                          ..._featureOrder
+                              .map((key) =>
+                                  _buildConfiguredMenuItem(context, key))
+                              .whereType<Widget>(),
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface
+                                  .withValues(alpha: isDark ? 0.3 : 0.5),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: colorScheme.onSurface
+                                    .withValues(alpha: 0.05),
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Column(
+                              children: [
+                                ..._utilityOrder
+                                    .map((key) =>
+                                        _buildConfiguredMenuItem(context, key))
+                                    .whereType<Widget>(),
+                                _buildMenuItem(
+                                  context,
+                                  icon: Icons.settings_rounded,
+                                  title: '设置中心',
+                                  onTap: () {
+                                    ZoomDrawer.of(context)?.close();
+                                    widget.onSettings();
+                                  },
+                                  isCompact: true,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Utilities Group (Frosted Card)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface
-                          .withValues(alpha: isDark ? 0.3 : 0.5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: colorScheme.onSurface.withValues(alpha: 0.05),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Column(
-                      children: [
-                        _buildMenuItem(
-                          context,
-                          icon: Icons.system_update_rounded,
-                          title: '更新日志',
-                          onTap: () {
-                            ZoomDrawer.of(context)?.close();
-                            widget.onChangelog();
-                          },
-                          isCompact: true,
-                        ),
-                        _buildMenuItem(
-                          context,
-                          icon: Icons.system_update_rounded,
-                          title: '检查更新',
-                          onTap: () {
-                            ZoomDrawer.of(context)?.close();
-                            widget.onUpdate();
-                          },
-                          isCompact: true,
-                        ),
-                        _buildMenuItem(
-                          context,
-                          icon: Icons.settings_rounded,
-                          title: '设置中心',
-                          onTap: () {
-                            ZoomDrawer.of(context)?.close();
-                            widget.onSettings();
-                          },
-                          isCompact: true,
-                        ),
-                      ],
                     ),
                   ),
 

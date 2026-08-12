@@ -110,6 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'theme',
       'theme_color',
       'home_layout',
+      'sidebar_menu',
       'wallpaper',
       'home_text'
     ];

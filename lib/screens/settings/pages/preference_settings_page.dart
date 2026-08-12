@@ -11,6 +11,7 @@ import '../../../utils/page_transitions.dart';
 import '../wallpaper_settings_page.dart';
 import '../home_text_config_page.dart';
 import 'home_layout_settings_page.dart';
+import 'sidebar_menu_settings_page.dart';
 import '../../feature_guide_screen.dart';
 import '../../help/help_center_screen.dart';
 import '../handlers/storage_management_handler.dart';
@@ -37,6 +38,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     'theme': GlobalKey(),
     'theme_color': GlobalKey(),
     'home_layout': GlobalKey(),
+    'sidebar_menu': GlobalKey(),
     'wallpaper': GlobalKey(),
     'home_text': GlobalKey(),
     'llm_retry': GlobalKey(),
@@ -247,6 +249,7 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
           _buildHomeTextSection(),
           _buildAppearanceSection(),
           _buildHomeLayoutSection(),
+          _buildSidebarMenuSection(),
           _buildColorSection(),
           AppSettingsSectionHeader(
             title: isWeb ? '浏览器与存储' : '系统与存储',
@@ -851,6 +854,27 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSidebarMenuSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return _buildTile(
+      targetId: 'sidebar_menu',
+      child: ListTile(
+        leading: Icon(Icons.tune_rounded, color: colorScheme.primary),
+        title: const Text('侧边栏菜单'),
+        subtitle: const Text('隐藏不常用功能，调整功能和工具入口的顺序'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.of(context).push(
+            PageTransitions.slideHorizontal(
+              SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
+              settings: const RouteSettings(name: '侧边栏菜单'),
+            ),
+          );
+        },
       ),
     );
   }
