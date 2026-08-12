@@ -83,7 +83,10 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
     }
     HabitDaySnapshot snapshot;
     try {
-      snapshot = await HabitDayLoader.loadForDate(DateTime.now());
+      snapshot = await HabitDayLoader.loadForDate(
+        DateTime.now(),
+        username: widget.username,
+      );
     } catch (error) {
       debugPrint('今日习惯加载失败: $error');
       if (mounted && loadGeneration == _loadGeneration) {
@@ -353,6 +356,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         goal: goal,
         rule: rule,
         dayProgress: dayProgress,
+        sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
         username: widget.username,
         onChanged: _loadData,
         onStartFocus: widget.onStartFocus ?? _startFocus,

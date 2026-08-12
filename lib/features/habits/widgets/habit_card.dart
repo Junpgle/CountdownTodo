@@ -6,6 +6,7 @@ import '../models/habit_goal_rule.dart';
 import '../models/habit_progress.dart';
 import '../repositories/habit_repository.dart';
 import '../services/habit_adaptation_service.dart';
+import '../services/habit_sleep_coaching_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../utils/app_platform.dart';
 import 'habit_format.dart';
@@ -39,6 +40,9 @@ class HabitCard extends StatefulWidget {
 
   final String username;
 
+  /// 睡眠作息渐进训练当前阶段的目标；为空时使用规则最终目标。
+  final HabitSleepCoachingMetric? sleepCoachingMetric;
+
   const HabitCard({
     super.key,
     required this.goal,
@@ -51,6 +55,7 @@ class HabitCard extends StatefulWidget {
     this.animationKey,
     this.compact = false,
     this.username = '',
+    this.sleepCoachingMetric,
   });
 
   @override
@@ -197,15 +202,32 @@ class _HabitCardState extends State<HabitCard> {
         return '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.durationProgress(progress)}';
       case HabitSourceType.durationCheckIn:
+        final coachingTarget = _sleepCoachingTargetLabel;
         return '${HabitText.periodLabel(widget.rule)} · '
-            '${HabitText.durationProgressForGoal(widget.goal, progress)}';
+            '${coachingTarget == null ? HabitText.durationProgressForGoal(widget.goal, progress) : '${HabitText.formatDuration(progress.currentValue.round())} · '
+                '本期目标 $coachingTarget'}';
       case HabitSourceType.quantityCheckIn:
         final unit = widget.rule.unit;
         return '${HabitText.periodLabel(widget.rule)} · '
             '${HabitText.amountProgress(progress, unit)}';
       case HabitSourceType.timeCheckIn:
+        final coachingTarget = _sleepCoachingTargetLabel;
         return '${HabitText.periodLabel(widget.rule)} · '
-            '目标 ${HabitText.targetTime(widget.rule.targetTimeMinute)}';
+            '目标 ${coachingTarget ?? HabitText.targetTime(widget.rule.targetTimeMinute)}';
+    }
+  }
+
+  String? get _sleepCoachingTargetLabel {
+    final metric = widget.sleepCoachingMetric;
+    if (metric == null || !metric.isAvailable) return null;
+    switch (metric.kind) {
+      case HabitAdaptationKind.earlySleep:
+      case HabitAdaptationKind.earlyWake:
+        return HabitText.targetTime(metric.stageTarget);
+      case HabitAdaptationKind.sleepDuration:
+        return HabitText.formatDuration(metric.stageTarget * 60);
+      default:
+        return null;
     }
   }
 
@@ -265,7 +287,11 @@ class _HabitCardState extends State<HabitCard> {
   // ── 进度条 ──────────────────────────────────────────
   Widget _buildProgressBar(HabitProgress progress, HabitDayStatus status) {
     final barColor = _statusColor(status);
-    final ratio = progress.completionRatio.clamp(0.0, 1.0);
+    final coaching = widget.sleepCoachingMetric;
+    final ratio = coaching?.kind == HabitAdaptationKind.sleepDuration &&
+            coaching!.stageTarget > 0
+        ? (progress.currentValue / (coaching.stageTarget * 60)).clamp(0.0, 1.0)
+        : progress.completionRatio.clamp(0.0, 1.0);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(2),
