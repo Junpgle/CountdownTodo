@@ -862,19 +862,163 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     return _buildTile(
       targetId: 'sidebar_menu',
-      child: ListTile(
-        leading: Icon(Icons.tune_rounded, color: colorScheme.primary),
-        title: const Text('侧边栏菜单'),
-        subtitle: const Text('隐藏不常用功能，调整功能和工具入口的顺序'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          Navigator.of(context).push(
-            PageTransitions.slideHorizontal(
-              SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
-              settings: const RouteSettings(name: '侧边栏菜单'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '侧边栏菜单',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _openSidebarMenuSettings,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Row(
+                      children: [
+                        Text(
+                          '高级设置',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          );
-        },
+            const SizedBox(height: 16),
+            Semantics(
+              button: true,
+              label: '配置侧边栏菜单',
+              child: GestureDetector(
+                onTap: _openSidebarMenuSettings,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: colorScheme.surfaceContainerHighest,
+                    border: Border.all(
+                      color: colorScheme.primary.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      _buildSidebarMenuPreview(colorScheme),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '功能入口与顺序',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '隐藏不常用功能，调整功能和工具入口的分组与顺序',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSidebarMenuSettings() {
+    return Navigator.of(context).push(
+      PageTransitions.slideHorizontal(
+        SidebarMenuSettingsPage(isEmbedded: widget.isEmbedded),
+        settings: const RouteSettings(name: '侧边栏菜单'),
+      ),
+    );
+  }
+
+  Widget _buildSidebarMenuPreview(ColorScheme colorScheme) {
+    Widget menuLine(
+        {double width = double.infinity, bool highlighted = false}) {
+      return Container(
+        width: width,
+        height: 5,
+        decoration: BoxDecoration(
+          color: highlighted
+              ? colorScheme.primary.withValues(alpha: 0.65)
+              : colorScheme.onSurfaceVariant.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
+    }
+
+    return Container(
+      width: 48,
+      height: 48,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.32),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                menuLine(highlighted: true),
+                menuLine(width: 15),
+                menuLine(width: 11),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
