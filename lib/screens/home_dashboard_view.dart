@@ -7,6 +7,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     bool showWallpaper = !isDarkMode && _wallpaperShow && _wallpaperUrl != null;
     bool isLight = showWallpaper;
     final bool isTablet = MediaQuery.of(context).size.width >= 768;
+    final double bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
+    final Brightness cardBackgroundBrightness =
+        isDarkMode ? Brightness.dark : Brightness.light;
 
     final mainScreen = Scaffold(
       extendBody: true,
@@ -68,6 +71,9 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
             Positioned.fill(
                 child: Container(color: Colors.black.withValues(alpha: 0.4))),
           SafeArea(
+            // 仅避让顶部状态栏。列表需要继续绘制到 Android 手势导航区
+            // 后方，末尾的滚动余量再保证卡片操作不会被底栏遮挡。
+            bottom: false,
             child: Column(
               children: [
                 _buildSemesterProgressBar(isLight),
@@ -565,15 +571,25 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         }
                                       }
 
+                                      Widget buildScrollableSection(
+                                          String key) {
+                                        return AppSystemUiRegion(
+                                          backgroundBrightness:
+                                              cardBackgroundBrightness,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 24.0),
+                                            child: sectionsMap[key]!,
+                                          ),
+                                        );
+                                      }
+
                                       List<Widget> tab1Widgets = tab1Order
                                           .where((key) =>
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 24.0),
-                                              child: sectionsMap[key]!))
+                                          .map(buildScrollableSection)
                                           .toList();
 
                                       List<String> tab3WidgetsConfig =
@@ -586,11 +602,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                                   (_sectionVisibility[key] ??
                                                       true) &&
                                                   sectionsMap.containsKey(key))
-                                              .map((key) => Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          bottom: 24.0),
-                                                  child: sectionsMap[key]!))
+                                              .map(buildScrollableSection)
                                               .toList();
 
                                       final showFocusTab =
@@ -624,7 +636,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               return _buildWallpaperCopyright(
                                                   isLight);
                                             }
-                                            return const SizedBox(height: 100);
+                                            return SizedBox(
+                                              // 浮动底栏原有 100dp 余量之外，再补上
+                                              // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                              height: 100 + bottomSystemInset,
+                                            );
                                           },
                                         ),
                                       );
@@ -660,10 +676,16 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                               (_sectionVisibility[key] ??
                                                   true) &&
                                               sectionsMap.containsKey(key))
-                                          .map((key) => Padding(
-                                              padding: const EdgeInsets.only(
-                                                  bottom: 24.0),
-                                              child: sectionsMap[key]!))
+                                          .map((key) => AppSystemUiRegion(
+                                                backgroundBrightness:
+                                                    cardBackgroundBrightness,
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          bottom: 24.0),
+                                                  child: sectionsMap[key]!,
+                                                ),
+                                              ))
                                           .toList();
                                     }
 
@@ -673,9 +695,12 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                         buildColumnWidgets(currentRight);
 
                                     return SingleChildScrollView(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: isTablet ? 32 : 16,
-                                          vertical: 16),
+                                      padding: EdgeInsets.fromLTRB(
+                                        isTablet ? 32 : 16,
+                                        16,
+                                        isTablet ? 32 : 16,
+                                        16 + bottomSystemInset,
+                                      ),
                                       child: Align(
                                         alignment: Alignment.topCenter,
                                         child: ConstrainedBox(
@@ -1155,7 +1180,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
         _wallpaperDominantColor ?? Theme.of(context).colorScheme.primary;
     final Color inactiveColor =
         (isLight || !isDarkMode) ? Colors.black87 : Colors.white70;
-    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    final double bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
     final navContent = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(

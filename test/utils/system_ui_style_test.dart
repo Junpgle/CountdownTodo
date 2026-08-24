@@ -82,6 +82,70 @@ void main() {
   });
 
   testWidgets(
+    'scrolling cards paint behind the gesture area and override wallpaper style',
+    (tester) async {
+      const devicePixelRatio = 2.0;
+      const navigationBarHeight = 54.0;
+      const padding = FakeViewPadding(
+        bottom: navigationBarHeight * devicePixelRatio,
+      );
+      addTearDown(tester.view.reset);
+      tester.view
+        ..viewPadding = padding
+        ..padding = padding
+        ..devicePixelRatio = devicePixelRatio
+        ..physicalSize = const Size(960, 1920);
+
+      await tester.pumpWidget(
+        AnnotatedRegion<SystemUiOverlayStyle>(
+          value: const SystemUiOverlayStyle(
+            systemNavigationBarIconBrightness: Brightness.light,
+          ),
+          child: MaterialApp(
+            home: Scaffold(
+              body: SafeArea(
+                bottom: false,
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 1000),
+                    AnnotatedRegion<SystemUiOverlayStyle>(
+                      value: AppSystemUiStyle.forBrightness(Brightness.light),
+                      child: const ColoredBox(
+                        key: Key('scrolling-card'),
+                        color: Colors.white,
+                        child: SizedBox(height: 200),
+                      ),
+                    ),
+                    const SizedBox(height: 200),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.getBottomRight(find.byType(ListView)).dy, 960);
+      expect(
+        SystemChrome.latestStyle?.systemNavigationBarIconBrightness,
+        Brightness.light,
+      );
+
+      await tester.drag(find.byType(ListView), const Offset(0, -120));
+      await tester.pumpAndSettle();
+
+      final cardRect = tester.getRect(find.byKey(const Key('scrolling-card')));
+      expect(cardRect.top, lessThan(960 - navigationBarHeight / 2));
+      expect(cardRect.bottom, greaterThan(960 - navigationBarHeight / 2));
+      expect(
+        SystemChrome.latestStyle?.systemNavigationBarIconBrightness,
+        Brightness.dark,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  testWidgets(
     'bottom sheet overrides an underlying wallpaper navigation style',
     (tester) async {
       const devicePixelRatio = 2.0;
