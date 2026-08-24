@@ -41,6 +41,7 @@ import 'widgets/island_debug_host.dart';
 import 'utils/navigator_utils.dart';
 import 'utils/url_hash.dart';
 import 'utils/app_performance_monitor.dart';
+import 'utils/system_ui_style.dart';
 
 typedef CloseDialogCallback = Future<bool> Function();
 CloseDialogCallback? _onShowCloseDialog;
@@ -152,6 +153,11 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   AppPerformanceMonitor.install();
   unawaited(AppPerformanceMonitor.loadSettings());
+
+  await AppSystemUiStyle.enableEdgeToEdge(
+    initialBrightness:
+        WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  );
 
   // Secondary desktop_multi_window engines must not run the main-window
   // startup chain. In release this can keep the island from ever reaching its
@@ -858,15 +864,20 @@ class _MyAppState extends State<MyApp> {
                             },
                             builder: (context, child) {
                               final content = child ?? const SizedBox.shrink();
-                              if (!IslandDebugHost.shouldShowOverlay) {
-                                return content;
-                              }
+                              final appContent =
+                                  IslandDebugHost.shouldShowOverlay
+                                      ? Stack(
+                                          children: [
+                                            content,
+                                            IslandDebugHost.overlay(),
+                                          ],
+                                        )
+                                      : content;
 
-                              return Stack(
-                                children: [
-                                  content,
-                                  IslandDebugHost.overlay(),
-                                ],
+                              return AppSystemUiRegion(
+                                backgroundBrightness:
+                                    Theme.of(context).brightness,
+                                child: appContent,
                               );
                             },
                             home: _shareCode != null

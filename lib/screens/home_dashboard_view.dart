@@ -875,7 +875,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
     );
 
     if (isTablet) {
-      return mainScreen;
+      return AppSystemUiRegion(
+        backgroundBrightness:
+            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
+        child: mainScreen,
+      );
     }
 
     return ZoomDrawer(
@@ -1035,7 +1039,11 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
           });
         },
       ),
-      mainScreen: mainScreen,
+      mainScreen: AppSystemUiRegion(
+        backgroundBrightness:
+            showWallpaper || isDarkMode ? Brightness.dark : Brightness.light,
+        child: mainScreen,
+      ),
       borderRadius: 24.0,
       showShadow: true,
       angle: 0.0,
