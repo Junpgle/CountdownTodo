@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/course_calendar_adjustment_service.dart';
+import '../utils/app_dialogs.dart';
 
 class CourseCalendarAdjustmentScreen extends StatefulWidget {
   final String? initialOfficialHolidayKey;
@@ -167,7 +168,7 @@ class _CourseCalendarAdjustmentScreenState
       );
     }
 
-    return showModalBottomSheet<_AddAction>(
+    return showAppModalBottomSheet<_AddAction>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,

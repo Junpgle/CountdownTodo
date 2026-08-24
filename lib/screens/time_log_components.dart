@@ -83,7 +83,7 @@ class _DayViewState extends State<_DayView> {
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
     if (widget.entryMode == _EntryMode.plan) {
-      showModalBottomSheet(
+      showAppModalBottomSheet(
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
@@ -99,7 +99,7 @@ class _DayViewState extends State<_DayView> {
               }));
       return;
     }
-    showModalBottomSheet(
+    showAppModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -117,7 +117,7 @@ class _DayViewState extends State<_DayView> {
   void _showDayLogList() {
     final gsMs = _gridStart.millisecondsSinceEpoch;
     final geMs = gsMs + 86400000;
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

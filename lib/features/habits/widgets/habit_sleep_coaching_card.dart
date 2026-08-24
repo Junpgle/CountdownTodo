@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../utils/app_dialogs.dart';
 import '../models/habit_sleep_coaching_plan.dart';
 import '../services/habit_adaptation_service.dart';
 import '../services/habit_sleep_coaching_service.dart';
@@ -224,7 +225,7 @@ class HabitSleepCoachingCard extends StatelessWidget {
   ) async {
     var step = plan.stepMinutes;
     var days = plan.stageDays;
-    final result = await showModalBottomSheet<(int, int)>(
+    final result = await showAppModalBottomSheet<(int, int)>(
       context: context,
       showDragHandle: true,
       builder: (context) => StatefulBuilder(

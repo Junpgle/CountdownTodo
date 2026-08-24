@@ -261,7 +261,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
     DateTime occurrenceDate,
   ) async {
     final colorScheme = Theme.of(context).colorScheme;
-    final action = await showModalBottomSheet<_RecurrenceOccurrenceAction>(
+    final action = await showAppModalBottomSheet<_RecurrenceOccurrenceAction>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
@@ -330,7 +330,7 @@ mixin _TodoSectionRecurrenceMixin on _TodoSectionStateBase {
 
   Future<void> _showRecurrenceManagement(TodoItem todo) async {
     final colorScheme = Theme.of(context).colorScheme;
-    await showModalBottomSheet<void>(
+    await showAppModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(

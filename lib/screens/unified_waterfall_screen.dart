@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../utils/time_utils.dart';
+import '../utils/app_dialogs.dart';
 import '../widgets/team_heatmap_widget.dart';
 import '../widgets/team_gantt_widget.dart';
 
@@ -85,7 +86,7 @@ class _UnifiedWaterfallScreenState extends State<UnifiedWaterfallScreen> {
   void _showTodoDetails(TodoItem todo) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

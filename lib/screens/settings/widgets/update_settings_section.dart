@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../services/minor_mode_policy.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../services/minor_mode_service.dart';
 import '../../../update_service.dart';
 import '../../../utils/app_platform.dart';
@@ -422,7 +423,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
   Future<void> _showCurrentChangelog() async {
     final entry = _currentChangelog;
     var isExpanded = false;
-    await showModalBottomSheet<void>(
+    await showAppModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -707,32 +708,29 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ...visibleNotes
-                            .map(
-                              (note) => Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Icon(Icons.circle,
-                                          size: 5,
-                                          color:
-                                              colorScheme.onPrimaryContainer),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(note,
-                                          style: TextStyle(
-                                              color: colorScheme
-                                                  .onPrimaryContainer)),
-                                    ),
-                                  ],
+                        ...visibleNotes.map(
+                          (note) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Icon(Icons.circle,
+                                      size: 5,
+                                      color: colorScheme.onPrimaryContainer),
                                 ),
-                              ),
-                            )
-                            .toList(),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(note,
+                                      style: TextStyle(
+                                          color:
+                                              colorScheme.onPrimaryContainer)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                         if (hasMoreNotes)
                           Align(
                             alignment: Alignment.centerLeft,

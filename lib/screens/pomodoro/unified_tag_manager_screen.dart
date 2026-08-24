@@ -6,6 +6,7 @@ import '../settings/batch_tag_page.dart';
 import '../settings/rebind_tag_page.dart';
 import '../../services/pomodoro_service.dart';
 import '../../utils/app_color_utils.dart';
+import '../../utils/app_dialogs.dart';
 
 class UnifiedTagManagerScreen extends StatefulWidget {
   final List<PomodoroTag> allTags;
@@ -111,7 +112,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
   }
 
   void _showAddTagDialog() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -134,7 +135,7 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
   }
 
   void _showEditTagDialog(PomodoroTag tag, int index) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -797,7 +798,7 @@ class _TagFormState extends State<_TagForm> {
   }
 
   void _openColorPicker() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

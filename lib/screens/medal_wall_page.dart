@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
+import '../utils/app_dialogs.dart';
 import 'package:intl/intl.dart';
 
 /// 完整勋章墙页面
@@ -1011,7 +1012,7 @@ class _MedalWallPageState extends State<MedalWallPage>
         ),
       );
     } else {
-      showModalBottomSheet(
+      showAppModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,

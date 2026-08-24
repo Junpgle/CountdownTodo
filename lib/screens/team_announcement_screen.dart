@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../models.dart';
+import '../utils/app_dialogs.dart';
 
 class TeamAnnouncementScreen extends StatefulWidget {
   final Team team;
@@ -78,7 +79,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     bool isPriority = false;
     int? selectedExpiryHours; // null means never
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -267,7 +268,7 @@ class _TeamAnnouncementScreenState extends State<TeamAnnouncementScreen> {
     Navigator.pop(context); // close loading
 
     if (res['success'] == true) {
-      showModalBottomSheet(
+      showAppModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
         builder: (context) => Container(

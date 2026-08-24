@@ -39,7 +39,7 @@ mixin _WeeklyCourseGrid on _WeeklyCourseScreenStateBase {
 
   void _showAllDayTodos(
       BuildContext context, List<TodoItem> todos, String dateStr) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
             borderRadius: BorderRadius.vertical(top: Radius.circular(16))),

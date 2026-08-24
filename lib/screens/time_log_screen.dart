@@ -195,7 +195,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
 
   // 打开编辑面板
   void _editTimeLog(TimeLogItem log) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -596,7 +596,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final dur = (endMs - pom.startTime) ~/ 60000;
     final s = DateTime.fromMillisecondsSinceEpoch(pom.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(endMs);
-    showModalBottomSheet(
+    showAppModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _sheet(
@@ -661,7 +661,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
     final dur = (log.endTime - log.startTime) ~/ 60000;
     final s = DateTime.fromMillisecondsSinceEpoch(log.startTime);
     final e = DateTime.fromMillisecondsSinceEpoch(log.endTime);
-    showModalBottomSheet(
+    showAppModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
         builder: (_) => _sheet(
@@ -780,7 +780,7 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
       ]);
 
   void _showTagDetail(PomodoroTag tag) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,

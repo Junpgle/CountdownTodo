@@ -4,6 +4,7 @@ import '../models.dart';
 import 'package:intl/intl.dart';
 import 'add_todo_screen.dart';
 import '../utils/page_transitions.dart';
+import '../utils/app_dialogs.dart';
 
 class FolderManageScreen extends StatefulWidget {
   final String username;
@@ -215,7 +216,7 @@ class _FolderManageScreenState extends State<FolderManageScreen> {
       return 0;
     });
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

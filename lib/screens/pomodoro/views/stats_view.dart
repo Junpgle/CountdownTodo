@@ -6,6 +6,7 @@ import '../../../storage_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../screens/course_screens.dart';
 import '../../../utils/app_color_utils.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../utils/page_transitions.dart';
 import '../../../utils/todo_recurrence_picker.dart';
 
@@ -942,7 +943,7 @@ class PomodoroStatsState extends State<PomodoroStats> {
     String? editTodoTitle = session.todoTitle;
     String editNote = session.note ?? '';
 
-    await showModalBottomSheet(
+    await showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(

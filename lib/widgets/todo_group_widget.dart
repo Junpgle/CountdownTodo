@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../models.dart';
+import '../utils/app_dialogs.dart';
 import 'ai_water_border.dart';
 
 class TodoGroupWidget extends StatefulWidget {
@@ -1030,7 +1031,7 @@ class _TodoGroupWidgetState extends State<TodoGroupWidget>
   }
 
   void _showGroupMenu(BuildContext context) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

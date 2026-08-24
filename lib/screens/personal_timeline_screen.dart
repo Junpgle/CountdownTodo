@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui' as ui;
 import 'dart:math' as math;
+import '../utils/app_dialogs.dart';
 import '../models.dart';
 import '../services/browser_file_service.dart';
 import '../services/file_open_service.dart';
@@ -689,7 +690,7 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Future<void> _chooseAndExportTimelinePoster() async {
     if (_summary == null || _isExportingPoster) return;
 
-    final choice = await showModalBottomSheet<
+    final choice = await showAppModalBottomSheet<
         ({
           TimelineDimension dimension,
           DateTime date,

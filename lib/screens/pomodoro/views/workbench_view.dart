@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../models.dart';
 import '../../../storage_service.dart';
+import '../../../utils/app_dialogs.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/notification_service.dart';
@@ -2288,7 +2289,7 @@ class PomodoroWorkbenchState extends State<PomodoroWorkbench>
 
   void _showBindTodoDialog({bool isSwitching = false}) {
     final pickerTodos = collapseRecurrenceSeriesForTodoPicker(_todos);
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(

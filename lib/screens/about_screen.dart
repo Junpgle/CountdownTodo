@@ -6,6 +6,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import '../../utils/page_transitions.dart';
 import '../utils/app_performance_monitor.dart';
 import '../utils/app_platform.dart';
+import '../utils/app_dialogs.dart';
 import 'settings/device_version_detail_page.dart';
 import 'login_screen.dart';
 import '../storage_service.dart';
@@ -193,7 +194,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _showDatabaseChangelog() {
-    return showModalBottomSheet<void>(
+    return showAppModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

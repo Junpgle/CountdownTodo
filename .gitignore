@@ -145,6 +145,7 @@ todo.md
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart
 !/test/utils/json_value_parser_test.dart
+!/test/utils/system_ui_style_test.dart
 !/test/features/
 /test/features/*
 !/test/features/habits/

@@ -1,6 +1,103 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import 'system_ui_style.dart';
 import 'theme_color_tokens.dart';
+
+const double _defaultScrollControlDisabledMaxHeightRatio = 9.0 / 16.0;
+
+/// 显示可沉浸到系统导航栏后方、同时保证底部操作不被手势条遮挡的弹层。
+///
+/// Flutter 的 [showModalBottomSheet] 默认让弹层延伸到屏幕底部，但不会为
+/// 底部系统栏增加安全间距。统一在内容外包一层仅处理底部的 [SafeArea]，
+/// 弹层自身背景仍会绘制到导航栏后方。
+Future<T?> showAppModalBottomSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  Color? backgroundColor,
+  String? barrierLabel,
+  double? elevation,
+  ShapeBorder? shape,
+  Clip? clipBehavior,
+  BoxConstraints? constraints,
+  Color? barrierColor,
+  bool isScrollControlled = false,
+  double scrollControlDisabledMaxHeightRatio =
+      _defaultScrollControlDisabledMaxHeightRatio,
+  bool useRootNavigator = false,
+  bool isDismissible = true,
+  bool enableDrag = true,
+  bool? showDragHandle,
+  bool useSafeArea = false,
+  RouteSettings? routeSettings,
+  AnimationController? transitionAnimationController,
+  Offset? anchorPoint,
+  AnimationStyle? sheetAnimationStyle,
+  bool? requestFocus,
+  Brightness? navigationBarBackgroundBrightness,
+}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    backgroundColor: backgroundColor,
+    barrierLabel: barrierLabel,
+    elevation: elevation,
+    shape: shape,
+    clipBehavior: clipBehavior,
+    constraints: constraints,
+    barrierColor: barrierColor,
+    isScrollControlled: isScrollControlled,
+    scrollControlDisabledMaxHeightRatio: scrollControlDisabledMaxHeightRatio,
+    useRootNavigator: useRootNavigator,
+    isDismissible: isDismissible,
+    enableDrag: enableDrag,
+    showDragHandle: showDragHandle,
+    useSafeArea: useSafeArea,
+    routeSettings: routeSettings,
+    transitionAnimationController: transitionAnimationController,
+    anchorPoint: anchorPoint,
+    sheetAnimationStyle: sheetAnimationStyle,
+    requestFocus: requestFocus,
+    builder: (sheetContext) {
+      final bottomInset = MediaQuery.paddingOf(sheetContext).bottom;
+      final needsTransparentSheetProtection =
+          backgroundColor != null && backgroundColor.a == 0;
+      final sheetBrightness = navigationBarBackgroundBrightness ??
+          (backgroundColor != null && backgroundColor.a > 0
+              ? ThemeData.estimateBrightnessForColor(backgroundColor)
+              : Theme.of(sheetContext).brightness);
+
+      return SizedBox(
+        width: double.infinity,
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppSystemUiStyle.forBrightness(sheetBrightness),
+          // 即使业务内容没有声明宽度，也让标注覆盖整张弹层；否则系统在
+          // 屏幕底部中央取样时可能落到标注之外，继续沿用下层页面的颜色。
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              if (needsTransparentSheetProtection && bottomInset > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: bottomInset,
+                  child: ColoredBox(
+                    color: Theme.of(sheetContext).colorScheme.surface,
+                  ),
+                ),
+              SafeArea(
+                top: false,
+                left: false,
+                right: false,
+                child: builder(sheetContext),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
 enum AppSnackBarType { info, success, warning, error }
 
@@ -150,7 +247,7 @@ class AppDialogs {
     bool useSafeArea = true,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return showModalBottomSheet<T>(
+    return showAppModalBottomSheet<T>(
       context: context,
       isScrollControlled: isScrollControlled,
       useSafeArea: useSafeArea,

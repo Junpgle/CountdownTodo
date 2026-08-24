@@ -6,6 +6,7 @@ import '../storage_service.dart';
 import '../services/api_service.dart';
 import '../services/course_service.dart';
 import '../services/ai_todo_chat_launcher.dart';
+import '../utils/app_dialogs.dart';
 import '../services/ai_todo_action_executor.dart';
 import '../services/pomodoro_service.dart';
 import '../services/conflict_visibility_service.dart';
@@ -1721,7 +1722,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showConflictHelp() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -1824,7 +1825,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
     final localJson = _itemToJson(item);
     final table = _resolveTable(item);
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1841,7 +1842,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showMissingServerSnapshot(dynamic item) {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
@@ -2073,7 +2074,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
   }
 
   void _showBatchResolutionDialog() {
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -2322,7 +2323,7 @@ class _ConflictInboxScreenState extends State<ConflictInboxScreen> {
         : _ScheduleResolutionMode.manual;
     var selectedIdToEdit = _itemId(item);
 
-    showModalBottomSheet(
+    showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

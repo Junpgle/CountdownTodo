@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models.dart';
+import '../utils/app_dialogs.dart';
 import 'home_sections.dart';
 
 import '../screens/add_todo_screen.dart';
@@ -323,7 +324,7 @@ class _TodayScheduleListState extends State<_TodayScheduleList> {
   }
 
   Future<void> _openScheduleActions() async {
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
