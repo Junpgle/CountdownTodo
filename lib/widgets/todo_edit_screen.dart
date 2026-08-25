@@ -501,9 +501,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             const SizedBox(height: 12),
           ],
           _buildRelatedRecurrenceSection(colorScheme),
-          Container(
+          OptionalLiquidGlassCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            decoration: BoxDecoration(
+            borderRadius: 16,
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
@@ -793,10 +795,12 @@ class TodoEditScreenState extends State<TodoEditScreen> {
             ],
           ),
           if (_recurrence != RecurrenceType.none)
-            Container(
+            OptionalLiquidGlassCard(
               margin: const EdgeInsets.only(top: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
+              borderRadius: 16,
+              highContrast: true,
+              fallbackDecoration: BoxDecoration(
                   color: colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   border:
@@ -1069,11 +1073,13 @@ class TodoEditScreenState extends State<TodoEditScreen> {
         _editingTodo.recurrenceSeriesId?.isNotEmpty == true;
     if (!isRecurrenceSeries) return const SizedBox.shrink();
 
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
+      borderRadius: 16,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colorScheme.outlineVariant),
@@ -1551,9 +1557,11 @@ class TodoEditScreenState extends State<TodoEditScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Container(
+        OptionalLiquidGlassCard(
           width: double.infinity,
-          decoration: BoxDecoration(
+          borderRadius: 16,
+          highContrast: true,
+          fallbackDecoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.black.withValues(alpha: 0.04)),

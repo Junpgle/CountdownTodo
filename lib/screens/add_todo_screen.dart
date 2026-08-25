@@ -19,6 +19,7 @@ import '../services/feature_tip_service.dart';
 import '../services/fixed_schedule_recurrence_service.dart';
 import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import '../utils/persistent_image_storage.dart';
 import '../utils/page_transitions.dart';
 import 'dart:async';
@@ -1788,13 +1789,14 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             ),
             const SizedBox(height: 16),
             // Input Section
-            Card(
-              elevation: 0,
-              color: colors.surface,
-              shape: RoundedRectangleBorder(
+            OptionalLiquidGlassCard(
+              borderRadius: 16,
+              highContrast: true,
+              fallbackDecoration: BoxDecoration(
+                color: colors.surface,
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                    color: colors.outlineVariant.withValues(alpha: 0.5)),
+                border: Border.fromBorderSide(BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.5))),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -1887,254 +1889,266 @@ class _AddTodoScreenState extends State<AddTodoScreen>
             // Properties
             ...[
               // Todo Properties
-              Card(
-                elevation: 0,
-                color: colors.surface,
-                shape: RoundedRectangleBorder(
+              OptionalLiquidGlassCard(
+                borderRadius: 16,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                      color: colors.outlineVariant.withValues(alpha: 0.5)),
+                  border: Border.fromBorderSide(BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: 0.5))),
                 ),
-                child: _buildResponsiveGrid(
-                  [
-                    if (_manualCaptureKind == _ManualCaptureKind.todo) ...[
-                      SwitchListTile(
-                        title: const Text("某天内完成"),
-                        subtitle: const Text("不指定具体时刻"),
-                        value: _isAllDay,
-                        secondary: KeyedSubtree(
-                            key: _allDayKey,
-                            child: const Icon(Icons.calendar_today)),
-                        onChanged: (val) {
-                          setState(() {
-                            final wasDateOnlyRange = _dueDate != null &&
-                                TodoItem.looksLikeLegacyDateOnlyRange(
-                                    _createdAt, _dueDate!);
-                            _isAllDay = val;
-                            if (_isAllDay) {
-                              _createdAt = DateTime(_createdAt.year,
-                                  _createdAt.month, _createdAt.day, 0, 0);
-                              if (_dueDate != null) {
-                                _dueDate = DateTime(_dueDate!.year,
-                                    _dueDate!.month, _dueDate!.day, 23, 59);
-                              } else {
-                                _dueDate = DateTime(_createdAt.year,
-                                    _createdAt.month, _createdAt.day, 23, 59);
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: _buildResponsiveGrid(
+                    [
+                      if (_manualCaptureKind == _ManualCaptureKind.todo) ...[
+                        SwitchListTile(
+                          title: const Text("某天内完成"),
+                          subtitle: const Text("不指定具体时刻"),
+                          value: _isAllDay,
+                          secondary: KeyedSubtree(
+                              key: _allDayKey,
+                              child: const Icon(Icons.calendar_today)),
+                          onChanged: (val) {
+                            setState(() {
+                              final wasDateOnlyRange = _dueDate != null &&
+                                  TodoItem.looksLikeLegacyDateOnlyRange(
+                                      _createdAt, _dueDate!);
+                              _isAllDay = val;
+                              if (_isAllDay) {
+                                _createdAt = DateTime(_createdAt.year,
+                                    _createdAt.month, _createdAt.day, 0, 0);
+                                if (_dueDate != null) {
+                                  _dueDate = DateTime(_dueDate!.year,
+                                      _dueDate!.month, _dueDate!.day, 23, 59);
+                                } else {
+                                  _dueDate = DateTime(_createdAt.year,
+                                      _createdAt.month, _createdAt.day, 23, 59);
+                                }
+                              } else if (wasDateOnlyRange) {
+                                final now = DateTime.now();
+                                _createdAt = DateTime(
+                                    _createdAt.year,
+                                    _createdAt.month,
+                                    _createdAt.day,
+                                    now.hour,
+                                    now.minute);
+                                _dueDate = null;
                               }
-                            } else if (wasDateOnlyRange) {
-                              final now = DateTime.now();
-                              _createdAt = DateTime(
-                                  _createdAt.year,
-                                  _createdAt.month,
-                                  _createdAt.day,
-                                  now.hour,
-                                  now.minute);
-                              _dueDate = null;
-                            }
-                          });
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.event),
-                        title: Text(_isAllDay ? "完成日期" : "截止时间"),
-                        subtitle: Text(_isAllDay
-                            ? DateFormat('MM-dd').format(_createdAt)
-                            : (_dueDate == null
-                                ? "未安排"
-                                : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
-                        trailing: _dueDate != null && !_isAllDay
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () =>
-                                    setState(() => _dueDate = null),
-                              )
-                            : const Icon(Icons.chevron_right),
-                        onTap: _isAllDay ? _pickStartTime : _pickEndTime,
-                      ),
-                    ] else ...[
-                      ListTile(
-                        key: const ValueKey('fixed-schedule-date'),
-                        leading: const Icon(Icons.calendar_today_rounded),
-                        title: Text(
-                            _recurrence == RecurrenceType.none ? '日期' : '首次日期'),
-                        subtitle: Text(
-                            DateFormat('yyyy-MM-dd').format(_scheduleDate)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('时间待定'),
-                            const SizedBox(width: 6),
-                            Switch(
-                              key: const ValueKey('fixed-schedule-time-tbd'),
-                              value: _scheduleTimeTbd,
-                              onChanged: (value) =>
-                                  setState(() => _scheduleTimeTbd = value),
-                            ),
-                          ],
-                        ),
-                        onTap: _pickScheduleDate,
-                      ),
-                      if (!_scheduleTimeTbd) ...[
-                        ListTile(
-                          key: const ValueKey('fixed-schedule-start-time'),
-                          leading:
-                              const Icon(Icons.play_circle_outline_rounded),
-                          title: const Text('开始时间'),
-                          subtitle: Text(_scheduleStartTime.format(context)),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _pickScheduleStartTime,
+                            });
+                          },
                         ),
                         ListTile(
-                          key: const ValueKey('fixed-schedule-end-time'),
-                          leading: const Icon(Icons.stop_circle_outlined),
-                          title: const Text('结束时间'),
-                          subtitle: Text(_scheduleEndTimeTbd
-                              ? '待定'
-                              : _scheduleEndTime.format(context)),
+                          leading: const Icon(Icons.event),
+                          title: Text(_isAllDay ? "完成日期" : "截止时间"),
+                          subtitle: Text(_isAllDay
+                              ? DateFormat('MM-dd').format(_createdAt)
+                              : (_dueDate == null
+                                  ? "未安排"
+                                  : "${DateFormat('MM-dd HH:mm').format(_dueDate!)} 前完成")),
+                          trailing: _dueDate != null && !_isAllDay
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () =>
+                                      setState(() => _dueDate = null),
+                                )
+                              : const Icon(Icons.chevron_right),
+                          onTap: _isAllDay ? _pickStartTime : _pickEndTime,
+                        ),
+                      ] else ...[
+                        ListTile(
+                          key: const ValueKey('fixed-schedule-date'),
+                          leading: const Icon(Icons.calendar_today_rounded),
+                          title: Text(_recurrence == RecurrenceType.none
+                              ? '日期'
+                              : '首次日期'),
+                          subtitle: Text(
+                              DateFormat('yyyy-MM-dd').format(_scheduleDate)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text('待定'),
+                              const Text('时间待定'),
                               const SizedBox(width: 6),
                               Switch(
-                                key: const ValueKey(
-                                    'fixed-schedule-end-time-tbd'),
-                                value: _scheduleEndTimeTbd,
+                                key: const ValueKey('fixed-schedule-time-tbd'),
+                                value: _scheduleTimeTbd,
                                 onChanged: (value) =>
-                                    setState(() => _scheduleEndTimeTbd = value),
+                                    setState(() => _scheduleTimeTbd = value),
                               ),
                             ],
                           ),
-                          onTap:
-                              _scheduleEndTimeTbd ? null : _pickScheduleEndTime,
+                          onTap: _pickScheduleDate,
                         ),
+                        if (!_scheduleTimeTbd) ...[
+                          ListTile(
+                            key: const ValueKey('fixed-schedule-start-time'),
+                            leading:
+                                const Icon(Icons.play_circle_outline_rounded),
+                            title: const Text('开始时间'),
+                            subtitle: Text(_scheduleStartTime.format(context)),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: _pickScheduleStartTime,
+                          ),
+                          ListTile(
+                            key: const ValueKey('fixed-schedule-end-time'),
+                            leading: const Icon(Icons.stop_circle_outlined),
+                            title: const Text('结束时间'),
+                            subtitle: Text(_scheduleEndTimeTbd
+                                ? '待定'
+                                : _scheduleEndTime.format(context)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('待定'),
+                                const SizedBox(width: 6),
+                                Switch(
+                                  key: const ValueKey(
+                                      'fixed-schedule-end-time-tbd'),
+                                  value: _scheduleEndTimeTbd,
+                                  onChanged: (value) => setState(
+                                      () => _scheduleEndTimeTbd = value),
+                                ),
+                              ],
+                            ),
+                            onTap: _scheduleEndTimeTbd
+                                ? null
+                                : _pickScheduleEndTime,
+                          ),
+                        ],
                       ],
-                    ],
-                    ListTile(
-                      leading: const Icon(Icons.notifications_outlined),
-                      title: const Text("提醒"),
-                      subtitle: Text(_getReminderText(_reminderMinutes)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        final val = await showMenu<int>(
-                          context: context,
-                          position: const RelativeRect.fromLTRB(100, 400, 0, 0),
-                          items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
-                              .map((m) => PopupMenuItem(
-                                  value: m, child: Text(_getReminderText(m))))
-                              .toList(),
-                        );
-                        if (val != null) setState(() => _reminderMinutes = val);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.repeat),
-                      title: const Text("重复规则"),
-                      subtitle: Text(_getRecurrenceLabel(_recurrence)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        final val = await showMenu<RecurrenceType>(
-                          context: context,
-                          position: const RelativeRect.fromLTRB(100, 500, 0, 0),
-                          items: [
-                            RecurrenceType.none,
-                            RecurrenceType.daily,
-                            RecurrenceType.weekly,
-                            RecurrenceType.monthly,
-                            RecurrenceType.yearly,
-                            RecurrenceType.weekdays,
-                            RecurrenceType.customDays
-                          ]
-                              .map((r) => PopupMenuItem(
-                                  value: r,
-                                  child: Text(_getRecurrenceLabel(r))))
-                              .toList(),
-                        );
-                        if (val != null) setState(() => _recurrence = val);
-                      },
-                    ),
-                    if (_recurrence == RecurrenceType.customDays ||
-                        _recurrence != RecurrenceType.none)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_recurrence == RecurrenceType.customDays) ...[
-                              Row(
-                                children: [
-                                  const Text("每隔"),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _customDaysCtrl,
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.center,
-                                      decoration: InputDecoration(
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                                vertical: 8),
-                                        border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8)),
-                                      ),
-                                      onChanged: (val) => setState(() =>
-                                          _customDays = int.tryParse(val)),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  const Text("天重复"),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                            ],
-                            InkWell(
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _recurrenceEndDate ?? DateTime.now(),
-                                  firstDate: DateTime.now(),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setState(() => _recurrenceEndDate = picked);
-                                }
-                              },
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                      ListTile(
+                        leading: const Icon(Icons.notifications_outlined),
+                        title: const Text("提醒"),
+                        subtitle: Text(_getReminderText(_reminderMinutes)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final val = await showMenu<int>(
+                            context: context,
+                            position:
+                                const RelativeRect.fromLTRB(100, 400, 0, 0),
+                            items: [0, 5, 10, 15, 30, 45, 60, 120, 1440]
+                                .map((m) => PopupMenuItem(
+                                    value: m, child: Text(_getReminderText(m))))
+                                .toList(),
+                          );
+                          if (val != null) {
+                            setState(() => _reminderMinutes = val);
+                          }
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.repeat),
+                        title: const Text("重复规则"),
+                        subtitle: Text(_getRecurrenceLabel(_recurrence)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final val = await showMenu<RecurrenceType>(
+                            context: context,
+                            position:
+                                const RelativeRect.fromLTRB(100, 500, 0, 0),
+                            items: [
+                              RecurrenceType.none,
+                              RecurrenceType.daily,
+                              RecurrenceType.weekly,
+                              RecurrenceType.monthly,
+                              RecurrenceType.yearly,
+                              RecurrenceType.weekdays,
+                              RecurrenceType.customDays
+                            ]
+                                .map((r) => PopupMenuItem(
+                                    value: r,
+                                    child: Text(_getRecurrenceLabel(r))))
+                                .toList(),
+                          );
+                          if (val != null) setState(() => _recurrence = val);
+                        },
+                      ),
+                      if (_recurrence == RecurrenceType.customDays ||
+                          _recurrence != RecurrenceType.none)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_recurrence == RecurrenceType.customDays) ...[
+                                Row(
                                   children: [
-                                    const Text("重复结束日期"),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          _recurrenceEndDate == null
-                                              ? "未指定"
-                                              : DateFormat('yyyy-MM-dd')
-                                                  .format(_recurrenceEndDate!),
-                                          style: TextStyle(
-                                              color: _recurrenceEndDate == null
-                                                  ? Colors.grey
-                                                  : colors.primary),
+                                    const Text("每隔"),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _customDaysCtrl,
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.center,
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                  vertical: 8),
+                                          border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8)),
                                         ),
-                                        const Icon(Icons.chevron_right,
-                                            color: Colors.grey, size: 20),
-                                      ],
+                                        onChanged: (val) => setState(() =>
+                                            _customDays = int.tryParse(val)),
+                                      ),
                                     ),
+                                    const SizedBox(width: 12),
+                                    const Text("天重复"),
                                   ],
                                 ),
+                                const SizedBox(height: 12),
+                              ],
+                              InkWell(
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate:
+                                        _recurrenceEndDate ?? DateTime.now(),
+                                    firstDate: DateTime.now(),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (picked != null) {
+                                    setState(() => _recurrenceEndDate = picked);
+                                  }
+                                },
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("重复结束日期"),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            _recurrenceEndDate == null
+                                                ? "未指定"
+                                                : DateFormat('yyyy-MM-dd')
+                                                    .format(
+                                                        _recurrenceEndDate!),
+                                            style: TextStyle(
+                                                color:
+                                                    _recurrenceEndDate == null
+                                                        ? Colors.grey
+                                                        : colors.primary),
+                                          ),
+                                          const Icon(Icons.chevron_right,
+                                              color: Colors.grey, size: 20),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2151,109 +2165,113 @@ class _AddTodoScreenState extends State<AddTodoScreen>
                         fontWeight: FontWeight.bold,
                         color: Colors.grey)),
               ),
-              Card(
-                elevation: 0,
-                color: colors.surface,
-                shape: RoundedRectangleBorder(
+              OptionalLiquidGlassCard(
+                borderRadius: 16,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                      color: colors.outlineVariant.withValues(alpha: 0.5)),
+                  border: Border.fromBorderSide(BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: 0.5))),
                 ),
-                child: _buildResponsiveGrid(
-                  [
-                    if (_manualCaptureKind == _ManualCaptureKind.todo &&
-                        _localTodoGroups.isNotEmpty)
-                      ListTile(
-                        leading:
-                            Icon(Icons.folder_outlined, color: colors.primary),
-                        title: const Text("归属文件夹"),
-                        subtitle: Text(_selectedGroupId == null
-                            ? "未分类"
-                            : (_localTodoGroups
-                                    .where((g) => g.id == _selectedGroupId)
-                                    .firstOrNull
-                                    ?.name ??
-                                '未知')),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final val = await showMenu<String>(
-                            context: context,
-                            position:
-                                const RelativeRect.fromLTRB(100, 600, 0, 0),
-                            items: [
-                              const PopupMenuItem<String>(
-                                  value: "__none__", child: Text("未分类")),
-                              ..._localTodoGroups
-                                  .where((g) => !g.isDeleted)
-                                  .map((g) => PopupMenuItem(
-                                      value: g.id, child: Text(g.name)))
-                            ],
-                          );
-                          if (val != null) {
-                            final newGroupId = val == "__none__" ? null : val;
-                            _recordUserGroupChoice(newGroupId);
-                            setState(() {
-                              _selectedGroupId = newGroupId;
-                              if (_selectedGroupId != null &&
-                                  _categoryReminderDefaults
-                                      .containsKey(_selectedGroupId)) {
-                                _reminderMinutes = _categoryReminderDefaults[
-                                    _selectedGroupId]!;
-                              } else if (_selectedGroupId == null) {
-                                _reminderMinutes = 5;
-                              }
-                            });
-                          }
-                        },
-                      ),
-                    if (_teams.isNotEmpty)
-                      ListTile(
-                        leading: Icon(Icons.groups_outlined,
-                            color: colors.secondary),
-                        title: const Text("团队归属"),
-                        subtitle: Text(_selectedTeamUuid == null
-                            ? "个人私有"
-                            : (_teams
-                                    .where((t) => t.uuid == _selectedTeamUuid)
-                                    .firstOrNull
-                                    ?.name ??
-                                '未知')),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final val = await showMenu<String>(
-                            context: context,
-                            position:
-                                const RelativeRect.fromLTRB(100, 650, 0, 0),
-                            items: [
-                              const PopupMenuItem<String>(
-                                  value: "__none__",
-                                  child: Text("个人私有 (仅自己可见)")),
-                              ..._teams.map((t) => PopupMenuItem(
-                                  value: t.uuid, child: Text(t.name)))
-                            ],
-                          );
-                          if (val != null) {
-                            setState(() => _selectedTeamUuid =
-                                val == "__none__" ? null : val);
-                          }
-                        },
-                      ),
-                    if (_manualCaptureKind == _ManualCaptureKind.todo &&
-                        _selectedTeamUuid != null)
-                      ListTile(
-                        leading: const Icon(Icons.sync_alt_rounded),
-                        title: const Text("完成规则"),
-                        trailing: SizedBox(
-                          width: 140,
-                          child: _buildCustomSegmentedControl(
-                            labels: const ["全队同步", "各自独立"],
-                            selectedIndex: _collabType,
-                            onChanged: (idx) =>
-                                setState(() => _collabType = idx),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: _buildResponsiveGrid(
+                    [
+                      if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                          _localTodoGroups.isNotEmpty)
+                        ListTile(
+                          leading: Icon(Icons.folder_outlined,
+                              color: colors.primary),
+                          title: const Text("归属文件夹"),
+                          subtitle: Text(_selectedGroupId == null
+                              ? "未分类"
+                              : (_localTodoGroups
+                                      .where((g) => g.id == _selectedGroupId)
+                                      .firstOrNull
+                                      ?.name ??
+                                  '未知')),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            final val = await showMenu<String>(
+                              context: context,
+                              position:
+                                  const RelativeRect.fromLTRB(100, 600, 0, 0),
+                              items: [
+                                const PopupMenuItem<String>(
+                                    value: "__none__", child: Text("未分类")),
+                                ..._localTodoGroups
+                                    .where((g) => !g.isDeleted)
+                                    .map((g) => PopupMenuItem(
+                                        value: g.id, child: Text(g.name)))
+                              ],
+                            );
+                            if (val != null) {
+                              final newGroupId = val == "__none__" ? null : val;
+                              _recordUserGroupChoice(newGroupId);
+                              setState(() {
+                                _selectedGroupId = newGroupId;
+                                if (_selectedGroupId != null &&
+                                    _categoryReminderDefaults
+                                        .containsKey(_selectedGroupId)) {
+                                  _reminderMinutes = _categoryReminderDefaults[
+                                      _selectedGroupId]!;
+                                } else if (_selectedGroupId == null) {
+                                  _reminderMinutes = 5;
+                                }
+                              });
+                            }
+                          },
+                        ),
+                      if (_teams.isNotEmpty)
+                        ListTile(
+                          leading: Icon(Icons.groups_outlined,
+                              color: colors.secondary),
+                          title: const Text("团队归属"),
+                          subtitle: Text(_selectedTeamUuid == null
+                              ? "个人私有"
+                              : (_teams
+                                      .where((t) => t.uuid == _selectedTeamUuid)
+                                      .firstOrNull
+                                      ?.name ??
+                                  '未知')),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            final val = await showMenu<String>(
+                              context: context,
+                              position:
+                                  const RelativeRect.fromLTRB(100, 650, 0, 0),
+                              items: [
+                                const PopupMenuItem<String>(
+                                    value: "__none__",
+                                    child: Text("个人私有 (仅自己可见)")),
+                                ..._teams.map((t) => PopupMenuItem(
+                                    value: t.uuid, child: Text(t.name)))
+                              ],
+                            );
+                            if (val != null) {
+                              setState(() => _selectedTeamUuid =
+                                  val == "__none__" ? null : val);
+                            }
+                          },
+                        ),
+                      if (_manualCaptureKind == _ManualCaptureKind.todo &&
+                          _selectedTeamUuid != null)
+                        ListTile(
+                          leading: const Icon(Icons.sync_alt_rounded),
+                          title: const Text("完成规则"),
+                          trailing: SizedBox(
+                            width: 140,
+                            child: _buildCustomSegmentedControl(
+                              labels: const ["全队同步", "各自独立"],
+                              selectedIndex: _collabType,
+                              onChanged: (idx) =>
+                                  setState(() => _collabType = idx),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2365,9 +2383,11 @@ class _AddTodoScreenState extends State<AddTodoScreen>
         children: [
           // 🚀 待确认的图片识别事项入口
           if (_pendingTodoConfirm != null) _buildPendingTodoCard(),
-          Container(
+          OptionalLiquidGlassCard(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
+            borderRadius: 16,
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
@@ -2436,10 +2456,12 @@ class _AddTodoScreenState extends State<AddTodoScreen>
           ),
 
           if (_parsedResults.isNotEmpty)
-            Container(
+            OptionalLiquidGlassCard(
               margin: const EdgeInsets.only(top: 16),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              borderRadius: 16,
+              highContrast: true,
+              fallbackDecoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
