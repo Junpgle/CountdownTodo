@@ -92,8 +92,11 @@ import 'todo_plan_screen.dart';
 import '../widgets/global_search_overlay.dart';
 import '../widgets/personal_timeline_section.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/home_bottom_navigation_content.dart';
+import '../widgets/home_quick_action_button.dart';
 import '../services/feature_tip_service.dart';
 import '../services/home_layout_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 part 'home_dashboard_ai.dart';
 part 'home_dashboard_contract.dart';

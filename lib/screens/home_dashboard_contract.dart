@@ -255,11 +255,6 @@ mixin _HomeDashboardContract {
 
   Widget _buildCustomBottomBar(bool isDarkMode, bool isLight);
 
-  Widget _buildTabItem(
-      int index, IconData icon, String label, Color primary, Color inactive);
-
-  Widget _buildCourseCenterButton(Color primary);
-
   bool _isListEqual(List a, List b);
 
   bool _isMapEqual(Map a, Map b);
