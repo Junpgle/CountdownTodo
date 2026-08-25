@@ -655,36 +655,41 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                           key: ValueKey<String>(showFocusTab
                                               ? 'home-focus-tab-content'
                                               : 'home-main-tab-content'),
-                                          child: ListView.builder(
-                                            key: PageStorageKey<String>(
-                                              showFocusTab
-                                                  ? 'home-focus-sections'
-                                                  : 'home-main-sections',
+                                          child:
+                                              OptionalLiquidGlassScrollOptimizer(
+                                            child: ListView.builder(
+                                              key: PageStorageKey<String>(
+                                                showFocusTab
+                                                    ? 'home-focus-sections'
+                                                    : 'home-main-sections',
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 16,
+                                              ),
+                                              itemCount: activeWidgets.length +
+                                                  (hasCopyright ? 1 : 0) +
+                                                  1,
+                                              itemBuilder: (context, index) {
+                                                if (index <
+                                                    activeWidgets.length) {
+                                                  return activeWidgets[index];
+                                                }
+                                                if (hasCopyright &&
+                                                    index ==
+                                                        activeWidgets.length) {
+                                                  return _buildWallpaperCopyright(
+                                                      isLight);
+                                                }
+                                                return SizedBox(
+                                                  // 浮动底栏原有 100dp 余量之外，再补上
+                                                  // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                                  height:
+                                                      100 + bottomSystemInset,
+                                                );
+                                              },
                                             ),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 16,
-                                            ),
-                                            itemCount: activeWidgets.length +
-                                                (hasCopyright ? 1 : 0) +
-                                                1,
-                                            itemBuilder: (context, index) {
-                                              if (index <
-                                                  activeWidgets.length) {
-                                                return activeWidgets[index];
-                                              }
-                                              if (hasCopyright &&
-                                                  index ==
-                                                      activeWidgets.length) {
-                                                return _buildWallpaperCopyright(
-                                                    isLight);
-                                              }
-                                              return SizedBox(
-                                                // 浮动底栏原有 100dp 余量之外，再补上
-                                                // 系统手势区，使最后一张卡片能完整滚出遮挡。
-                                                height: 100 + bottomSystemInset,
-                                              );
-                                            },
                                           ),
                                         ),
                                       );
@@ -738,66 +743,69 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                     List<Widget> rightWidgets =
                                         buildColumnWidgets(currentRight);
 
-                                    return SingleChildScrollView(
-                                      padding: EdgeInsets.fromLTRB(
-                                        isTablet ? 32 : 16,
-                                        16,
-                                        isTablet ? 32 : 16,
-                                        16 + bottomSystemInset,
-                                      ),
-                                      child: Align(
-                                        alignment: Alignment.topCenter,
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                              maxWidth: 1400),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              isTablet
-                                                  ? Row(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        Expanded(
-                                                            flex: 10,
-                                                            child: Column(
-                                                                crossAxisAlignment:
-                                                                    CrossAxisAlignment
-                                                                        .start,
-                                                                children:
-                                                                    leftWidgets)),
-                                                        if (rightWidgets
-                                                            .isNotEmpty)
-                                                          const SizedBox(
-                                                              width: 40),
-                                                        if (rightWidgets
-                                                            .isNotEmpty)
+                                    return OptionalLiquidGlassScrollOptimizer(
+                                      child: SingleChildScrollView(
+                                        padding: EdgeInsets.fromLTRB(
+                                          isTablet ? 32 : 16,
+                                          16,
+                                          isTablet ? 32 : 16,
+                                          16 + bottomSystemInset,
+                                        ),
+                                        child: Align(
+                                          alignment: Alignment.topCenter,
+                                          child: ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                                maxWidth: 1400),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                isTablet
+                                                    ? Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
                                                           Expanded(
-                                                              flex: 11,
+                                                              flex: 10,
                                                               child: Column(
                                                                   crossAxisAlignment:
                                                                       CrossAxisAlignment
                                                                           .start,
                                                                   children:
-                                                                      rightWidgets)),
-                                                      ],
-                                                    )
-                                                  : Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        ...leftWidgets,
-                                                        ...rightWidgets,
-                                                      ],
-                                                    ),
-                                              if (_wallpaperCopyright != null &&
-                                                  _wallpaperCopyright!
-                                                      .isNotEmpty)
-                                                _buildWallpaperCopyright(
-                                                    isLight),
-                                            ],
+                                                                      leftWidgets)),
+                                                          if (rightWidgets
+                                                              .isNotEmpty)
+                                                            const SizedBox(
+                                                                width: 40),
+                                                          if (rightWidgets
+                                                              .isNotEmpty)
+                                                            Expanded(
+                                                                flex: 11,
+                                                                child: Column(
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    children:
+                                                                        rightWidgets)),
+                                                        ],
+                                                      )
+                                                    : Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          ...leftWidgets,
+                                                          ...rightWidgets,
+                                                        ],
+                                                      ),
+                                                if (_wallpaperCopyright !=
+                                                        null &&
+                                                    _wallpaperCopyright!
+                                                        .isNotEmpty)
+                                                  _buildWallpaperCopyright(
+                                                      isLight),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
