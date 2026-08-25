@@ -48,6 +48,7 @@ class LiquidGlassEffectService {
 
   static const String _keyEnabled = 'enable_liquid_glass';
   static const String _keyMode = 'liquid_glass_effect_mode';
+  static const String _keyGuideOffered = 'liquid_glass_guide_offered';
 
   static final ValueNotifier<LiquidGlassEffectConfiguration>
       _configurationNotifier = ValueNotifier(
@@ -76,18 +77,34 @@ class LiquidGlassEffectService {
   static Future<void> initialize() => _loadFuture ??= _load();
 
   static Future<LiquidGlassEffectConfiguration> loadConfiguration() async {
+    if (_loadFuture != null) return configuration;
     await initialize();
     return configuration;
   }
 
   static Future<bool> loadEnabled() async {
+    // 加载已完成时直接读取当前配置；跨事件循环区域等待已完成的缓存
+    // Future 在测试等自定义 Zone 下可能永不恢复。
+    if (_loadFuture != null) return isEnabled;
     await initialize();
     return isEnabled;
   }
 
   static Future<LiquidGlassEffectMode> loadMode() async {
+    if (_loadFuture != null) return mode;
     await initialize();
     return mode;
+  }
+
+  /// 引导页是否已经向用户展示过液态玻璃选项（展示一次，不重复打扰）。
+  static Future<bool> isGuideOfferDone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyGuideOffered) ?? false;
+  }
+
+  static Future<void> markGuideOffered() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyGuideOffered, true);
   }
 
   static Future<void> _load() async {

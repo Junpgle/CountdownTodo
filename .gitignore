@@ -135,6 +135,7 @@ todo.md
 !/test/models/json_compatibility_test.dart
 !/test/widgets/
 /test/widgets/*
+!/test/widgets/feature_guide_liquid_glass_test.dart
 !/test/widgets/add_todo_screen_test.dart
 !/test/widgets/todo_recurrence_progress_test.dart
 !/test/widgets/todo_recurrence_occurrence_picker_test.dart

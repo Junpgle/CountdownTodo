@@ -22,11 +22,13 @@ import 'settings/pages/preference_settings_page.dart';
 import '../services/course_service.dart';
 import '../services/permission_request_coordinator.dart';
 import '../services/minor_mode_service.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../models/minor_mode_state.dart';
 import '../models.dart';
 import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/app_settings_widgets.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -212,7 +214,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   bool _semesterEnabled = false;
   DateTime? _semesterStart;
   DateTime? _semesterEnd;
-  String _themeMode = 'system';
+
+  /// 液态玻璃选项是否已向该用户展示过（展示一次后不再重复）。
+  bool _guideOffered = false;
+
+  /// 本次引导是否包含外观设置页（用于完成时写入已展示标记）。
+  bool _themeSetupPageIncluded = false;
 
   // 云端数据
   bool _checkingCloudData = false;
@@ -256,10 +263,16 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final tasks = <Future<void>>[
       _checkPermissions(),
       _loadGlobalSettings(),
+      _loadLiquidGlassState(),
       _loadMinorModeGuideState(),
     ];
     if (AppPlatform.isWindows) tasks.add(_loadTaiConfig());
     await Future.wait<void>(tasks);
+  }
+
+  Future<void> _loadLiquidGlassState() async {
+    final offered = await LiquidGlassEffectService.isGuideOfferDone();
+    if (mounted) setState(() => _guideOffered = offered);
   }
 
   Future<void> _setupPages() async {
@@ -295,6 +308,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       pages.addAll(platformGuidePages);
     }
 
+    // 记录本次引导是否包含外观设置页：用户正常完成引导时写入
+    // "已展示"标记，之后不再重复展示（用户可能不想要，不能反复打扰）。
+    _themeSetupPageIncluded =
+        shouldShowGuide && pages.contains(_buildGlobalThemeSetupPage);
+
     if (mounted) {
       setState(() {
         _pagesBuilder = pages;
@@ -314,7 +332,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           _buildGlobalThemeSetupPage,
         ];
       }
-      return _semesterEnabled ? [] : [_buildGlobalCourseSetupPage];
+      return [
+        if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+        // 未开启过液态玻璃的老用户，升级引导中也给出外观选择。
+        if (!_guideOffered) _buildGlobalThemeSetupPage,
+      ];
     }
     if (AppPlatform.isWindows) {
       if (!onlyUnconfigured) {
@@ -329,6 +351,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       return [
         if (_taiDbPath.isEmpty) _buildTaiSetupPage,
         if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+        if (!_guideOffered) _buildGlobalThemeSetupPage,
       ];
     }
     if (!onlyUnconfigured) {
@@ -350,6 +373,7 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
       if (!_ignoringBatteryOptimizations) _buildAndroidFeaturePage3,
       if (!_minorModeGuideConfigured) _buildMinorModeGuidePage,
       if (!_semesterEnabled) _buildGlobalCourseSetupPage,
+      if (!_guideOffered) _buildGlobalThemeSetupPage,
     ];
   }
 
@@ -362,13 +386,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     final start = await StorageService.getSemesterStart();
     final end = await StorageService.getSemesterEnd();
     final enabled = await StorageService.getSemesterEnabled();
-    final theme = await StorageService.getThemeMode();
     if (mounted) {
       setState(() {
         _semesterStart = start;
         _semesterEnd = end;
         _semesterEnabled = enabled;
-        _themeMode = theme;
       });
     }
     unawaited(_checkCloudData());
@@ -771,6 +793,10 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Future<void> _done() async {
     if (!_isManualReview) {
       await FeatureGuideScreen.markShown();
+      // 本次引导包含液态玻璃选项且用户走完了流程 → 记为已展示。
+      if (_themeSetupPageIncluded) {
+        await LiquidGlassEffectService.markGuideOffered();
+      }
     }
     if (!mounted) return;
 
@@ -956,10 +982,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           const SizedBox(height: 12),
         ],
         // 当前版本
-        Container(
+        OptionalLiquidGlassCard(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          borderRadius: 16,
+          highContrast: true,
+          tint: scheme.primary.withValues(alpha: 0.16),
+          fallbackDecoration: BoxDecoration(
             color: scheme.primaryContainer.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
@@ -1095,9 +1124,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
             }
           }),
           borderRadius: BorderRadius.circular(12),
-          child: Container(
+          child: OptionalLiquidGlassCard(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: BoxDecoration(
+            borderRadius: 12,
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12)),
             child: Row(children: [
@@ -1136,10 +1167,14 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           crossFadeState:
               isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           firstChild: const SizedBox.shrink(),
-          secondChild: Container(
+          secondChild: OptionalLiquidGlassCard(
             margin: const EdgeInsets.only(top: 2, bottom: 4),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: BoxDecoration(
+            borderRadiusGeometry: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12)),
+            highContrast: true,
+            fallbackDecoration: BoxDecoration(
               color: scheme.surfaceContainerHighest.withValues(alpha: 0.25),
               borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(12),
@@ -1207,9 +1242,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         }
       },
       borderRadius: BorderRadius.circular(14),
-      child: Container(
+      child: OptionalLiquidGlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
+        borderRadius: 14,
+        highContrast: true,
+        tint: feature.color.withValues(alpha: 0.16),
+        fallbackDecoration: BoxDecoration(
           color: feature.color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: feature.color.withValues(alpha: 0.2)),
@@ -1359,10 +1397,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     bool isLimited = false,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      highContrast: true,
+      tint: color.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: color.withValues(alpha: isLimited ? 0.07 : 0.09),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withValues(alpha: 0.22)),
@@ -1554,34 +1595,42 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                 subtitle: '选择出生日期，自动匹配适龄保护策略。出生日期仅保存在本机，不会上传。',
               ),
               const SizedBox(height: 24),
-              Card(
+              OptionalLiquidGlassCard(
                 margin: EdgeInsets.zero,
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                child: ListTile(
-                  leading: Icon(
-                    state.systemEnabled
-                        ? Icons.phonelink_lock_outlined
-                        : Icons.cake_outlined,
-                    color: scheme.primary,
-                  ),
-                  title: Text(
-                    state.systemEnabled ? '已跟随手机系统开启' : '设置出生日期',
-                  ),
-                  subtitle: Text(
-                    state.systemEnabled
-                        ? '系统年龄范围：${state.ageBand.label}；由系统管理，应用内无法绕过。'
-                        : '用于开启 App 未成年人模式并应用适龄策略',
-                  ),
-                  trailing: state.systemEnabled
-                      ? null
-                      : OutlinedButton(
-                          onPressed: _minorBirthDateSaving
-                              ? null
-                              : _pickMinorBirthDate,
-                          child: Text(
-                            _minorBirthDate == null ? '选择' : '修改',
+                borderRadius: 12,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: ListTile(
+                    leading: Icon(
+                      state.systemEnabled
+                          ? Icons.phonelink_lock_outlined
+                          : Icons.cake_outlined,
+                      color: scheme.primary,
+                    ),
+                    title: Text(
+                      state.systemEnabled ? '已跟随手机系统开启' : '设置出生日期',
+                    ),
+                    subtitle: Text(
+                      state.systemEnabled
+                          ? '系统年龄范围：${state.ageBand.label}；由系统管理，应用内无法绕过。'
+                          : '用于开启 App 未成年人模式并应用适龄策略',
+                    ),
+                    trailing: state.systemEnabled
+                        ? null
+                        : OutlinedButton(
+                            onPressed: _minorBirthDateSaving
+                                ? null
+                                : _pickMinorBirthDate,
+                            child: Text(
+                              _minorBirthDate == null ? '选择' : '修改',
+                            ),
                           ),
-                        ),
+                  ),
                 ),
               ),
               if (!state.systemEnabled) ...[
@@ -1611,10 +1660,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
+                OptionalLiquidGlassCard(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
+                  borderRadius: 12,
+                  highContrast: true,
+                  tint: scheme.primary.withValues(alpha: 0.16),
+                  fallbackDecoration: BoxDecoration(
                     color: scheme.primaryContainer.withValues(alpha: 0.45),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1691,10 +1743,13 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
         const SizedBox(height: 20),
 
         // 手动步骤说明卡片
-        Container(
+        OptionalLiquidGlassCard(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          borderRadius: 14,
+          highContrast: true,
+          tint: Colors.indigo.withValues(alpha: 0.16),
+          fallbackDecoration: BoxDecoration(
             color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.indigo.withValues(alpha: 0.25)),
@@ -1832,10 +1887,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           subtitle: '如果要启用 Windows 的时常追踪聚合（可选），请指定已安装的 Tai 软件数据文件路径 (data.db)。',
         ),
         const SizedBox(height: 32),
-        Container(
+        OptionalLiquidGlassCard(
           padding: const EdgeInsets.all(16),
           width: double.infinity,
-          decoration: BoxDecoration(
+          borderRadius: 12,
+          highContrast: true,
+          fallbackDecoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
             border:
@@ -1930,41 +1987,47 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
               : '全平台均支持智能课表解析。你可以在首页设置中导入本地课表，或直接从云端同步。\n设置开学与放假日期，以开启学期进度条。',
         ),
         const SizedBox(height: 24),
-        Card(
-          elevation: 1,
+        OptionalLiquidGlassCard(
           margin: EdgeInsets.zero,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Column(
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.linear_scale),
-                title: const Text('首页学期进度条', style: TextStyle(fontSize: 14)),
-                value: _semesterEnabled,
-                onChanged: (val) {
-                  setState(() => _semesterEnabled = val);
-                  StorageService.saveAppSetting(
-                      StorageService.keySemesterProgressEnabled, val);
-                },
-              ),
-              const Divider(height: 1, indent: 56),
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                title: const Text('开学日期', style: TextStyle(fontSize: 14)),
-                trailing: Text(_semesterStart == null
-                    ? "未设置"
-                    : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
-                onTap: () => _pickSemesterDate(true),
-              ),
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 56, right: 16),
-                title: const Text('放假日期', style: TextStyle(fontSize: 14)),
-                trailing: Text(_semesterEnd == null
-                    ? "未设置"
-                    : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
-                onTap: () => _pickSemesterDate(false),
-              ),
-            ],
+          borderRadius: 12,
+          highContrast: true,
+          fallbackDecoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.linear_scale),
+                  title: const Text('首页学期进度条', style: TextStyle(fontSize: 14)),
+                  value: _semesterEnabled,
+                  onChanged: (val) {
+                    setState(() => _semesterEnabled = val);
+                    StorageService.saveAppSetting(
+                        StorageService.keySemesterProgressEnabled, val);
+                  },
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                  title: const Text('开学日期', style: TextStyle(fontSize: 14)),
+                  trailing: Text(_semesterStart == null
+                      ? "未设置"
+                      : DateFormat('yyyy-MM-dd').format(_semesterStart!)),
+                  onTap: () => _pickSemesterDate(true),
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.only(left: 56, right: 16),
+                  title: const Text('放假日期', style: TextStyle(fontSize: 14)),
+                  trailing: Text(_semesterEnd == null
+                      ? "未设置"
+                      : DateFormat('yyyy-MM-dd').format(_semesterEnd!)),
+                  onTap: () => _pickSemesterDate(false),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -2077,9 +2140,6 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
   Widget _buildGlobalThemeSetupPage() {
     final isWeb = AppPlatform.isWeb;
     final scheme = Theme.of(context).colorScheme;
-    final themeValue = const {'system', 'light', 'dark'}.contains(_themeMode)
-        ? _themeMode
-        : 'system';
     return _buildPageContainer(
         content: Column(
       children: [
@@ -2089,37 +2149,11 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
           iconColor: Colors.deepPurple,
           title: '个性化：模块排序与主题',
           subtitle: isWeb
-              ? '你可以自由决定首页模块顺序，并在网页端选择跟随系统、浅色或深色主题。'
-              : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适。',
+              ? '你可以自由决定首页模块顺序，选择跟随系统、浅色或深色主题，还可以开启液态玻璃效果。'
+              : '你可以自由决定首页上哪个模块显示在最上面。进入设置找到 "模块管理" 即可自由拖拽模块进行排序。\n开启深色模式让你在夜晚操作更舒适，也可以打开下方的液态玻璃效果。',
         ),
         const SizedBox(height: 24),
-        Card(
-          elevation: 1,
-          margin: EdgeInsets.zero,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: ListTile(
-            leading: const Icon(Icons.dark_mode_outlined),
-            title: const Text('深色模式/主题', style: TextStyle(fontSize: 14)),
-            trailing: DropdownButton<String>(
-              value: themeValue,
-              underline: const SizedBox(),
-              items: [
-                const DropdownMenuItem(value: 'system', child: Text('跟随系统')),
-                const DropdownMenuItem(value: 'light', child: Text('浅色')),
-                const DropdownMenuItem(value: 'dark', child: Text('深色')),
-              ],
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _themeMode = val);
-                  StorageService.saveAppSetting(
-                      StorageService.keyThemeMode, val);
-                  StorageService.themeNotifier.value = val;
-                }
-              },
-            ),
-          ),
-        ),
+        const GuideAppearanceOptions(),
         if (isWeb) ...[
           const SizedBox(height: 12),
           Container(
@@ -2238,9 +2272,12 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     required VoidCallback onRequest,
     bool optional = false,
   }) {
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      highContrast: true,
+      tint: isGranted ? Colors.green.withValues(alpha: 0.16) : null,
+      fallbackDecoration: BoxDecoration(
         color: isGranted
             ? Colors.green.withValues(alpha: 0.1)
             : Theme.of(context)
@@ -2463,5 +2500,114 @@ class _AssetVideoPlayerState extends State<AssetVideoPlayer> {
         child: Center(child: CircularProgressIndicator()),
       );
     }
+  }
+}
+
+/// 引导页外观选项区：深色模式 + 液态玻璃开关。
+///
+/// 独立成组件便于复用与测试；选择立即持久化。
+class GuideAppearanceOptions extends StatefulWidget {
+  const GuideAppearanceOptions({super.key});
+
+  @override
+  State<GuideAppearanceOptions> createState() => _GuideAppearanceOptionsState();
+}
+
+class _GuideAppearanceOptionsState extends State<GuideAppearanceOptions> {
+  String _themeMode = 'system';
+  bool _liquidGlassEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final theme = await StorageService.getThemeMode();
+    final glass = await LiquidGlassEffectService.loadEnabled();
+    if (!mounted) return;
+    setState(() {
+      if (const {'system', 'light', 'dark'}.contains(theme)) {
+        _themeMode = theme;
+      }
+      _liquidGlassEnabled = glass;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        OptionalLiquidGlassCard(
+          margin: EdgeInsets.zero,
+          borderRadius: 12,
+          highContrast: true,
+          fallbackDecoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              leading: const Icon(Icons.dark_mode_outlined),
+              title: const Text('深色模式/主题', style: TextStyle(fontSize: 14)),
+              trailing: DropdownButton<String>(
+                value: _themeMode,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(value: 'system', child: Text('跟随系统')),
+                  DropdownMenuItem(value: 'light', child: Text('浅色')),
+                  DropdownMenuItem(value: 'dark', child: Text('深色')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _themeMode = val);
+                    StorageService.saveAppSetting(
+                        StorageService.keyThemeMode, val);
+                    StorageService.themeNotifier.value = val;
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        OptionalLiquidGlassCard(
+          key: const ValueKey('guide-liquid-glass-card'),
+          margin: EdgeInsets.zero,
+          borderRadius: 12,
+          highContrast: true,
+          tint: _liquidGlassEnabled
+              ? scheme.primary.withValues(alpha: 0.16)
+              : null,
+          fallbackDecoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              key: const ValueKey('guide-liquid-glass-switch'),
+              value: _liquidGlassEnabled,
+              secondary: const Icon(Icons.blur_on_rounded),
+              title: const Text('液态玻璃效果', style: TextStyle(fontSize: 14)),
+              subtitle: Text(
+                '全局磨砂质感与折射视觉，可在"动效设置"中调整模式',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurface.withValues(alpha: 0.65),
+                ),
+              ),
+              onChanged: (val) {
+                setState(() => _liquidGlassEnabled = val);
+                LiquidGlassEffectService.setEnabled(val);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
