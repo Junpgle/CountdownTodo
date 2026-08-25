@@ -200,6 +200,7 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
             Log.d(TAG, "🔗 Saved launch deep link before FlutterActivity init")
         }
 
+        requestHighestSupportedRefreshRate()
         super.onCreate(savedInstanceState)
         // 确保每日更新检查已注册。任务由 WorkManager 持久化，App 退出后仍可执行。
         AppUpdateScheduler.scheduleDailyCheck(applicationContext)
@@ -245,6 +246,41 @@ class MainActivity: FlutterActivity(), Shizuku.OnRequestPermissionResultListener
         }
 
         Log.d(TAG, "🚀 Broadcast receiver registered: ${todoActionReceiver::class.java.simpleName}, ${pomodoroActionReceiver::class.java.simpleName}")
+    }
+
+    /**
+     * Prefer the highest refresh-rate mode at the device's current resolution.
+     *
+     * Some Android vendors keep a Flutter SurfaceView at the 60 Hz mode that
+     * was active during engine startup even when the user selected 120 Hz.
+     * A window-level mode preference lets Flutter receive the real high-rate
+     * VSync stream. Android still applies the user's display, power-saving,
+     * and thermal policies, and unsupported devices remain unchanged.
+     */
+    private fun requestHighestSupportedRefreshRate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+
+        @Suppress("DEPRECATION")
+        val currentDisplay = windowManager.defaultDisplay ?: return
+        val currentMode = currentDisplay.mode
+        val preferredMode = currentDisplay.supportedModes
+            .asSequence()
+            .filter {
+                it.physicalWidth == currentMode.physicalWidth &&
+                    it.physicalHeight == currentMode.physicalHeight
+            }
+            .maxByOrNull { it.refreshRate }
+            ?: return
+
+        if (window.attributes.preferredDisplayModeId == preferredMode.modeId) return
+        window.attributes = window.attributes.apply {
+            preferredDisplayModeId = preferredMode.modeId
+        }
+        Log.i(
+            TAG,
+            "Requested high refresh mode ${preferredMode.modeId}: " +
+                "${preferredMode.refreshRate} Hz"
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
