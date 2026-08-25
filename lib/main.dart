@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 // video_player_win plugin
 // webview_win_floating plugin
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,6 +37,8 @@ import 'services/environment_service.dart';
 import 'services/app_deep_link_service.dart';
 import 'services/platform_bootstrap.dart';
 import 'services/minor_mode_service.dart';
+import 'services/liquid_glass_effect_service.dart';
+import 'theme/app_liquid_glass_theme.dart';
 import 'widgets/island_debug_host.dart';
 
 import 'utils/navigator_utils.dart';
@@ -126,6 +129,11 @@ Future<void> _initializePlatformBeforeHome(List<String> args) async {
       MinorModeService.instance.initialize(),
       timeout: const Duration(seconds: 2),
     ),
+    _runStartupTask(
+      'LiquidGlassEffectService.initialize',
+      LiquidGlassEffectService.initialize(),
+      timeout: const Duration(seconds: 2),
+    ),
   ]);
 }
 
@@ -189,7 +197,12 @@ Future<void> main(List<String> args) async {
 
   // 立刻运行 App。平台初始化在开屏可见期间并行完成，避免原生启动页
   // 因多个串行 timeout 最坏阻塞数秒。
-  runApp(MyApp(platformReady: platformReady));
+  runApp(
+    LiquidGlassWidgets.wrap(
+      child: MyApp(platformReady: platformReady),
+      brightnessResolver: Theme.maybeBrightnessOf,
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -791,135 +804,158 @@ class _MyAppState extends State<MyApp> {
                               brightness: Brightness.dark);
                         }
 
-                        return MacosMenuBar(
-                          child: MaterialApp(
-                            title: 'CountDownTodo',
-                            debugShowCheckedModeBanner: false,
-                            navigatorKey: appNavigatorKey,
-                            navigatorObservers: [
-                              AppPerformanceNavigatorObserver(),
-                            ],
-                            themeMode: currentThemeMode,
-                            scrollBehavior:
-                                const MaterialScrollBehavior().copyWith(
-                              dragDevices: {
-                                PointerDeviceKind.mouse,
-                                PointerDeviceKind.touch,
-                                PointerDeviceKind.trackpad,
-                                PointerDeviceKind.stylus,
-                              },
-                            ),
-                            theme: ThemeData(
-                              colorScheme: lightScheme,
-                              useMaterial3: true,
-                              fontFamily:
-                                  AppPlatform.isWeb ? _webFontFamily : null,
-                              fontFamilyFallback: AppPlatform.isWeb
-                                  ? _webFontFamilyFallback
-                                  : null,
-                              pageTransitionsTheme: PageTransitions.theme,
-                            ),
-                            darkTheme: ThemeData(
-                              colorScheme: darkScheme,
-                              useMaterial3: true,
-                              fontFamily:
-                                  AppPlatform.isWeb ? _webFontFamily : null,
-                              fontFamilyFallback: AppPlatform.isWeb
-                                  ? _webFontFamilyFallback
-                                  : null,
-                              pageTransitionsTheme: PageTransitions.theme,
-                            ),
-                            localizationsDelegates: const [
-                              GlobalMaterialLocalizations.delegate,
-                              GlobalWidgetsLocalizations.delegate,
-                              GlobalCupertinoLocalizations.delegate,
-                            ],
-                            supportedLocales: const [
-                              Locale('zh', 'CN'),
-                              Locale('en', 'US'),
-                            ],
-                            routes: {
-                              '/login': (context) => const LoginScreen(),
-                              '/home': (context) =>
-                                  HomeDashboard(username: _loggedInUser ?? ''),
-                              '/teams': (context) => TeamManagementScreen(
-                                  username: _loggedInUser ?? ''),
-                              '/dev/island': (context) =>
-                                  IslandDebugHost.route(),
-                            },
-                            onGenerateRoute: (settings) {
-                              final name = settings.name ?? '';
-                              if (name.startsWith('/share')) {
-                                final uri = Uri.parse('http://localhost$name');
-                                final code = uri.queryParameters['code'];
-                                if (code != null && code.isNotEmpty) {
-                                  _shareCode = code;
-                                  return MaterialPageRoute(
-                                    builder: (_) =>
-                                        ShareViewScreen(shareCode: code),
-                                  );
-                                }
-                              }
-                              return null;
-                            },
-                            builder: (context, child) {
-                              final content = child ?? const SizedBox.shrink();
-                              final appContent =
-                                  IslandDebugHost.shouldShowOverlay
-                                      ? Stack(
-                                          children: [
-                                            content,
-                                            IslandDebugHost.overlay(),
-                                          ],
-                                        )
-                                      : content;
+                        return ValueListenableBuilder<
+                            LiquidGlassEffectConfiguration>(
+                          valueListenable:
+                              LiquidGlassEffectService.configurationListenable,
+                          builder: (context, liquidGlassConfiguration, _) {
+                            final lightTheme = applyAppLiquidGlassTheme(
+                              ThemeData(
+                                colorScheme: lightScheme,
+                                useMaterial3: true,
+                                fontFamily:
+                                    AppPlatform.isWeb ? _webFontFamily : null,
+                                fontFamilyFallback: AppPlatform.isWeb
+                                    ? _webFontFamilyFallback
+                                    : null,
+                                pageTransitionsTheme: PageTransitions.theme,
+                              ),
+                              enabled: liquidGlassConfiguration.enabled,
+                              mode: liquidGlassConfiguration.mode,
+                            );
+                            final darkTheme = applyAppLiquidGlassTheme(
+                              ThemeData(
+                                colorScheme: darkScheme,
+                                useMaterial3: true,
+                                fontFamily:
+                                    AppPlatform.isWeb ? _webFontFamily : null,
+                                fontFamilyFallback: AppPlatform.isWeb
+                                    ? _webFontFamilyFallback
+                                    : null,
+                                pageTransitionsTheme: PageTransitions.theme,
+                              ),
+                              enabled: liquidGlassConfiguration.enabled,
+                              mode: liquidGlassConfiguration.mode,
+                            );
 
-                              return AppSystemUiRegion(
-                                backgroundBrightness:
-                                    Theme.of(context).brightness,
-                                child: appContent,
-                              );
-                            },
-                            home: _shareCode != null
-                                ? ShareViewScreen(shareCode: _shareCode!)
-                                : _showDefaultSplash
-                                    ? DefaultSplashScreen(
-                                        onComplete: _onDefaultSplashComplete)
-                                    : _showHolidaySplash
-                                        ? SplashScreen(
-                                            content: _splashContent!,
+                            return MacosMenuBar(
+                              child: MaterialApp(
+                                title: 'CountDownTodo',
+                                debugShowCheckedModeBanner: false,
+                                navigatorKey: appNavigatorKey,
+                                navigatorObservers: [
+                                  AppPerformanceNavigatorObserver(),
+                                ],
+                                themeMode: currentThemeMode,
+                                scrollBehavior:
+                                    const MaterialScrollBehavior().copyWith(
+                                  dragDevices: {
+                                    PointerDeviceKind.mouse,
+                                    PointerDeviceKind.touch,
+                                    PointerDeviceKind.trackpad,
+                                    PointerDeviceKind.stylus,
+                                  },
+                                ),
+                                theme: lightTheme,
+                                darkTheme: darkTheme,
+                                localizationsDelegates: const [
+                                  GlobalMaterialLocalizations.delegate,
+                                  GlobalWidgetsLocalizations.delegate,
+                                  GlobalCupertinoLocalizations.delegate,
+                                ],
+                                supportedLocales: const [
+                                  Locale('zh', 'CN'),
+                                  Locale('en', 'US'),
+                                ],
+                                routes: {
+                                  '/login': (context) => const LoginScreen(),
+                                  '/home': (context) => HomeDashboard(
+                                      username: _loggedInUser ?? ''),
+                                  '/teams': (context) => TeamManagementScreen(
+                                      username: _loggedInUser ?? ''),
+                                  '/dev/island': (context) =>
+                                      IslandDebugHost.route(),
+                                },
+                                onGenerateRoute: (settings) {
+                                  final name = settings.name ?? '';
+                                  if (name.startsWith('/share')) {
+                                    final uri =
+                                        Uri.parse('http://localhost$name');
+                                    final code = uri.queryParameters['code'];
+                                    if (code != null && code.isNotEmpty) {
+                                      _shareCode = code;
+                                      return MaterialPageRoute(
+                                        builder: (_) =>
+                                            ShareViewScreen(shareCode: code),
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                },
+                                builder: (context, child) {
+                                  final content =
+                                      child ?? const SizedBox.shrink();
+                                  final appContent =
+                                      IslandDebugHost.shouldShowOverlay
+                                          ? Stack(
+                                              children: [
+                                                content,
+                                                IslandDebugHost.overlay(),
+                                              ],
+                                            )
+                                          : content;
+
+                                  return AppSystemUiRegion(
+                                    backgroundBrightness:
+                                        Theme.of(context).brightness,
+                                    child: appContent,
+                                  );
+                                },
+                                home: _shareCode != null
+                                    ? ShareViewScreen(shareCode: _shareCode!)
+                                    : _showDefaultSplash
+                                        ? DefaultSplashScreen(
                                             onComplete:
-                                                _onHolidaySplashComplete,
-                                          )
-                                        : _isChecking
-                                            ? Scaffold(
-                                                backgroundColor:
-                                                    currentThemeMode ==
-                                                            ThemeMode.dark
-                                                        ? Colors.grey[900]
-                                                        : Theme.of(context)
-                                                            .colorScheme
-                                                            .primary,
-                                                body: const Center(
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          color: Colors.white),
-                                                ),
+                                                _onDefaultSplashComplete)
+                                        : _showHolidaySplash
+                                            ? SplashScreen(
+                                                content: _splashContent!,
+                                                onComplete:
+                                                    _onHolidaySplashComplete,
                                               )
-                                            : _showFeatureGuide
-                                                ? FeatureGuideScreen(
-                                                    loggedInUser: _loggedInUser)
-                                                : (_loggedInUser != null &&
-                                                        _loggedInUser!
-                                                            .isNotEmpty)
-                                                    ? HomeDashboard(
-                                                        key: ValueKey(
-                                                            _loggedInUser),
-                                                        username:
-                                                            _loggedInUser!,
-                                                      )
-                                                    : const LoginScreen(),
-                          ),
+                                            : _isChecking
+                                                ? Scaffold(
+                                                    backgroundColor:
+                                                        currentThemeMode ==
+                                                                ThemeMode.dark
+                                                            ? Colors.grey[900]
+                                                            : Theme.of(context)
+                                                                .colorScheme
+                                                                .primary,
+                                                    body: const Center(
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                              color:
+                                                                  Colors.white),
+                                                    ),
+                                                  )
+                                                : _showFeatureGuide
+                                                    ? FeatureGuideScreen(
+                                                        loggedInUser:
+                                                            _loggedInUser)
+                                                    : (_loggedInUser != null &&
+                                                            _loggedInUser!
+                                                                .isNotEmpty)
+                                                        ? HomeDashboard(
+                                                            key: ValueKey(
+                                                                _loggedInUser),
+                                                            username:
+                                                                _loggedInUser!,
+                                                          )
+                                                        : const LoginScreen(),
+                              ),
+                            );
+                          },
                         );
                       },
                     );
