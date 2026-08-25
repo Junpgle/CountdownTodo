@@ -9,6 +9,8 @@ import '../services/habit_adaptation_service.dart';
 import '../services/habit_sleep_coaching_service.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../utils/app_platform.dart';
+import '../../../services/liquid_glass_effect_service.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 import 'habit_format.dart';
 import 'habit_quick_checkin_sheet.dart';
 
@@ -38,6 +40,9 @@ class HabitCard extends StatefulWidget {
   /// 首页卡片使用更紧凑的间距；详情页默认保留完整尺寸。
   final bool compact;
 
+  /// 首页壁纸场景使用统一的暗色玻璃与浅色前景。
+  final bool isLight;
+
   final String username;
 
   /// 睡眠作息渐进训练当前阶段的目标；为空时使用规则最终目标。
@@ -54,6 +59,7 @@ class HabitCard extends StatefulWidget {
     this.onTap,
     this.animationKey,
     this.compact = false,
+    this.isLight = false,
     this.username = '',
     this.sleepCoachingMetric,
   });
@@ -72,7 +78,9 @@ class _HabitCardState extends State<HabitCard> {
   Widget build(BuildContext context) {
     final progress = widget.dayProgress.progress;
     final status = widget.dayProgress.status;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark =
+        widget.isLight || Theme.of(context).brightness == Brightness.dark;
+    final statusColor = _statusColor(status);
 
     return GestureDetector(
       onTapDown: (_) {
@@ -91,10 +99,14 @@ class _HabitCardState extends State<HabitCard> {
         scale: _isPressed ? 0.96 : 1.0,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        child: Container(
+        child: OptionalLiquidGlassCard(
           key: widget.animationKey,
           margin: EdgeInsets.symmetric(vertical: widget.compact ? 2 : 6),
-          decoration: BoxDecoration(
+          borderRadius: widget.compact ? 18 : 24,
+          tint: (widget.isLight ? _colors.scrim : statusColor)
+              .withValues(alpha: 0.16),
+          isDark: isDark,
+          fallbackDecoration: BoxDecoration(
             color: _colors.surfaceContainerLow,
             borderRadius: BorderRadius.circular(widget.compact ? 18 : 24),
             border: Border.all(
@@ -141,8 +153,12 @@ class _HabitCardState extends State<HabitCard> {
 
   // ── 头部：图标 + 名称 + 状态 ────────────────────────
   Widget _buildHeader(HabitProgress progress, HabitDayStatus status) {
-    final textColor = _colors.onSurface;
-    final subColor = _colors.onSurfaceVariant;
+    final useWallpaperGlass =
+        widget.isLight && LiquidGlassEffectService.configuration.enabled;
+    final textColor = useWallpaperGlass ? _colors.onPrimary : _colors.onSurface;
+    final subColor = useWallpaperGlass
+        ? _colors.onPrimary.withValues(alpha: 0.7)
+        : _colors.onSurfaceVariant;
     final statusColor = _statusColor(status);
 
     return Row(
@@ -298,7 +314,10 @@ class _HabitCardState extends State<HabitCard> {
       child: LinearProgressIndicator(
         value: ratio,
         minHeight: 4,
-        backgroundColor: _colors.surfaceContainerHighest,
+        backgroundColor:
+            widget.isLight && LiquidGlassEffectService.configuration.enabled
+                ? _colors.onPrimary.withValues(alpha: 0.18)
+                : _colors.surfaceContainerHighest,
         valueColor: AlwaysStoppedAnimation(barColor),
       ),
     );

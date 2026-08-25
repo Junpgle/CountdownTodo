@@ -8,6 +8,7 @@ import '../services/pomodoro_service.dart';
 import '../screens/todo_plan_screen.dart';
 import '../screens/plan_block_stats_screen.dart';
 import '../utils/page_transitions.dart';
+import 'optional_liquid_glass_surface.dart';
 
 class PlanBlockTodaySection extends StatefulWidget {
   final String username;
@@ -203,8 +204,10 @@ class _PlanBlockTodaySectionState extends State<PlanBlockTodaySection> {
                   builder: (_) => TodoPlanScreen(username: widget.username),
                 ),
               ),
-      child: Container(
-        decoration: BoxDecoration(
+      child: OptionalLiquidGlassCard(
+        borderRadius: 20,
+        tint: colorScheme.primary.withValues(alpha: 0.18),
+        fallbackDecoration: BoxDecoration(
           gradient: LinearGradient(
             colors: widget.isLight
                 ? [

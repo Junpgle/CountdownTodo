@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/sidebar_menu_service.dart';
 import '../update_service.dart';
+import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
 DateTime? _parseRegistrationDate(dynamic raw) {
@@ -284,11 +285,20 @@ class _HomeDrawerMenuState extends State<HomeDrawerMenu> {
           ),
           // Backdrop Filter for Frosted Glass effect
           Positioned.fill(
-            child: PlatformBackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-              child: Container(
-                color: Colors.transparent,
+            child: OptionalLiquidGlassPanel(
+              borderRadius: 0,
+              isDark: isDark,
+              tint: Color.alphaBlend(
+                colorScheme.primary.withValues(alpha: 0.06),
+                colorScheme.surface,
+              ).withValues(alpha: isDark ? 0.3 : 0.38),
+              fallback: PlatformBackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                child: Container(
+                  color: Colors.transparent,
+                ),
               ),
+              child: const SizedBox.expand(),
             ),
           ),
 

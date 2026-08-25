@@ -4,6 +4,7 @@ import '../../../screens/pomodoro_screen.dart';
 import '../../../services/pomodoro_control_service.dart';
 import '../../../services/pomodoro_service.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/habit_goal.dart';
 import '../models/habit_progress.dart';
 import '../screens/habit_detail_screen.dart';
@@ -302,20 +303,24 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
   }
 
   Widget _buildEmpty(Color subColor) {
-    return Container(
+    final colorScheme = Theme.of(context).colorScheme;
+    final useDarkGlass =
+        widget.isLight || colorScheme.brightness == Brightness.dark;
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: EdgeInsets.symmetric(
         vertical: widget.compact ? 14 : 20,
         horizontal: 16,
       ),
-      decoration: BoxDecoration(
+      borderRadius: 24,
+      tint: (widget.isLight ? colorScheme.scrim : colorScheme.tertiary)
+          .withValues(alpha: 0.16),
+      isDark: useDarkGlass,
+      fallbackDecoration: BoxDecoration(
         color: widget.isLight
             ? Colors.white.withValues(alpha: 0.15)
-            : Theme.of(context)
-                .colorScheme
-                .surfaceContainerLow
-                .withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(16),
+            : colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: widget.isLight
               ? Colors.white.withValues(alpha: 0.2)
@@ -358,6 +363,7 @@ class _HabitTodaySectionState extends State<HabitTodaySection> {
         dayProgress: dayProgress,
         sleepCoachingMetric: _snapshot!.sleepCoachingMetricFor(goal),
         username: widget.username,
+        isLight: widget.isLight,
         onChanged: _loadData,
         onStartFocus: widget.onStartFocus ?? _startFocus,
         onViewRecords: widget.onViewRecords ?? () => _viewRecords(goal),

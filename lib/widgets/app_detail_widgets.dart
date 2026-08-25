@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'optional_liquid_glass_surface.dart';
+
 class AppDetailHeader extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -30,7 +32,63 @@ class AppDetailHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = color ?? colorScheme.primary;
-    return Container(
+    final content = Column(
+      children: [
+        Icon(icon, size: iconSize, color: accent),
+        const SizedBox(height: 16),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: titleSize,
+            fontWeight: FontWeight.bold,
+            decoration: titleDecoration,
+            color: titleColor ?? colorScheme.onSurface,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            subtitle!,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 14,
+            ),
+          ),
+        ],
+        if (progress != null) ...[
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: progress!.clamp(0.0, 1.0),
+                    minHeight: 8,
+                    backgroundColor: accent.withValues(alpha: 0.1),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      progressColor ?? accent,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '${(progress!.clamp(0.0, 1.0) * 100).toInt()}%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: progressColor ?? accent,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+    final fallback = Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -44,62 +102,15 @@ class AppDetailHeader extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Icon(icon, size: iconSize, color: accent),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: titleSize,
-              fontWeight: FontWeight.bold,
-              decoration: titleDecoration,
-              color: titleColor ?? colorScheme.onSurface,
-            ),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              subtitle!,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 14,
-              ),
-            ),
-          ],
-          if (progress != null) ...[
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: progress!.clamp(0.0, 1.0),
-                      minHeight: 8,
-                      backgroundColor: accent.withValues(alpha: 0.1),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progressColor ?? accent,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${(progress!.clamp(0.0, 1.0) * 100).toInt()}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: progressColor ?? accent,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
+      child: content,
+    );
+
+    return OptionalLiquidGlassPanel(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      borderRadius: 24,
+      fallback: fallback,
+      child: content,
     );
   }
 }
@@ -121,7 +132,23 @@ class AppDetailSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: colorScheme.onSurfaceVariant,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+    final fallback = Container(
       margin: margin,
       width: double.infinity,
       padding: padding,
@@ -129,22 +156,17 @@ class AppDetailSection extends StatelessWidget {
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurfaceVariant,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
+      child: content,
+    );
+
+    return OptionalLiquidGlassPanel(
+      width: double.infinity,
+      margin: margin,
+      padding: padding,
+      borderRadius: 20,
+      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      fallback: fallback,
+      child: content,
     );
   }
 }

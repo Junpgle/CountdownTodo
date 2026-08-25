@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/timeline_service.dart';
 import '../screens/personal_timeline_screen.dart';
 import '../utils/page_transitions.dart';
+import 'optional_liquid_glass_surface.dart';
 import 'platform_backdrop_filter.dart';
 
 class PersonalTimelineSection extends StatefulWidget {
@@ -125,9 +126,17 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
             borderRadius: BorderRadius.circular(24),
             child: PlatformBackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
+              bypassWhenLiquidGlassEnabled: true,
+              child: OptionalLiquidGlassCard(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
+                borderRadius: 24,
+                tint: (widget.isLight
+                        ? Theme.of(context).colorScheme.scrim
+                        : Theme.of(context).colorScheme.primary)
+                    .withValues(alpha: 0.16),
+                isDark: widget.isLight ||
+                    Theme.of(context).brightness == Brightness.dark,
+                fallbackDecoration: BoxDecoration(
                   color: widget.isLight
                       ? Colors.white.withValues(alpha: 0.15)
                       : Theme.of(context).colorScheme.surface,
@@ -143,9 +152,7 @@ class _PersonalTimelineSectionState extends State<PersonalTimelineSection> {
                   border: Border.all(
                     color: widget.isLight
                         ? Colors.white.withValues(alpha: 0.2)
-                        : Theme.of(context)
-                            .dividerColor
-                            .withValues(alpha: 0.05),
+                        : Theme.of(context).dividerColor.withValues(alpha: 0.5),
                   ),
                 ),
                 child: AnimatedSwitcher(

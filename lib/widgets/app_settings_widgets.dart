@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../utils/theme_color_tokens.dart';
+import 'optional_liquid_glass_surface.dart';
 
 class AppSettingsSection extends StatelessWidget {
   final String title;
@@ -90,10 +91,22 @@ class AppSettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final fallback = Card(
       elevation: elevation,
       shape: RoundedRectangleBorder(borderRadius: borderRadius),
       child: child,
+    );
+    final resolvedRadius = borderRadius.resolve(Directionality.of(context));
+
+    return OptionalLiquidGlassPanel(
+      width: double.infinity,
+      borderRadius: resolvedRadius.topLeft.x,
+      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      fallback: fallback,
+      child: Material(
+        type: MaterialType.transparency,
+        child: child,
+      ),
     );
   }
 }

@@ -36,6 +36,7 @@ import '../services/reminder_schedule_service.dart';
 import '../widgets/coach_mark_overlay.dart';
 import 'version_history_sheet.dart';
 import 'ai_water_border.dart';
+import 'optional_liquid_glass_surface.dart';
 import '../screens/todo_plan_screen.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/repositories/habit_repository.dart';
