@@ -22,6 +22,7 @@ import '../services/storage/habit_storage.dart';
 import '../features/habits/models/habit_goal.dart';
 import '../features/habits/models/habit_goal_rule.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 String? normalizeInviteCode(String? code) {
   final value = code?.trim();
@@ -1060,9 +1061,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                   child: InkWell(
                     onTap: () => setState(() => _selectedTeam = team),
                     borderRadius: BorderRadius.circular(20),
-                    child: Container(
+                    child: OptionalLiquidGlassCard(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
+                      borderRadius: 20,
+                      highContrast: true,
+                      fallbackDecoration: BoxDecoration(
                         color: isSelected
                             ? Theme.of(context)
                                 .colorScheme
@@ -1237,10 +1240,14 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             ],
           ),
         ),
-        ..._myInvitations.map((inv) => Container(
+        ..._myInvitations.map((inv) => OptionalLiquidGlassCard(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              borderRadius: 20,
+              highContrast: true,
+              tint:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+              fallbackDecoration: BoxDecoration(
                 color: isDark
                     ? Theme.of(context)
                         .colorScheme
@@ -1354,9 +1361,13 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            Container(
+            OptionalLiquidGlassCard(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+              borderRadius: 24,
+              highContrast: true,
+              tint:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+              fallbackDecoration: BoxDecoration(
                 color: isDark ? color.withValues(alpha: 0.08) : Colors.white,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
@@ -1438,9 +1449,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     final pendingCount = _teamPendingCounts[team.uuid] ?? 0;
     final conflictCount = _teamConflictCounts[team.uuid] ?? 0;
 
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
+      borderRadius: 28,
+      highContrast: true,
+      tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
@@ -1752,10 +1766,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     showAppModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => OptionalLiquidGlassSheet(
+        topRadius: 32,
         padding:
             const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
-        decoration: BoxDecoration(
+        fallbackDecoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         ),
@@ -1899,10 +1914,12 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         initialChildSize: 0.7,
         maxChildSize: 0.95,
         minChildSize: 0.5,
-        builder: (context, scrollController) => Container(
-          decoration: BoxDecoration(
+        builder: (context, scrollController) => OptionalLiquidGlassSheet(
+          topRadius: 32,
+          fallbackDecoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: _TeamMembersView(
               team: team,
@@ -1995,10 +2012,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
         showAppModalBottomSheet(
           context: context,
           backgroundColor: Colors.transparent,
-          builder: (context) => Container(
+          builder: (context) => OptionalLiquidGlassSheet(
+            topRadius: 32,
             padding:
                 const EdgeInsets.only(top: 12, bottom: 32, left: 24, right: 24),
-            decoration: BoxDecoration(
+            fallbackDecoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(32)),
@@ -2017,41 +2035,47 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 24),
-                ListTile(
-                  leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .secondary
-                              .withValues(alpha: 0.1),
-                          shape: BoxShape.circle),
-                      child: Icon(Icons.add_rounded,
-                          color: Theme.of(context).colorScheme.secondary)),
-                  title: const Text('创建新团队',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('开启一个全新的协作项目'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showCreateTeamDialog();
-                  },
+                Material(
+                  type: MaterialType.transparency,
+                  child: ListTile(
+                    leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .secondary
+                                .withValues(alpha: 0.1),
+                            shape: BoxShape.circle),
+                        child: Icon(Icons.add_rounded,
+                            color: Theme.of(context).colorScheme.secondary)),
+                    title: const Text('创建新团队',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('开启一个全新的协作项目'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showCreateTeamDialog();
+                    },
+                  ),
                 ),
                 const Divider(),
-                ListTile(
-                  leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                          color: Colors.orangeAccent.withValues(alpha: 0.1),
-                          shape: BoxShape.circle),
-                      child: const Icon(Icons.link_rounded,
-                          color: Colors.orangeAccent)),
-                  title: const Text('加入已有团队',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('通过邀请码加入其他协作小组'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showJoinTeamDialog();
-                  },
+                Material(
+                  type: MaterialType.transparency,
+                  child: ListTile(
+                    leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                            color: Colors.orangeAccent.withValues(alpha: 0.1),
+                            shape: BoxShape.circle),
+                        child: const Icon(Icons.link_rounded,
+                            color: Colors.orangeAccent)),
+                    title: const Text('加入已有团队',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('通过邀请码加入其他协作小组'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showJoinTeamDialog();
+                    },
+                  ),
                 ),
               ],
             ),
@@ -2317,13 +2341,17 @@ class _TeamAnnouncementViewState extends State<_TeamAnnouncementView> {
       itemCount: _announcements.length,
       itemBuilder: (context, index) {
         final ann = _announcements[index];
-        return Card(
+        return OptionalLiquidGlassCard(
           margin: const EdgeInsets.only(bottom: 16),
-          elevation: 0,
-          color: Theme.of(context).cardColor.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+          borderRadius: 16,
+          highContrast: true,
+          tint: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
+          fallbackDecoration: BoxDecoration(
+            color: Theme.of(context).cardColor.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.fromBorderSide(
+                BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -2665,32 +2693,38 @@ class __TeamMembersViewState extends State<_TeamMembersView> {
     final bool isAdmin = m['role'] == 0;
     final bool isMe = m['is_me'] == true || m['id'] == ApiService.currentUserId;
 
-    return ListTile(
-      leading: CircleAvatar(
-          backgroundColor: isAdmin
-              ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.1)
-              : Colors.grey.withValues(alpha: 0.1),
-          child: Text(m['username']?[0]?.toUpperCase() ?? '?',
-              style: TextStyle(
-                  color: isAdmin
-                      ? Theme.of(context).colorScheme.secondary
-                      : Colors.grey))),
-      title: Text('${m['username']}${isMe ? ' (我)' : ''}',
-          style: TextStyle(
-              fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
-      subtitle: Text(isAdmin ? '管理员' : '成员',
-          style: TextStyle(
-              fontSize: 12,
-              color: isAdmin
-                  ? Theme.of(context).colorScheme.secondary
-                  : Colors.grey)),
-      trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
-          ? IconButton(
-              icon: const Icon(Icons.person_remove_rounded,
-                  color: Colors.redAccent, size: 20),
-              onPressed: () => _confirmRemoveMember(m),
-            )
-          : null,
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        leading: CircleAvatar(
+            backgroundColor: isAdmin
+                ? Theme.of(context)
+                    .colorScheme
+                    .secondary
+                    .withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.1),
+            child: Text(m['username']?[0]?.toUpperCase() ?? '?',
+                style: TextStyle(
+                    color: isAdmin
+                        ? Theme.of(context).colorScheme.secondary
+                        : Colors.grey))),
+        title: Text('${m['username']}${isMe ? ' (我)' : ''}',
+            style: TextStyle(
+                fontWeight: isMe ? FontWeight.bold : FontWeight.normal)),
+        subtitle: Text(isAdmin ? '管理员' : '成员',
+            style: TextStyle(
+                fontSize: 12,
+                color: isAdmin
+                    ? Theme.of(context).colorScheme.secondary
+                    : Colors.grey)),
+        trailing: (widget.team.userRole == TeamRole.admin && !isAdmin)
+            ? IconButton(
+                icon: const Icon(Icons.person_remove_rounded,
+                    color: Colors.redAccent, size: 20),
+                onPressed: () => _confirmRemoveMember(m),
+              )
+            : null,
+      ),
     );
   }
 
