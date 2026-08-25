@@ -371,6 +371,11 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   late bool _useScreenRadius;
   late bool _useMotionBlur;
 
+  /// 懒加载揭示闩锁：转场期间显示占位遮罩，入场动画完成（页面已完成构建
+  /// 与首帧挂载）后揭示真实内容。一旦揭示不再回退——预测返回手势会让
+  /// 动画短暂回到 forward 状态，不能因此重新遮住页面。
+  bool _revealed = false;
+
   // Frame-skip cache.
   double _lastRoute = -1;
   double _lastBg = -1;
@@ -382,8 +387,15 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     _initAnimations();
     _cacheSettings();
     _cacheMediaQuery();
+    // 懒加载开启时，入场转场先用占位遮罩；动画已完成（例如从后台恢复的
+    // 页面）则直接揭示。
+    _revealed =
+        !_AnimSettings.lazyLoad || _isEntranceAlreadyComplete;
     WidgetsBinding.instance.addObserver(this);
   }
+
+  bool get _isEntranceAlreadyComplete =>
+      widget.animation.status == AnimationStatus.completed;
 
   void _cacheSettings() {
     _bgScale = _AnimSettings.backgroundScale;
@@ -460,6 +472,28 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
 
   @override
   Widget build(BuildContext context) {
+    // 懒加载：入场转场未完成前，先渲染占位遮罩层（类似原生启动页），
+    // 页面内容在遮罩下完成构建与首帧挂载，动画结束后整体揭示。
+    // ignore: avoid_print
+    print(
+        'GATE[${widget.mode}] revealed=$_revealed lazy=${_AnimSettings.lazyLoad} status=${widget.animation.status} val=${widget.animation.value}');
+    if (!_revealed) {
+      return AnimatedBuilder(
+        animation: widget.animation,
+        builder: (context, _) {
+          if (_isEntranceAlreadyComplete) {
+            _revealed = true;
+          }
+          return _revealed
+              ? _buildRevealedBody()
+              : _buildLazyPlaceholder(context);
+        },
+      );
+    }
+    return _buildRevealedBody();
+  }
+
+  Widget _buildRevealedBody() {
     // Wrap child ONCE outside builder — Flutter caches this as the
     // AnimatedBuilder.child parameter across frames.
     final wrappedChild = RepaintBoundary(child: widget.child);
@@ -619,6 +653,34 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       child: child,
     );
   }
+
+  /// 占位遮罩层：类似原生启动页，转场期间先绘制一层主题化底色与图标，
+  /// 避免在动画最重的阶段同步构建整个目标页面。
+  Widget _buildLazyPlaceholder(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      key: const ValueKey('page-lazy-placeholder'),
+      color: scheme.surface,
+      child: Center(
+        child: SizedBox(
+          width: 64,
+          height: 64,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.16)),
+            ),
+            child: Icon(
+              Icons.blur_on_rounded,
+              size: 30,
+              color: scheme.primary.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class ContainerTransformRoute<T> extends PageRouteBuilder<T> {
@@ -721,17 +783,24 @@ class _ContainerTransformWidgetState extends State<_ContainerTransformWidget> {
       reverseCurve: _pageLayerCurve,
     );
     if (_AnimSettings.lazyLoad) {
-      Future.delayed(
-          Duration(milliseconds: (_AnimSettings.duration * 0.12).round()), () {
-        if (mounted) setState(() => _contentVisible = true);
-      });
+      // 懒加载：容器变换动画期间只显示来源色遮罩盒（类似启动遮罩），
+      // 入场动画完成后一次性揭示页面内容。
+      _contentVisible = false;
+      widget.animation.addStatusListener(_revealOnEntranceCompleted);
     } else {
       _contentVisible = true;
     }
   }
 
+  void _revealOnEntranceCompleted(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    widget.animation.removeStatusListener(_revealOnEntranceCompleted);
+    if (mounted) setState(() => _contentVisible = true);
+  }
+
   @override
   void dispose() {
+    widget.animation.removeStatusListener(_revealOnEntranceCompleted);
     _forwardCurve.dispose();
     _backgroundCurve.dispose();
     super.dispose();
@@ -891,28 +960,14 @@ class _SlideWidget extends StatefulWidget {
 }
 
 class _SlideWidgetState extends State<_SlideWidget> {
-  bool _visible = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (_AnimSettings.lazyLoad) {
-      Future.delayed(
-          Duration(milliseconds: (_AnimSettings.duration * 0.2).round()), () {
-        if (mounted) setState(() => _visible = true);
-      });
-    } else {
-      _visible = true;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    // 懒加载的占位与揭示由 _PageLayerTransition 统一处理。
     return _PageLayerTransition(
       animation: widget.animation,
       secondaryAnimation: widget.secondaryAnimation,
       mode: widget.mode,
-      child: _visible ? widget.child : const SizedBox.shrink(),
+      child: widget.child,
     );
   }
 }
