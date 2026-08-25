@@ -260,9 +260,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             resolvedTint.withValues(alpha: dark ? 0.2 : 0.14),
             neutralBase,
           ).withValues(
-            alpha: highContrast
-                ? (dark ? 0.5 : 0.6)
-                : (dark ? 0.32 : 0.44),
+            alpha: highContrast ? (dark ? 0.5 : 0.6) : (dark ? 0.32 : 0.44),
           );
           final highlightBase = dark
               ? colorScheme.surfaceBright
@@ -271,9 +269,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             highlightBase.withValues(alpha: dark ? 0.12 : 0.18),
             baseColor.withValues(alpha: 1),
           ).withValues(
-            alpha: highContrast
-                ? (dark ? 0.56 : 0.68)
-                : (dark ? 0.38 : 0.5),
+            alpha: highContrast ? (dark ? 0.56 : 0.68) : (dark ? 0.38 : 0.5),
           );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
@@ -533,6 +529,46 @@ class _FrostedGlassSurface extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Rounded-top content shell for self-drawn bottom sheets.
+///
+/// Sheets that draw their own container inside a transparent
+/// [showModalBottomSheet] bypass the themed bottom-sheet surface entirely;
+/// this shell gives them the same adaptive liquid-glass treatment as cards
+/// while the fallback keeps the caller's original decoration when the effect
+/// is disabled.
+class OptionalLiquidGlassSheet extends StatelessWidget {
+  const OptionalLiquidGlassSheet({
+    super.key,
+    required this.child,
+    required this.fallbackDecoration,
+    this.topRadius = 24,
+    this.padding,
+  });
+
+  final Widget child;
+  final Decoration fallbackDecoration;
+  final double topRadius;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return OptionalLiquidGlassPanel(
+      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      highContrast: true,
+      clipBehavior: Clip.antiAlias,
+      borderRadiusGeometry:
+          BorderRadius.vertical(top: Radius.circular(topRadius)),
+      padding: padding,
+      fallback: Container(
+        padding: padding,
+        decoration: fallbackDecoration,
+        child: child,
+      ),
+      child: child,
     );
   }
 }
