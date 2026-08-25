@@ -1,11 +1,13 @@
 import 'package:countdown_todo/services/liquid_glass_effect_service.dart';
-import 'package:countdown_todo/screens/animation_settings_page.dart';
 import 'package:countdown_todo/models.dart';
+import 'package:countdown_todo/screens/animation_settings_page.dart';
 import 'package:countdown_todo/theme/app_liquid_glass_theme.dart';
 import 'package:countdown_todo/widgets/app_settings_widgets.dart';
 import 'package:countdown_todo/widgets/course_section_widget.dart';
 import 'package:countdown_todo/widgets/home_sections.dart';
 import 'package:countdown_todo/widgets/optional_liquid_glass_surface.dart';
+import 'package:countdown_todo/widgets/todo_group_widget.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -92,6 +94,169 @@ void main() {
     );
     expect(find.byType(GlassContainer), findsNothing);
     expect(find.text('Shared settings content'), findsOneWidget);
+  });
+
+  testWidgets('scroll optimizer keeps descendants mounted during a gesture',
+      (tester) async {
+    const glassChild = Key('glass-scroll-child');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OptionalLiquidGlassScrollOptimizer(
+            child: ListView(
+              children: const [
+                SizedBox(height: 300),
+                Text('Glass stays live', key: glassChild),
+                SizedBox(height: 900),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(BackdropGroup), findsOneWidget);
+    expect(find.byKey(glassChild), findsOneWidget);
+
+    final gesture = await tester.startGesture(const Offset(200, 500));
+    await gesture.moveBy(const Offset(0, -180));
+    await tester.pump();
+
+    expect(find.byKey(glassChild), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+  testWidgets('enhanced cards keep their live grouped glass while scrolling',
+      (tester) async {
+    // Premium warm-up loads real shader assets that the test asset bundle
+    // does not ship; silence those environment-only reports.
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {};
+    try {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+    } finally {
+      FlutterError.onError = previousErrorHandler;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OptionalLiquidGlassScrollOptimizer(
+            child: ListView(
+              children: [
+                OptionalLiquidGlassCard(
+                  height: 300,
+                  fallbackDecoration: const BoxDecoration(),
+                  child: const Text('Live glass card'),
+                ),
+                const SizedBox(height: 900),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    const groupedKey = ValueKey<String>('optional-liquid-glass-grouped-panel');
+    const staticKey = ValueKey<String>('optional-liquid-glass-static-panel');
+
+    expect(find.byKey(groupedKey), findsOneWidget);
+
+    final gesture = await tester.startGesture(const Offset(200, 400));
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump();
+
+    // Mid-gesture the card must still render real glass — the grouped live
+    // blur is never swapped for a flat material while scrolling.
+    expect(find.byKey(groupedKey), findsOneWidget);
+    expect(find.byKey(staticKey), findsNothing);
+    expect(find.text('Live glass card'), findsOneWidget);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.byKey(groupedKey), findsOneWidget);
+    expect(find.byKey(staticKey), findsNothing);
+  });
+
+  testWidgets('enhanced bottom bar renders one consistent frosted glass',
+      (tester) async {
+    // Premium warm-up loads real shader assets that the test asset bundle
+    // does not ship; silence those environment-only reports.
+    final previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {};
+    try {
+      await LiquidGlassEffectService.setEnabled(true);
+      await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+    } finally {
+      FlutterError.onError = previousErrorHandler;
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OptionalLiquidGlassSurface(
+            height: 72,
+            margin: EdgeInsets.zero,
+            borderRadius: 34,
+            tint: Colors.blue.withValues(alpha: 0.1),
+            isDark: false,
+            fallback: const SizedBox(key: Key('fallback')),
+            child: const Text('Bottom bar'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    // Enhanced mode pins the bar to a single live frosted-glass treatment:
+    // one real backdrop blur, no premium container, no tier swapping.
+    expect(find.byType(GlassContainer), findsNothing);
+    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byType(ClipRSuperellipse), findsOneWidget);
+    expect(find.text('Bottom bar'), findsOneWidget);
+
+    // The specular white rim wraps the whole surface.
+    final decorated = tester.widget<DecoratedBox>(
+      find.descendant(
+        of: find.byType(BackdropFilter),
+        matching: find.byType(DecoratedBox),
+      ),
+    );
+    final decoration = decorated.decoration as BoxDecoration;
+    final border = decoration.border! as Border;
+    expect(border.top.width, 1);
+    expect(border.top.color, Colors.white.withValues(alpha: 0.62));
+  });
+
+  testWidgets('standard bottom bar keeps the lightweight shader container',
+      (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: OptionalLiquidGlassSurface(
+            height: 72,
+            margin: EdgeInsets.zero,
+            borderRadius: 34,
+            tint: Colors.blue.withValues(alpha: 0.1),
+            isDark: false,
+            fallback: const SizedBox(key: Key('fallback')),
+            child: const Text('Bottom bar'),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final container =
+        tester.widget<GlassContainer>(find.byType(GlassContainer));
+    expect(container.quality, GlassQuality.standard);
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('Bottom bar'), findsOneWidget);
   });
 
   testWidgets(
@@ -184,6 +349,130 @@ void main() {
     final mathTitle = tester.widget<Text>(find.text('今日还未完成测验'));
     expect(screenTimeTitle.style?.color, colorScheme.onPrimary);
     expect(mathTitle.style?.color, colorScheme.onPrimary);
+  });
+
+  testWidgets('folder header taps keep toggling expand and collapse',
+      (tester) async {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+
+    Future<void> verifyToggling(LiquidGlassEffectMode mode) async {
+      // Premium warm-up loads real shader assets that the test asset bundle
+      // does not ship; silence those environment-only reports.
+      final previousErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {};
+      try {
+        await LiquidGlassEffectService.setEnabled(true);
+        await LiquidGlassEffectService.setMode(mode);
+      } finally {
+        FlutterError.onError = previousErrorHandler;
+      }
+
+      var toggles = 0;
+      final group = TodoGroup(id: 'folder-toggle-${mode.name}', name: '工作');
+      Widget buildFolder() => MaterialApp(
+            home: Scaffold(
+              body: TodoGroupWidget(
+                group: group,
+                groupTodos: const [],
+                isLight: false,
+                teamRoles: const {},
+                onToggle: () => toggles++,
+                onTodoToggle: (_) {},
+                onTodoDropped: (_) {},
+                onDelete: () {},
+                onTodoTap: (_) {},
+                onTodoDelete: (_) {},
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(buildFolder());
+      await tester.pump(const Duration(milliseconds: 16));
+
+      // Collapse -> expand.
+      await tester.tap(find.text('工作'));
+      await tester.pump();
+      expect(toggles, 1, reason: '${mode.name}: expand tap lost');
+
+      // Expand -> collapse (the regression the user reported).
+      group.isExpanded = true;
+      await tester.pumpWidget(buildFolder());
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.tap(find.text('工作'));
+      await tester.pump();
+      expect(toggles, 2, reason: '${mode.name}: collapse tap lost');
+    }
+
+    await verifyToggling(LiquidGlassEffectMode.standard);
+    await verifyToggling(LiquidGlassEffectMode.enhanced);
+
+    // Flush VisibilityDetector's internal throttle timer.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('folder cards use the shared glass shell', (tester) async {
+    await LiquidGlassEffectService.setEnabled(true);
+    await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+    // Disable VisibilityDetector's internal throttle timer so nothing is left
+    // pending when the test ends.
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+
+    Widget buildFolder({required bool expanded}) => MaterialApp(
+          home: Scaffold(
+            body: TodoGroupWidget(
+              group: TodoGroup(id: 'folder-glass', name: '工作')
+                ..isExpanded = expanded,
+              groupTodos: const [],
+              isLight: false,
+              teamRoles: const {},
+              onToggle: () {},
+              onTodoToggle: (_) {},
+              onTodoDropped: (_) {},
+              onDelete: () {},
+              onTodoTap: (_) {},
+              onTodoDelete: (_) {},
+            ),
+          ),
+        );
+
+    BoxDecoration folderDecoration() {
+      final container = tester.widget<Container>(
+        find.byKey(
+          const ValueKey<String>('optional-liquid-glass-static-panel'),
+        ),
+      );
+      return container.decoration! as BoxDecoration;
+    }
+
+    // Collapsed: rounded on every corner, with the high-contrast glass fill
+    // that keeps dense folder text legible.
+    await tester.pumpWidget(buildFolder(expanded: false));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byType(OptionalLiquidGlassCard), findsOneWidget);
+    expect(folderDecoration().borderRadius, BorderRadius.circular(20));
+    expect(
+      (folderDecoration().gradient! as LinearGradient).colors.last.a,
+      liquidGlassHighContrastStaticOpacityFor(isDark: false),
+    );
+    expect(find.text('工作'), findsOneWidget);
+
+    // Expanded: the header and todo list share ONE continuous glass surface
+    // with rounded top corners and a softer rounded bottom.
+    await tester.pumpWidget(buildFolder(expanded: true));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(
+      folderDecoration().borderRadius,
+      const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        topRight: Radius.circular(20),
+        bottomLeft: Radius.circular(24),
+        bottomRight: Radius.circular(24),
+      ),
+    );
+    expect(find.text('工作'), findsOneWidget);
   });
 
   testWidgets('wallpaper cards keep fallback foregrounds when glass is off',
@@ -346,6 +635,20 @@ void main() {
       GlassQuality.premium,
     );
     expect(
+      liquidGlassUsesGroupedBackdropFor(
+        LiquidGlassEffectMode.enhanced,
+        OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      ),
+      isTrue,
+    );
+    expect(
+      liquidGlassUsesGroupedBackdropFor(
+        LiquidGlassEffectMode.standard,
+        OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      ),
+      isFalse,
+    );
+    expect(
       liquidGlassPanelBackerOpacityFor(
         LiquidGlassEffectMode.enhanced,
         isDark: false,
@@ -367,6 +670,14 @@ void main() {
     expect(
       liquidGlassAdaptiveStaticOpacityFor(isDark: true),
       lessThan(liquidGlassAdaptiveStaticOpacityFor(isDark: false)),
+    );
+    expect(
+      liquidGlassHighContrastStaticOpacityFor(isDark: true),
+      greaterThan(0.7),
+    );
+    expect(
+      liquidGlassHighContrastStaticOpacityFor(isDark: false),
+      greaterThan(liquidGlassHighContrastStaticOpacityFor(isDark: true)),
     );
     expect(
       liquidGlassSurfaceBackerOpacityFor(

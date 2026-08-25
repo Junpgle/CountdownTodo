@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -35,6 +37,13 @@ double liquidGlassAdaptiveStaticOpacityFor({required bool isDark}) {
 }
 
 @visibleForTesting
+double liquidGlassHighContrastStaticOpacityFor({required bool isDark}) {
+  // Dense-content surfaces (folders, lists) need a stronger fill than chip-like
+  // adaptive cards, while still staying translucent enough to read as glass.
+  return isDark ? 0.8 : 0.88;
+}
+
+@visibleForTesting
 double liquidGlassSurfaceBackerOpacityFor(
   LiquidGlassEffectMode mode, {
   required bool isDark,
@@ -61,6 +70,48 @@ enum OptionalLiquidGlassPanelMode {
   staticMaterial,
 }
 
+@visibleForTesting
+bool liquidGlassUsesGroupedBackdropFor(
+  LiquidGlassEffectMode effectMode,
+  OptionalLiquidGlassPanelMode panelMode,
+) {
+  return effectMode == LiquidGlassEffectMode.enhanced &&
+      panelMode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
+}
+
+/// Whether every corner of [radius] shares the same circular value, which is
+/// the only per-corner-free shape the superellipse clip renders faithfully.
+bool _hasUniformRadius(BorderRadiusGeometry radius) {
+  if (radius is! BorderRadius) return false;
+  final value = radius.topLeft.x;
+  return radius.topLeft.y == value &&
+      radius.topRight.x == value &&
+      radius.topRight.y == value &&
+      radius.bottomLeft.x == value &&
+      radius.bottomLeft.y == value &&
+      radius.bottomRight.x == value &&
+      radius.bottomRight.y == value;
+}
+
+/// Isolates a glass-heavy scrollable and provides one shared backdrop group.
+///
+/// Descendant cards and panels keep their live glass treatment at all times;
+/// any grouped backdrop filters in the subtree share the engine's single
+/// backdrop input instead of creating independent captures.
+class OptionalLiquidGlassScrollOptimizer extends StatelessWidget {
+  const OptionalLiquidGlassScrollOptimizer({
+    super.key,
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropGroup(child: child);
+  }
+}
+
 /// A content-sized glass panel for shared cards, drawers, and compact controls.
 ///
 /// Single prominent panels use the package's shader-free frosted tier. Repeated
@@ -79,7 +130,9 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
     this.padding,
     this.margin,
     this.borderRadius = 20,
+    this.borderRadiusGeometry,
     this.circular = false,
+    this.highContrast = false,
     this.tint,
     this.isDark,
     this.clipBehavior = Clip.antiAlias,
@@ -93,7 +146,19 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
+
+  /// Per-corner override for shapes the uniform [borderRadius] cannot express
+  /// (e.g. a card whose top corners are rounded but bottom corners square so
+  /// it merges flush into an attached sheet). Supported by the static
+  /// material and grouped backdrop tiers; the frosted GlassContainer tier
+  /// falls back to the uniform radius.
+  final BorderRadiusGeometry? borderRadiusGeometry;
   final bool circular;
+
+  /// Boosts the fill opacity so dense text stays legible over busy backdrops
+  /// while the blur and tint still read as glass. Use for content-bearing
+  /// surfaces (folders, lists), not for chips or decorative panels.
+  final bool highContrast;
   final Color? tint;
   final bool? isDark;
   final Clip clipBehavior;
@@ -122,11 +187,18 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             mode == OptionalLiquidGlassPanelMode.staticMaterial ||
                 (mode == OptionalLiquidGlassPanelMode.adaptiveRepeated &&
                     !enhanced);
+        // Per-corner radii are only expressible by the tiers that clip with
+        // BorderRadius; the superellipse shader shape needs a uniform radius.
+        final resolvedRadius =
+            borderRadiusGeometry ?? BorderRadius.circular(borderRadius);
+        final hasUniformRadius = !circular && _hasUniformRadius(resolvedRadius);
         if (useStaticMaterial) {
           final isAdaptiveCard =
               mode == OptionalLiquidGlassPanelMode.adaptiveRepeated;
           final materialOpacity = isAdaptiveCard
-              ? liquidGlassAdaptiveStaticOpacityFor(isDark: dark)
+              ? (highContrast
+                  ? liquidGlassHighContrastStaticOpacityFor(isDark: dark)
+                  : liquidGlassAdaptiveStaticOpacityFor(isDark: dark))
               : (dark ? 0.86 : 0.9);
           final baseColor = Color.alphaBlend(
             resolvedTint.withValues(alpha: dark ? 0.18 : 0.12),
@@ -145,7 +217,7 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
           );
           final decoration = BoxDecoration(
             shape: circular ? BoxShape.circle : BoxShape.rectangle,
-            borderRadius: circular ? null : BorderRadius.circular(borderRadius),
+            borderRadius: circular ? null : resolvedRadius,
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -177,6 +249,81 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
             decoration: decoration,
             child: child,
           );
+        }
+
+        if (liquidGlassUsesGroupedBackdropFor(configuration.mode, mode)) {
+          // Flutter can batch sibling backdrop filters carrying the same
+          // BackdropKey into one blur operation. This keeps a real, live
+          // frosted background throughout a 120 Hz scroll gesture without
+          // paying one offscreen blur + fragment shader pass per visible card.
+          final baseColor = Color.alphaBlend(
+            resolvedTint.withValues(alpha: dark ? 0.2 : 0.14),
+            neutralBase,
+          ).withValues(
+            alpha: highContrast
+                ? (dark ? 0.5 : 0.6)
+                : (dark ? 0.32 : 0.44),
+          );
+          final highlightBase = dark
+              ? colorScheme.surfaceBright
+              : colorScheme.surfaceContainerHighest;
+          final highlightColor = Color.alphaBlend(
+            highlightBase.withValues(alpha: dark ? 0.12 : 0.18),
+            baseColor.withValues(alpha: 1),
+          ).withValues(
+            alpha: highContrast
+                ? (dark ? 0.56 : 0.68)
+                : (dark ? 0.38 : 0.5),
+          );
+          final decoration = BoxDecoration(
+            shape: circular ? BoxShape.circle : BoxShape.rectangle,
+            borderRadius: circular ? null : resolvedRadius,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[highlightColor, baseColor],
+            ),
+            border: Border.all(
+              color: (dark
+                      ? colorScheme.surfaceBright
+                      : colorScheme.outlineVariant)
+                  .withValues(alpha: dark ? 0.42 : 0.58),
+              width: 0.8,
+            ),
+          );
+          final filtered = BackdropFilter.grouped(
+            filter: ui.ImageFilter.blur(
+              sigmaX: 9,
+              sigmaY: 9,
+              tileMode: TileMode.clamp,
+            ),
+            child: Container(
+              key: const ValueKey<String>(
+                'optional-liquid-glass-grouped-panel',
+              ),
+              width: width,
+              height: height,
+              padding: padding,
+              decoration: decoration,
+              child: child,
+            ),
+          );
+          // ClipRSuperellipse only renders uniform radii faithfully; per-corner
+          // shapes fall back to an anti-aliased rounded rect.
+          final clipped = circular
+              ? ClipOval(clipBehavior: clipBehavior, child: filtered)
+              : hasUniformRadius
+                  ? ClipRSuperellipse(
+                      borderRadius: resolvedRadius as BorderRadius,
+                      clipBehavior: clipBehavior,
+                      child: filtered,
+                    )
+                  : ClipRRect(
+                      borderRadius: resolvedRadius,
+                      clipBehavior: clipBehavior,
+                      child: filtered,
+                    );
+          return Container(margin: margin, child: clipped);
         }
 
         return RepaintBoundary(
@@ -222,6 +369,14 @@ class OptionalLiquidGlassPanel extends StatelessWidget {
 
 /// Uses the Liquid Glass renderer only when the user has enabled it, otherwise
 /// returning the caller's existing platform-aware implementation unchanged.
+///
+/// Enhanced mode pins the prominent surface (floating bottom bar) to a single,
+/// consistent live frosted-glass rendering: one real-time backdrop blur with a
+/// specular white rim. This avoids the premium pipeline's per-frame backdrop
+/// texture recapture while content scrolls beneath the bar — the dominant
+/// raster cost of a scrolling glass dashboard, and prone to desync that made
+/// the glass appear to vanish mid-fling — while keeping the same glassy read
+/// in every frame. Standard mode keeps the lightweight shader container.
 class OptionalLiquidGlassSurface extends StatelessWidget {
   const OptionalLiquidGlassSurface({
     super.key,
@@ -250,6 +405,21 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
         if (!configuration.enabled) return fallback;
         final enhanced = configuration.mode == LiquidGlassEffectMode.enhanced;
 
+        // One consistent frosted-glass treatment: a single live backdrop blur
+        // samples the moving backdrop every frame without the premium
+        // pipeline's texture capture, so scrolling stays smooth and the glass
+        // never flickers away.
+        if (enhanced) {
+          return _FrostedGlassSurface(
+            height: height,
+            margin: margin,
+            borderRadius: borderRadius,
+            tint: tint,
+            isDark: isDark,
+            child: child,
+          );
+        }
+
         // GlassContainer's standard-quality path does not currently honor
         // useOwnLayer with an explicit RepaintBoundary. Isolate it here so an
         // ancestor route FadeTransition cannot distribute opacity into the
@@ -262,17 +432,15 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
             shape: LiquidRoundedSuperellipse(borderRadius: borderRadius),
             settings: LiquidGlassSettings(
               glassColor: tint,
-              thickness: enhanced ? 28 : 20,
-              blur: enhanced ? 18 : 12,
-              chromaticAberration: enhanced ? 0.012 : 0.006,
-              lightIntensity:
-                  enhanced ? (isDark ? 0.8 : 0.68) : (isDark ? 0.62 : 0.48),
-              ambientStrength:
-                  enhanced ? (isDark ? 0.26 : 0.18) : (isDark ? 0.18 : 0.1),
-              fresnelStrength: enhanced ? 1.0 : 0.85,
-              refractiveIndex: enhanced ? 1.24 : 1.14,
-              saturation: enhanced ? 1.08 : 0.95,
-              shadowElevation: enhanced ? 1.8 : 1.0,
+              thickness: 20,
+              blur: 12,
+              chromaticAberration: 0.006,
+              lightIntensity: isDark ? 0.62 : 0.48,
+              ambientStrength: isDark ? 0.18 : 0.1,
+              fresnelStrength: 0.85,
+              refractiveIndex: 1.14,
+              saturation: 0.95,
+              shadowElevation: 1.0,
               // Keep the refraction, but place a stronger neutral pad behind
               // it so busy wallpapers cannot compete with tab labels/icons.
               backerColor: tint.withValues(
@@ -293,6 +461,82 @@ class OptionalLiquidGlassSurface extends StatelessWidget {
   }
 }
 
+/// Live blurred-glass treatment for the prominent surface. A single
+/// [BackdropFilter] samples the backdrop every frame — far cheaper than the
+/// premium pipeline's texture capture and immune to its mid-scroll desync —
+/// while the white specular rim and tint gradient keep a strong frosted-glass
+/// read over any wallpaper.
+class _FrostedGlassSurface extends StatelessWidget {
+  const _FrostedGlassSurface({
+    required this.height,
+    required this.margin,
+    required this.borderRadius,
+    required this.tint,
+    required this.isDark,
+    required this.child,
+  });
+
+  final double height;
+  final EdgeInsetsGeometry margin;
+  final double borderRadius;
+  final Color tint;
+  final bool isDark;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final neutralBase = isDark ? colorScheme.scrim : colorScheme.surface;
+    final baseColor = Color.alphaBlend(
+      tint.withValues(alpha: isDark ? 0.2 : 0.14),
+      neutralBase,
+    ).withValues(alpha: isDark ? 0.34 : 0.46);
+    final highlightBase = isDark
+        ? colorScheme.surfaceBright
+        : colorScheme.surfaceContainerHighest;
+    final highlightColor = Color.alphaBlend(
+      highlightBase.withValues(alpha: isDark ? 0.12 : 0.18),
+      baseColor.withValues(alpha: 1),
+    ).withValues(alpha: isDark ? 0.4 : 0.52);
+
+    return RepaintBoundary(
+      child: Padding(
+        padding: margin,
+        child: SizedBox(
+          height: height,
+          child: ClipRSuperellipse(
+            borderRadius: BorderRadius.circular(borderRadius),
+            clipBehavior: Clip.antiAlias,
+            child: BackdropFilter.grouped(
+              filter: ui.ImageFilter.blur(
+                sigmaX: 16,
+                sigmaY: 16,
+                tileMode: TileMode.clamp,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[highlightColor, baseColor],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: isDark ? 0.4 : 0.62,
+                    ),
+                    width: 1,
+                  ),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Drop-in card shell that preserves the original decoration while the effect
 /// is disabled, then follows the user's standard/enhanced glass preference.
 class OptionalLiquidGlassCard extends StatelessWidget {
@@ -307,6 +551,8 @@ class OptionalLiquidGlassCard extends StatelessWidget {
     this.alignment,
     this.constraints,
     this.borderRadius = 20,
+    this.borderRadiusGeometry,
+    this.highContrast = false,
     this.tint,
     this.isDark,
     this.clipBehavior = Clip.antiAlias,
@@ -321,6 +567,14 @@ class OptionalLiquidGlassCard extends StatelessWidget {
   final AlignmentGeometry? alignment;
   final BoxConstraints? constraints;
   final double borderRadius;
+
+  /// Per-corner override forwarded to the underlying panel; see
+  /// [OptionalLiquidGlassPanel.borderRadiusGeometry].
+  final BorderRadiusGeometry? borderRadiusGeometry;
+
+  /// Boosts the fill opacity for dense-content surfaces; see
+  /// [OptionalLiquidGlassPanel.highContrast].
+  final bool highContrast;
   final Color? tint;
   final bool? isDark;
   final Clip clipBehavior;
@@ -350,6 +604,8 @@ class OptionalLiquidGlassCard extends StatelessWidget {
       padding: padding,
       margin: margin,
       borderRadius: borderRadius,
+      borderRadiusGeometry: borderRadiusGeometry,
+      highContrast: highContrast,
       tint: tint,
       isDark: isDark,
       clipBehavior: clipBehavior,
