@@ -615,35 +615,76 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                                       final hasCopyright =
                                           _wallpaperCopyright?.isNotEmpty ??
                                               false;
-                                      return RepaintBoundary(
-                                        child: ListView.builder(
-                                          key: PageStorageKey<String>(
-                                            showFocusTab
-                                                ? 'home-focus-sections'
-                                                : 'home-main-sections',
+                                      return AnimatedSwitcher(
+                                        duration:
+                                            const Duration(milliseconds: 280),
+                                        reverseDuration:
+                                            const Duration(milliseconds: 240),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        layoutBuilder:
+                                            (currentChild, previousChildren) {
+                                          return Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              ...previousChildren,
+                                              if (currentChild != null)
+                                                currentChild,
+                                            ],
+                                          );
+                                        },
+                                        transitionBuilder: (child, animation) {
+                                          final focusPage = child.key ==
+                                              const ValueKey<String>(
+                                                  'home-focus-tab-content');
+                                          return FadeTransition(
+                                            opacity: animation,
+                                            child: SlideTransition(
+                                              position: Tween<Offset>(
+                                                begin: Offset(
+                                                    focusPage ? 0.035 : -0.035,
+                                                    0),
+                                                end: Offset.zero,
+                                              ).animate(animation),
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: RepaintBoundary(
+                                          key: ValueKey<String>(showFocusTab
+                                              ? 'home-focus-tab-content'
+                                              : 'home-main-tab-content'),
+                                          child: ListView.builder(
+                                            key: PageStorageKey<String>(
+                                              showFocusTab
+                                                  ? 'home-focus-sections'
+                                                  : 'home-main-sections',
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 16,
+                                            ),
+                                            itemCount: activeWidgets.length +
+                                                (hasCopyright ? 1 : 0) +
+                                                1,
+                                            itemBuilder: (context, index) {
+                                              if (index <
+                                                  activeWidgets.length) {
+                                                return activeWidgets[index];
+                                              }
+                                              if (hasCopyright &&
+                                                  index ==
+                                                      activeWidgets.length) {
+                                                return _buildWallpaperCopyright(
+                                                    isLight);
+                                              }
+                                              return SizedBox(
+                                                // 浮动底栏原有 100dp 余量之外，再补上
+                                                // 系统手势区，使最后一张卡片能完整滚出遮挡。
+                                                height: 100 + bottomSystemInset,
+                                              );
+                                            },
                                           ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 16,
-                                          ),
-                                          itemCount: activeWidgets.length +
-                                              (hasCopyright ? 1 : 0) +
-                                              1,
-                                          itemBuilder: (context, index) {
-                                            if (index < activeWidgets.length) {
-                                              return activeWidgets[index];
-                                            }
-                                            if (hasCopyright &&
-                                                index == activeWidgets.length) {
-                                              return _buildWallpaperCopyright(
-                                                  isLight);
-                                            }
-                                            return SizedBox(
-                                              // 浮动底栏原有 100dp 余量之外，再补上
-                                              // 系统手势区，使最后一张卡片能完整滚出遮挡。
-                                              height: 100 + bottomSystemInset,
-                                            );
-                                          },
                                         ),
                                       );
                                     }
