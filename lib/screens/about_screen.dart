@@ -17,6 +17,7 @@ import '../services/database_helper.dart';
 import '../services/database_schema_history.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/github_resource_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 class AboutScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -1578,94 +1579,106 @@ class _DatabaseChangelogSheet extends StatelessWidget {
               final entry = DatabaseSchemaHistory.changes[index];
               final isCurrent = entry.version == currentVersion;
 
-              return Card(
-                elevation: 0,
+              return OptionalLiquidGlassCard(
                 margin: EdgeInsets.zero,
-                color: isCurrent
-                    ? colorScheme.primaryContainer.withValues(alpha: 0.45)
-                    : colorScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(
+                borderRadius: 12,
+                clipBehavior: Clip.antiAlias,
+                highContrast: true,
+                tint: isCurrent
+                    ? colorScheme.primaryContainer.withValues(alpha: 0.16)
+                    : null,
+                fallbackDecoration: BoxDecoration(
+                  color: isCurrent
+                      ? colorScheme.primaryContainer.withValues(alpha: 0.45)
+                      : colorScheme.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: isCurrent
-                        ? colorScheme.primary.withValues(alpha: 0.35)
-                        : colorScheme.outlineVariant.withValues(alpha: 0.45),
+                  border: Border.fromBorderSide(
+                    BorderSide(
+                      color: isCurrent
+                          ? colorScheme.primary.withValues(alpha: 0.35)
+                          : colorScheme.outlineVariant.withValues(alpha: 0.45),
+                    ),
                   ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: Theme(
-                  data: theme.copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    key: PageStorageKey('database-version-${entry.version}'),
-                    initiallyExpanded: isCurrent,
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                    title: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'V${entry.version}',
-                            style: TextStyle(
-                              color: colorScheme.onSecondaryContainer,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Theme(
+                    data: theme.copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      key: PageStorageKey('database-version-${entry.version}'),
+                      initiallyExpanded: isCurrent,
+                      tilePadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                      childrenPadding:
+                          const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      title: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'V${entry.version}',
+                              style: TextStyle(
+                                color: colorScheme.onSecondaryContainer,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
-                        if (isCurrent) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '当前',
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                          if (isCurrent) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '当前',
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(entry.title),
-                    ),
-                    children: entry.changes
-                        .map(
-                          (change) => Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 7),
-                                  child: Icon(
-                                    Icons.circle,
-                                    size: 5,
-                                    color: colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    change,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      height: 1.45,
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(entry.title),
+                      ),
+                      children: entry.changes
+                          .map(
+                            (change) => Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 7),
+                                    child: Icon(
+                                      Icons.circle,
+                                      size: 5,
+                                      color: colorScheme.primary,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      change,
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        height: 1.45,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
+                          )
+                          .toList(),
+                    ),
                   ),
                 ),
               );
