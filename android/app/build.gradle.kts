@@ -6,7 +6,11 @@ plugins {
 }
 
 // Keep Android's versionCode deterministic and aligned with pubspec.yaml.
-// For example: 5.6.18 -> 5618 and 5.7.0 -> 5700.
+// Encoded as major*10000 + minor*100 + patch.
+// For example: 5.6.18 -> 50618 and 5.7.0 -> 50700.
+// The extra major digit also keeps codes strictly above legacy installs that
+// shipped with the old major*1000 scheme (max ~78xx), so upgrades never
+// trigger INSTALL_FAILED_VERSION_DOWNGRADE on those devices.
 fun versionCodeFromVersionName(versionName: String): Int {
     val parts = versionName.substringBefore("+").substringBefore("-").split(".")
     val major = parts.getOrNull(0)?.toIntOrNull()
@@ -16,11 +20,11 @@ fun versionCodeFromVersionName(versionName: String): Int {
     require(major != null && minor != null && patch != null) {
         "Invalid versionName '$versionName'; expected major.minor.patch"
     }
-    require(major in 0..999 && minor in 0..9 && patch in 0..99) {
-        "Version '$versionName' cannot be encoded as major*1000 + minor*100 + patch"
+    require(major in 1..999 && minor in 0..9 && patch in 0..99) {
+        "Version '$versionName' cannot be encoded as major*10000 + minor*100 + patch"
     }
 
-    val versionCode = major * 1000 + minor * 100 + patch
+    val versionCode = major * 10000 + minor * 100 + patch
     require(versionCode > 0) { "versionCode must be greater than 0" }
     return versionCode
 }
