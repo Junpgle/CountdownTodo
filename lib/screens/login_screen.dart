@@ -13,6 +13,7 @@ import '../widgets/turnstile_verification_widget.dart';
 import 'home_dashboard.dart';
 import '../utils/page_transitions.dart';
 import '../utils/theme_color_tokens.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 // ─────────────────────────────────────────────
 //  Adaptive color tokens
@@ -414,10 +415,13 @@ class _LegacyBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = _T(context);
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
+      borderRadius: 12,
+      highContrast: true,
+      tint: t.amber.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: t.amberBg,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: t.amberBd, width: 1),

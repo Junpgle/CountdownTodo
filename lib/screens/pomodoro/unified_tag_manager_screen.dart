@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../storage_service.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 import '../settings/batch_tag_page.dart';
 import '../settings/rebind_tag_page.dart';
 import '../../services/pomodoro_service.dart';
@@ -331,11 +332,12 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(32),
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
+      borderRadius: 16,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
@@ -395,10 +397,13 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
     final isEditing =
         isWide && _editingTag?.uuid == tag.uuid && !_isAddingNewTag;
 
-    return Container(
+    return OptionalLiquidGlassCard(
       key: ValueKey(tag.uuid),
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
+      borderRadius: 16,
+      highContrast: true,
+      tint: isEditing ? colorScheme.primary.withValues(alpha: 0.16) : null,
+      fallbackDecoration: BoxDecoration(
         color: isEditing
             ? colorScheme.primaryContainer.withValues(alpha: 0.3)
             : colorScheme.surfaceContainerLow,
@@ -409,85 +414,91 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
               : colorScheme.outlineVariant.withValues(alpha: 0.3),
         ),
       ),
-      child: ListTile(
-        onTap: isWide
-            ? () {
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          onTap: isWide
+              ? () {
+                  setState(() {
+                    _editingTag = tag;
+                    _isAddingNewTag = false;
+                  });
+                }
+              : null,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          leading: GestureDetector(
+            onTap: () {
+              if (isWide) {
                 setState(() {
                   _editingTag = tag;
                   _isAddingNewTag = false;
                 });
+              } else {
+                _showEditTagDialog(tag, index);
               }
-            : null,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        leading: GestureDetector(
-          onTap: () {
-            if (isWide) {
-              setState(() {
-                _editingTag = tag;
-                _isAddingNewTag = false;
-              });
-            } else {
-              _showEditTagDialog(tag, index);
-            }
-          },
-          child: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: color.withValues(alpha: 0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2)),
-              ],
+            },
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.3),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2)),
+                ],
+              ),
+              child: const Icon(Icons.palette_outlined,
+                  color: Colors.white, size: 18),
             ),
-            child: const Icon(Icons.palette_outlined,
-                color: Colors.white, size: 18),
           ),
-        ),
-        title: Text(
-          tag.name,
-          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.showSelection)
-              Checkbox(
-                value: _selected.contains(tag.uuid),
-                activeColor: color,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6)),
-                onChanged: (val) {
-                  setState(() {
-                    if (val == true) {
-                      _selected.add(tag.uuid);
-                    } else {
-                      _selected.remove(tag.uuid);
-                    }
-                  });
-                  _notifyChanges();
-                },
+          title: Text(
+            tag.name,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.showSelection)
+                Checkbox(
+                  value: _selected.contains(tag.uuid),
+                  activeColor: color,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
+                  onChanged: (val) {
+                    setState(() {
+                      if (val == true) {
+                        _selected.add(tag.uuid);
+                      } else {
+                        _selected.remove(tag.uuid);
+                      }
+                    });
+                    _notifyChanges();
+                  },
+                ),
+              IconButton(
+                icon: Icon(Icons.archive_outlined,
+                    size: 20, color: colorScheme.onSurfaceVariant),
+                tooltip: '归档',
+                onPressed: () => _archiveTag(index),
               ),
-            IconButton(
-              icon: Icon(Icons.archive_outlined,
-                  size: 20, color: colorScheme.onSurfaceVariant),
-              tooltip: '归档',
-              onPressed: () => _archiveTag(index),
-            ),
-            ReorderableDragStartListener(
-              index: index,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Icon(Icons.drag_indicator,
-                    size: 20,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+              ReorderableDragStartListener(
+                index: index,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.drag_indicator,
+                      size: 20,
+                      color:
+                          colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -540,10 +551,11 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
         ),
       );
     } else {
-      return Container(
+      return OptionalLiquidGlassCard(
         width: double.infinity,
         padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
+        borderRadius: 16,
+        fallbackDecoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -568,8 +580,10 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
 
   Widget _buildRightPanelContainer(ColorScheme colorScheme,
       {required Widget child}) {
-    return Container(
-      decoration: BoxDecoration(
+    return OptionalLiquidGlassCard(
+      borderRadius: 16,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
@@ -582,96 +596,103 @@ class _UnifiedTagManagerScreenState extends State<UnifiedTagManagerScreen> {
 
   Widget _buildArchivedSection(ColorScheme colorScheme,
       {required bool isWide}) {
-    return Container(
-      decoration: BoxDecoration(
+    return OptionalLiquidGlassCard(
+      borderRadius: 16,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
             color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                _showArchived = !_showArchived;
-              });
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(Icons.archive,
-                      size: 20, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 12),
-                  Text(
-                    '已归档 (${_archivedTags.length})',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _showArchived = !_showArchived;
+                });
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.archive,
+                        size: 20, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    Text(
+                      '已归档 (${_archivedTags.length})',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      _showArchived
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
                       color: colorScheme.onSurfaceVariant,
                     ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    _showArchived
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          if (_showArchived) ...[
-            const Divider(height: 1),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _archivedTags.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, indent: 48),
-              itemBuilder: (ctx, i) {
-                final tag = _archivedTags[i];
-                final color =
-                    AppColorUtils.hexToColor(tag.color, fallback: Colors.grey);
-                return ListTile(
-                  dense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
+            if (_showArchived) ...[
+              const Divider(height: 1),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _archivedTags.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 48),
+                itemBuilder: (ctx, i) {
+                  final tag = _archivedTags[i];
+                  final color = AppColorUtils.hexToColor(tag.color,
+                      fallback: Colors.grey);
+                  return ListTile(
+                    dense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  title: Text(
-                    tag.name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurfaceVariant,
-                      decoration: TextDecoration.lineThrough,
+                    title: Text(
+                      tag.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                        decoration: TextDecoration.lineThrough,
+                      ),
                     ),
-                  ),
-                  trailing: FilledButton.tonal(
-                    onPressed: () => _restoreTag(tag),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                    trailing: FilledButton.tonal(
+                      onPressed: () => _restoreTag(tag),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        minimumSize: const Size(0, 32),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('恢复', style: TextStyle(fontSize: 12)),
                     ),
-                    child: const Text('恢复', style: TextStyle(fontSize: 12)),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -694,16 +715,17 @@ class _TagFormSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return OptionalLiquidGlassSheet(
+      topRadius: 24,
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      fallbackDecoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -967,8 +989,9 @@ class _ColorPickerSheetState extends State<_ColorPickerSheet> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
+    return OptionalLiquidGlassSheet(
+      topRadius: 24,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),

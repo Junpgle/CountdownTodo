@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 class AiAssistantTutorialScreen extends StatefulWidget {
   const AiAssistantTutorialScreen({super.key});
@@ -198,10 +199,12 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
     required Color color,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 20,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
@@ -368,9 +371,11 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
     final colorScheme = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: 1.6,
-      child: Container(
+      child: OptionalLiquidGlassCard(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        borderRadius: 16,
+        highContrast: true,
+        fallbackDecoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -495,9 +500,12 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
 
   Widget _securityNote(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 16,
+      highContrast: true,
+      tint: colorScheme.error.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.errorContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colorScheme.error.withValues(alpha: 0.1)),
@@ -590,9 +598,12 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
 
   Widget _externalAiNote(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 16,
+      highContrast: true,
+      tint: colorScheme.tertiary.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.tertiaryContainer.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colorScheme.tertiary.withValues(alpha: 0.1)),
@@ -638,10 +649,12 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
 
   Widget _tipItem(BuildContext context, String title, String desc) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
+      borderRadius: 14,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(14),
       ),
@@ -677,9 +690,11 @@ class _AiAssistantTutorialScreenState extends State<AiAssistantTutorialScreen>
 
   Widget _smartContextDetails(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
+      borderRadius: 24,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
