@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 
 class DeviceVersionDetailPage extends StatefulWidget {
   final bool isEmbedded;
@@ -90,7 +91,13 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
     final stats = data?['stats'] as Map<String, dynamic>? ?? {};
     final totalOnline = data?['totalOnline'] ?? 0;
 
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -136,7 +143,13 @@ class _DeviceVersionDetailPageState extends State<DeviceVersionDetailPage> {
     final stats = data?['stats'] as Map<String, dynamic>? ?? {};
     final totalDevices = data?['totalDevices'] ?? 0;
 
-    return Card(
+    return OptionalLiquidGlassCard(
+      borderRadius: 12,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
