@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'liquid_glass_effect_service.dart';
+
 enum AnimationPreset { performance, balanced, expressive }
 
 class AnimationConfigService {
@@ -127,6 +129,18 @@ class AnimationConfigService {
         await prefs.setInt(entry.key, value);
       }
     }
+
+    // 液态玻璃跟随性能档位：性能档关闭；均衡档标准玻璃；完整动效档增强玻璃。
+    switch (preset) {
+      case AnimationPreset.performance:
+        await LiquidGlassEffectService.setEnabled(false);
+      case AnimationPreset.balanced:
+        await LiquidGlassEffectService.setEnabled(true);
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.standard);
+      case AnimationPreset.expressive:
+        await LiquidGlassEffectService.setEnabled(true);
+        await LiquidGlassEffectService.setMode(LiquidGlassEffectMode.enhanced);
+    }
   }
 
   static Future<void> setAnimationsEnabled(bool value) async {
@@ -181,6 +195,13 @@ class AnimationConfigService {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
     await prefs.setInt(_keyContainerContentStart, value);
+  }
+
+  /// 用户手动微调任一效果（含液态玻璃开关/模式）后调用，
+  /// 取消当前性能预设的选中态。
+  static Future<void> clearActivePreset() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
   }
 
   static Future<void> _clearPreset(SharedPreferences prefs) async {

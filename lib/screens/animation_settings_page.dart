@@ -75,6 +75,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     });
     try {
       await LiquidGlassEffectService.setEnabled(enabled);
+      await AnimationConfigService.clearActivePreset();
+      if (mounted) setState(() => _preset = null);
     } catch (error) {
       if (!mounted) return;
       setState(() => _liquidGlassEnabled = previous);
@@ -97,6 +99,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     });
     try {
       await LiquidGlassEffectService.setMode(mode);
+      await AnimationConfigService.clearActivePreset();
+      if (mounted) setState(() => _preset = null);
     } catch (error) {
       if (!mounted) return;
       setState(() => _liquidGlassMode = previous);
@@ -584,21 +588,21 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
           compact: isCompact,
           preset: AnimationPreset.performance,
           title: '极致流畅',
-          subtitle: '优先稳定帧率，适合大多数 Android 机型',
+          subtitle: '优先稳定帧率，关闭液态玻璃',
           icon: Icons.speed_rounded,
         ),
         _buildPresetCard(
           compact: isCompact,
           preset: AnimationPreset.balanced,
           title: '均衡模式',
-          subtitle: '保留主要过渡，兼顾观感与性能',
+          subtitle: '保留主要过渡，液态玻璃标准档',
           icon: Icons.tune_rounded,
         ),
         _buildPresetCard(
           compact: isCompact,
           preset: AnimationPreset.expressive,
           title: '完整动效',
-          subtitle: '开启模糊和层级动画，视觉优先',
+          subtitle: '开启模糊与液态玻璃增强档，视觉优先',
           icon: Icons.auto_awesome_rounded,
         ),
       ],
