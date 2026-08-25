@@ -19,6 +19,7 @@ import '../services/timeline_ml_service.dart';
 import '../services/timeline_statistics_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import 'medal_wall_page.dart';
 
 enum TimelineDimension { daily, weekly, monthly, yearly }
@@ -934,10 +935,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     ColorScheme cs,
     Widget child,
   ) {
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      borderRadius: 20,
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainer.withValues(alpha: 0.52),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
@@ -1884,10 +1886,13 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
         '完成 ${habitSummary.completedCount} 个习惯周期',
     ].join('，');
 
-    final hero = Container(
+    final hero = OptionalLiquidGlassCard(
       width: double.infinity,
       padding: EdgeInsets.all(isWide ? 28 : 22),
-      decoration: BoxDecoration(
+      borderRadius: 32,
+      highContrast: true,
+      tint: cs.primary.withValues(alpha: 0.16),
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainer.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
@@ -2940,9 +2945,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Widget _buildTrendCard(String title, String content, String subtitle,
       IconData icon, Color color, ColorScheme cs,
       {List<double>? trend, List<Widget>? extraItems}) {
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 24,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
@@ -3002,9 +3009,11 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
   Widget _buildStatCard(String title, String content, String subtitle,
       IconData icon, Color color, ColorScheme cs,
       {List<Widget>? extraItems}) {
-    return Container(
+    return OptionalLiquidGlassCard(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      borderRadius: 24,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
@@ -3188,10 +3197,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
     final focusSessionCount = _pomodoroCount + _timeLogCount;
     final deepRatio =
         focusSessionCount > 0 ? summary.deepWorkCount / focusSessionCount : 0.0;
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
+      borderRadius: 28,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainerLow.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
@@ -3235,10 +3246,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
 
   Widget _buildScreenSnapshot(ColorScheme cs, {bool fillHeight = false}) {
     if (_screenTimeSeconds <= 0) {
-      return Container(
+      return OptionalLiquidGlassCard(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
+        borderRadius: 28,
+        highContrast: true,
+        fallbackDecoration: BoxDecoration(
           color: cs.surfaceContainerLow.withValues(alpha: 0.55),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
@@ -3249,10 +3262,12 @@ class _PersonalTimelineScreenState extends State<PersonalTimelineScreen>
       );
     }
 
-    return Container(
+    return OptionalLiquidGlassCard(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
+      borderRadius: 28,
+      highContrast: true,
+      fallbackDecoration: BoxDecoration(
         color: cs.surfaceContainerLow.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),

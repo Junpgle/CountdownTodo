@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/medal_recommendation_service.dart';
 import '../services/timeline_service.dart';
 import '../utils/app_dialogs.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import 'package:intl/intl.dart';
 
 /// 完整勋章墙页面
@@ -502,9 +503,9 @@ class _MedalWallPageState extends State<MedalWallPage>
 
     return GestureDetector(
       onTap: () => _showMedalDetail(context, medal),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
+      child: OptionalLiquidGlassCard(
+        borderRadius: 24,
+        fallbackDecoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
@@ -982,8 +983,10 @@ class _MedalWallPageState extends State<MedalWallPage>
           insetPadding: const EdgeInsets.all(32),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680, maxHeight: 640),
-            child: Container(
-              decoration: BoxDecoration(
+            child: OptionalLiquidGlassCard(
+              borderRadius: 32,
+              highContrast: true,
+              fallbackDecoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(32),
               ),
