@@ -19,6 +19,7 @@ import 'dart:ui' as ui;
 import 'pomodoro_screen.dart';
 import '../services/feature_tip_service.dart';
 import '../widgets/coach_mark_overlay.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 import 'pomodoro/unified_tag_manager_screen.dart';
 
 part 'time_log_components.dart';
@@ -573,10 +574,11 @@ class _TimeLogScreenState extends State<TimeLogScreen> {
   }
 
   // ── 共用弹窗容器 ─────────────────────────────────────
-  Widget _sheet(Color borderColor, Widget child) => Container(
+  Widget _sheet(Color borderColor, Widget child) => OptionalLiquidGlassSheet(
+        topRadius: 20,
         padding: EdgeInsets.fromLTRB(
             20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
-        decoration: BoxDecoration(
+        fallbackDecoration: BoxDecoration(
             color: _TC.card(context),
             border: Border(top: BorderSide(color: borderColor, width: 1.5)),
             borderRadius:
@@ -1213,12 +1215,14 @@ class _WeekViewState extends State<_WeekView>
     ]);
   }
 
-  Widget _buildTagSidebar(BuildContext ctx, int ws, int we) => Container(
+  Widget _buildTagSidebar(BuildContext ctx, int ws, int we) => SizedBox(
       width: 160,
-      decoration: BoxDecoration(
-          color: _TC.card(ctx),
-          border: Border(left: BorderSide(color: _TC.divider(ctx)))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: OptionalLiquidGlassSheet(
+          fallbackDecoration: BoxDecoration(
+              color: _TC.card(ctx),
+              border: Border(left: BorderSide(color: _TC.divider(ctx)))),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
             padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
             child: Text('本周标签',
@@ -1284,7 +1288,7 @@ class _WeekViewState extends State<_WeekView>
                                 ])),
                           ])));
                 }).toList())),
-      ]));
+      ])));
 
   Widget _buildTagChips(BuildContext ctx, int ws, int we) => Container(
       height: 56,

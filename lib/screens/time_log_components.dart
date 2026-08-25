@@ -127,20 +127,22 @@ class _DayViewState extends State<_DayView> {
             .where((l) => l.endTime > gsMs && l.startTime < geMs)
             .toList()
           ..sort((a, b) => b.startTime.compareTo(a.startTime));
-        return Container(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).padding.bottom + 16,
-              left: 20,
-              right: 20,
-              top: 20),
+        return ConstrainedBox(
           constraints:
               BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
-          decoration: BoxDecoration(
-              color: _TC.card(ctx),
-              border: Border(top: BorderSide(color: _TC.divider(ctx))),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20))),
-          child: Column(
+          child: OptionalLiquidGlassSheet(
+            topRadius: 20,
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).padding.bottom + 16,
+                left: 20,
+                right: 20,
+                top: 20),
+            fallbackDecoration: BoxDecoration(
+                color: _TC.card(ctx),
+                border: Border(top: BorderSide(color: _TC.divider(ctx))),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20))),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -301,6 +303,7 @@ class _DayViewState extends State<_DayView> {
                     },
                   )),
               ]),
+          ),
         );
       }),
     );
@@ -620,10 +623,11 @@ class _DayViewState extends State<_DayView> {
     final gs = _gridStart;
     final st = gs.add(Duration(minutes: _ss * _minutesPerBlock));
     final en = gs.add(Duration(minutes: (_se + 1) * _minutesPerBlock));
-    return Container(
+    return OptionalLiquidGlassSheet(
+      topRadius: 20,
       padding: EdgeInsets.fromLTRB(
           16, 14, 16, MediaQuery.of(context).padding.bottom + 14),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
           color: _TC.card(context),
           border: Border(top: BorderSide(color: _TC.divider(context))),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1071,14 +1075,15 @@ class _PlanEntrySheetState extends State<_PlanEntrySheet> {
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.secondary;
     final duration = _end.difference(_start).inMinutes;
-    return Container(
+    return OptionalLiquidGlassSheet(
+      topRadius: 20,
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         left: 20,
         right: 20,
         top: 20,
       ),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
         color: _TC.card(context),
         border: Border(top: BorderSide(color: _TC.divider(context))),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1329,13 +1334,14 @@ class _LogEntrySheetState extends State<_LogEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Container(
+    return OptionalLiquidGlassSheet(
+      topRadius: 20,
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
           left: 20,
           right: 20,
           top: 20),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
           color: _TC.card(context),
           border: Border(top: BorderSide(color: _TC.divider(context))),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
@@ -1684,9 +1690,10 @@ class _TagDetailSheetState extends State<_TagDetailSheet> {
       chartData = xLabels.map((k) => grouped[k]!).toList();
     }
 
-    return Container(
+    return OptionalLiquidGlassSheet(
+      topRadius: 24,
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
           color: _TC.card(context),
           border: Border(
               top: BorderSide(color: c.withValues(alpha: 0.35), width: 1.5)),
