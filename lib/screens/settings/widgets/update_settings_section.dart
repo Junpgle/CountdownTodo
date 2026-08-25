@@ -883,7 +883,7 @@ class _UpdateSettingsSectionState extends State<UpdateSettingsSection> {
                       context,
                       value: UpdateService.updateSourceGithub,
                       title: 'GitHub 官方',
-                      subtitle: '信息更新更及时',
+                      subtitle: '更新更及时',
                       icon: Icons.code_rounded,
                     ),
                   ),
