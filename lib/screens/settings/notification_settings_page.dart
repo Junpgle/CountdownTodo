@@ -10,6 +10,7 @@ import '../../utils/app_platform.dart';
 import '../../utils/time_utils.dart';
 import '../../widgets/app_sheet_widgets.dart';
 import '../../widgets/app_state_views.dart';
+import '../../widgets/optional_liquid_glass_surface.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   final bool isEmbedded;
@@ -403,15 +404,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             ),
           ),
           const SizedBox(height: 16),
-          Card(
-            elevation: 0,
+          OptionalLiquidGlassCard(
+            borderRadius: 16,
             margin: EdgeInsets.zero,
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.grey.shade900
-                : Colors.grey.shade100,
-            shape: RoundedRectangleBorder(
+            fallbackDecoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey.shade900
+                  : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Colors.transparent, width: 1.5),
+              border: Border.fromBorderSide(
+                  const BorderSide(color: Colors.transparent, width: 1.5)),
             ),
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
@@ -750,19 +752,21 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool value,
     required ValueChanged<bool?> onChanged,
   }) {
-    return Card(
-      elevation: 0,
+    return OptionalLiquidGlassCard(
+      borderRadius: 16,
       margin: EdgeInsets.zero,
-      color: value
-          ? color.withValues(alpha: 0.1)
-          : (Theme.of(context).brightness == Brightness.dark
-              ? Colors.grey.shade900
-              : Colors.grey.shade100),
-      shape: RoundedRectangleBorder(
+      fallbackDecoration: BoxDecoration(
+        color: value
+            ? color.withValues(alpha: 0.1)
+            : (Theme.of(context).brightness == Brightness.dark
+                ? Colors.grey.shade900
+                : Colors.grey.shade100),
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: value ? color.withValues(alpha: 0.5) : Colors.transparent,
-          width: 1.5,
+        border: Border.fromBorderSide(
+          BorderSide(
+            color: value ? color.withValues(alpha: 0.5) : Colors.transparent,
+            width: 1.5,
+          ),
         ),
       ),
       child: InkWell(
@@ -842,20 +846,23 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
-    return Card(
-      elevation: 0,
+    return OptionalLiquidGlassCard(
+      borderRadius: 16,
       margin: EdgeInsets.zero,
-      color: Theme.of(context).brightness == Brightness.dark
-          ? Colors.grey.shade900
-          : Colors.grey.shade100,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.fromBorderSide(
+          BorderSide(
             color: value
                 ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)
                 : Colors.transparent,
             width: 1.5,
-          )),
+          ),
+        ),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => onChanged(!value),
@@ -918,15 +925,17 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   }
 
   Widget _buildCourseReminderTile() {
-    return Card(
-      elevation: 0,
+    return OptionalLiquidGlassCard(
+      borderRadius: 16,
       margin: EdgeInsets.zero,
-      color: Theme.of(context).brightness == Brightness.dark
-          ? Colors.grey.shade900
-          : Colors.grey.shade100,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Colors.transparent, width: 1.5)),
+      fallbackDecoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.grey.shade900
+            : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.fromBorderSide(
+            const BorderSide(color: Colors.transparent, width: 1.5)),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: _showReminderTimePicker,

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../storage_service.dart';
 import '../services/course_service.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 // Custom Colors to match Tailwind Emerald
 const Color emerald = Color(0xFF10B981);
@@ -552,37 +553,46 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(40),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
                 ),
-                if (headerExtra != null) headerExtra!,
-              ],
-            ),
+              ),
+              if (headerExtra != null) headerExtra!,
+            ],
           ),
-          Expanded(child: child),
-        ],
+        ),
+        Expanded(child: child),
+      ],
+    );
+
+    return OptionalLiquidGlassPanel(
+      mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+      isDark: true,
+      clipBehavior: Clip.antiAlias,
+      borderRadius: 40,
+      fallback: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(40),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: content,
       ),
+      child: content,
     );
   }
 }
@@ -1420,6 +1430,122 @@ class TaskDetailModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double sheetWidth =
+        math.min(600, MediaQuery.of(context).size.width * 0.9);
+    final sheetConstraints =
+        BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8);
+    final sheet = Stack(
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 6,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [
+                Theme.of(context).colorScheme.primary,
+                Colors.indigo
+              ]),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: (task.teamUuid != null
+                                ? Theme.of(context).colorScheme.primary
+                                : emerald)
+                            .withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: (task.teamUuid != null
+                                    ? Theme.of(context).colorScheme.primary
+                                    : emerald)
+                                .withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        task.teamName ?? '个人空间',
+                        style: TextStyle(
+                          color: task.teamUuid != null
+                              ? Theme.of(context).colorScheme.secondary
+                              : emeraldAccent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white24),
+                      onPressed: onClose,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  task.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _buildInfoRow(
+                    Icons.access_time,
+                    '开始时间',
+                    DateFormat('yyyy-MM-dd HH:mm').format(
+                        DateTime.fromMillisecondsSinceEpoch(task.createdAt))),
+                _buildInfoRow(
+                    Icons.calendar_today,
+                    '截止时间',
+                    task.dueDate != null
+                        ? DateFormat('yyyy-MM-dd HH:mm').format(task.dueDate!)
+                        : '无截止日期'),
+                _buildInfoRow(
+                    Icons.person_outline, '创建者', task.creatorName ?? '我'),
+                const SizedBox(height: 24),
+                const Text('备注与详情',
+                    style: TextStyle(
+                        color: Colors.white24,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(20),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: Text(
+                    task.remark ?? '暂无详细备注说明。',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14,
+                        height: 1.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+
     return GestureDetector(
       onTap: onClose,
       child: Container(
@@ -1427,135 +1553,28 @@ class TaskDetailModal extends StatelessWidget {
         child: Center(
           child: GestureDetector(
             onTap: () {}, // Prevent closing when clicking modal
-            child: Container(
-              width: math.min(600, MediaQuery.of(context).size.width * 0.9),
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 6,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          Theme.of(context).colorScheme.primary,
-                          Colors.indigo
-                        ]),
-                      ),
-                    ),
+            child: ConstrainedBox(
+              constraints: sheetConstraints,
+              child: OptionalLiquidGlassPanel(
+                mode: OptionalLiquidGlassPanelMode.adaptiveRepeated,
+                isDark: true,
+                highContrast: true,
+                clipBehavior: Clip.antiAlias,
+                borderRadius: 32,
+                width: sheetWidth,
+                fallback: Container(
+                  width: sheetWidth,
+                  constraints: sheetConstraints,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(32),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: (task.teamUuid != null
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .primary
-                                          : emerald)
-                                      .withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                      color: (task.teamUuid != null
-                                              ? Theme.of(context)
-                                                  .colorScheme
-                                                  .primary
-                                              : emerald)
-                                          .withValues(alpha: 0.3)),
-                                ),
-                                child: Text(
-                                  task.teamName ?? '个人空间',
-                                  style: TextStyle(
-                                    color: task.teamUuid != null
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .secondary
-                                        : emeraldAccent,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close,
-                                    color: Colors.white24),
-                                onPressed: onClose,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            task.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
-                              fontWeight: FontWeight.w900,
-                              height: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          _buildInfoRow(
-                              Icons.access_time,
-                              '开始时间',
-                              DateFormat('yyyy-MM-dd HH:mm').format(
-                                  DateTime.fromMillisecondsSinceEpoch(
-                                      task.createdAt))),
-                          _buildInfoRow(
-                              Icons.calendar_today,
-                              '截止时间',
-                              task.dueDate != null
-                                  ? DateFormat('yyyy-MM-dd HH:mm')
-                                      .format(task.dueDate!)
-                                  : '无截止日期'),
-                          _buildInfoRow(Icons.person_outline, '创建者',
-                              task.creatorName ?? '我'),
-                          const SizedBox(height: 24),
-                          const Text('备注与详情',
-                              style: TextStyle(
-                                  color: Colors.white24,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.05)),
-                            ),
-                            child: Text(
-                              task.remark ?? '暂无详细备注说明。',
-                              style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.7),
-                                  fontSize: 14,
-                                  height: 1.6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                  clipBehavior: Clip.antiAlias,
+                  child: sheet,
+                ),
+                child: sheet,
               ),
             ),
           ),

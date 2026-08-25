@@ -19,6 +19,7 @@ import '../dialogs/migration_dialog.dart';
 import '../../../utils/theme_color_tokens.dart';
 import '../../../widgets/app_settings_widgets.dart';
 import '../../../widgets/app_state_views.dart';
+import '../../../widgets/optional_liquid_glass_surface.dart';
 
 class PreferenceSettingsPage extends StatefulWidget {
   final String? initialTarget;
@@ -620,10 +621,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   setState(() => _homeTextConfig = newConfig);
                 }
               },
-              child: Container(
+              child: OptionalLiquidGlassCard(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
+                borderRadius: 16,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   border: Border.all(
@@ -751,10 +754,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
                   ),
                 );
               },
-              child: Container(
+              child: OptionalLiquidGlassCard(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
+                borderRadius: 16,
+                highContrast: true,
+                fallbackDecoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   color: colorScheme.surfaceContainerHighest,
                   border: Border.all(
@@ -910,10 +915,12 @@ class _PreferenceSettingsPageState extends State<PreferenceSettingsPage> {
               label: '配置侧边栏菜单',
               child: GestureDetector(
                 onTap: _openSidebarMenuSettings,
-                child: Container(
+                child: OptionalLiquidGlassCard(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
+                  borderRadius: 16,
+                  highContrast: true,
+                  fallbackDecoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     color: colorScheme.surfaceContainerHighest,
                     border: Border.all(
