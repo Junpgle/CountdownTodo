@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../services/browser_file_service.dart';
 import '../../../utils/app_platform.dart';
+import '../../../../widgets/optional_liquid_glass_surface.dart';
 import '../models/cloud_challenge.dart';
 import '../models/thirty_day_challenge.dart';
 import '../repositories/thirty_day_challenge_repository.dart';
@@ -944,9 +945,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                                 ),
                           ),
                           SizedBox(height: isLandscape ? 32 : 36),
-                          Container(
+                          OptionalLiquidGlassCard(
+                            borderRadius: 32,
+                            highContrast: true,
                             padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
-                            decoration: BoxDecoration(
+                            fallbackDecoration: BoxDecoration(
                               color: scheme.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(32),
                               border: Border.all(
@@ -1016,9 +1019,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Container(
+                          OptionalLiquidGlassCard(
+                            borderRadius: 32,
+                            highContrast: true,
                             padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
-                            decoration: BoxDecoration(
+                            fallbackDecoration: BoxDecoration(
                               color: scheme.surfaceContainer,
                               borderRadius: BorderRadius.circular(32),
                               border: Border.all(
@@ -1080,9 +1085,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Container(
+                          OptionalLiquidGlassCard(
+                            borderRadius: 32,
+                            highContrast: true,
                             padding: EdgeInsets.all(isCompactMobile ? 22 : 28),
-                            decoration: BoxDecoration(
+                            fallbackDecoration: BoxDecoration(
                               color: scheme.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(32),
                               border: Border.all(
@@ -1172,9 +1179,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     bool compact = false,
   }) {
     final buttonHeight = compact ? 50.0 : 64.0;
-    return Container(
+    return OptionalLiquidGlassCard(
+      borderRadius: 24,
+      highContrast: true,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
@@ -1547,9 +1556,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     required Color welcomePrimary,
     required Color welcomeSecondary,
   }) {
-    return Container(
+    return OptionalLiquidGlassCard(
+      borderRadius: 18,
+      highContrast: true,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainer,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
@@ -1610,9 +1621,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     required Color welcomeSecondary,
     required Color welcomeTertiary,
   }) {
-    return Container(
+    return OptionalLiquidGlassCard(
+      borderRadius: 18,
+      highContrast: true,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
+      fallbackDecoration: BoxDecoration(
         color: scheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
@@ -2362,9 +2375,11 @@ class _ThirtyDayChallengeScreenState extends State<ThirtyDayChallengeScreen>
     required IconData icon,
   }) {
     return Expanded(
-      child: Container(
+      child: OptionalLiquidGlassCard(
+        borderRadius: 24,
+        highContrast: true,
         padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
-        decoration: BoxDecoration(
+        fallbackDecoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(24),
         ),

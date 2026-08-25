@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import '../storage_service.dart';
 import '../utils/page_transitions.dart';
+import '../widgets/optional_liquid_glass_surface.dart';
 
 // ─────────────────────────────────────────────
 // 设备过滤枚举
@@ -915,8 +916,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
       }
     }
 
-    return Container(
-      decoration: _cardDecoration(context),
+    return OptionalLiquidGlassCard(
+      borderRadius: 22,
+      highContrast: true,
+      fallbackDecoration: _cardDecoration(context),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
         child: LayoutBuilder(builder: (ctx, constraints) {
@@ -1074,9 +1077,11 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
           ),
           sourceColor: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(18),
-          child: Container(
-            decoration: _cardDecoration(context),
+          child: OptionalLiquidGlassCard(
+            borderRadius: 22,
+            highContrast: true,
             padding: const EdgeInsets.all(14),
+            fallbackDecoration: _cardDecoration(context),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -1131,8 +1136,10 @@ class _ScreenTimeDetailScreenState extends State<ScreenTimeDetailScreen> {
   Widget _buildRestList(List<MapEntry<String, Map<String, dynamic>>> apps,
       {required int skipCount}) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: _cardDecoration(context),
+    return OptionalLiquidGlassCard(
+      borderRadius: 22,
+      highContrast: true,
+      fallbackDecoration: _cardDecoration(context),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: ListView.separated(
@@ -1363,9 +1370,11 @@ class CategoryDetailScreen extends StatelessWidget {
             Expanded(
               child: apps.isEmpty
                   ? const Center(child: Text("暂无数据"))
-                  : Container(
+                  : OptionalLiquidGlassCard(
                       margin: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: _cardDecoration(context),
+                      borderRadius: 22,
+                      highContrast: true,
+                      fallbackDecoration: _cardDecoration(context),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(22),
                         child: ListView.separated(
@@ -1605,9 +1614,11 @@ class AppDetailScreen extends StatelessWidget {
 
               deviceTrendCards.add(SizedBox(
                 width: cardWidth,
-                child: Container(
-                  decoration: cardDec,
+                child: OptionalLiquidGlassCard(
+                  borderRadius: 22,
+                  highContrast: true,
                   padding: const EdgeInsets.all(20),
+                  fallbackDecoration: cardDec,
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
