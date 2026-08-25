@@ -16,6 +16,19 @@ const _epsilon = 0.001;
 // 0.15 means the route progress drops from 1.0 to 0.85 (shrinks to 85%).
 const _predictiveBackMaxInteractiveProgress = 0.50;
 
+/// Raw progress of the predictive back gesture currently driving the
+/// top-most route (0.0–1.0, 0.0 when idle). Only one gesture runs at a time,
+/// so this is shared across all route transitions.
+///
+/// Two reasons this cannot be derived inside the transition itself:
+/// 1. Flutter drives predictive back by assigning `_controller.value`
+///    directly, so [AnimationStatus] stays completed during the drag and only
+///    flips to reverse once the pop starts.
+/// 2. The route curve eases out near 1.0, swallowing the small progress
+///    deltas of a drag — corners must follow the raw gesture progress.
+final ValueNotifier<double> _predictiveBackGestureProgress =
+    ValueNotifier<double>(0.0);
+
 class _AnimSettings {
   static bool enabled = true;
   static bool lazyLoad = true;
@@ -268,6 +281,11 @@ class _PredictiveBackGestureBridgeState<T>
       widget.route.isCurrent &&
       widget.route.popGestureEnabled;
 
+  /// Whether this bridge started the current gesture. The raw progress stays
+  /// above zero through the committed pop so the exit transition keeps its
+  /// rounded corners, and is reset when this route's subtree is disposed.
+  bool _ownsGesture = false;
+
   double _routeProgressForBackGesture(PredictiveBackEvent backEvent) {
     final gestureProgress = backEvent.progress.clamp(0.0, 1.0);
     final visualPopProgress =
@@ -283,8 +301,25 @@ class _PredictiveBackGestureBridgeState<T>
 
   @override
   void dispose() {
+    if (_ownsGesture) {
+      _ownsGesture = false;
+      // Unmount runs while the widget tree is locked — notifying listeners
+      // (live transitions below this route) here would throw. Defer the
+      // reset to the end of the frame.
+      final ValueNotifier<double> progress = _predictiveBackGestureProgress;
+      if (progress.value > 0.0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          progress.value = 0.0;
+        });
+      }
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _setGestureProgress(PredictiveBackEvent backEvent) {
+    _predictiveBackGestureProgress.value =
+        backEvent.progress.clamp(0.0, 1.0);
   }
 
   @override
@@ -292,6 +327,8 @@ class _PredictiveBackGestureBridgeState<T>
     if (!_canHandle) {
       return false;
     }
+    _ownsGesture = true;
+    _setGestureProgress(backEvent);
     widget.route.handleStartBackGesture(
       progress: _routeProgressForBackGesture(backEvent),
     );
@@ -303,6 +340,9 @@ class _PredictiveBackGestureBridgeState<T>
     if (!widget.route.isCurrent) {
       return;
     }
+    if (_ownsGesture) {
+      _setGestureProgress(backEvent);
+    }
     widget.route.handleUpdateBackGestureProgress(
       progress: _routeProgressForBackGesture(backEvent),
     );
@@ -310,6 +350,10 @@ class _PredictiveBackGestureBridgeState<T>
 
   @override
   void handleCancelBackGesture() {
+    if (_ownsGesture) {
+      _predictiveBackGestureProgress.value = 0.0;
+      _ownsGesture = false;
+    }
     if (!widget.route.isCurrent) {
       return;
     }
@@ -379,6 +423,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   // Frame-skip cache.
   double _lastRoute = -1;
   double _lastBg = -1;
+  double _lastGestureProgress = -1;
   Widget? _cachedFrame;
 
   @override
@@ -410,6 +455,7 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     _cacheMediaQuery();
     _lastRoute = -1;
     _lastBg = -1;
+    _lastGestureProgress = -1;
     _cachedFrame = null;
   }
 
@@ -432,11 +478,13 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       _initAnimations();
       _lastRoute = -1;
       _lastBg = -1;
+      _lastGestureProgress = -1;
       _cachedFrame = null;
     } else if (oldWidget.child != widget.child ||
         oldWidget.mode != widget.mode) {
       _lastRoute = -1;
       _lastBg = -1;
+      _lastGestureProgress = -1;
       _cachedFrame = null;
     }
   }
@@ -455,6 +503,9 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     _mergedAnimation = Listenable.merge(<Listenable>[
       _routeCurve,
       _backgroundCurve,
+      // Rebuild when a predictive back gesture starts, moves or ends — the
+      // raw progress drives clipping independently of the eased route value.
+      _predictiveBackGestureProgress,
     ]);
   }
 
@@ -474,9 +525,6 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
   Widget build(BuildContext context) {
     // 懒加载：入场转场未完成前，先渲染占位遮罩层（类似原生启动页），
     // 页面内容在遮罩下完成构建与首帧挂载，动画结束后整体揭示。
-    // ignore: avoid_print
-    print(
-        'GATE[${widget.mode}] revealed=$_revealed lazy=${_AnimSettings.lazyLoad} status=${widget.animation.status} val=${widget.animation.value}');
     if (!_revealed) {
       return AnimatedBuilder(
         animation: widget.animation,
@@ -504,15 +552,18 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
       builder: (context, child) {
         final routeVal = _routeCurve.value;
         final bgVal = _backgroundCurve.value;
+        final gestureProgress = _predictiveBackGestureProgress.value;
 
         // Frame-skip — return cached widget when animation is idle.
         if (routeVal == _lastRoute &&
             bgVal == _lastBg &&
+            gestureProgress == _lastGestureProgress &&
             _cachedFrame != null) {
           return _cachedFrame!;
         }
         _lastRoute = routeVal;
         _lastBg = bgVal;
+        _lastGestureProgress = gestureProgress;
 
         final backgroundProgress = bgVal.clamp(0.0, 1.0);
         final foregroundProgress = routeVal.clamp(0.0, 1.0);
@@ -527,8 +578,13 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
         }
 
         if (foregroundProgress < 1.0 ||
-            widget.animation.status == AnimationStatus.reverse) {
-          current = _buildForegroundPage(current, foregroundProgress);
+            widget.animation.status == AnimationStatus.reverse ||
+            gestureProgress > 0.0) {
+          current = _buildForegroundPage(
+            current,
+            foregroundProgress,
+            gestureProgress: gestureProgress,
+          );
         }
 
         _cachedFrame = current;
@@ -579,14 +635,33 @@ class _PageLayerTransitionState extends State<_PageLayerTransition>
     );
   }
 
-  Widget _buildForegroundPage(Widget child, double progress) {
+  Widget _buildForegroundPage(
+    Widget child,
+    double progress, {
+    required double gestureProgress,
+  }) {
     final eased = progress;
     Widget current = child;
 
-    // Skip ClipRRect during reverse — content is being dismissed, not revealed.
-    if (widget.animation.status != AnimationStatus.reverse) {
-      final corner = _cachedScreenRadius * (1.0 - eased);
-      if (_useScreenRadius && corner > 0.5) {
+    // Rounded corners follow the "screen radius" animation setting
+    // (_AnimSettings.screenRadius). During a predictive back gesture the page
+    // shrinks into a floating layer, so keep the clip through both the drag
+    // and the committed pop — [AnimationStatus.reverse] alone cannot be used,
+    // because Flutter drives the drag by setting the controller value while
+    // the status stays completed.
+    final isReverse = widget.animation.status == AnimationStatus.reverse;
+    if (_useScreenRadius && (!isReverse || gestureProgress > 0.0)) {
+      final double cornerFactor;
+      if (gestureProgress > 0.0) {
+        // Follow the RAW gesture progress (not the eased route value, which
+        // the curve flattens near 1.0): full screen radius at half drag,
+        // held constant while the committed pop finishes.
+        cornerFactor = (gestureProgress * 2.0).clamp(0.0, 1.0);
+      } else {
+        cornerFactor = (1.0 - eased).clamp(0.0, 1.0);
+      }
+      final corner = _cachedScreenRadius * cornerFactor;
+      if (corner > 0.5) {
         current = ClipRRect(
           clipBehavior: Clip.hardEdge,
           borderRadius: BorderRadius.circular(corner),
