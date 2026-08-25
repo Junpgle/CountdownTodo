@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/animation_config_service.dart';
+import '../services/liquid_glass_effect_service.dart';
 import '../utils/app_platform.dart';
 import '../utils/page_transitions.dart';
 
@@ -16,6 +17,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _animationsEnabled = true;
   bool _motionBlurEnabled = false;
   bool _layerBlurEnabled = false;
+  bool _liquidGlassEnabled = false;
+  LiquidGlassEffectMode _liquidGlassMode = LiquidGlassEffectMode.standard;
+  bool _liquidGlassMutationPending = false;
   bool _lazyLoadEnabled = true;
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
@@ -42,6 +46,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.getPageLayerDepth(),
       AnimationConfigService.getContainerContentStart(),
       AnimationConfigService.getPreset(),
+      LiquidGlassEffectService.loadConfiguration(),
     ]);
     if (!mounted) return;
     setState(() {
@@ -55,7 +60,54 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _pageLayerDepth = results[7] as int;
       _containerContentStart = results[8] as int;
       _preset = results[9] as AnimationPreset?;
+      final liquidGlass = results[10] as LiquidGlassEffectConfiguration;
+      _liquidGlassEnabled = liquidGlass.enabled;
+      _liquidGlassMode = liquidGlass.mode;
     });
+  }
+
+  Future<void> _setLiquidGlassEnabled(bool enabled) async {
+    if (_liquidGlassMutationPending) return;
+    final previous = _liquidGlassEnabled;
+    setState(() {
+      _liquidGlassEnabled = enabled;
+      _liquidGlassMutationPending = true;
+    });
+    try {
+      await LiquidGlassEffectService.setEnabled(enabled);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _liquidGlassEnabled = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Liquid Glass 初始化失败：$error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _liquidGlassMutationPending = false);
+      }
+    }
+  }
+
+  Future<void> _setLiquidGlassMode(LiquidGlassEffectMode mode) async {
+    if (_liquidGlassMutationPending) return;
+    final previous = _liquidGlassMode;
+    setState(() {
+      _liquidGlassMode = mode;
+      _liquidGlassMutationPending = true;
+    });
+    try {
+      await LiquidGlassEffectService.setMode(mode);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _liquidGlassMode = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Liquid Glass 模式切换失败：$error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _liquidGlassMutationPending = false);
+      }
+    }
   }
 
   Future<void> _applyPreset(AnimationPreset preset) async {
@@ -114,7 +166,6 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDesktop = MediaQuery.of(context).size.width >= 800;
     return Scaffold(
       appBar: widget.isEmbedded
           ? null
@@ -124,6 +175,9 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
             ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 800;
+          final isWide = constraints.maxWidth > 600;
+          final isCompact = constraints.maxWidth <= 600;
           final content = ListView(
             padding: EdgeInsets.fromLTRB(
               isDesktop ? 24 : 16,
@@ -143,7 +197,11 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   ),
                 ),
               ),
-              _buildPresetGrid(isDesktop: isDesktop),
+              _buildPresetGrid(
+                isDesktop: isDesktop,
+                isWide: isWide,
+                isCompact: isCompact,
+              ),
               SizedBox(height: isDesktop ? 28 : 24),
               Padding(
                 padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
@@ -156,12 +214,13 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: MediaQuery.of(context).size.width > 600 ? 3 : 2,
+                crossAxisCount: isWide ? 3 : 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
                 childAspectRatio: isDesktop ? 2.45 : 1.3,
                 children: [
                   _buildToggleCard(
+                    isDesktop: isDesktop,
                     title: '启用页面动画',
                     subtitle: '开启/关闭过渡动画',
                     icon: Icons.animation,
@@ -172,6 +231,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     },
                   ),
                   _buildToggleCard(
+                    isDesktop: isDesktop,
                     title: '懒加载优化',
                     subtitle: '动画进行中再渲染内容',
                     icon: Icons.hourglass_empty,
@@ -182,6 +242,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     },
                   ),
                   _buildToggleCard(
+                    isDesktop: isDesktop,
                     title: '屏幕圆角适配',
                     subtitle: '动画过程中适配屏幕圆角',
                     icon: Icons.rounded_corner,
@@ -193,6 +254,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                   ),
                   if (!AppPlatform.isWeb)
                     _buildToggleCard(
+                      isDesktop: isDesktop,
                       title: '预测性返回',
                       subtitle: 'Android 14+ 返回手势',
                       icon: Icons.swipe_left,
@@ -203,6 +265,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       },
                     ),
                   _buildToggleCard(
+                    isDesktop: isDesktop,
                     title: '运动模糊',
                     subtitle: '滑动动态模糊 (影响性能)',
                     icon: Icons.blur_linear,
@@ -213,6 +276,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                     },
                   ),
                   _buildToggleCard(
+                    isDesktop: isDesktop,
                     title: '层级模糊',
                     subtitle: '背景页面模糊 (影响性能)',
                     icon: Icons.blur_on,
@@ -222,7 +286,96 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                       _update(layerBlur: val);
                     },
                   ),
+                  _buildToggleCard(
+                    isDesktop: isDesktop,
+                    title: 'Liquid Glass',
+                    subtitle: '全应用玻璃材质、折射与半透明层次 (可选)',
+                    icon: Icons.water_drop_rounded,
+                    value: _liquidGlassEnabled,
+                    onChanged: _liquidGlassMutationPending
+                        ? null
+                        : _setLiquidGlassEnabled,
+                  ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: _liquidGlassEnabled ? 1 : 0.58,
+                child: Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              color: colorScheme.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Liquid Glass 模式',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<LiquidGlassEffectMode>(
+                            segments: const [
+                              ButtonSegment(
+                                value: LiquidGlassEffectMode.standard,
+                                icon: Icon(Icons.speed_rounded),
+                                label: Text('标准'),
+                              ),
+                              ButtonSegment(
+                                value: LiquidGlassEffectMode.enhanced,
+                                icon: Icon(Icons.auto_awesome_rounded),
+                                label: Text('增强'),
+                              ),
+                            ],
+                            selected: {_liquidGlassMode},
+                            onSelectionChanged: !_liquidGlassEnabled ||
+                                    _liquidGlassMutationPending
+                                ? null
+                                : (selection) =>
+                                    _setLiquidGlassMode(selection.first),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _liquidGlassMode == LiquidGlassEffectMode.standard
+                              ? '高可读性和低功耗；滚动卡片使用轻量玻璃材质，重点表面保留折射。'
+                              : '更强折射、高光和色散；固定重点表面使用高画质玻璃，滚动卡片启用实时玻璃。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (!_liquidGlassEnabled) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            '开启 Liquid Glass 后可切换模式',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ),
               Padding(
                 padding:
@@ -412,8 +565,11 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     );
   }
 
-  Widget _buildPresetGrid({required bool isDesktop}) {
-    final isWide = MediaQuery.of(context).size.width > 600;
+  Widget _buildPresetGrid({
+    required bool isDesktop,
+    required bool isWide,
+    required bool isCompact,
+  }) {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -425,18 +581,21 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       childAspectRatio: isDesktop ? 2.35 : (isWide ? 1.45 : 0.78),
       children: [
         _buildPresetCard(
+          compact: isCompact,
           preset: AnimationPreset.performance,
           title: '极致流畅',
           subtitle: '优先稳定帧率，适合大多数 Android 机型',
           icon: Icons.speed_rounded,
         ),
         _buildPresetCard(
+          compact: isCompact,
           preset: AnimationPreset.balanced,
           title: '均衡模式',
           subtitle: '保留主要过渡，兼顾观感与性能',
           icon: Icons.tune_rounded,
         ),
         _buildPresetCard(
+          compact: isCompact,
           preset: AnimationPreset.expressive,
           title: '完整动效',
           subtitle: '开启模糊和层级动画，视觉优先',
@@ -447,6 +606,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   }
 
   Widget _buildPresetCard({
+    required bool compact,
     required AnimationPreset preset,
     required String title,
     required String subtitle,
@@ -454,7 +614,6 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final selected = _preset == preset;
-    final compact = MediaQuery.of(context).size.width <= 600;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _applyPreset(preset),
@@ -560,17 +719,16 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   }
 
   Widget _buildToggleCard({
+    required bool isDesktop,
     required String title,
     required String subtitle,
     required IconData icon,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = value;
-    final isDesktop = MediaQuery.of(context).size.width >= 800;
-
     final iconWidget = AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
       switchInCurve: Curves.easeOutBack,
@@ -624,7 +782,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     );
 
     return GestureDetector(
-      onTap: () => onChanged(!value),
+      onTap: onChanged == null ? null : () => onChanged(!value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
