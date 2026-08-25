@@ -1,6 +1,6 @@
 # Shared-component and refactor inventory
 
-Last reviewed: 2026-07-20. This replaces the old line-number-based checklist;
+Last reviewed: 2026-08-25. This replaces the old line-number-based checklist;
 line numbers and file sizes change too often to be useful as design contracts.
 
 ## Extracted and reusable
@@ -8,8 +8,10 @@ line numbers and file sizes change too often to be useful as design contracts.
 - Dialog/snackbar helpers: `lib/utils/app_dialogs.dart`.
 - Date/time formatting: `lib/utils/time_utils.dart`.
 - Theme-aware color helpers: `lib/utils/app_color_utils.dart` and
-  `lib/utils/theme_color_tokens.dart`.
+  `lib/utils/theme_color_tokens.dart`; theme extensions in `lib/theme/`.
 - Loading/empty/error views: `lib/widgets/app_state_views.dart`.
+- Glass-or-fallback surfaces: `lib/widgets/optional_liquid_glass_surface.dart`
+  with configuration from `lib/services/liquid_glass_effect_service.dart`.
 - Storage modules: `lib/services/storage/app_settings_storage.dart`,
   `countdown_storage.dart`, `pomodoro_storage.dart`,
   `user_session_storage.dart`, and `storage_conflict_cleanup.dart`.
@@ -28,8 +30,9 @@ line numbers and file sizes change too often to be useful as design contracts.
 
 ## Highest-value remaining work
 
-1. Split `home_dashboard.dart`, `todo_section_widget.dart`,
-   `course_screens.dart`, and `todo_chat_screen.dart` by feature/state boundary.
+1. Turn the `part` splits of `home_dashboard.dart`, `todo_section_widget.dart`,
+   `course_screens.dart`, and `todo_chat_screen.dart` into independently
+   testable widgets/controllers instead of same-library fragments.
 2. Isolate recurrence migration/repair from general storage sync and surround it
    with focused tests.
 3. Extract repeated settings section/tile patterns without hiding platform

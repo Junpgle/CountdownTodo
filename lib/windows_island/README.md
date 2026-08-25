@@ -1,7 +1,7 @@
 # Windows island
 
 Windows-only dynamic-island/floating-window implementation. Last reviewed:
-2026-07-20.
+2026-08-25.
 
 ## Architecture
 

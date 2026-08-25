@@ -4,8 +4,8 @@ CountDownTodo 是一个基于 Flutter 的跨平台效率工具，覆盖待办规
 
 Countdown Todo is a Flutter productivity app combining todos, recurring habits, countdowns, courses, focus sessions, plan blocks, collaboration, statistics, calendar integration and AI-assisted actions.
 
-当前应用版本：`5.5.27`
-文档更新时间：`2026-07-31`
+当前应用版本：`5.8.3`
+文档更新时间：`2026-08-25`
 
 ## 支持平台
 
@@ -21,17 +21,20 @@ Countdown Todo is a Flutter productivity app combining todos, recurring habits, 
 - **待办管理**：分组、提醒、循环待办（习惯）、固定日程（独立 `fixed_schedules` 模型）、版本历史、冲突处理、回收站、AI 辅助操作。
 - **规划块**：把已有待办安排到具体时间段，支持日视图创建、拖动改期、边缘调整、番茄钟绑定和统计，可写入系统日历。
 - **番茄钟**：标签、暂停详情、运行状态持久化、规划块绑定、记录统计、WebSocket 跨端感知、云同步、专注备注。
+- **习惯中心**：独立打卡模型（`lib/features/habits/`），连续天数与完成率统计、睡眠作息渐进训练、快捷打卡与小组件打卡。
 - **时间日志和时间线**：合并补录记录与番茄钟记录做效率分析；个人时间轴支持天/周/月/年维度。
 - **课程表**：导入与解析（`lib/course_import/`）、共存模式、多学期切换、周/月视图、调休。
+- **本地私密日记**：仅存本地的图文日记（`lib/features/journal/`）。
+- **30 天挑战**：30 件小事清单挑战，支持云端模板目录和分享口令（`lib/features/thirty_day_challenge/`）。
 - **团队协同**：团队管理、公告、消息中心、冲突收件箱、甘特图/热力图看板、共享链接查看。
 - **AI 待办助手**：LLM 配置（含 NVIDIA NIM）、智能上下文注入、建议与操作执行、图片识别待办、勋章 ML 推荐。
-- **其他**：全局搜索、屏幕使用时间、首页壁纸、全局动态取色、个人专注报告、版本更新管理。
+- **其他**：全局搜索、屏幕使用时间、首页壁纸、首页侧边栏配置（隐藏与排序）、未成年人模式（年龄权限矩阵）、液态玻璃视觉效果（可选开关与模式）、全局动态取色、个人专注报告、版本更新管理（含 Wi-Fi 自动下载更新包）。
 - **本地 MCP 待办服务**：`mcp-server/` 提供 Node.js stdio MCP Server，供 Claude、VS Code、Cursor 等 Host 查询和操作本地待办，写入 `op_logs` 由 Uni-Sync 机制同步。
 
 ## 当前架构
 
 - 主 Flutter 应用位于 `lib/`，平台壳位于 `android/`、`windows/`、`macos/`、`ios/`、`linux/`、`web/`。
-- 高容量业务数据以 SQLite 为主存储（当前 schema v35）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
+- 高容量业务数据以 SQLite 为主存储（当前 schema v44）；`SharedPreferences` 保留设置、登录态、同步水位线、小缓存和兼容迁移。
 - 主同步入口为 `StorageService.syncData()`，负责待办、分组、倒数日、时间日志、规划块和屏幕时间 payload；番茄钟同步由 `PomodoroService` 单独处理（标签、记录、oplog 保护、漏传恢复水位线）。
 - 后端同时保留 Alibaba Cloud 和 Cloudflare Worker。新后端能力优先修改 `CDT-server/debug/`（外部 checkout 的研发树）；`math-quiz-backend/` 保留兼容行为。
 - Web 通过 Cloudflare Zero Trust 访问 `https://api-cdt.junpgle.me/`；Windows/Android 可直接访问 Alibaba Cloud HTTP 服务。
@@ -45,9 +48,11 @@ CountdownTodo/
 ├── lib/                    Flutter 主应用代码
 │   ├── course_import/       课程导入处理器、解析器和 UI
 │   ├── models/              AI action、聊天消息、勋章 ML 等扩展模型
+│   ├── features/            自包含功能模块（习惯、私密日记、30 天挑战）
 │   ├── screens/             页面层和功能页面
 │   ├── services/            API、同步、数据库、番茄钟、AI、课程、时间线、通知、平台服务
 │   │   └── storage/         StorageService 拆分的职责模块
+│   ├── theme/               主题扩展（含液态玻璃主题应用）
 │   ├── widgets/             可复用 UI 组件和首页区块
 │   └── windows_island/      Windows-only 灵动岛/悬浮窗实现
 ├── mcp-server/              本地 MCP 待办服务（Node.js）
@@ -122,6 +127,7 @@ npm test
 - [项目架构](docs/PROJECT_ARCHITECTURE.md)
 - [待办与日程语义](docs/features/todo-semantics.md)
 - [规划块说明](docs/features/plan-blocks.md)
+- [习惯中心设计](docs/habits.md)
 - [AI 待办助手](docs/ai/todo-agent.md)
 - [冲突与同步逻辑](docs/sync/conflict-logic.md)
 - [勋章推荐](docs/features/medal-recommendation.md)

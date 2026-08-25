@@ -1,6 +1,6 @@
 # Extending the Windows island
 
-Last reviewed: 2026-07-20.
+Last reviewed: 2026-08-25.
 
 1. Add the new value to `IslandState` and decide whether it belongs in the
    protected-state set.

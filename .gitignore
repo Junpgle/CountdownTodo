@@ -142,6 +142,7 @@ todo.md
 !/test/widgets/todo_section_series_visibility_test.dart
 !/test/widgets/interconnect_settings_page_test.dart
 !/test/widgets/optional_liquid_glass_surface_test.dart
+!/test/widgets/app_status_toast_test.dart
 !/test/utils/
 /test/utils/*
 !/test/utils/todo_recurrence_picker_test.dart

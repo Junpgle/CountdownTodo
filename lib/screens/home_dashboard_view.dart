@@ -96,6 +96,7 @@ mixin _HomeDashboardViewMixin on _HomeDashboardStateBase {
                     onSearch: _showGlobalSearch,
                     onAiAssistant: _openAiAssistantFromAppBar,
                     searchKey: _searchButtonKey,
+                    syncKey: _syncButtonKey,
                     teamsKey: _teamsButtonKey,
                     aiKey: _aiButtonKey,
                     settingsKey: _settingsButtonKey,

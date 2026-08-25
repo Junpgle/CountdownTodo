@@ -1,6 +1,6 @@
 # Project architecture
 
-Last reconciled with code: 2026-07-20. Flutter package version: **5.4.22**.
+Last reconciled with code: 2026-08-25. Flutter package version: **5.8.3**.
 
 ## Repository map
 
@@ -10,6 +10,9 @@ lib/                    Flutter application
   widgets/              reusable and feature widgets
   services/             persistence, sync and platform services
     storage/            extracted StorageService responsibilities
+  features/             self-contained modules: habits, private journal,
+                        thirty-day challenge (models/repositories/services/UI)
+  theme/                theme extensions, including the Liquid Glass theme
   windows_island/       Windows-only island UI/state/IPC
 android/                Kotlin host, widgets, notifications, HyperOS, band
 ios/                    iOS Flutter host
@@ -29,7 +32,9 @@ as part of normal client work.
 ## Flutter layers
 
 - `models.dart` defines shared entities including todos, recurrence, countdowns,
-  groups, courses, plan blocks, Pomodoro, collaboration and sharing.
+  groups, courses, plan blocks, Pomodoro, collaboration and sharing. Extended
+  models (AI actions, chat, medal ML, minor mode, widget snapshots) live in
+  `lib/models/`.
 - Screens/widgets call domain and platform services. Several feature files are
   still large; this is a known modularization debt rather than a deliberate
   single-file architecture.
@@ -38,10 +43,14 @@ as part of normal client work.
   cleanup have begun moving into `services/storage/`.
 - Platform services use conditional exports so web does not import `dart:io`
   implementations and Android does not initialize Windows island code.
+- The optional Liquid Glass effect flows through `LiquidGlassEffectService`
+  (configuration listenable), `applyAppLiquidGlassTheme` in `lib/theme/`, and
+  `OptionalLiquidGlassSurface/Card/Panel` wrappers that keep a Material fallback.
 
 ## Local data
 
-- SQLite schema version: **32** in `DatabaseHelper`.
+- SQLite schema version: **44** in `DatabaseHelper`
+  (`DatabaseSchemaHistory.currentVersion`).
 - Per-user database: `uni_sync_<username>.db`.
 - Main tables include todos, groups, countdowns, courses, plan blocks, time logs,
   Pomodoro records/tags, settings, collaboration data, audit/conflict data,
@@ -54,14 +63,17 @@ as part of normal client work.
 
 - `TodoTimeMode` distinguishes unscheduled, date-only and deadline todos.
 - `ItemSemanticsService` classifies capture text as todo, fixed schedule, plan
-  block or confirmation-required. Generic fixed-schedule persistence is not yet
-  implemented, so current capture flows warn before temporarily saving one as a
-  todo.
+  block or confirmation-required. Fixed schedules use the dedicated
+  `FixedScheduleItem` model with creation/editing, recurrence-series
+  materialization, conflict detection, calendar export, backup support and a
+  capability-gated sync path (`fixed_schedules v1`).
 - Recurrence uses per-occurrence UUIDs plus `recurrence_series_id`; repair,
   aliasing and deduplication protect older and cross-device data.
 - `TodoPlanBlock` represents an execution window independently of a todo's due
   semantics. Blocks support planned/finished/delayed/cancelled/reminded/focusing/
   missed/skipped states, reminders, Pomodoro linkage and calendar event IDs.
+- Habits are an independent check-in model under `lib/features/habits/`, not a
+  recurring-todo inference; see `docs/habits.md`.
 - `docs/features/todo-semantics.md` defines additional approved semantics that
   are not all implemented yet.
 
@@ -86,7 +98,8 @@ new features.
   notifications, usage access, and band communication.
 - Windows: standard Flutter host plus file-IPC island/floating window.
 - macOS: app menu, status bar, WidgetKit widgets, launch-at-login, deep links,
-  updater integration and a native island/status controller.
+  updater integration and a native island/status controller with media info
+  (Apple Music plus the NetEase lyric fallback).
 - Web: Flutter client, JS Turnstile integration and proxy API routing.
 
 ## Verification

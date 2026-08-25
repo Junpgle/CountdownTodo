@@ -1,6 +1,6 @@
 # Todo plan blocks
 
-Last verified: 2026-07-20.
+Last verified: 2026-08-25.
 
 A todo describes an outcome and due semantics; a `TodoPlanBlock` describes a
 scheduled execution window. Multiple blocks may point to one todo.

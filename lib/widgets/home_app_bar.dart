@@ -105,6 +105,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
   final GlobalKey? settingsKey;
   final GlobalKey? courseKey;
   final GlobalKey? searchKey; // 🚀 新增
+  final GlobalKey? syncKey;
   final GlobalKey? teamsKey; // 🚀 新增
   final GlobalKey? aiKey;
   final GlobalKey? menuKey; // 🚀 新增：左侧菜单键
@@ -128,6 +129,7 @@ class HomeAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.settingsKey,
     this.courseKey,
     this.searchKey,
+    this.syncKey,
     this.teamsKey,
     this.aiKey,
     this.menuKey,
@@ -349,6 +351,7 @@ class _HomeAppBarState extends State<HomeAppBar>
       icon: Icons.cloud_sync_rounded,
       isLoading: widget.isSyncing,
       onPressed: widget.onSync,
+      buttonKey: widget.syncKey,
       isSmall: isMobileGrid,
       margin: isMobileGrid ? EdgeInsets.zero : null,
     );
