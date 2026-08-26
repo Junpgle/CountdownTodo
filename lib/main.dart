@@ -20,6 +20,7 @@ import 'screens/feature_guide_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/default_splash_screen.dart';
 import 'screens/share_view_screen.dart';
+import 'services/team_share_link.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'storage_service.dart';
 import 'models.dart';
@@ -265,15 +266,7 @@ class _MyAppState extends State<MyApp> {
   void _checkShareRoute() {
     if (_shareCode != null) return;
     try {
-      String hash = getUrlHash();
-      if (hash.startsWith('#')) hash = hash.substring(1);
-      if (hash.startsWith('/share')) {
-        final uri = Uri.parse('http://localhost$hash');
-        final code = uri.queryParameters['code'];
-        if (code != null && code.isNotEmpty) {
-          _shareCode = code;
-        }
-      }
+      _shareCode = TeamShareLink.codeFromRoute(getUrlHash());
     } catch (_) {}
   }
 
@@ -879,9 +872,8 @@ class _MyAppState extends State<MyApp> {
                                 onGenerateRoute: (settings) {
                                   final name = settings.name ?? '';
                                   if (name.startsWith('/share')) {
-                                    final uri =
-                                        Uri.parse('http://localhost$name');
-                                    final code = uri.queryParameters['code'];
+                                    final code =
+                                        TeamShareLink.codeFromRoute(name);
                                     if (code != null && code.isNotEmpty) {
                                       _shareCode = code;
                                       return MaterialPageRoute(

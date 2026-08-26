@@ -120,6 +120,7 @@ todo.md
 !/test/services/sync_oplog_policy_test.dart
 !/test/services/strict_focus_sensor_service_test.dart
 !/test/services/user_session_storage_test.dart
+!/test/services/team_share_link_test.dart
 !/test/services/todo_notification_policy_test.dart
 !/test/services/todo_parser_time_semantics_test.dart
 !/test/services/todo_lww_service_test.dart

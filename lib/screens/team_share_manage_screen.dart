@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/team_share_link.dart';
 
 class TeamShareManageScreen extends StatefulWidget {
   final Team team;
@@ -94,8 +95,10 @@ class _TeamShareManageScreenState extends State<TeamShareManageScreen> {
   }
 
   void _copyShareLink(TeamShare share) {
-    final url =
-        share.shareUrl ?? 'https://api-cdt.junpgle.me/share/${share.shareCode}';
+    final url = TeamShareLink.normalize(
+      shareUrl: share.shareUrl,
+      shareCode: share.shareCode,
+    );
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('链接已复制到剪贴板')),
@@ -370,7 +373,10 @@ class _CreateShareScreenState extends State<_CreateShareScreen> {
       );
 
       if (result['success'] == true) {
-        final shareUrl = result['share_url'] ?? '';
+        final shareUrl = TeamShareLink.normalize(
+          shareUrl: result['share_url']?.toString(),
+          shareCode: result['share_code']?.toString(),
+        );
         if (mounted) {
           widget.onCreated();
 
