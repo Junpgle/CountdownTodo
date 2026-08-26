@@ -29,6 +29,7 @@ import '../features/habits/screens/habit_center_screen.dart';
 import '../features/thirty_day_challenge/screens/thirty_day_challenge_screen.dart';
 import '../widgets/app_settings_widgets.dart';
 import '../widgets/optional_liquid_glass_surface.dart';
+import 'animation_settings_page.dart';
 
 /// 控制功能页的入口展示范围。
 enum FeatureGuideMode {
@@ -102,6 +103,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     if (AppPlatform.isWeb) {
       return [
         _RecentFeature(
+          Icons.blur_on_rounded,
+          scheme.primary,
+          'Liquid Glass 视觉升级',
+          '设置->动画设置->Liquid Glass',
+          destinationBuilder: () => const AnimationSettingsPage(),
+        ),
+        _RecentFeature(
+          Icons.animation_rounded,
+          scheme.secondary,
+          '动效性能与速度预设',
+          '设置->动画设置->性能预设 / 动画速度',
+          destinationBuilder: () => const AnimationSettingsPage(),
+        ),
+        _RecentFeature(
           Icons.auto_awesome_rounded,
           scheme.primary,
           '30天找到全新自我',
@@ -149,6 +164,20 @@ class _FeatureGuideScreenState extends State<FeatureGuideScreen> {
     }
 
     return [
+      _RecentFeature(
+        Icons.blur_on_rounded,
+        scheme.primary,
+        'Liquid Glass 视觉升级',
+        '设置->动画设置->Liquid Glass',
+        destinationBuilder: () => const AnimationSettingsPage(),
+      ),
+      _RecentFeature(
+        Icons.animation_rounded,
+        scheme.secondary,
+        '动效性能与速度预设',
+        '设置->动画设置->性能预设 / 动画速度',
+        destinationBuilder: () => const AnimationSettingsPage(),
+      ),
       _RecentFeature(
         Icons.auto_awesome_rounded,
         scheme.primary,
