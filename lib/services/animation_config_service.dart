@@ -5,8 +5,26 @@ import 'liquid_glass_effect_service.dart';
 
 enum AnimationPreset { performance, balanced, expressive }
 
+enum AnimationSpeedPreset { elegant, balanced, fast }
+
+extension AnimationSpeedPresetValues on AnimationSpeedPreset {
+  int get duration {
+    switch (this) {
+      case AnimationSpeedPreset.elegant:
+        return 500;
+      case AnimationSpeedPreset.balanced:
+        return 320;
+      case AnimationSpeedPreset.fast:
+        return 220;
+    }
+  }
+}
+
 class AnimationConfigService {
   static const String _keyPreset = 'animation_preset';
+  static const String _customAnimationPreset = 'custom';
+  static const String _keyAnimationSpeedPreset = 'animation_speed_preset';
+  static const String _customAnimationSpeedPreset = 'custom';
   static const String _keyEnableAnimations = 'enable_animations';
   static const String _keyEnableMotionBlur = 'enable_motion_blur';
   static const String _keyEnableLayerBlur = 'enable_layer_blur';
@@ -23,10 +41,30 @@ class AnimationConfigService {
   static Future<AnimationPreset?> getPreset() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getString(_keyPreset);
+    if (value == _customAnimationPreset) return null;
     for (final preset in AnimationPreset.values) {
       if (preset.name == value) return preset;
     }
-    return null;
+
+    // 没有任何历史配置时使用均衡性能档；兼容旧版本已手动调整过设置、
+    // 但尚未保存“自定义”标记的情况。
+    if (_hasLegacyCustomSettings(prefs)) return null;
+    return AnimationPreset.balanced;
+  }
+
+  static bool _hasLegacyCustomSettings(SharedPreferences prefs) {
+    const keys = [
+      _keyEnableAnimations,
+      _keyEnableMotionBlur,
+      _keyEnableLayerBlur,
+      _keyEnableLazyLoad,
+      _keyEnableScreenRadius,
+      _keyEnablePredictiveBack,
+      _keyAnimationDuration,
+      _keyPageLayerDepth,
+      _keyContainerContentStart,
+    ];
+    return keys.any(prefs.containsKey);
   }
 
   static Future<bool> isAnimationsEnabled() async {
@@ -61,7 +99,31 @@ class AnimationConfigService {
 
   static Future<int> getAnimationDuration() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyAnimationDuration) ?? (_isAndroid ? 220 : 500);
+    return prefs.getInt(_keyAnimationDuration) ??
+        AnimationSpeedPreset.elegant.duration;
+  }
+
+  static Future<AnimationSpeedPreset?> getAnimationSpeedPreset() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_keyAnimationSpeedPreset);
+    if (value != null) {
+      if (value == _customAnimationSpeedPreset) return null;
+      for (final preset in AnimationSpeedPreset.values) {
+        if (preset.name == value) return preset;
+      }
+      return null;
+    }
+
+    // 兼容旧版本：旧设置没有单独保存速度档位，根据已有时长恢复档位；
+    // 没有任何历史时长时使用新的默认档位“优雅”。
+    if (!prefs.containsKey(_keyAnimationDuration)) {
+      return AnimationSpeedPreset.elegant;
+    }
+    final duration = prefs.getInt(_keyAnimationDuration);
+    for (final preset in AnimationSpeedPreset.values) {
+      if (preset.duration == duration) return preset;
+    }
+    return null;
   }
 
   static Future<int> getPageLayerDepth() async {
@@ -81,8 +143,10 @@ class AnimationConfigService {
   static Future<void> setPreset(AnimationPreset preset) async {
     final prefs = await SharedPreferences.getInstance();
     late final Map<String, Object> values;
+    late final AnimationSpeedPreset speedPreset;
     switch (preset) {
       case AnimationPreset.performance:
+        speedPreset = AnimationSpeedPreset.fast;
         values = {
           _keyEnableAnimations: true,
           _keyEnableMotionBlur: false,
@@ -95,6 +159,7 @@ class AnimationConfigService {
           _keyContainerContentStart: 12,
         };
       case AnimationPreset.balanced:
+        speedPreset = AnimationSpeedPreset.balanced;
         values = {
           _keyEnableAnimations: true,
           _keyEnableMotionBlur: false,
@@ -107,6 +172,7 @@ class AnimationConfigService {
           _keyContainerContentStart: 18,
         };
       case AnimationPreset.expressive:
+        speedPreset = AnimationSpeedPreset.elegant;
         values = {
           _keyEnableAnimations: true,
           _keyEnableMotionBlur: true,
@@ -121,6 +187,7 @@ class AnimationConfigService {
     }
 
     await prefs.setString(_keyPreset, preset.name);
+    await prefs.setString(_keyAnimationSpeedPreset, speedPreset.name);
     for (final entry in values.entries) {
       final value = entry.value;
       if (value is bool) {
@@ -182,7 +249,20 @@ class AnimationConfigService {
   static Future<void> setAnimationDuration(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await _clearPreset(prefs);
+    await prefs.setString(
+      _keyAnimationSpeedPreset,
+      _customAnimationSpeedPreset,
+    );
     await prefs.setInt(_keyAnimationDuration, value);
+  }
+
+  static Future<void> setAnimationSpeedPreset(
+    AnimationSpeedPreset preset,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await _clearPreset(prefs);
+    await prefs.setString(_keyAnimationSpeedPreset, preset.name);
+    await prefs.setInt(_keyAnimationDuration, preset.duration);
   }
 
   static Future<void> setPageLayerDepth(int value) async {
@@ -205,6 +285,6 @@ class AnimationConfigService {
   }
 
   static Future<void> _clearPreset(SharedPreferences prefs) async {
-    await prefs.remove(_keyPreset);
+    await prefs.setString(_keyPreset, _customAnimationPreset);
   }
 }

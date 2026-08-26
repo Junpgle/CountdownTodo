@@ -65,6 +65,10 @@ void main() {
     expect(find.text('Liquid Glass 模式'), findsOneWidget);
     expect(find.text('标准'), findsOneWidget);
     expect(find.text('增强'), findsOneWidget);
+    expect(find.text('动画速度预设', skipOffstage: false), findsOneWidget);
+    expect(find.text('优雅 500ms', skipOffstage: false), findsOneWidget);
+    expect(find.text('均衡 320ms', skipOffstage: false), findsOneWidget);
+    expect(find.text('快速 220ms', skipOffstage: false), findsOneWidget);
     expect(find.byType(Switch), findsWidgets);
   });
 

@@ -23,10 +23,11 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
   bool _lazyLoadEnabled = true;
   bool _screenRadiusEnabled = true;
   bool _predictiveBackEnabled = true;
-  int _animationDuration = 220;
+  int _animationDuration = AnimationSpeedPreset.elegant.duration;
   int _pageLayerDepth = 18;
   int _containerContentStart = 12;
-  AnimationPreset? _preset;
+  AnimationPreset? _preset = AnimationPreset.balanced;
+  AnimationSpeedPreset? _speedPreset = AnimationSpeedPreset.elegant;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       AnimationConfigService.getPageLayerDepth(),
       AnimationConfigService.getContainerContentStart(),
       AnimationConfigService.getPreset(),
+      AnimationConfigService.getAnimationSpeedPreset(),
       LiquidGlassEffectService.loadConfiguration(),
     ]);
     if (!mounted) return;
@@ -60,7 +62,8 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       _pageLayerDepth = results[7] as int;
       _containerContentStart = results[8] as int;
       _preset = results[9] as AnimationPreset?;
-      final liquidGlass = results[10] as LiquidGlassEffectConfiguration;
+      _speedPreset = results[10] as AnimationSpeedPreset?;
+      final liquidGlass = results[11] as LiquidGlassEffectConfiguration;
       _liquidGlassEnabled = liquidGlass.enabled;
       _liquidGlassMode = liquidGlass.mode;
     });
@@ -121,6 +124,16 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     await _loadSettings();
   }
 
+  Future<void> _applySpeedPreset(AnimationSpeedPreset preset) async {
+    setState(() {
+      _speedPreset = preset;
+      _animationDuration = preset.duration;
+      _preset = null;
+    });
+    await AnimationConfigService.setAnimationSpeedPreset(preset);
+    await PageTransitions.init();
+  }
+
   Future<void> _update({
     bool? enabled,
     bool? motionBlur,
@@ -154,6 +167,7 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
       await AnimationConfigService.setPredictiveBackEnabled(predictiveBack);
     }
     if (duration != null) {
+      if (mounted) setState(() => _speedPreset = null);
       await AnimationConfigService.setAnimationDuration(duration);
     }
     if (pageLayerDepth != null) {
@@ -439,6 +453,28 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
                                       color: colorScheme.onSurfaceVariant)),
                             ],
                           ),
+                          const SizedBox(height: 16),
+                          const Text('动画速度预设',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildSpeedPresetChip(
+                                preset: AnimationSpeedPreset.elegant,
+                                title: '优雅',
+                              ),
+                              _buildSpeedPresetChip(
+                                preset: AnimationSpeedPreset.balanced,
+                                title: '均衡',
+                              ),
+                              _buildSpeedPresetChip(
+                                preset: AnimationSpeedPreset.fast,
+                                title: '快速',
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -569,6 +605,34 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
     );
   }
 
+  Widget _buildSpeedPresetChip({
+    required AnimationSpeedPreset preset,
+    required String title,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selected = _speedPreset == preset;
+    return ChoiceChip(
+      label: Text('$title ${preset.duration}ms'),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (value) {
+        if (value) _applySpeedPreset(preset);
+      },
+      selectedColor: colorScheme.primaryContainer,
+      backgroundColor: colorScheme.surfaceContainerHighest,
+      side: BorderSide(
+        color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+        width: selected ? 1.5 : 1,
+      ),
+      labelStyle: TextStyle(
+        color: selected
+            ? colorScheme.onPrimaryContainer
+            : colorScheme.onSurfaceVariant,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      ),
+    );
+  }
+
   Widget _buildPresetGrid({
     required bool isDesktop,
     required bool isWide,
@@ -588,21 +652,21 @@ class _AnimationSettingsPageState extends State<AnimationSettingsPage> {
           compact: isCompact,
           preset: AnimationPreset.performance,
           title: '极致流畅',
-          subtitle: '优先稳定帧率，关闭液态玻璃',
+          subtitle: '快速动画，优先稳定帧率，关闭液态玻璃',
           icon: Icons.speed_rounded,
         ),
         _buildPresetCard(
           compact: isCompact,
           preset: AnimationPreset.balanced,
           title: '均衡模式',
-          subtitle: '保留主要过渡，液态玻璃标准档',
+          subtitle: '均衡动画，保留主要过渡，液态玻璃标准档',
           icon: Icons.tune_rounded,
         ),
         _buildPresetCard(
           compact: isCompact,
           preset: AnimationPreset.expressive,
           title: '完整动效',
-          subtitle: '开启模糊与液态玻璃增强档，视觉优先',
+          subtitle: '优雅动画，开启模糊与液态玻璃增强档',
           icon: Icons.auto_awesome_rounded,
         ),
       ],

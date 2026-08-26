@@ -223,9 +223,15 @@ class _HomeLayoutSettingsPageState extends State<HomeLayoutSettingsPage> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const Spacer(),
-                Text(
-                  '$visibleCount 个显示 / ${order.length} 个组件',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                // 窄容器下允许计数文本省略，杜绝头部行横向溢出。
+                Flexible(
+                  child: Text(
+                    '$visibleCount 个显示 / ${order.length} 个组件',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
                 ),
               ],
             ),
