@@ -27,7 +27,11 @@ Future<T?> showAppModalBottomSheet<T>({
   bool useRootNavigator = false,
   bool isDismissible = true,
   bool enableDrag = true,
-  bool? showDragHandle,
+  // App-owned sheet surfaces commonly draw their own handle. Do not inherit
+  // the theme default here, otherwise the Material handle is rendered again
+  // above the custom one. Callers that use the stock surface can opt in with
+  // showDragHandle: true.
+  bool? showDragHandle = false,
   bool useSafeArea = false,
   RouteSettings? routeSettings,
   AnimationController? transitionAnimationController,
@@ -252,6 +256,7 @@ class AppDialogs {
       isScrollControlled: isScrollControlled,
       useSafeArea: useSafeArea,
       backgroundColor: Colors.transparent,
+      showDragHandle: true,
       builder: (sheetContext) => DecoratedBox(
         decoration: BoxDecoration(
           color: colorScheme.surface,
