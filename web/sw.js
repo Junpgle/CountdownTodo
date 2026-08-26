@@ -1,7 +1,7 @@
 // CountDownTodo PWA Service Worker
 // Handles offline caching and update lifecycle.
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `countdowntodo-${CACHE_VERSION}`;
 const OFFLINE_URL = './offline.html';
 const BOOTSTRAP_URL = './flutter_bootstrap.js?v=20260701e';
